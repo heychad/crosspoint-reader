@@ -41,16 +41,19 @@ PATCHES = (
      "e5506cfd44e2776482404d3e378a458538aa9debd3d8a2640c42728b56f846ac"),
     ("0007-fatfile-strict-lookup.patch", "src/FatLib/FatFile.h",
      "42355cd5bf5dc6e37b13931922e029a7c2a64bc409e7b3e56b632021ee925644",
-     "ec69d17ea1acae4b153099f3c4f5d142a536e41987a8872c09eb8378667724f8"),
+     "dc07c47d649314aa058955a0564e0e29ff42d233f08a58f0f4a0b4e07387f7bd"),
     ("0008-fsfile-strict-lookup.patch", "src/FsLib/FsFile.h",
      "4c77e48772c707876f56c48ab71dbfb0b66f4de12375ead237c8d929d7755126",
-     "1763b25f564226de9886e25efefa4b6d74bb6280550b1d891d6d752caa9305e6"),
+     "36c47655281a70a46eb2e4717d5c6d399bacf9522b7a4aa2c8fa3218facbbd06"),
     ("0010-exfat-strict-header.patch", "src/ExFatLib/ExFatFile.h",
      "a0863afa1035a8dd799e8d17899a62369f9b50b3916a197ce99504ba3cb8ab13",
-     "a6e2641cf08e28c3ea03b8d56d0d14633bfacebef2844c7d9189caad9f33cccc"),
+     "9fb9de05d16ccb2e71137a2a438bed927bc7dd1a224521980270b6b7203ec188"),
     ("0011-exfat-strict-scan.patch", "src/ExFatLib/ExFatFile.cpp",
      "ebcdb4c15e9200caf15a93095a37428d987e96da0f85733104550373ce6f0aa0",
-     "37e029d11544dacdd13790fead896fe5a246190e7a93c7b24426fdffc7998fdd"),
+     "2a0e7b2dbc716d89c2ee9c54b0658ef79b0757fc824b7d4a3adc55a933bdf4ec"),
+    ("0017-fat-source-bounded-chain.patch", "src/FatLib/FatFile.cpp",
+     "c1757a57ea134df2aab650d2db109b7d731f66cf309e5a070a9b50667c258948",
+     "cbe7fc25f8a5cdf424697804bfd4ed170027d0f21543bdc1a9dfd7fd89aae457"),
 )
 
 MIGRATIONS = {
@@ -60,13 +63,25 @@ MIGRATIONS = {
         "69da34b4283eb63603404f0c3ecfa3d73ab8210cba9d341596cd1750a3c19919":
             "0006-enable-strict-fat-lookup.patch",
     },
+    "src/FatLib/FatFile.h": {
+        "ec69d17ea1acae4b153099f3c4f5d142a536e41987a8872c09eb8378667724f8":
+            "0013-fatfile-bounded-chain.patch",
+    },
     "src/FsLib/FsFile.h": {
         "e72a825f134494e240ee85f3406949dd45e5562de7de9ff0afa2f84d536897b6":
-            "0009-upgrade-fsfile-strict-exfat.patch",
+            "0018-fsfile-prior-bounded-chain.patch",
+        "1763b25f564226de9886e25efefa4b6d74bb6280550b1d891d6d752caa9305e6":
+            "0014-fsfile-bounded-chain.patch",
+    },
+    "src/ExFatLib/ExFatFile.h": {
+        "a6e2641cf08e28c3ea03b8d56d0d14633bfacebef2844c7d9189caad9f33cccc":
+            "0015-exfat-header-bounded-chain.patch",
     },
     "src/ExFatLib/ExFatFile.cpp": {
         "927452f417c657b0c6ec593b805e72b5121080d6719ebd1650b3941a30602703":
-            "0012-upgrade-exfat-checksum.patch",
+            "0019-exfat-prior-bounded-chain.patch",
+        "37e029d11544dacdd13790fead896fe5a246190e7a93c7b24426fdffc7998fdd":
+            "0016-exfat-source-bounded-chain.patch",
     },
 }
 

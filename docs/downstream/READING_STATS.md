@@ -56,6 +56,8 @@ Files are written to a temporary path, synced and closed through the HAL,
 read back byte-for-byte, then published with a recoverable backup. Ambiguous
 recovery files are preserved and block writes; the reader warns when tracking
 cannot start or a save fails. Device-level recovery remains to be tested.
+An unverifiable or longer allocation chain can also block a save; preserve the
+statistics files and recovery files for review.
 Book and global files are separate transactions; a reset
 between them can leave a persistent totals mismatch; automatic reconciliation
 is not included. This is not a

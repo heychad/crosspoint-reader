@@ -1,0 +1,12 @@
+--- a/src/FatLib/FatFile.cpp
++++ b/src/FatLib/FatFile.cpp
+@@ -1503,3 +1503,9 @@
+   m_error |= WRITE_ERROR;
+   return 0;
+ }
++
++bool FatFile::smallSingleClusterChain() {
++  if (!isFile() || !fileSize() || fileSize() > 512 || m_firstCluster < 2) return false;
++  Cluster_t next;
++  return m_vol->fatGet(m_firstCluster, &next) == 0;
++}

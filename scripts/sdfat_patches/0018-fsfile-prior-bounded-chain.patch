@@ -1,0 +1,35 @@
+--- a/src/FsLib/FsFile.h
++++ b/src/FsLib/FsFile.h
+@@ -114,11 +114,17 @@
+    * \return true if a file is open.
+    */
+   operator bool() const { return isOpen(); }
+-  /** Enable checked FAT lookup; exFAT is not yet supported. */
+-  bool enableStrictFatLookup() {
+-    if (!m_fFile) return false;
+-    m_fFile->setStrictLookup(true);
+-    return true;
++  /** Enable checked lookup for this directory handle. */
++  bool enableStrictLookup() {
++    if (m_fFile) {
++      m_fFile->setStrictLookup(true);
++      return true;
++    }
++    if (m_xFile) {
++      m_xFile->setStrictLookup(true);
++      return true;
++    }
++    return false;
+   }
+   /**
+    * \return user settable file attributes for success else -1.
+@@ -174,6 +180,9 @@
+    *
+    * \return true for success or false for failure.
+    */
++  bool smallSingleClusterChain() {
++    return m_fFile ? m_fFile->smallSingleClusterChain() : m_xFile ? m_xFile->smallSingleClusterChain() : false;
++  }
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector) {
+     return m_fFile   ? m_fFile->contiguousRange(bgnSector, endSector)
+            : m_xFile ? m_xFile->contiguousRange(bgnSector, endSector)

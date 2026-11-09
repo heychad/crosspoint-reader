@@ -1,6 +1,8 @@
 --- a/src/FsLib/FsFile.h
 +++ b/src/FsLib/FsFile.h
-@@ -116,2 +116,14 @@
+@@ -114,6 +114,18 @@
+    * \return true if a file is open.
+    */
    operator bool() const { return isOpen(); }
 +  /** Enable checked lookup for this directory handle. */
 +  bool enableStrictLookup() {
@@ -15,3 +17,15 @@
 +    return false;
 +  }
    /**
+    * \return user settable file attributes for success else -1.
+    */
+@@ -168,6 +180,9 @@
+    *
+    * \return true for success or false for failure.
+    */
++  bool smallSingleClusterChain() {
++    return m_fFile ? m_fFile->smallSingleClusterChain() : m_xFile ? m_xFile->smallSingleClusterChain() : false;
++  }
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector) {
+     return m_fFile   ? m_fFile->contiguousRange(bgnSector, endSector)
+            : m_xFile ? m_xFile->contiguousRange(bgnSector, endSector)

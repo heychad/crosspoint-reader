@@ -17,12 +17,22 @@
 
 struct Disk : FsBlockDeviceInterface {
   std::unordered_map<Sector_t, std::array<uint8_t, 512>> sectors;
+  Sector_t sectorsTotal = 1024 * 1024;
+  Sector_t failReadSector = static_cast<Sector_t>(-1);
+  bool injectedRead = false;
+  int reads = 0;
   int writes = 0, failAt = -1;
   bool injected = false, dead = false, failStop = false;
   bool isBusy() override { return false; }
-  Sector_t sectorCount() override { return 1024 * 1024; }
+  Sector_t sectorCount() override { return sectorsTotal; }
   bool syncDevice() override { return !dead; }
   bool readSector(Sector_t n, uint8_t* out) override {
+    ++reads;
+    if (n == failReadSector) {
+      failReadSector = static_cast<Sector_t>(-1);
+      injectedRead = true;
+      return false;
+    }
     if (dead) return false;
     assert(n < sectorCount());
     const auto it = sectors.find(n);
@@ -143,8 +153,9 @@ void exercise(bool exfat, bool initial, bool nested) {
     assert(injected > 0);
   }
 }
-void exerciseCrosslinkedFatTail(bool backupFirst) {
+void exerciseCrosslinkedFatTail(bool backupFirst, bool fat32) {
   Disk disk;
+  if (fat32) disk.sectorsTotal = 64 * 1024 * 1024;
   uint8_t scratch[512];
   FatFormatter formatter;
   assert(formatter.format(&disk, scratch));
@@ -174,6 +185,8 @@ void exerciseCrosslinkedFatTail(bool backupFirst) {
     assert(primary.close() && saved.close());
   }
   assert(primaryCluster && backupCluster && primaryCluster != backupCluster);
+  assert(fatType == (fat32 ? 32 : 16));
+  assert(backupFirst ? backupCluster + 1 == primaryCluster : primaryCluster + 1 == backupCluster);
   const auto le16 = [](const uint8_t* p) { return uint16_t(p[0] | uint16_t(p[1]) << 8); };
   const auto le32 = [&](const uint8_t* p) { return uint32_t(le16(p) | uint32_t(le16(p + 2)) << 16); };
   uint8_t mbr[512], boot[512];
@@ -201,10 +214,131 @@ void exerciseCrosslinkedFatTail(bool backupFirst) {
   std::printf("FAT crosslinked tail (backup first=%d) refused without freeing the primary\n", backupFirst);
 }
 
+void exerciseFatChainedExfat() {
+  Disk disk;
+  uint8_t scratch[512];
+  ExFatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    auto file = volume.open("/chained.bin", O_CREAT | O_EXCL | O_RDWR);
+    assert(file);
+    uint8_t bytes[73]{};
+    assert(file.write(bytes, sizeof(bytes)) == sizeof(bytes) && file.sync());
+    auto blocker = volume.open("/blocker.bin", O_CREAT | O_EXCL | O_WRONLY);
+    assert(blocker && blocker.write(uint8_t{1}) == 1 && blocker.close());
+    const std::string extension(volume.bytesPerCluster(), 'x');
+    assert(file.write(extension.data(), extension.size()) == extension.size());
+    assert(!file.isContiguous() && file.truncate(sizeof(bytes)) && file.close());
+  }
+  FsVolume after;
+  assert(after.begin(&disk));
+  auto file = after.open("/chained.bin", O_RDONLY);
+  assert(file && !file.isContiguous() && file.smallSingleClusterChain() && file.close());
+  std::puts("exFAT one-cluster FAT-chain accepted");
+}
+
+void exerciseLongThirdFileTail() {
+  Disk disk;
+  disk.sectorsTotal = 64 * 1024 * 1024;
+  uint8_t scratch[512];
+  FatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  Cluster_t backupCluster = 0, thirdCluster = 0;
+  Sector_t fatStart = 0;
+  uint8_t fatCount = 0;
+  Bytes original{}, other{}, update{}, later{};
+  original.fill(17);
+  other.fill(34);
+  update.fill(51);
+  later.fill(68);
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk) && volume.fatType() == 32);
+    Storage.attach(volume);
+    fatStart = volume.fatStartSector();
+    fatCount = volume.fatCount();
+    assert(writeFile("/stats.bin", original) && writeFile("/stats.bin.bak", original) &&
+           writeFile("/other.bin", other));
+    auto backup = volume.open("/stats.bin.bak", O_RDONLY), third = volume.open("/other.bin", O_RDONLY);
+    assert(backup && third);
+    backupCluster = backup.firstCluster();
+    thirdCluster = third.firstCluster();
+    assert(backupCluster + 1 == thirdCluster && backup.close() && third.close());
+  }
+  const auto le16 = [](const uint8_t* p) { return uint16_t(p[0] | uint16_t(p[1]) << 8); };
+  const auto le32 = [&](const uint8_t* p) { return uint32_t(le16(p) | uint32_t(le16(p + 2)) << 16); };
+  uint8_t mbr[512], boot[512];
+  assert(disk.readSector(0, mbr) && disk.readSector(le32(mbr + 454), boot));
+  const uint32_t sectorsPerFat = le32(boot + 36);
+  assert(sectorsPerFat);
+  for (uint32_t cluster = backupCluster; cluster < backupCluster + 8192; ++cluster) {
+    const uint64_t offset = uint64_t(cluster) * 4;
+    for (unsigned i = 0; i < fatCount; ++i) {
+      auto& sector = disk.sectors[fatStart + Sector_t(i) * sectorsPerFat + offset / 512];
+      const uint32_t next = cluster + 1;
+      for (unsigned j = 0; j < 4; ++j) sector[offset % 512 + j] = uint8_t(next >> (8 * j));
+    }
+  }
+  FsVolume remount;
+  assert(remount.begin(&disk));
+  Storage.attach(remount);
+  disk.reads = 0;
+  assert(!Storage.distinctFirstClusters("/stats.bin", "/stats.bin.bak"));
+  const int identityReads = disk.reads;
+  assert(identityReads < 32);
+  assert(!statsreplace::save("TEST", "/stats.bin", update.data(), update.size(), false));
+  assert(writeFile("/later.bin", later));
+  FsVolume after;
+  assert(after.begin(&disk));
+  Storage.attach(after);
+  Bytes read{};
+  assert(readFile("/other.bin", read) && read == other);
+  std::printf("FAT32 long third-file tail refused; identity reads=%d\n", identityReads);
+}
+
+void exerciseFatChainReadFailure() {
+  Disk disk;
+  disk.sectorsTotal = 64 * 1024 * 1024;
+  uint8_t scratch[512];
+  FatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  Cluster_t cluster = 0;
+  Sector_t fatStart = 0;
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk) && volume.fatType() == 32);
+    fatStart = volume.fatStartSector();
+    auto filler = volume.open("/filler.bin", O_CREAT | O_EXCL | O_WRONLY);
+    assert(filler);
+    const std::string bytes(volume.bytesPerCluster() * 130, 'x');
+    assert(filler.write(bytes.data(), bytes.size()) == bytes.size() && filler.close());
+    auto file = volume.open("/stats.bin", O_CREAT | O_EXCL | O_WRONLY);
+    assert(file && file.write(uint8_t{1}) == 1);
+    cluster = file.firstCluster();
+    assert(cluster >= 128 && file.close());
+  }
+  FsVolume remount;
+  assert(remount.begin(&disk));
+  auto file = remount.open("/stats.bin", O_RDONLY);
+  assert(file);
+  disk.failReadSector = fatStart + cluster / 128;
+  assert(!file.smallSingleClusterChain() && disk.injectedRead);
+  assert(file.smallSingleClusterChain());
+  assert(file.close());
+  std::puts("FAT32 chain read failure refused, then retry succeeded");
+}
+
 int main() {
   for (bool exfat : {false, true})
     for (bool initial : {false, true})
       for (bool nested : {false, true}) exercise(exfat, initial, nested);
-  exerciseCrosslinkedFatTail(false);
-  exerciseCrosslinkedFatTail(true);
+  exerciseCrosslinkedFatTail(false, false);
+  exerciseCrosslinkedFatTail(true, false);
+  exerciseCrosslinkedFatTail(false, true);
+  exerciseCrosslinkedFatTail(true, true);
+  exerciseFatChainedExfat();
+  exerciseLongThirdFileTail();
+  exerciseFatChainReadFailure();
 }

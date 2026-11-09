@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as temporary:
     wrapper = source / 'FsLib/FsFile.h'
     expected = next(row[3] for row in patcher.PATCHES if row[1] == 'src/FsLib/FsFile.h')
     patches = project / 'scripts/sdfat_patches'
-    for name in ('0008-fsfile-strict-lookup.patch', '0009-upgrade-fsfile-strict-exfat.patch'):
+    for name in ('0008-fsfile-strict-lookup.patch', '0014-fsfile-bounded-chain.patch', '0018-fsfile-prior-bounded-chain.patch'):
         subprocess.run(['git', 'apply', '--reverse', str(patches / name)], cwd=dependency, check=True)
         patcher.apply_patches(project, dependency)
         assert hashlib.sha256(wrapper.read_bytes()).hexdigest() == expected

@@ -5,11 +5,14 @@
 +  /** Enable conservative directory validation for this handle. */
 +  void setStrictLookup(bool enabled) { m_strictLookup = enabled; }
    /** Clear writeError. */
-@@ -845,2 +847,3 @@
-
+@@ -199,2 +201,3 @@
+    */
++  bool smallSingleClusterChain();
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
+@@ -846 +849,2 @@
 +  bool validateStrictDirectory();
    bool openPrivate(ExFatFile* dir, ExName_t* fname, oflag_t oflag);
-@@ -881,2 +884,3 @@
+@@ -881,2 +885,3 @@
    uint8_t m_flags = 0;
 +  bool m_strictLookup = false;  // Only this directory handle opts in.
  };

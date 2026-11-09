@@ -1,0 +1,13 @@
+--- a/src/ExFatLib/ExFatFile.cpp
++++ b/src/ExFatLib/ExFatFile.cpp
+@@ -798,3 +798,10 @@
+   m_curCluster = tmp;
+   return false;
+ }
++
++bool ExFatFile::smallSingleClusterChain() {
++  if (!isFile() || !fileSize() || !m_dataLength || m_dataLength > 512 || m_firstCluster < 2) return false;
++  if (isContiguous()) return true;
++  Cluster_t next;
++  return m_vol->fatGet(m_firstCluster, &next) == 0;
++}

@@ -906,6 +906,8 @@ devices can only include statistics files already present on the card; compare
 the source count to your devices because missing files cannot be detected.
 Automatic completion and finish-date recording are not included yet. Opening
 statistics saves a snapshot without ending the current reading session.
+An unverifiable or longer allocation chain can block a statistics save; keep
+the statistics files and any recovery files for review.
 
 ### Downstream reader gestures
 

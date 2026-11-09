@@ -67,10 +67,10 @@ class HalStorage {
   // storage operations. The callback must not block waiting for another task
   // which needs storage. This only serializes operations through HalStorage.
   bool withStorageLock(bool (*operation)(void*), void* context);
-  // Check distinct, non-overlapping contiguous allocation ranges for two
-  // regular files with allocated lengths from 1 to 512 bytes. Fragmented or
-  // unreadable chains fail closed. Caller must hold withStorageLock across the
-  // transaction; this does not validate the entire filesystem.
+  // Check distinct single-cluster chains for two regular files with allocated
+  // lengths from 1 to 512 bytes. Longer or unreadable chains fail closed.
+  // Caller must hold withStorageLock across the transaction; this does not
+  // validate the entire filesystem.
   bool distinctFirstClusters(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);

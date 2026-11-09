@@ -1,12 +1,10 @@
 #pragma once
-#include <common/SysCall.h>
-
 #include <cstdint>
 
-// Require non-overlapping contiguous allocation ranges, not merely different
-// first clusters: a damaged FAT chain can join a second file beyond its EOF.
+// Require a checked single-cluster chain, not merely different first clusters:
+// a damaged FAT chain can join another file beyond the declared end of data.
 // Callers must establish paths, hold the storage lock, and check close errors.
-// Fragmented or unreadable chains fail closed; this does not validate the
+// Longer or unreadable chains fail closed; this does not validate the
 // entire filesystem or aliases to files other than the two being compared.
 template <typename File>
 bool smallFilesHaveDifferentFirstClusters(File& left, File& right) {
@@ -16,9 +14,5 @@ bool smallFilesHaveDifferentFirstClusters(File& left, File& right) {
   const auto first = left.firstCluster();
   const auto second = right.firstCluster();
   if (first == 0 || second == 0 || first == second) return false;
-  Sector_t leftFirst = 0, leftLast = 0, rightFirst = 0, rightLast = 0;
-  if (!left.contiguousRange(&leftFirst, &leftLast) || !right.contiguousRange(&rightFirst, &rightLast) ||
-      leftFirst > leftLast || rightFirst > rightLast)
-    return false;
-  return leftLast < rightFirst || rightLast < leftFirst;
+  return left.smallSingleClusterChain() && right.smallSingleClusterChain();
 }

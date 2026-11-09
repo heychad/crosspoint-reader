@@ -55,5 +55,15 @@
 @@ -293,3 +342,4 @@
    }
 +  if (fname && dir->m_strictLookup && !dir->validateStrictDirectory()) goto fail;
-
+-
++
    switch (oflag & O_ACCMODE) {
+@@ -750 +800,8 @@
+ }
++
++bool ExFatFile::smallSingleClusterChain() {
++  if (!isFile() || !fileSize() || !m_dataLength || m_dataLength > 512 || m_firstCluster < 2) return false;
++  if (isContiguous()) return true;
++  Cluster_t next;
++  return m_vol->fatGet(m_firstCluster, &next) == 0;
++}
