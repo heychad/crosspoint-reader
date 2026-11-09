@@ -1,0 +1,235 @@
+diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
+index 2b1c5d05..11346d9c 100644
+--- a/lib/I18n/translations/english.yaml
++++ b/lib/I18n/translations/english.yaml
+@@ -29,6 +29,7 @@ STR_RENDER_BALANCED: "Balanced"
+ STR_RENDER_LIGHT: "Light"
+ STR_INDEX_FAILED: "Failed to index - invalid book"
+ STR_MEMORY_ERROR: "Memory error"
++STR_SETTINGS_PARTIAL_SAVE_FAILED: "Some settings may not have saved. Check the SD card and retry."
+ STR_PAGE_LOAD_ERROR: "Page load error"
+ STR_EMPTY_FILE: "Empty file"
+ STR_INVALID_BMP_FILE: "Invalid BMP file"
+diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
+index 07ed954f..dc6477c6 100644
+--- a/src/network/CrossPointWebServer.cpp
++++ b/src/network/CrossPointWebServer.cpp
+@@ -1552,10 +1552,12 @@ void CrossPointWebServer::handlePostSettings() {
+   const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
+   const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);
+   int applied = 0;
++  bool koReaderTouched = false;
+ 
+   for (const auto& s : settings) {
+     if (!s.key || s.webHidden) continue;
+     if (!doc[s.key].is<JsonVariant>()) continue;
++    if (s.category == StrId::STR_KOREADER_SYNC) koReaderTouched = true;
+ 
+     switch (s.type) {
+       case SettingType::TOGGLE: {
+@@ -1608,7 +1610,12 @@ void CrossPointWebServer::handlePostSettings() {
+   }
+ 
+   readerquickactions::normalizeChangedBindings(SETTINGS, quickBindingsBefore);
+-  SETTINGS.saveToFile();
++  const bool settingsSaved = SETTINGS.saveToFile();
++  const bool koReaderSaved = !koReaderTouched || KOREADER_STORE.saveToFile();
++  if (!settingsSaved || !koReaderSaved) {
++    server->send(500, "text/plain", tr(STR_SETTINGS_PARTIAL_SAVE_FAILED));
++    return;
++  }
+ 
+   LOG_DBG("WEB", "Applied %d setting(s)", applied);
+   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
+diff --git a/src/network/html/SettingsPage.html b/src/network/html/SettingsPage.html
+index bcb11d49..a1818f8d 100644
+--- a/src/network/html/SettingsPage.html
++++ b/src/network/html/SettingsPage.html
+@@ -47,6 +47,14 @@
+ <script>
+   let allSettings = [];
+   let originalValues = {};
++  let failedSaveKeys = new Set();
++  const quickActionKeys = [
++    'powerTapAction', 'powerHoldAction', 'powerUpChordAction', 'backHoldAction', 'confirmHoldAction',
++    'readerUpTap', 'readerUpHold', 'readerDownTap', 'readerDownHold', 'readerSideChord',
++    'readerLeftEdgeUp', 'readerLeftEdgeDown', 'readerRightEdgeUp', 'readerRightEdgeDown',
++    'homeButtonTapAction', 'homeButtonDoubleTapAction', 'homeButtonLongPressAction', 'shortPwrBtn',
++    'longPressMenuFunction'
++  ];
+   let preserveQuickResumeTimeoutOn = false;
+   let quickResumeTimeoutAutoEnabled = false;
+   const SLEEP_SCREEN_MODE = {
+@@ -248,6 +256,7 @@
+ 
+       // Store original values
+       originalValues = {};
++      failedSaveKeys.clear();
+       allSettings.forEach(function(s) {
+         originalValues[s.key] = s.value;
+       });
+@@ -298,7 +307,7 @@
+     const changes = {};
+     allSettings.forEach(function(s) {
+       const current = getValue(s);
+-      if (current !== undefined && current !== originalValues[s.key]) {
++      if (current !== undefined && (current !== originalValues[s.key] || failedSaveKeys.has(s.key))) {
+         changes[s.key] = current;
+       }
+     });
+@@ -324,12 +333,18 @@
+       // Update original values to new values
+       for (const key in changes) {
+         originalValues[key] = changes[key];
++        failedSaveKeys.delete(key);
+       }
+ 
+       showWebToast('Settings saved successfully!', false);
+     } catch (e) {
+       console.error(e);
++      Object.keys(changes).forEach(function(key) { failedSaveKeys.add(key); });
++      if (Object.keys(changes).some(function(key) { return quickActionKeys.includes(key); })) {
++        quickActionKeys.forEach(function(key) { failedSaveKeys.add(key); });
++      }
+       showWebToast('Error: ' + e.message, true);
++      btn.disabled = false;
+     }
+ 
+     btn.textContent = 'Save Settings';
+diff --git a/test/quick_actions/CMakeLists.txt b/test/quick_actions/CMakeLists.txt
+index 4d27afb2..4f10d362 100644
+--- a/test/quick_actions/CMakeLists.txt
++++ b/test/quick_actions/CMakeLists.txt
+@@ -6,3 +6,7 @@ gtest_discover_tests(QuickBindingsTest)
+ 
+ add_test(NAME QuickActionsUI COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ui.py ${arduinojson_SOURCE_DIR}/src)
+ add_test(NAME QuickActionsWeb COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web.py ${arduinojson_SOURCE_DIR}/src)
++find_program(SETTINGS_SAVE_NODE node)
++if(SETTINGS_SAVE_NODE)
++  add_test(NAME WebSettingsSaveFailure COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_web_save_failure.py)
++endif()
+diff --git a/test/quick_actions/stubs/CrossPointSettings.h b/test/quick_actions/stubs/CrossPointSettings.h
+index e98a05f9..0b657e4f 100644
+--- a/test/quick_actions/stubs/CrossPointSettings.h
++++ b/test/quick_actions/stubs/CrossPointSettings.h
+@@ -5,7 +5,7 @@
+ struct CrossPointSettings {
+   uint8_t powerTapAction = 0, powerHoldAction = 0, powerUpChordAction = 0, backHoldAction = 0, confirmHoldAction = 0;
+   int saves = 0;
+-  void saveToFile() { ++saves; }
++  bool saveToFile() { ++saves; return true; }
+   enum { IGNORE = 0, PWR_QUICK_ACTIONS = 10, LP_MENU_DISABLED = 1, LP_MENU_QUICK_ACTIONS = 7 };
+   uint8_t readerUpTap = 0, readerUpHold = 0, readerDownTap = 0, readerDownHold = 0, readerSideChord = 0;
+   uint8_t readerLeftEdgeUp = 0, readerLeftEdgeDown = 0, readerRightEdgeUp = 0, readerRightEdgeDown = 0;
+diff --git a/test/quick_actions/test_web.py b/test/quick_actions/test_web.py
+index 026cc1cc..23eff6a6 100644
+--- a/test/quick_actions/test_web.py
++++ b/test/quick_actions/test_web.py
+@@ -4,7 +4,7 @@ import subprocess,sys,tempfile
+ root=Path(__file__).resolve().parents[2]
+ source=(root/'src/network/CrossPointWebServer.cpp').read_text()
+ start=source.index('  const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);')
+-end=source.index('  SETTINGS.saveToFile();',start)+len('  SETTINGS.saveToFile();')
++end=source.index('  const bool settingsSaved = SETTINGS.saveToFile();',start)+len('  const bool settingsSaved = SETTINGS.saveToFile();')
+ body=source[start:end]
+ code=r'''
+ #include <ArduinoJson.h>
+@@ -17,8 +17,10 @@ code=r'''
+ #include "personalization/ReaderQuickBindings.h"
+ CrossPointSettings SETTINGS;
+ enum class SettingType{TOGGLE,ENUM,VALUE,STRING,ACTION};
++enum class StrId { STR_KOREADER_SYNC, OTHER };
+ struct Info{
+  const char*key;SettingType type=SettingType::ENUM;uint8_t CrossPointSettings::*valuePtr=nullptr;
++ StrId category=StrId::OTHER;
+  bool webHidden=false;std::function<void(uint8_t)>valueSetter;std::function<void(const std::string&)>stringSetter;
+  std::vector<int>values;std::vector<std::string>enumStringValues;size_t stringMaxLen=0,stringOffset=0;
+  struct{int min=0,max=255;}valueRange;
+diff --git a/test/quick_actions/test_web_save_failure.py b/test/quick_actions/test_web_save_failure.py
+new file mode 100644
+index 00000000..21aab547
+--- /dev/null
++++ b/test/quick_actions/test_web_save_failure.py
+@@ -0,0 +1,82 @@
++"""Check web settings save failures and retry against the production handlers."""
++from pathlib import Path
++import subprocess
++import tempfile
++
++root = Path(__file__).resolve().parents[2]
++server = (root / 'src/network/CrossPointWebServer.cpp').read_text()
++start = server.index('  const bool settingsSaved = SETTINGS.saveToFile();')
++end = server.index('  LOG_DBG("WEB", "Applied %d setting(s)"', start)
++failure_handler = server[start:end]
++page = (root / 'src/network/html/SettingsPage.html').read_text()
++start = page.index('  async function saveSettings() {')
++end = page.index('  // --- Wi-Fi Network Management ---', start)
++save_settings = page[start:end]
++
++cpp = r'''
++#include <cassert>
++#include <string>
++struct Settings { bool result; bool saveToFile() const { return result; } } SETTINGS;
++struct KOReader { bool result; bool saveToFile() const { return result; } } KOREADER_STORE;
++#define STR_SETTINGS_PARTIAL_SAVE_FAILED 1
++#define tr(id) "Some settings may not have saved. Check the SD card and retry."
++struct Server { int code=0; std::string message; void send(int c,const char*,const char* m){code=c;message=m;} } instance;
++Server* server=&instance;
++bool handle(bool koReaderTouched) {
++''' + failure_handler.replace('    return;', '    return false;') + r'''
++ return true;
++}
++int main(){
++ SETTINGS.result=false;KOREADER_STORE.result=true;assert(!handle(false));assert(instance.code==500);
++ assert(instance.message.find("retry")!=std::string::npos);
++ SETTINGS.result=true;KOREADER_STORE.result=false;instance.code=0;assert(!handle(true));assert(instance.code==500);
++ KOREADER_STORE.result=true;instance.code=0;assert(handle(true));assert(instance.code==0);
++}
++'''
++js = r'''
++const assert = require('assert');
++const button = {disabled:false, textContent:''};
++global.document = {getElementById: () => button};
++const allSettings=[{key:'brightness'}];
++let originalValues={brightness:1};
++let failedSaveKeys = new Set();
++const quickActionKeys=['readerUpTap','readerDownTap'];
++let selected={brightness:2}, posted=[];
++function getValue(setting) { return selected[setting.key]; }
++let toast='';
++function showWebToast(text) { toast=text; }
++console.error=()=>{};
++let fail=true;
++global.fetch=async(url, options)=> { posted.push(JSON.parse(options.body)); return fail ? {ok:false,text:async()=> 'Could not save; retry.'} : {ok:true}; };
++''' + save_settings + r'''
++(async()=>{
++ await saveSettings();
++ assert.equal(button.disabled,false);
++ assert.equal(originalValues.brightness,1);
++ assert.ok(toast.includes('retry'));
++ selected.brightness=1;
++ fail=false;
++ await saveSettings();
++ assert.deepEqual(posted[1],{brightness:1});
++ assert.equal(button.disabled,true);
++ assert.equal(originalValues.brightness,1);
++ allSettings.push({key:'readerUpTap'}, {key:'readerDownTap'});
++ originalValues.readerUpTap=21; originalValues.readerDownTap=0;
++ selected.readerUpTap=21; selected.readerDownTap=21;
++ fail=true;
++ await saveSettings();
++ selected.readerDownTap=0;
++ fail=false;
++ await saveSettings();
++ assert.equal(posted[3].readerUpTap,21);
++ assert.equal(posted[3].readerDownTap,0);
++})().catch(e=>{process.stderr.write(String(e));process.exitCode=1;});
++'''
++with tempfile.TemporaryDirectory() as directory:
++    directory = Path(directory)
++    (directory / 'test.cpp').write_text(cpp)
++    subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror', str(directory / 'test.cpp'),
++                    '-o', str(directory / 'test')], check=True)
++    subprocess.run([str(directory / 'test')], check=True)
++    subprocess.run(['node', '-e', js], check=True)
++print('Settings web save failure and retry checks passed')
