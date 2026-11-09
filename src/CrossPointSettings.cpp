@@ -1,9 +1,13 @@
 #include "CrossPointSettings.h"
 
 #include <BlePageTurnerJson.h>
+#include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <ObfuscationUtils.h>
+#include <SettingsRecoveryProbe.h>
+#include <SettingsSafeWrite.h>
 
 #include <algorithm>
 #include <cstring>
@@ -15,6 +19,7 @@
 #include "ReaderFontSizes.h"
 #include "ReaderLineSpacing.h"
 #include "SettingsList.h"
+#include "activities/reader/StatsSaveNotice.h"
 #include "fontIds.h"
 #include "personalization/LegacyHomeShortcut.h"
 #include "personalization/ReaderBarsJson.h"
@@ -37,6 +42,92 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 }
 
 }  // namespace
+
+bool CrossPointSettings::saveSpecializedToFile() const {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  const bool saved = [this] {
+    size_t size = 0;
+    std::unique_ptr<char[]> bytes;
+    {
+      JsonDocument doc;
+      toJson(doc);
+      size = measureJson(doc);
+      if (doc.overflowed() || size == 0 || size > 32768) return false;
+      bytes = makeUniqueNoThrow<char[]>(size + 1);
+      if (!bytes || serializeJson(doc, bytes.get(), size + 1) != size) return false;
+    }
+    const auto directory = Storage.lookupPath("/.crosspoint");
+    if (directory == HalStorage::PathStatus::Failed ||
+        (directory == HalStorage::PathStatus::Missing && !Storage.mkdir("/.crosspoint")))
+      return false;
+    return settingsrecovery::writeSettings(bytes.get(), size);
+  }();
+  if (!saved) settingsSaveNotice().recordFailure();
+  return saved;
+}
+
+bool CrossPointSettings::loadSpecializedFromFile() {
+  bool ok = false;
+  bool doResave = false;
+  {
+    std::lock_guard<std::mutex> lock(storeMutex);
+    struct LoadContext {
+      CrossPointSettings* settings;
+      bool ok;
+      bool attention;
+    } context{this, false, false};
+    const bool locked = Storage.withStorageLock(
+        [](void* raw) {
+          auto& c = *static_cast<LoadContext*>(raw);
+          constexpr char backup[] = "/.crosspoint/settings.json.bak";
+          constexpr char temporary[] = "/.crosspoint/settings.json.tmp";
+          const auto state = settingsrecovery::probe(getFilePath(), backup, temporary);
+          const auto choice = state.bootDecision();
+          c.attention = !choice.allowSave;
+          const char* path = choice.candidate == settingsrecovery::BootCandidate::Primary  ? getFilePath()
+                             : choice.candidate == settingsrecovery::BootCandidate::Backup ? backup
+                                                                                           : nullptr;
+          if (!path) return true;
+          JsonDocument doc;
+          HalFile file = Storage.openChecked(path, O_RDONLY);
+          if (!file) {
+            c.attention = true;
+            return true;
+          }
+          const uint64_t size = file.fileSize64();
+          if (file.isDirectory() || size == 0 || size > 32768) {
+            file.close();
+            c.attention = true;
+            return true;
+          }
+          auto bytes = makeUniqueNoThrow<char[]>(static_cast<size_t>(size) + 1);
+          if (!bytes) {
+            file.close();
+            c.attention = true;
+            return true;
+          }
+          const bool read = file.read(bytes.get(), static_cast<size_t>(size)) == static_cast<int>(size);
+          const bool closed = file.close();
+          bytes[size] = '\0';
+          if (!read || !closed ||
+              deserializeJson(doc, static_cast<const char*>(bytes.get()), static_cast<size_t>(size)) ||
+              !doc.is<JsonObjectConst>()) {
+            c.attention = true;
+            return true;
+          }
+          c.settings->resaveRequested = false;
+          c.ok = c.settings->fromJson(doc.as<JsonVariantConst>());
+          return true;
+        },
+        &context);
+    ok = locked && context.ok;
+    if (!locked || context.attention) settingsSaveNotice().recordFailure();
+    doResave = ok && resaveRequested;
+    resaveRequested = false;
+  }
+  if (doResave && !saveToFile()) LOG_ERR("CPS", "Could not save migrated settings");
+  return ok;
+}
 
 void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
   const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,

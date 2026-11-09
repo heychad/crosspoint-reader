@@ -1,0 +1,10 @@
+--- a/src/ExFatLib/ExFatFile.h
++++ b/src/ExFatLib/ExFatFile.h
+@@ -200,6 +200,7 @@
+    * \return true for success or false for failure.
+    */
+   bool firstClusterMarkedAllocated();
++  bool settingsClusterList(Cluster_t* out, size_t capacity, size_t* count);
+   bool settingsSingleClusterChain();
+   bool smallSingleClusterChain();
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);

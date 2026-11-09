@@ -49,6 +49,8 @@ class ReaderActivity : public Activity {
   ReaderStats readingStats;
   std::atomic<bool> pendingStatsLoadWarning{false};
   std::atomic<bool> pendingStatsSaveWarning{false};
+  std::atomic<uint32_t> shownSettingsNotice{0};
+  std::atomic<bool> settingsNoticeRenderReady{false};
   // 1 = enabled, 2 = disabled, 3 = save failed. The render task owns painting.
   std::atomic<uint8_t> pendingHomeButtonFeedback{0};
   std::atomic<bool> homeButtonFeedbackVisible{false};
@@ -56,6 +58,8 @@ class ReaderActivity : public Activity {
   bool showPendingHomeButtonFeedback();
   void expireHomeButtonFeedback();
   bool showPendingStatsWarning();
+  bool showPendingSettingsWarning();
+  void pollSettingsSaveWarning();
   virtual bool showPendingFormatWarning() { return false; }
   virtual bool formatPopupVisible() const { return false; }
   void showNextReaderNotice(bool formatPopupDrawn);

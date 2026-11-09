@@ -7,7 +7,7 @@ shortcuts = (root / 'src/activities/reader/EpubReaderShortcuts.cpp').read_text()
 pages = 'case Action::PreviousPage:' + shortcuts.split('case Action::PreviousPage:', 1)[1].split('case Action::PreviousChapter:', 1)[0]
 managed = 'bool EpubReaderActivity::customSideShortcuts()' + shortcuts.split('bool EpubReaderActivity::customSideShortcuts()', 1)[1].split('bool EpubReaderActivity::handleReaderShortcut', 1)[0]
 reader = (root / 'src/activities/reader/ReaderActivity.cpp').read_text()
-end = 'bool ReaderActivity::handleEndOfBookPageTurn(' + reader.split('bool ReaderActivity::handleEndOfBookPageTurn(', 1)[1].split('void ReaderActivity::loop()', 1)[0]
+end = 'bool ReaderActivity::handleEndOfBookPageTurn(' + reader.split('bool ReaderActivity::handleEndOfBookPageTurn(', 1)[1].split('void ReaderActivity::pollSettingsSaveWarning()', 1)[0]
 code = r'''
 #include <atomic>
 #include <cassert>

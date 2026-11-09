@@ -83,6 +83,19 @@ class HalStorage {
     const bool eligible = file.settingsSingleClusterChain();
     return file.close() && eligible;
   }
+  bool settingsChainEligible(const char* path) {
+    FsBaseFile file;
+    if (!file.open(path, O_RDONLY)) return false;
+    const bool eligible = settingsFileHasCheckedChain(file);
+    return file.close() && eligible;
+  }
+  bool distinctSettingsChains(const char* first, const char* second) {
+    FsBaseFile a, b;
+    if (!a.open(first, O_RDONLY) || !b.open(second, O_RDONLY)) return false;
+    const bool distinct = settingsFilesHaveDisjointChains(a, b);
+    const bool ac = a.close(), bc = b.close();
+    return distinct && ac && bc;
+  }
 
  private:
   FsVolume* volume_ = nullptr;

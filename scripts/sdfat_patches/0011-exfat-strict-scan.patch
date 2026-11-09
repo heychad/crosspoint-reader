@@ -1,6 +1,8 @@
 --- a/src/ExFatLib/ExFatFile.cpp
 +++ b/src/ExFatLib/ExFatFile.cpp
-@@ -275,2 +275,51 @@
+@@ -273,6 +273,55 @@
+   return false;
+ }
  //------------------------------------------------------------------------------
 +// Validate bounded, complete exFAT entry sets before a checked lookup.
 +// Ordinary opens do not call this. Unknown active entry types fail closed.
@@ -52,13 +54,19 @@
 +}
 +//------------------------------------------------------------------------------
  bool ExFatFile::openPrivate(ExFatFile* dir, ExName_t* fname, oflag_t oflag) {
-@@ -293,3 +342,4 @@
+   int n;
+   uint8_t modeFlags;
+@@ -291,6 +340,7 @@
+     DBG_FAIL_MACRO;
+     goto fail;
    }
 +  if (fname && dir->m_strictLookup && !dir->validateStrictDirectory()) goto fail;
--
-+
+ 
    switch (oflag & O_ACCMODE) {
-@@ -750 +800,29 @@
+     case O_RDONLY:
+@@ -748,3 +798,62 @@
+   m_curCluster = tmp;
+   return false;
  }
 +
 +bool ExFatFile::smallSingleClusterChain() {
@@ -87,4 +95,35 @@
 +  const Sector_t sector = m_vol->clusterHeapStartSector() + (bit >> (shift + 3));
 +  const uint8_t* data = m_vol->bitmapCachePrepare(sector, FsCache::CACHE_FOR_READ);
 +  return data && (data[(bit >> 3) & ((uint32_t{1} << shift) - 1)] & (uint8_t{1} << (bit & 7)));
++}
++
++bool ExFatFile::settingsClusterList(Cluster_t* out, size_t capacity, size_t* count) {
++  if (!out || !count || !isFile() || !m_dataLength || m_dataLength > 32768 ||
++      m_validLength != m_dataLength || m_firstCluster < 2) return false;
++  const uint8_t shift = m_vol->bytesPerClusterShift();
++  if (shift >= 63) return false;
++  const uint64_t clusterBytes = uint64_t{1} << shift;
++  const size_t expected = (m_dataLength + clusterBytes - 1) / clusterBytes;
++  if (!expected || expected > capacity || expected > 64) return false;
++  Cluster_t current = m_firstCluster;
++  for (size_t i = 0; i < expected; ++i) {
++    if (current < 2 || current - 2 >= m_vol->clusterCount()) return false;
++    for (size_t j = 0; j < i; ++j) if (out[j] == current) return false;
++    const uint32_t bit = current - 2;
++    const uint8_t sectorShift = m_vol->bytesPerSectorShift();
++    const Sector_t sector = m_vol->clusterHeapStartSector() + (bit >> (sectorShift + 3));
++    const uint8_t* data = m_vol->bitmapCachePrepare(sector, FsCache::CACHE_FOR_READ);
++    if (!data || !(data[(bit >> 3) & ((uint32_t{1} << sectorShift) - 1)] & (uint8_t{1} << (bit & 7)))) return false;
++    out[i] = current;
++    if (isContiguous()) {
++      if (i + 1 < expected) { if (current == UINT32_MAX) return false; ++current; }
++    } else {
++      Cluster_t next = 0;
++      const int result = m_vol->fatGet(current, &next);
++      if (i + 1 == expected) { if (result != 0) return false; }
++      else { if (result != 1) return false; current = next; }
++    }
++  }
++  *count = expected;
++  return true;
 +}

@@ -76,6 +76,10 @@ class HalStorage {
   // each file is limited to 32 KiB and must fit its volume's cluster size.
   bool distinctSettingsClusters(const char* first, const char* second);
   bool settingsSingleClusterEligible(const char* path);
+  // These checks cover up to 64 allocated clusters per settings file; they do
+  // not establish ownership against other files on a damaged filesystem.
+  bool settingsChainEligible(const char* path);
+  bool distinctSettingsChains(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);
   // Move a fully written temp file over `path`, replacing any existing file.

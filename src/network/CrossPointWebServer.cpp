@@ -1421,6 +1421,14 @@ void CrossPointWebServer::handleGetSettings() const {
   DictionaryRegistry::discover(dictionaries);
   const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
 
+  // Encode UTF-8 bytes so translated text is safe in an HTTP header.
+  String reloadHelp;
+  for (const auto* p = reinterpret_cast<const unsigned char*>(tr(STR_WEB_SETTINGS_RELOAD_HELP)); *p; ++p) {
+    char encoded[4];
+    snprintf(encoded, sizeof(encoded), "%%%02X", static_cast<unsigned>(*p));
+    reloadHelp += encoded;
+  }
+  server->sendHeader("X-Settings-Reload-Help", reloadHelp);
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
   server->sendContent("[");
@@ -1608,7 +1616,10 @@ void CrossPointWebServer::handlePostSettings() {
   }
 
   readerquickactions::normalizeChangedBindings(SETTINGS, quickBindingsBefore);
-  SETTINGS.saveToFile();
+  if (!SETTINGS.saveToFile()) {
+    server->send(500, "text/plain", tr(STR_WEB_SETTINGS_SAVE_UNCERTAIN));
+    return;
+  }
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");

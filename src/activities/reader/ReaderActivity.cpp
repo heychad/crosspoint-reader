@@ -238,8 +238,16 @@ bool ReaderActivity::handleEndOfBookPageTurn(const bool prevTriggered, const boo
   return true;
 }
 
+void ReaderActivity::pollSettingsSaveWarning() {
+  if (!settingsNoticeRenderReady.load(std::memory_order_acquire)) return;
+  const uint32_t settingsWarning = settingsSaveNotice().pending();
+  if (settingsWarning && settingsWarning != shownSettingsNotice.load() && !homeButtonFeedbackVisible.load())
+    requestUpdate();
+}
+
 void ReaderActivity::loop() {
   expireHomeButtonFeedback();
+  pollSettingsSaveWarning();
   if (handlePendingQuickAction()) return;
   rememberBookOnceRendered();
   clearEndOfBookOptionsIfNeeded();
@@ -266,6 +274,14 @@ void ReaderActivity::loop() {
   requestUpdate();
 }
 
+bool ReaderActivity::showPendingSettingsWarning() {
+  const uint32_t observed = settingsSaveNotice().pending();
+  if (!observed || observed == shownSettingsNotice.load()) return false;
+  GUI.drawPopup(renderer, tr(STR_SETTINGS_SAVE_RECOVERY));
+  shownSettingsNotice.store(observed);
+  return true;
+}
+
 bool ReaderActivity::showPendingStatsWarning() {
   if (pendingStatsSaveWarning.exchange(false)) {
     GUI.drawPopup(renderer, tr(STR_READER_STATS_SAVE_FAILED));
@@ -289,8 +305,8 @@ bool ReaderActivity::showPendingHomeButtonFeedback() {
 
 void ReaderActivity::showNextReaderNotice(bool formatPopupDrawn) {
   if (homeButtonFeedbackVisible.load()) return;
-  const bool shown =
-      formatPopupDrawn || showPendingStatsWarning() || showPendingFormatWarning() || showPendingHomeButtonFeedback();
+  const bool shown = formatPopupDrawn || showPendingSettingsWarning() || showPendingStatsWarning() ||
+                     showPendingFormatWarning() || showPendingHomeButtonFeedback();
   if (shown) {
     homeButtonFeedbackStarted.store(millis());
     homeButtonFeedbackVisible.store(true);
@@ -321,6 +337,7 @@ void ReaderActivity::render(RenderLock&&) {
     renderer.displayBuffer();
     onEndOfBookRendered();
     markPageRendered();
+    settingsNoticeRenderReady.store(true, std::memory_order_release);
     readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
     readingStats.onRender(ReadingStatsFrame::EndOfBook);
     showNextReaderNotice(false);
@@ -331,10 +348,10 @@ void ReaderActivity::render(RenderLock&&) {
   const bool formatPopupDrawn = formatPopupVisible();
   renderBook();
   readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
-  readingStats.onRender(previousGeneration != renderedPageGeneration && !inputOverPage()
-                            ? ReadingStatsFrame::Page
-                            : ReadingStatsFrame::Unavailable);
-  if (pageRendered.load(std::memory_order_acquire)) {
+  const bool pageDrawn = previousGeneration != renderedPageGeneration;
+  readingStats.onRender(pageDrawn && !inputOverPage() ? ReadingStatsFrame::Page : ReadingStatsFrame::Unavailable);
+  settingsNoticeRenderReady.store(pageDrawn, std::memory_order_release);
+  if (pageDrawn) {
     showNextReaderNotice(formatPopupDrawn || formatPopupVisible());
   }
 }

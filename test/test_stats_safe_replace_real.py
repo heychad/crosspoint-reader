@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory() as temporary:
     cpp_files = []
     for folder in ('FsLib', 'FatLib', 'ExFatLib', 'common'):
         cpp_files.extend(sorted((source / folder).glob('*.cpp')))
-    flags = ['-std=c++17', '-O1', '-DSPI_DRIVER_SELECT=3', '-DUSE_BLOCK_DEVICE_INTERFACE=1',
+    flags = ['-std=c++20', '-O1', '-DSPI_DRIVER_SELECT=3', '-DUSE_BLOCK_DEVICE_INTERFACE=1',
              '-DENABLE_ARDUINO_FEATURES=0', '-DENABLE_ARDUINO_STRING=0', '-DENABLE_ARDUINO_SERIAL=0',
              '-DSDFAT_FILE_TYPE=3', '-DUSE_LONG_FILE_NAMES=1', '-DUSE_UTF8_LONG_NAMES=1',
              '-DDESTRUCTOR_CLOSES_FILE=1', '-DUSE_SEPARATE_FAT_CACHE=1']
@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory() as temporary:
     flags.append(f'-DSTATS_PAYLOAD_SIZE={payload_size}')
     executable = Path(temporary) / 'wrapper'
     command = [os.environ.get('CXX', 'c++'), *flags, *shlex.split(os.environ.get('CXXFLAGS', '')),
-               '-include', str(ROOT / 'test/sdfat_lfn_lookup/HostCompat.h'), '-I', str(ROOT / 'test/stats_safe_replace_real/stubs'), '-I', str(ROOT / 'src/activities/reader'), '-I', str(ROOT / 'lib/hal'), '-I', str(source),
+               '-include', str(ROOT / 'test/sdfat_lfn_lookup/HostCompat.h'), '-I', str(ROOT / 'test/stats_safe_replace_real/stubs'), '-I', str(ROOT / 'lib/Memory'), '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'), '-I', str(ROOT / 'src/activities/reader'), '-I', str(ROOT / 'lib/hal'), '-I', str(source),
                str(ROOT / 'test/stats_safe_replace_real/RealStatsReplaceTest.cpp'), str(ROOT / 'src/activities/reader/StatsSafeReplace.cpp'), *map(str, cpp_files),
                '-o', str(executable)]
     compiled = subprocess.run(command, capture_output=True, text=True)

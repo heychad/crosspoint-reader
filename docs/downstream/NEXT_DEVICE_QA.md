@@ -217,3 +217,28 @@ Delete opens a confirmation and cancel it. Check touch and button holds, memory
 headroom, and repeated entry. During repeated redraws, confirm the Delete
 confirmation shows the selected book title, then cancel it. Record group-browsing
 latency with the full library. Restore any changed tracking setting.
+
+## Settings recovery
+
+Use a disposable test card with known settings and recovery files. Check the
+warning, Retry, and OK in Home and Settings, then trigger a failed save while
+reading and check its warning after the next repaint. Repeat in portrait and
+landscape at both interface sizes. Check the web error while File Transfer is
+open, then leave File Transfer and check the reader warning. Verify a successful
+retry, and preserve the files when retry cannot resolve the state. Measure save
+time and free and largest internal and PSRAM blocks with a book open.
+
+## Home control and font shortcuts
+
+In an EPUB, toggle Home Button in Reader off and on. Confirm its saved tap,
+double-tap, and hold mappings remain intact, that Home works in reader menus,
+and that Quick Lock remains unlockable. Open the font picker and cycle through built-in and
+installed SD fonts using their shortcuts. Close and reopen the book, then check
+its font and reading position.
+
+## Closed-book date changes on exit
+
+Using a disposable book, edit a date in Library statistics and immediately exit
+or sleep. Reopen statistics and the book to check the date and reading position.
+Record exit and sleep latency, watchdog behavior, task stack high-water marks,
+and free and largest internal and PSRAM blocks.

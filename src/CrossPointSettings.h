@@ -20,6 +20,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   BookReaderSettingsScope bookReaderSettings;
 
   friend class PersistableStore<CrossPointSettings>;
+  bool saveSpecializedToFile() const;
+  bool loadSpecializedFromFile();
 
  public:
   enum SLEEP_SCREEN_MODE {

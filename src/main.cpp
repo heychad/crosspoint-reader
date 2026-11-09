@@ -584,6 +584,7 @@ void setup() {
 
   HalSystem::begin();
   statsSaveNotice().initialize(esp_reset_reason() == ESP_RST_DEEPSLEEP);
+  settingsSaveNotice().initialize(esp_reset_reason() == ESP_RST_DEEPSLEEP);
   // checkPanic() clears the watchdog capture marker after a successful SD
   // dump, so retain the boot classification for the later activity route.
   const bool rebootedFromPanic = HalSystem::isRebootFromPanic();

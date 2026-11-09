@@ -355,6 +355,17 @@ void HomeActivity::freeCoverBuffer() {
 
 void HomeActivity::loop() {
   if (!statsSavePopup.isActive()) {
+    const uint32_t settingsFailure = settingsSaveNotice().pending();
+    if (settingsFailure) {
+      const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
+      statsSavePopup.showMessage(tr(STR_SETTINGS_TITLE), tr(STR_SETTINGS_RECOVERY_DETAILS), options, 2, 0,
+                                 [settingsFailure](int index) {
+                                   if (index == 0 && !SETTINGS.saveToFile()) return;
+                                   settingsSaveNotice().acknowledge(settingsFailure);
+                                 });
+      requestUpdate();
+      return;
+    }
     const uint32_t observed = statsSaveNotice().pending();
     if (observed) {
       const char* options[] = {tr(STR_OK_BUTTON)};

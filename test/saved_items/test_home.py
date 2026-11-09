@@ -49,10 +49,12 @@ enum class HomeMenuItem {NONE,FILE_BROWSER,LIBRARY,SAVED_ITEMS,OPDS_BROWSER,FILE
 std::string opened;
 struct {void goToSavedItems(){opened="saved";}} activityManager;
 namespace haptic_feedback {void touchAction(){}}
-enum { STR_OK_BUTTON, STR_READING_STATISTICS, STR_READER_STATS_SAVE_FAILED };
+enum { STR_OK_BUTTON, STR_READING_STATISTICS, STR_READER_STATS_SAVE_FAILED, STR_RETRY, STR_SETTINGS_TITLE, STR_SETTINGS_RECOVERY_DETAILS };
 const char* tr(int) {return "text";}
 struct Notice { uint32_t pending() const {return 0;} void acknowledge(uint32_t) {} };
 Notice& statsSaveNotice(){static Notice notice;return notice;}
+Notice& settingsSaveNotice(){static Notice notice;return notice;}
+struct Settings {bool saveToFile(){return true;}} SETTINGS;
 struct Popup {
  bool isActive()const{return false;}
  template<class F>void showMessage(const char*,const char*,const char**,int,int,F){}

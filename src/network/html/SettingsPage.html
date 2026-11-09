@@ -36,6 +36,7 @@
 
   <div class="save-container" id="save-container" style="display:none;">
     <button class="save-btn" id="saveBtn" onclick="saveSettings()">Save Settings</button>
+    <p role="status"><a id="settings-save-help" href="/settings" hidden></a></p>
   </div>
 
   <div id="wifi-container"></div>
@@ -47,6 +48,7 @@
 <script>
   let allSettings = [];
   let originalValues = {};
+  let settingsReloadHelp = '';
   let preserveQuickResumeTimeoutOn = false;
   let quickResumeTimeoutAutoEnabled = false;
   const SLEEP_SCREEN_MODE = {
@@ -122,7 +124,9 @@
     return undefined;
   }
 
+  let settingsSaveBlocked = false;
   function markChanged() {
+    if (settingsSaveBlocked) return;
     document.getElementById('saveBtn').disabled = false;
   }
 
@@ -244,6 +248,11 @@
       if (!response.ok) {
         throw new Error('Failed to load settings: ' + response.status);
       }
+      try {
+        settingsReloadHelp = decodeURIComponent(response.headers.get('X-Settings-Reload-Help') || '');
+      } catch (_) {
+        settingsReloadHelp = '';
+      }
       allSettings = await response.json();
 
       // Store original values
@@ -290,6 +299,7 @@
   }
 
   async function saveSettings() {
+    if (settingsSaveBlocked) return;
     const btn = document.getElementById('saveBtn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -329,7 +339,14 @@
       showWebToast('Settings saved successfully!', false);
     } catch (e) {
       console.error(e);
-      showWebToast('Error: ' + e.message, true);
+      settingsSaveBlocked = true;
+      btn.disabled = true;
+      const help = document.getElementById('settings-save-help');
+      // The header normally carries STR_WEB_SETTINGS_RELOAD_HELP translated by
+      // the reader. Keep its English source as a fallback for missing headers.
+      help.textContent = settingsReloadHelp || 'Reload this page before trying again.';
+      help.hidden = false;
+      showWebToast('Error: ' + e.message + ' ' + settingsReloadHelp, true);
     }
 
     btn.textContent = 'Save Settings';

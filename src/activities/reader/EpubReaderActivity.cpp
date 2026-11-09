@@ -749,6 +749,7 @@ void EpubReaderActivity::loop() {
     finish();
     return;
   }
+  pollSettingsSaveWarning();
 
   rememberBookOnceRendered();
 

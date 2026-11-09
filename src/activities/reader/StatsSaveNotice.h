@@ -41,3 +41,4 @@ class StatsSaveNotice {
 };
 
 StatsSaveNotice& statsSaveNotice();
+StatsSaveNotice& settingsSaveNotice();

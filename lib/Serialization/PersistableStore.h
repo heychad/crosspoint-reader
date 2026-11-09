@@ -103,31 +103,39 @@ class PersistableStore : public PersistableStoreBase {
   }
 
   bool saveToFile() const {
-    std::lock_guard<std::mutex> lock(storeMutex);
-    JsonDocument doc;
-    static_cast<const T*>(this)->toJson(doc);
-    return writeDocToFile(T::getFilePath(), doc);
+    if constexpr (requires(const T& store) { store.saveSpecializedToFile(); }) {
+      return static_cast<const T*>(this)->saveSpecializedToFile();
+    } else {
+      std::lock_guard<std::mutex> lock(storeMutex);
+      JsonDocument doc;
+      static_cast<const T*>(this)->toJson(doc);
+      return writeDocToFile(T::getFilePath(), doc);
+    }
   }
 
   bool loadFromFile() {
-    bool ok;
-    bool doResave;
-    {
-      std::lock_guard<std::mutex> lock(storeMutex);
-      resaveRequested = false;
-      JsonDocument doc;
-      if (!readDocFromFile(T::getFilePath(), doc)) {
-        return false;
+    if constexpr (requires(T& store) { store.loadSpecializedFromFile(); }) {
+      return static_cast<T*>(this)->loadSpecializedFromFile();
+    } else {
+      bool ok;
+      bool doResave;
+      {
+        std::lock_guard<std::mutex> lock(storeMutex);
+        resaveRequested = false;
+        JsonDocument doc;
+        if (!readDocFromFile(T::getFilePath(), doc)) {
+          return false;
+        }
+        ok = static_cast<T*>(this)->fromJson(doc.as<JsonVariantConst>());
+        // Read the flag under the lock that guards the fromJson() that set it.
+        doResave = resaveRequested;
+        resaveRequested = false;
       }
-      ok = static_cast<T*>(this)->fromJson(doc.as<JsonVariantConst>());
-      // Read the flag under the lock that guards the fromJson() that set it.
-      doResave = resaveRequested;
-      resaveRequested = false;
+      // Deliberately outside the lock: saveToFile() takes storeMutex itself.
+      if (ok && doResave && !saveToFile()) {
+        LOG_ERR("PERSIST", "Failed to resave %s after format update", T::getFilePath());
+      }
+      return ok;
     }
-    // Deliberately outside the lock: saveToFile() takes storeMutex itself.
-    if (ok && doResave && !saveToFile()) {
-      LOG_ERR("PERSIST", "Failed to resave %s after format update", T::getFilePath());
-    }
-    return ok;
   }
 };

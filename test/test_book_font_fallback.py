@@ -31,10 +31,11 @@ uint8_t snapToNearestPointSize(const uint8_t*, size_t, uint8_t) { return 14; }
 void snapFontPointSizeTo(uint8_t size) { if (size) SETTINGS.fontPointSize = size; }
 struct FontFile { uint8_t pointSize = 16; };
 struct Family { bool vector = false; FontFile file; const FontFile* findNearestSize(uint8_t) const { return &file; } };
+struct SdCardFontRegistry { static bool discoveryFailed(int value) { return value != 0; } };
 struct Registry {
   bool available = false;
   Family family;
-  void discover() {}
+  int discoverChecked() { return 0; }
   const Family* findFamily(const char*) const { return available ? &family : nullptr; }
 };
 struct Manager {

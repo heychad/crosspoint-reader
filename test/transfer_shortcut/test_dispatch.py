@@ -51,6 +51,7 @@ struct EpubReaderMenuActivity {enum class MenuAction {FILE_TRANSFER};};
 struct Input {bool hasTouch()const{return true;}};
 struct Light {bool present()const{return true;}bool hasColorTemperature()const{return true;}} Frontlight;
 struct Tilt {bool isAvailable()const{return true;}} halTiltSensor;
+struct BoardConfig {static bool hasHomeKey(){return true;}};
 struct ReaderActivity {
  Input mappedInput;bool supportsReaderShortcut(Action) const;
  int updates=0;void requestUpdate(){++updates;}

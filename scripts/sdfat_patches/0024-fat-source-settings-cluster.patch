@@ -1,6 +1,8 @@
 --- a/src/FatLib/FatFile.cpp
 +++ b/src/FatLib/FatFile.cpp
-@@ -1509,3 +1509,14 @@
+@@ -1507,5 +1507,38 @@
+ bool FatFile::smallSingleClusterChain() {
+   if (!isFile() || !fileSize() || fileSize() > 512 || m_firstCluster < 2) return false;
    Cluster_t next;
 -  return m_vol->fatGet(m_firstCluster, &next) == 0;
 -}
@@ -16,4 +18,26 @@
 +  Cluster_t next;
 +  bool strictEoc = false;
 +  return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;
++}
++
++bool FatFile::settingsClusterList(Cluster_t* out, size_t capacity, size_t* count) {
++  if (!out || !count || !isFile() || !fileSize() || fileSize() > 32768 || m_firstCluster < 2) return false;
++  const uint8_t shift = m_vol->bytesPerClusterShift();
++  if (shift >= 63) return false;
++  const uint64_t clusterBytes = uint64_t{1} << shift;
++  const size_t expected = (uint64_t(fileSize()) + clusterBytes - 1) / clusterBytes;
++  if (!expected || expected > capacity || expected > 64) return false;
++  Cluster_t current = m_firstCluster;
++  for (size_t i = 0; i < expected; ++i) {
++    if (current < 2 || current - 2 >= m_vol->clusterCount()) return false;
++    for (size_t j = 0; j < i; ++j) if (out[j] == current) return false;
++    out[i] = current;
++    Cluster_t next = 0;
++    bool strictEoc = false;
++    const int result = m_vol->fatGet(current, &next, &strictEoc);
++    if (i + 1 == expected) { if (result != 0 || !strictEoc) return false; }
++    else { if (result != 1) return false; current = next; }
++  }
++  *count = expected;
++  return true;
 +}

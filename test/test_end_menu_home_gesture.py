@@ -8,7 +8,7 @@ start = source.index('bool ReaderActivity::handleEndOfBookMenu(')
 end = source.index('\nbool ReaderActivity::handleEndOfBookPageTurn(', start)
 handler = source[start:end]
 loop_start = source.index('void ReaderActivity::loop()')
-loop_end = source.index('\nvoid ReaderActivity::showPendingStatsWarning(', loop_start)
+loop_end = source.index('\nbool ReaderActivity::showPendingSettingsWarning(', loop_start)
 loop = source[loop_start:loop_end]
 code = r'''
 #include <cassert>
@@ -68,6 +68,7 @@ namespace ReaderUtils {
 namespace haptic_feedback { void touchAction(bool) {} }
 struct ReaderActivity {
  int renderer=0, shortcuts=0; Input mappedInput; bool active=true;
+ void expireHomeButtonFeedback(){} void pollSettingsSaveWarning(){}
  bool handlePendingQuickAction(){return false;}
  void rememberBookOnceRendered(){} void clearEndOfBookOptionsIfNeeded(){}
  bool handleEndOfBookMenu(){return false;} bool handleFormatInput(){return false;}

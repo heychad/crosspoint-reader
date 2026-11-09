@@ -39,6 +39,7 @@
 #include "TextSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/reader/QuickActionsActivity.h"
+#include "activities/reader/StatsSaveNotice.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -219,7 +220,19 @@ void SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valueP
 }
 
 bool SettingsActivity::handleCustomInput() {
-  return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+  if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
+  const uint32_t observed = settingsSaveNotice().pending();
+  if (!optionPopup.isActive() && observed) {
+    const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
+    optionPopup.showMessage(tr(STR_SETTINGS_TITLE), tr(STR_SETTINGS_RECOVERY_DETAILS), options, 2, 0,
+                            [observed](int index) {
+                              if (index == 0 && !SETTINGS.saveToFile()) return;
+                              settingsSaveNotice().acknowledge(observed);
+                            });
+    requestUpdate();
+    return true;
+  }
+  return false;
 }
 
 void SettingsActivity::toggleSelectedSetting() {

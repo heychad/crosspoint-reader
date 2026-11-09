@@ -288,6 +288,27 @@ bool HalStorage::settingsSingleClusterEligible(const char* path) {
   return eligible && closed;
 }
 
+bool HalStorage::settingsChainEligible(const char* path) {
+  StorageLock lock;
+  if (!path || lookupPath(path) != PathStatus::Present) return false;
+  auto file = SDCard.open(path, O_RDONLY);
+  const bool eligible = file && settingsFileHasCheckedChain(file);
+  const bool closed = !file || file.close();
+  return eligible && closed;
+}
+
+bool HalStorage::distinctSettingsChains(const char* first, const char* second) {
+  StorageLock lock;
+  if (!first || !second || lookupPath(first) != PathStatus::Present || lookupPath(second) != PathStatus::Present)
+    return false;
+  auto left = SDCard.open(first, O_RDONLY);
+  auto right = SDCard.open(second, O_RDONLY);
+  const bool distinct = left && right && settingsFilesHaveDisjointChains(left, right);
+  const bool leftClosed = !left || left.close();
+  const bool rightClosed = !right || right.close();
+  return distinct && leftClosed && rightClosed;
+}
+
 bool HalStorage::remove(const char* path) { HAL_STORAGE_WRAPPED_CALL(remove, path); }
 bool HalStorage::rename(const char* oldPath, const char* newPath) {
   HAL_STORAGE_WRAPPED_CALL(rename, oldPath, newPath);

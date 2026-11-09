@@ -4,7 +4,7 @@ import subprocess,sys,tempfile
 root=Path(__file__).resolve().parents[2]
 source=(root/'src/network/CrossPointWebServer.cpp').read_text()
 start=source.index('  const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);')
-end=source.index('  SETTINGS.saveToFile();',start)+len('  SETTINGS.saveToFile();')
+end=source.index('  LOG_DBG("WEB", "Applied',start)
 body=source[start:end]
 code=r'''
 #include <ArduinoJson.h>
@@ -16,6 +16,10 @@ code=r'''
 #include <cstring>
 #include "personalization/ReaderQuickBindings.h"
 CrossPointSettings SETTINGS;
+enum {STR_WEB_SETTINGS_SAVE_UNCERTAIN};
+const char* tr(int){return "settings failed";}
+struct Server {int status=0;void send(int code,const char*,const char*){status=code;}} web;
+Server* server=&web;
 enum class SettingType{TOGGLE,ENUM,VALUE,STRING,ACTION};
 struct Info{
  const char*key;SettingType type=SettingType::ENUM;uint8_t CrossPointSettings::*valuePtr=nullptr;
@@ -48,6 +52,7 @@ int main(){
  assert(SETTINGS.readerUpTap==QUICK && SETTINGS.shortPwrBtn==CrossPointSettings::IGNORE && SETTINGS.readerDownHold==12);
  apply(R"({"readerUpTap":21,"homeButtonTapAction":12})");assert(SETTINGS.readerUpTap==0 && SETTINGS.homeButtonTapAction==home);
  assert(SETTINGS.saves==7);
+ SETTINGS.failSave=true;apply(R"({"readerDownHold":11})");assert(web.status==500&&SETTINGS.saves==8);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

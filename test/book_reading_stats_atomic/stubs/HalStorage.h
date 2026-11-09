@@ -162,6 +162,10 @@ class HalStorage {
   }
   void failSettingsIdentity() { failSettingsIdentity_ = true; }
   bool settingsSingleClusterEligible(const char* path) const { return !failSettingsEligibility_ && exists(path); }
+  bool settingsChainEligible(const char* path) const { return settingsSingleClusterEligible(path); }
+  bool distinctSettingsChains(const char* first, const char* second) const {
+    return distinctSettingsClusters(first, second);
+  }
   void failSettingsEligibility() { failSettingsEligibility_ = true; }
   PathStatus lookupPath(const char* path) const {
     if (failReadPaths_.contains(path)) return PathStatus::Failed;

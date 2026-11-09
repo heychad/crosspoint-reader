@@ -790,6 +790,36 @@ Please note that this firmware is currently in active development. The following
 
 ## 7. Troubleshooting Issues & Escaping Bootloop
 
+### Settings recovery
+
+If the reader says settings need attention, leave the book and select **Retry**
+on Home or in Settings. If the warning returns, recent settings changes may not
+survive a restart. Keep the files in
+`/.crosspoint` and copy them to your computer before choosing a recovery copy.
+
+With the SD card mounted on a Mac, run this command from the firmware source
+directory. Replace the card path if yours differs; choose a new backup folder.
+
+```sh
+python3 scripts/x4_settings_recovery.py /Volumes/XT4PRO --export ~/x4-settings-backup
+```
+
+The command reports file sizes and checksums, then saves private verified
+copies outside the card. These copies can contain credentials.
+
+After reviewing the copies, preview a restore by selecting the file you want:
+
+```sh
+python3 scripts/x4_settings_recovery.py /Volumes/XT4PRO --restore-from ~/x4-settings-backup --choose settings.json.bak
+```
+
+The preview does not change the card. Add `--apply` to restore the selected
+copy. The tool requires the card files to match the exported backup and keeps
+the originals in a new `settings-recovery-*` folder on the card. JSON syntax
+and file size do not prove that the reader can load a copy or that it is the
+version you want. If the restore is interrupted, leave the card mounted and
+keep both backup folders for recovery.
+
 If an issue or crash is encountered while using Crosspoint, feel free to raise an issue ticket and attach the logs.
 
 **Crash reports on SD card:** After a crash, CrossPoint automatically saves a crash report to the SD card (no USB connection needed). Check the root of the SD card for a crash log file and include it with any bug report.
