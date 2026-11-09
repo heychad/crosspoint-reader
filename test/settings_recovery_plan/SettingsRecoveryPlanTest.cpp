@@ -10,6 +10,27 @@ using settingsrecovery::Candidate;
 using settingsrecovery::Plan;
 using settingsrecovery::plan;
 
+TEST(SettingsBootPlan, SelectsReadableOldSettingsWithoutAllowingAmbiguousWrites) {
+  using settingsrecovery::BootCandidate;
+  using settingsrecovery::bootPlan;
+  constexpr Candidate states[] = {Candidate::Missing, Candidate::JsonObject, Candidate::Invalid, Candidate::Unavailable};
+  for (auto primary : states) {
+    for (auto backup : states) {
+      for (auto temporary : states) {
+        const auto actual = bootPlan(primary, backup, temporary);
+        const bool clean = primary == Candidate::Missing && backup == Candidate::Missing && temporary == Candidate::Missing;
+        const bool primaryClean = primary == Candidate::JsonObject && backup == Candidate::Missing && temporary == Candidate::Missing;
+        EXPECT_EQ(actual.allowSave, clean || primaryClean);
+        const auto expected = clean ? BootCandidate::Defaults
+                              : primary == Candidate::JsonObject ? BootCandidate::Primary
+                              : primary == Candidate::Missing && backup == Candidate::JsonObject ? BootCandidate::Backup
+                                                                                                 : BootCandidate::None;
+        EXPECT_EQ(actual.candidate, expected);
+      }
+    }
+  }
+}
+
 TEST(SettingsRecoveryPlan, DistinguishesCleanStartPrimaryAndSoleBackup) {
   EXPECT_EQ(plan(Candidate::Missing, Candidate::Missing, Candidate::Missing), Plan::FirstRun);
   EXPECT_EQ(plan(Candidate::JsonObject, Candidate::Missing, Candidate::Missing), Plan::InspectPrimary);
