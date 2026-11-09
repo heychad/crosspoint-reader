@@ -14,6 +14,8 @@
 #include "activities/reader/DeviceStatsBackup.h"
 #include "activities/reader/ReaderStats.h"
 #include "activities/reader/ReadingStatsDateEdit.h"
+#include "activities/reader/ReadingStatsStore.h"
+#include "activities/reader/StatsSaveNotice.h"
 #include "activities/settings/ReadingChartsActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -27,7 +29,7 @@ ReadingStatsActivity::ReadingStatsActivity(GfxRenderer& renderer, MappedInputMan
                                            const std::string& title, const BookReadingStats& book,
                                            const GlobalReadingStats& global, int progress, bool tracking, bool saved,
                                            const std::string& cachePath, const std::string& bookPath,
-                                           ReaderStats* liveStats)
+                                           ReaderStats* liveStats, bool closedBookDateEdit)
     : UiTabListActivity("ReadingStats", renderer, mappedInput),
       book(book),
       local(global),
@@ -37,6 +39,7 @@ ReadingStatsActivity::ReadingStatsActivity(GfxRenderer& renderer, MappedInputMan
       tracking(tracking),
       saved(saved),
       liveStats(liveStats),
+      closedBookDateEdit(closedBookDateEdit),
       trackingCachePath(cachePath),
       trackingBookPath(bookPath) {
   size_t length = std::min(title.size(), sizeof(bookTitle) - 1);
@@ -52,6 +55,22 @@ void ReadingStatsActivity::onEnter() {
   getCurrentLocalReadingStatsDateTime(now);
   UiTabListActivity::onEnter();
 }
+
+void ReadingStatsActivity::savePendingDateBeforeExit() {
+  if (!closedDateSavePending) return;
+  BookReadingStats updated;
+  if (!readingstats::editClosedBookDate(trackingCachePath, trackingBookPath, dateResultStarted, pendingClosedDate,
+                                        updated))
+    statsSaveNotice().recordFailure();
+  closedDateSavePending = false;
+}
+
+void ReadingStatsActivity::onExit() {
+  savePendingDateBeforeExit();
+  UiTabListActivity::onExit();
+}
+
+void ReadingStatsActivity::prepareForSleep() { savePendingDateBeforeExit(); }
 
 const char* ReadingStatsActivity::headerTitle() const { return tr(STR_READING_STATISTICS); }
 
@@ -152,19 +171,23 @@ void ReadingStatsActivity::formatRow(Row row, fui::ListItem& item) {
         break;
       case Row::Started:
         label = StrId::STR_STATS_STARTED;
-        if (invalidDate && dateResultStarted)
+        if (closedDateSavePending && dateResultStarted)
+          snprintf(value, sizeof(value), "%s", tr(STR_STATS_BACKUP_SAVING));
+        else if (invalidDate && dateResultStarted)
           snprintf(value, sizeof(value), "%s", tr(STR_STATS_INVALID_DATE));
         else if (dateSaveIncomplete && dateResultStarted)
-          snprintf(value, sizeof(value), "%s", tr(STR_STATS_SAVE_INCOMPLETE));
+          snprintf(value, sizeof(value), "%s", liveStats ? tr(STR_STATS_SAVE_INCOMPLETE) : tr(STR_STATS_CLOSED_DATE_CHECK));
         else if (available)
           date(book.startDate);
         break;
       case Row::Finished:
         label = StrId::STR_STATS_FINISHED;
-        if (invalidDate && !dateResultStarted)
+        if (closedDateSavePending && !dateResultStarted)
+          snprintf(value, sizeof(value), "%s", tr(STR_STATS_BACKUP_SAVING));
+        else if (invalidDate && !dateResultStarted)
           snprintf(value, sizeof(value), "%s", tr(STR_STATS_INVALID_DATE));
         else if (dateSaveIncomplete && !dateResultStarted)
-          snprintf(value, sizeof(value), "%s", tr(STR_STATS_SAVE_INCOMPLETE));
+          snprintf(value, sizeof(value), "%s", liveStats ? tr(STR_STATS_SAVE_INCOMPLETE) : tr(STR_STATS_CLOSED_DATE_CHECK));
         else if (available)
           date(book.finishedDate);
         break;
@@ -259,7 +282,8 @@ void ReadingStatsActivity::formatRow(Row row, fui::ListItem& item) {
 
 void ReadingStatsActivity::activateIndex(int index) {
   if (index < 0 || index >= listCount()) return;
-  if (bookTab() && liveStats && (rowAt(index) == Row::Started || rowAt(index) == Row::Finished)) {
+  if (bookTab() && (liveStats || (closedBookDateEdit && book.writable)) &&
+      (rowAt(index) == Row::Started || rowAt(index) == Row::Finished)) {
     RenderLock lock(*this);
     app.clearTapFlash();
     editDate(rowAt(index) == Row::Started);
@@ -294,6 +318,19 @@ void ReadingStatsActivity::activateIndex(int index) {
 }
 
 void ReadingStatsActivity::loop() {
+  if (closedDateSavePending) {
+    requestUpdateAndWait();
+    BookReadingStats updated;
+    const bool succeeded =
+        readingstats::editClosedBookDate(trackingCachePath, trackingBookPath, dateResultStarted, pendingClosedDate, updated);
+    RenderLock lock(*this);
+    if (succeeded) book = updated;
+    saved = succeeded;
+    dateSaveIncomplete = !succeeded;
+    closedDateSavePending = false;
+    requestUpdate();
+    return;
+  }
   if (hasBook && (trackingStatus == TrackingStatus::Checking || trackingStatus == TrackingStatus::SavingOn ||
                   trackingStatus == TrackingStatus::SavingOff)) {
     requestUpdateAndWait();
@@ -351,8 +388,14 @@ void ReadingStatsActivity::editDate(bool started) {
       invalidDate = true;
     } else {
       invalidDate = false;
-      if (!liveStats->editBookDate(started, date, book, local, saved)) saved = false;
-      dateSaveIncomplete = !saved;
+      if (liveStats) {
+        if (!liveStats->editBookDate(started, date, book, local, saved)) saved = false;
+        dateSaveIncomplete = !saved;
+      } else {
+        pendingClosedDate = date;
+        closedDateSavePending = true;
+        dateSaveIncomplete = false;
+      }
     }
     requestUpdate();
   });
@@ -434,7 +477,7 @@ void ReadingStatsActivity::drawFooter() {
       ringPos() == 0 ? tr(STR_STATS_NEXT_VIEW)
       : ringPos() <= listCount() && (rowAt(ringPos() - 1) == Row::Charts || rowAt(ringPos() - 1) == Row::BackupDevice ||
                                      rowAt(ringPos() - 1) == Row::BackupBook || rowAt(ringPos() - 1) == Row::Tracking ||
-                                     (bookTab() && liveStats &&
+                                     (bookTab() && (liveStats || (closedBookDateEdit && book.writable)) &&
                                       (rowAt(ringPos() - 1) == Row::Started || rowAt(ringPos() - 1) == Row::Finished)))
           ? tr(STR_SELECT)
           : "";

@@ -3,6 +3,7 @@
 #include <ReadingStatsStore.h>
 #include <ZipFile.h>
 #include <gtest/gtest.h>
+#include <cstring>
 
 namespace {
 class ReadingStatsStoreTest : public testing::Test {
@@ -28,6 +29,96 @@ TEST_F(ReadingStatsStoreTest, ImportsCrossInkStatsWithoutChangingLegacyFiles) {
   ASSERT_TRUE(readingstats::saveBook(destination, imported));
   EXPECT_EQ(BookReadingStats::load(legacy).totalReadingSeconds, 900U);
   EXPECT_TRUE(Storage.exists((legacy + "/stats_v5.bin").c_str()));
+}
+
+TEST_F(ReadingStatsStoreTest, ClosedBookDateEditReloadsAndPreservesCrossInkHistory) {
+  HalFile book;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", BOOK, book));
+  ASSERT_TRUE(book.close());
+  const std::string legacy = "/.crosspoint/epub_" + std::to_string(ZipFile::fnvHash64(BOOK, sizeof(BOOK) - 1));
+  BookReadingStats original;
+  original.totalReadingSeconds = 900;
+  original.isCompleted = true;
+  ASSERT_TRUE(original.save(legacy));
+  BookReadingStats updated;
+  ASSERT_TRUE(readingstats::editClosedBookDate(CACHE, BOOK, true, {2026, 11, 6}, updated));
+  EXPECT_EQ(updated.totalReadingSeconds, 900U);
+  EXPECT_TRUE(updated.isCompleted);
+  EXPECT_TRUE(updated.startDateManual);
+  EXPECT_EQ(updated.startDate.year, 2026);
+  EXPECT_EQ(BookReadingStats::load(legacy).totalReadingSeconds, 900U);
+  EXPECT_FALSE(BookReadingStats::load(legacy).startDate.isValid());
+  bool enabled = false;
+  const auto saved = readingstats::loadBook(CACHE, BOOK, enabled);
+  EXPECT_EQ(saved.startDate.year, 2026);
+  EXPECT_EQ(saved.totalReadingSeconds, 900U);
+  EXPECT_TRUE(readingstats::editClosedBookDate(CACHE, BOOK, true, {}, updated));
+  EXPECT_FALSE(updated.startDate.isValid());
+  EXPECT_TRUE(updated.startDateManual);
+}
+
+TEST_F(ReadingStatsStoreTest, ClosedBookDateEditRefusesMissingUnreadableOrInvalidData) {
+  BookReadingStats updated;
+  EXPECT_FALSE(readingstats::editClosedBookDate(CACHE, BOOK, true, {2026, 11, 6}, updated));
+  HalFile book;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", BOOK, book));
+  ASSERT_TRUE(book.close());
+  EXPECT_FALSE(readingstats::editClosedBookDate(CACHE, BOOK, true, {2026, 11, 6}, updated));
+  const auto directory = readingstats::bookDirectory(CACHE);
+  BookReadingStats original;
+  original.totalReadingSeconds = 900;
+  ASSERT_TRUE(readingstats::saveBook(directory, original));
+  EXPECT_FALSE(readingstats::editClosedBookDate(CACHE, BOOK, true, {2026, 2, 30}, updated));
+  Storage.failReadsFor(directory + "/stats_v5.bin");
+  EXPECT_FALSE(readingstats::editClosedBookDate(CACHE, BOOK, true, {2026, 11, 6}, updated));
+  EXPECT_EQ(updated.totalReadingSeconds, 0U);
+}
+
+TEST_F(ReadingStatsStoreTest, ClosedBookDateEditMigratesVersionFourWithoutChangingSource) {
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", BOOK, file));
+  ASSERT_TRUE(file.close());
+  const std::string legacy = "/.crosspoint/epub_" + std::to_string(ZipFile::fnvHash64(BOOK, sizeof(BOOK) - 1));
+  const std::string oldPath = legacy + "/stats_v4.bin";
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", oldPath, file));
+  uint8_t bytes[69]{};
+  bytes[0] = 4;
+  bytes[3] = 0x84;
+  bytes[4] = 0x03;  // 900 seconds, little endian.
+  bytes[11] = 1;
+  ASSERT_EQ(file.write(bytes, sizeof(bytes)), sizeof(bytes));
+  ASSERT_TRUE(file.close());
+  BookReadingStats updated;
+  ASSERT_TRUE(readingstats::editClosedBookDate(CACHE, BOOK, false, {2026, 11, 6}, updated));
+  EXPECT_EQ(updated.totalReadingSeconds, 900U);
+  EXPECT_TRUE(updated.isCompleted);
+  EXPECT_EQ(updated.finishedDate.year, 2026);
+  ASSERT_TRUE(Storage.openFileForRead("TEST", oldPath, file));
+  uint8_t after[sizeof(bytes)]{};
+  ASSERT_EQ(file.read(after, sizeof(after)), static_cast<int>(sizeof(after)));
+  EXPECT_EQ(std::memcmp(bytes, after, sizeof(bytes)), 0);
+  EXPECT_TRUE(file.close());
+}
+
+TEST_F(ReadingStatsStoreTest, ClosedBookDateEditKeepsRecoveryFilesAfterFailedSave) {
+  HalFile book;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", BOOK, book));
+  ASSERT_TRUE(book.close());
+  const auto directory = readingstats::bookDirectory(CACHE);
+  BookReadingStats original;
+  original.totalReadingSeconds = 900;
+  ASSERT_TRUE(readingstats::saveBook(directory, original));
+  Storage.failNextRenameFrom(directory + "/stats_v5.bin.tmp");
+  BookReadingStats updated;
+  EXPECT_FALSE(readingstats::editClosedBookDate(CACHE, BOOK, false, {2026, 11, 6}, updated));
+  EXPECT_TRUE(Storage.exists((directory + "/stats_v5.bin.tmp").c_str()));
+  EXPECT_EQ(updated.totalReadingSeconds, 0U);
+  EXPECT_FALSE(readingstats::editClosedBookDate(CACHE, BOOK, false, {2026, 11, 6}, updated));
+  bool enabled = false, found = false;
+  const auto reopened = readingstats::loadBook(CACHE, BOOK, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
+  EXPECT_TRUE(found);
+  EXPECT_FALSE(reopened.writable);
+  EXPECT_TRUE(Storage.exists((directory + "/stats_v5.bin.tmp").c_str()));
 }
 
 TEST_F(ReadingStatsStoreTest, CanonicalStatsWinAndBookDisableMarkerIsHonored) {

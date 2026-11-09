@@ -455,7 +455,7 @@ void LibraryListActivity::openBookStatistics(const std::string& path, const std:
     if (percent >= 0) progress = percent * 100;
   }
   auto screen = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput, title, snapshot->book, snapshot->global,
-                                                        progress, tracking, true, cache, path, nullptr);
+                                                        progress, tracking, true, cache, path, nullptr, true);
   snapshot.reset();
   if (!screen) {
     LOG_ERR("LIB", "Cannot allocate book statistics screen");

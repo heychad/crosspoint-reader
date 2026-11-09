@@ -45,8 +45,8 @@ BookReadingStats loadBook(const std::string&,const std::string&,bool& tracking,b
 int progressCalls=0;int loadBookProgress(const std::string&){++progressCalls;return 42;}
 struct ReadingStatsActivity {
  bool bookWritable;int progress;bool tracking;std::string cache,path;
- ReadingStatsActivity(int&,int&,const std::string&,const BookReadingStats& book,const GlobalReadingStats&,int p,bool t,bool saved,const std::string& c,const std::string& b,void* live)
- :bookWritable(book.writable),progress(p),tracking(t),cache(c),path(b){assert(saved && live==nullptr);}
+ ReadingStatsActivity(int&,int&,const std::string&,const BookReadingStats& book,const GlobalReadingStats&,int p,bool t,bool saved,const std::string& c,const std::string& b,void* live,bool closedDateEdit)
+ :bookWritable(book.writable),progress(p),tracking(t),cache(c),path(b){assert(saved && live==nullptr && closedDateEdit);}
 };
 int allocation=0,failAt=0;
 template<class T,class... Args>std::unique_ptr<T> makeUniqueNoThrow(Args&&... args){

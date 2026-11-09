@@ -13,8 +13,11 @@ class ReadingStatsActivity final : public UiTabListActivity {
   ReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
   ReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                        const BookReadingStats& book, const GlobalReadingStats& global, int progress, bool tracking,
-                       bool saved, const std::string& cachePath, const std::string& bookPath, ReaderStats* liveStats);
+                       bool saved, const std::string& cachePath, const std::string& bookPath, ReaderStats* liveStats,
+                       bool closedBookDateEdit = false);
   void onEnter() override;
+  void onExit() override;
+  void prepareForSleep() override;
   void loop() override;
 
  private:
@@ -69,6 +72,7 @@ class ReadingStatsActivity final : public UiTabListActivity {
   Row rowAt(int index) const;
   void openCharts();
   void editDate(bool started);
+  void savePendingDateBeforeExit();
   bool bookTab() const { return tab == Tab::Book; }
   int listCount() const override;
   int tabCount() const override { return hasBook ? 3 : 2; }
@@ -93,9 +97,12 @@ class ReadingStatsActivity final : public UiTabListActivity {
   bool tracking = true;
   bool saved = true;
   ReaderStats* liveStats = nullptr;
+  bool closedBookDateEdit = false;
   bool invalidDate = false;
   bool dateResultStarted = false;
   bool dateSaveIncomplete = false;
+  bool closedDateSavePending = false;
+  ReadingStatsDate pendingClosedDate;
   std::string trackingCachePath;
   std::string trackingBookPath;
   enum class TrackingStatus : uint8_t { Checking, On, Off, SavingOn, SavingOff, Failed };

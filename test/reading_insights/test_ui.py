@@ -34,6 +34,12 @@ class ReaderStats {public:
  }
 };
 ''')
+    (path / "activities/reader/StatsSaveNotice.h").write_text(r'''
+#pragma once
+inline int retainedFailures=0;
+struct StatsSaveNotice { void recordFailure(){++retainedFailures;} };
+inline StatsSaveNotice& statsSaveNotice(){static StatsSaveNotice notice;return notice;}
+''')
     (path / "Logging.h").write_text('#pragma once\n#define LOG_ERR(...) ((void)0)\n')
     (path / "Memory.h").write_text('#pragma once\n#include <memory>\ntemplate<class T,class... A> auto makeUniqueNoThrow(A&&... a){return std::make_unique<T>(std::forward<A>(a)...);}\n')
     (path / "activities/settings/ReadingChartsActivity.h").write_text(r'''
@@ -99,7 +105,7 @@ class UiTabListActivity {
  bool finished=false,updated=false;int ring=0;
  static constexpr int ACTION_ROW=1;
  UiTabListActivity(const char*,GfxRenderer&r,MappedInputManager&i):renderer(r),mappedInput(i){}
- virtual ~UiTabListActivity()=default;virtual void onEnter(){} virtual void loop(){}
+ virtual ~UiTabListActivity()=default;virtual void onEnter(){} virtual void onExit(){} virtual void prepareForSleep(){} virtual void loop(){}
  virtual int listCount()const=0;virtual int tabCount()const=0;virtual int activeTab()const=0;
  virtual const char*tabLabel(int)const=0;virtual void onTabAction(int)=0;virtual void stepTab(int)=0;
  virtual bool handleButtons()=0;virtual void buildScreen(UiScreen&)=0;virtual void activateIndex(int)=0;
@@ -139,12 +145,18 @@ inline Gui GUI;
 #include "activities/settings/ReadingChartsActivity.h"
 #include "activities/reader/BookTracking.h"
 #include "activities/reader/ReaderStats.h"
+#include "activities/reader/StatsSaveNotice.h"
 booktracking::State trackingFixture=booktracking::State::Disabled;bool trackingWriteOk=true;int trackingWrites=0;
 namespace booktracking {State state(const std::string&,const std::string&){return trackingFixture;}
 bool setEnabled(const std::string&,const std::string&,bool on){++trackingWrites;if(!trackingWriteOk)return false;trackingFixture=on?State::Enabled:State::Disabled;return true;}}
 GlobalReadingStats localFixture;
 GlobalStatsAggregate aggregateFixture;
 int backupCalls=0;bool backupResult=true;
+int closedDateEdits=0;bool closedDateSaveOk=true;
+namespace readingstats {
+bool editClosedBookDate(const std::string&,const std::string&,bool started,const ReadingStatsDate& date,BookReadingStats& book){
+ ++closedDateEdits;if(!closedDateSaveOk)return false;if(started)book.startDate=date;else book.finishedDate=date;return true;
+}}
 namespace statsbackup {bool createDeviceBackup(const GlobalReadingStats&){++backupCalls;return backupResult;}
 bool createBookBackup(const std::string&,const BookReadingStats&){++backupCalls;return backupResult;}}
 ReadingStatsActivity* waitingScreen=nullptr;
@@ -229,6 +241,24 @@ int main(){
  live.saveOk=false;editable.activateIndex(finishedRow);
  editable.handler(ActivityResult{false,KeyboardResult{"2024-04-05"}});
  assert(live.edits==2 && value(editable,ReadingStatsActivity::Row::Finished)=="STR_STATS_SAVE_INCOMPLETE");
+ ReadingStatsActivity closed(renderer,input,"The Book",stats,localFixture,3888,true,true,"cache","book",nullptr,true);
+ closed.onEnter();closed.activateIndex(startedRow);assert(closed.launched==1);
+ closed.handler(ActivityResult{false,KeyboardResult{"2024-02-29"}});
+ assert(closedDateEdits==0 && value(closed,ReadingStatsActivity::Row::Started)=="STR_STATS_BACKUP_SAVING");
+ closed.loop();
+ assert(closedDateEdits==1 && value(closed,ReadingStatsActivity::Row::Started)=="2024-02-29");
+ closedDateSaveOk=false;closed.activateIndex(finishedRow);
+ closed.handler(ActivityResult{false,KeyboardResult{"2024-04-05"}});
+ closed.loop();
+ assert(closedDateEdits==2 && value(closed,ReadingStatsActivity::Row::Finished)=="STR_STATS_CLOSED_DATE_CHECK");
+ closedDateSaveOk=true;closed.activateIndex(startedRow);
+ closed.handler(ActivityResult{false,KeyboardResult{"2024-03-01"}});
+ closed.prepareForSleep();assert(closedDateEdits==3 && !closed.closedDateSavePending);
+ closed.onExit();assert(closedDateEdits==3);
+ closedDateSaveOk=false;closed.activateIndex(startedRow);
+ closed.handler(ActivityResult{false,KeyboardResult{"2024-03-02"}});
+ closed.onExit();assert(closedDateEdits==4 && retainedFailures==1);
+ book.activateIndex(startedRow);assert(book.launched==0);
 
  assert(value(book,ReadingStatsActivity::Row::Finished)=="-");
  assert(value(book,ReadingStatsActivity::Row::Morning)=="90 seconds");

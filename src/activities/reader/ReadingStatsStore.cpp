@@ -97,6 +97,43 @@ bool readingstats::saveBook(const std::string& directory, const BookReadingStats
   return stats.save(directory);
 }
 
+namespace {
+struct ClosedDateEdit {
+  const std::string& cachePath;
+  const std::string& bookPath;
+  bool started;
+  const ReadingStatsDate& date;
+  BookReadingStats& updated;
+};
+
+bool editClosedDateLocked(void* input) {
+  auto& edit = *static_cast<ClosedDateEdit*>(input);
+  if ((!edit.date.isValid() && (edit.date.year || edit.date.month || edit.date.day)) || edit.cachePath.empty() ||
+      Storage.lookupPath(edit.bookPath.c_str()) != HalStorage::PathStatus::Present)
+    return false;
+  bool tracking = false, found = false, trackingKnown = false;
+  auto current = readingstats::loadBook(edit.cachePath, edit.bookPath, tracking, &found,
+                                        BookReadingStats::LoadMode::TransactionalEdit, &trackingKnown);
+  if (!found || !trackingKnown || !current.writable) return false;
+  if (edit.started) {
+    current.startDate = edit.date;
+    current.startDateManual = true;
+  } else {
+    current.finishedDate = edit.date;
+    current.finishedDateManual = true;
+  }
+  if (!readingstats::saveBook(readingstats::bookDirectory(edit.cachePath), current)) return false;
+  edit.updated = current;
+  return true;
+}
+}  // namespace
+
+bool readingstats::editClosedBookDate(const std::string& cachePath, const std::string& bookPath, bool started,
+                                      const ReadingStatsDate& date, BookReadingStats& updated) {
+  ClosedDateEdit edit{cachePath, bookPath, started, date, updated};
+  return Storage.withStorageLock(editClosedDateLocked, &edit);
+}
+
 bool readingstats::preserveCache(const std::string& cachePath) {
   const std::string destination = bookDirectory(cachePath);
   const auto marker = Storage.lookupPath((cachePath + "/reading_stats_off").c_str());

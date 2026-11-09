@@ -8,7 +8,7 @@
 // Per-book reading statistics, persisted to cachePath/stats_v5.bin.
 struct BookReadingStats {
   static constexpr size_t CURRENT_FILE_SIZE = 73;
-  enum class LoadMode : uint8_t { Repair, ReadOnly };
+  enum class LoadMode : uint8_t { Repair, ReadOnly, TransactionalEdit };
   // Runtime guard: an unreadable or newer file must never become an empty overwrite.
   bool writable = true;
   uint16_t sessionCount = 0;              // Sessions with at least 60 seconds of tracked reading
@@ -28,6 +28,8 @@ struct BookReadingStats {
   // Loads stats from cachePath/stats_v5.bin, with fallback reads from the
   // previous versioned filename and legacy cachePath/stats.bin. ReadOnly
   // suppresses recovery renames; callers must not use its result to save.
+  // TransactionalEdit also avoids recovery renames and is only for a caller
+  // holding the storage lock across the complete read, edit, and safe save.
   // Returns defaults if none exists; unsupported or damaged data disables writes.
   static BookReadingStats load(const std::string& cachePath, LoadMode mode = LoadMode::Repair);
 

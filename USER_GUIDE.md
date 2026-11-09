@@ -320,7 +320,7 @@ publisher formatting. The reader-menu choice is per book.
 
 - **Focus Reading**: Bolds the first part of each word to create visual fixation points, similar to Bionic Reading. This can help improve reading speed and focus; options are "ON" or "OFF" (default).
 
-On any **Library** shelf, hold a book and choose **Reading statistics** to view its data or change tracking for its next session. Global tracking must also be enabled. To edit dates, open the book first.
+On any **Library** shelf, hold a book and choose **Reading statistics** to view its data or change tracking for its next session. Global tracking must also be enabled. For books with readable saved statistics, select Started or Finished to enter a date as `YYYY-MM-DD`, or leave it empty to clear the date.
 
 #### 3.6.3 Controls
 

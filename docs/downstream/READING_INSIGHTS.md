@@ -19,12 +19,14 @@ Book and device totals are saved separately, so an interruption between writes
 can leave those totals out of sync.
 
 With tracking active for an open book, selecting Started reading or Finished in
-its statistics view edits that date. Enter a calendar date in `YYYY-MM-DD`
+its statistics view edits that date. The same controls are available from Library
+for a closed book with readable saved statistics. Enter a calendar date in `YYYY-MM-DD`
 format (years 2000–2099), or submit an empty field to clear it. Both are manual
 overrides; clearing suppresses later automatic start-date assignment. A finish
-date does not mark the book finished. Date editing is unavailable if tracking
-was inactive when the book opened. Failed saves show an incomplete status; the
-open reader retains the edit and retries on exit. Book and device statistics
+date does not mark the book finished. Editing from an open book is unavailable if
+tracking was inactive when the book opened. Failed saves show an incomplete status;
+retained recovery files can block further edits and must be preserved for review.
+The open reader retains its edit and retries on exit. Book and device statistics
 remain separate writes. Resetting statistics remains separate work. Device validation is
 pending: compare the views with saved records and check that reading resumes at
 the same position after leaving the screen.

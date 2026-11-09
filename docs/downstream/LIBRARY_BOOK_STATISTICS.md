@@ -4,8 +4,9 @@ On any Library shelf, hold a book and choose Reading statistics to open the
 existing book statistics screen. This includes pinned recents, indexed rows,
 and cover grids. On other shelves, the options also include Open and Delete;
 Browse groups appears when no search is active. Delete asks for confirmation. Per-book Tracking can be changed for the next reading session;
-the global tracking switch must also be enabled. Editing start and finish dates
-still requires an actively tracked open book.
+the global tracking switch must also be enabled. For books with readable saved
+statistics, select Started or Finished to enter a `YYYY-MM-DD` date or clear it
+with an empty field. Clearing is a manual override.
 
 The launcher closes the Library index while it reads saved book/global data and
 opens the child screen. It reopens the index on return; an index reopen failure
@@ -18,9 +19,13 @@ left unavailable to avoid cache validation during this read. If the launcher
 cannot open the book or allocate the screen, it returns to Library and shows an
 error so the user can retry.
 
+If a date save remains incomplete, keep the book's statistics files and any
+`.tmp` or `.bak` files for recovery. A later edit can remain blocked until those
+files are reviewed.
+
 The temporary snapshot is heap-owned and bounded to 512 bytes, and is released
 before the child screen opens. Library remains on the activity stack while the
 statistics screen is active. No task or network connection is added. The
-statistics screen's existing tracking and backup actions can write only when
+statistics screen's tracking, date editing, and backup actions can write only when
 chosen by the user. SD latency, combined activity heap use, and input behavior
 need X4 Pro device checks.

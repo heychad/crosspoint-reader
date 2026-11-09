@@ -34,7 +34,7 @@ inventory below records an earlier stage and is not the current status.
 | B6 Unified Saved Items | Built with reader-menu, button, and Quick Actions entry. Older CrossInk bookmarks are read-only. |
 | B7 Full CrossInk menu and navigation parity | Partial; EPUB reader entries include Home Button, Library, Browse Files, File Transfer, and Saved Items, and an optional Library-first Home order, but full menu parity remains. |
 | C1 Reading statistics and time-left | Built for supported tracking data; reader bars estimate book and current-section time. A true table-of-contents chapter estimate remains. |
-| C2 Edit dates and per-book tracking | Dates and tracking are available for an actively tracked book; Any Library shelf can open book statistics and change tracking for a closed book. Editing dates for other books remains. |
+| C2 Edit dates and per-book tracking | Dates and tracking are available for an actively tracked book. Library statistics can edit dates and tracking for a closed book with readable existing statistics; device checks remain. |
 | C3 All Devices statistics | Built for compatible statistics files already present locally; it does not transfer them or detect absent device files. If a snapshot save and aggregate load both fail, the save warning currently takes precedence over the partial-data warning. |
 | C4 History charts and trends | Time-of-day, weekday, and device reading-day charts built; the device view shows recorded reading days for the last 7 and 30 days. Richer trends remain. |
 | C5 Statistics backup, restore, reset | Manual device and individual-book backups built; restore, reset, and whole-library backup remain. |

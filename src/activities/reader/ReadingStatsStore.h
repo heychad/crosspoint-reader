@@ -30,4 +30,8 @@ class BookMove {
   bool moved = false;
 };
 bool saveBook(const std::string& directory, const BookReadingStats& stats);
+// Reload and edit a closed book under the storage lock so other statistics
+// are not replaced by a stale screen snapshot. Unknown or missing data fails.
+bool editClosedBookDate(const std::string& cachePath, const std::string& bookPath, bool started,
+                        const ReadingStatsDate& date, BookReadingStats& updated);
 }  // namespace readingstats

@@ -123,10 +123,11 @@ Timeout can override the chosen screen for an inactivity timeout.
 
 In Library > Recent, hold a previously opened book and an indexed book to open each row's
 options. Choose Reading statistics, check the book title and available values,
-change Tracking, and return to Library. Confirm the list still works and restore
-the prior Tracking setting. Global tracking must be enabled for a book's
-tracking choice to take effect on its next session. Dates can be edited while
-the book is open; this closed-book view does not edit them. Check opening
+change Tracking, and return to Library. Edit and clear the start and finish dates
+on a disposable book with existing statistics, then reopen its statistics and
+check that the dates and other values persisted. Confirm the list still works and
+restore the prior Tracking setting. Global tracking must be enabled for a book's
+tracking choice to take effect on its next session. Check opening
 latency, internal and PSRAM free and largest blocks, touch and remapped button
 release behavior, and retry after a failed open.
 
