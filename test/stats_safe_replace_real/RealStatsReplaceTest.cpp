@@ -143,8 +143,68 @@ void exercise(bool exfat, bool initial, bool nested) {
     assert(injected > 0);
   }
 }
+void exerciseCrosslinkedFatTail(bool backupFirst) {
+  Disk disk;
+  uint8_t scratch[512];
+  FatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  Cluster_t primaryCluster = 0, backupCluster = 0;
+  Sector_t fatStart = 0;
+  uint8_t fatType = 0, fatCount = 0;
+  Bytes original{}, backup{}, update{}, later{};
+  original.fill(17);
+  backup.fill(34);
+  update.fill(51);
+  later.fill(68);
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    Storage.attach(volume);
+    fatStart = volume.fatStartSector();
+    fatType = volume.fatType();
+    fatCount = volume.fatCount();
+    if (backupFirst)
+      assert(writeFile("/stats.bin.bak", backup) && writeFile("/stats.bin", original));
+    else
+      assert(writeFile("/stats.bin", original) && writeFile("/stats.bin.bak", backup));
+    auto primary = volume.open("/stats.bin", O_RDONLY), saved = volume.open("/stats.bin.bak", O_RDONLY);
+    assert(primary && saved);
+    primaryCluster = primary.firstCluster();
+    backupCluster = saved.firstCluster();
+    assert(primary.close() && saved.close());
+  }
+  assert(primaryCluster && backupCluster && primaryCluster != backupCluster);
+  const auto le16 = [](const uint8_t* p) { return uint16_t(p[0] | uint16_t(p[1]) << 8); };
+  const auto le32 = [&](const uint8_t* p) { return uint32_t(le16(p) | uint32_t(le16(p + 2)) << 16); };
+  uint8_t mbr[512], boot[512];
+  assert(disk.readSector(0, mbr) && disk.readSector(le32(mbr + 454), boot));
+  const uint32_t sectorsPerFat = le16(boot + 22) ? le16(boot + 22) : le32(boot + 36);
+  assert((fatType == 16 || fatType == 32) && sectorsPerFat);
+  const unsigned width = fatType == 16 ? 2 : 4;
+  const uint64_t offset = uint64_t(backupCluster) * width;
+  for (unsigned i = 0; i < fatCount; ++i) {
+    auto& sector = disk.sectors[fatStart + Sector_t(i) * sectorsPerFat + offset / 512];
+    for (unsigned j = 0; j < width; ++j) sector[offset % 512 + j] = uint8_t(primaryCluster >> (8 * j));
+  }
+  FsVolume remount;
+  assert(remount.begin(&disk));
+  Storage.attach(remount);
+  assert(!Storage.distinctFirstClusters("/stats.bin", "/stats.bin.bak"));
+  assert(!statsreplace::save("TEST", "/stats.bin", update.data(), update.size(), false));
+  assert(Storage.exists("/stats.bin.bak"));
+  assert(writeFile("/later.bin", later));
+  FsVolume after;
+  assert(after.begin(&disk));
+  Storage.attach(after);
+  Bytes read{};
+  assert(readFile("/stats.bin", read) && read == original);
+  std::printf("FAT crosslinked tail (backup first=%d) refused without freeing the primary\n", backupFirst);
+}
+
 int main() {
   for (bool exfat : {false, true})
     for (bool initial : {false, true})
       for (bool nested : {false, true}) exercise(exfat, initial, nested);
+  exerciseCrosslinkedFatTail(false);
+  exerciseCrosslinkedFatTail(true);
 }
