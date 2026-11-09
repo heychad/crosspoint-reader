@@ -24,7 +24,9 @@ with tempfile.TemporaryDirectory() as temporary:
     target = source / 'ExFatLib/ExFatFile.cpp'
     expected = next(row[3] for row in patcher.PATCHES if row[1] == 'src/ExFatLib/ExFatFile.cpp')
     patches = project / 'scripts/sdfat_patches'
-    for name in ('0011-exfat-strict-scan.patch', '0016-exfat-source-bounded-chain.patch', '0019-exfat-prior-bounded-chain.patch'):
+    for name in ('0011-exfat-strict-scan.patch', '0016-exfat-source-bounded-chain.patch',
+                 '0019-exfat-prior-bounded-chain.patch', '0023-exfat-source-settings-cluster.patch',
+                 '0029-exfat-source-bitmap-check.patch'):
         subprocess.run(['git', 'apply', '--reverse', str(patches / name)], cwd=dependency, check=True)
         patcher.apply_patches(project, dependency)
         assert hashlib.sha256(target.read_bytes()).hexdigest() == expected

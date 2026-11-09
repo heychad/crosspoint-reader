@@ -1,0 +1,16 @@
+--- a/src/FatLib/FatPartition.cpp
++++ b/src/FatLib/FatPartition.cpp
+@@ -156,3 +156,4 @@
+ // Fetch a FAT entry - return -1 error, 0 EOC, else 1.
+-int8_t FatPartition::fatGet(Cluster_t cluster, Cluster_t* value) {
++int8_t FatPartition::fatGet(Cluster_t cluster, Cluster_t* value, bool* strictEoc) {
++  if (strictEoc) *strictEoc = false;
+   Sector_t sector;
+@@ -213,2 +214,7 @@
+   if (isEOC(next)) {
++    if (strictEoc) {
++      const uint32_t mask = fatType() == 32 ? 0x0FFFFFFF : fatType() == 16 ? 0xFFFF : 0xFFF;
++      const uint32_t minimum = fatType() == 32 ? 0x0FFFFFF8 : fatType() == 16 ? 0xFFF8 : 0xFF8;
++      *strictEoc = (next & mask) >= minimum;
++    }
+     return 0;

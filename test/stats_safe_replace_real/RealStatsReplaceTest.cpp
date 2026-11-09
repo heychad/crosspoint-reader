@@ -235,7 +235,8 @@ void exerciseFatChainedExfat() {
   FsVolume after;
   assert(after.begin(&disk));
   auto file = after.open("/chained.bin", O_RDONLY);
-  assert(file && !file.isContiguous() && file.smallSingleClusterChain() && file.close());
+  assert(file && !file.isContiguous() && file.smallSingleClusterChain() && file.settingsSingleClusterChain() &&
+         file.close());
   std::puts("exFAT one-cluster FAT-chain accepted");
 }
 
@@ -330,6 +331,156 @@ void exerciseFatChainReadFailure() {
   std::puts("FAT32 chain read failure refused, then retry succeeded");
 }
 
+void exerciseSettingsClusters(bool fat32) {
+  Disk disk;
+  if (fat32) disk.sectorsTotal = 64 * 1024 * 1024;
+  uint8_t scratch[512];
+  FatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  FsVolume volume;
+  assert(volume.begin(&disk) && volume.fatType() == (fat32 ? 32 : 16));
+  const size_t clusterBytes = volume.bytesPerCluster();
+  assert(clusterBytes >= 512 && clusterBytes <= 32768);
+  const size_t length = std::min<size_t>(2279, clusterBytes);
+  const std::string payload(length, 's');
+  for (const char* path : {"/settings.json", "/snapshot.json"}) {
+    auto file = volume.open(path, O_CREAT | O_EXCL | O_WRONLY);
+    assert(file && file.write(payload.data(), payload.size()) == payload.size() && file.close());
+  }
+  auto source = volume.open("/settings.json", O_RDONLY), snapshot = volume.open("/snapshot.json", O_RDONLY);
+  assert(source && snapshot && settingsFilesHaveDifferentFirstClusters(source, snapshot));
+  assert(source.close() && snapshot.close());
+  auto large = volume.open("/large.json", O_CREAT | O_EXCL | O_WRONLY);
+  const std::string excess(clusterBytes + 1, 'x');
+  assert(large && large.write(excess.data(), excess.size()) == excess.size() && large.close());
+  source = volume.open("/settings.json", O_RDONLY);
+  large = volume.open("/large.json", O_RDONLY);
+  assert(source && large && !settingsFilesHaveDifferentFirstClusters(source, large));
+  assert(source.close() && large.close());
+  std::printf("FAT%u settings single-cluster identity passed (cluster=%zu)\n", fat32 ? 32 : 16, clusterBytes);
+}
+
+void exerciseExfatSettingsClusters() {
+  Disk disk;
+  uint8_t scratch[512];
+  ExFatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  FsVolume volume;
+  assert(volume.begin(&disk));
+  const size_t clusterBytes = volume.bytesPerCluster();
+  const size_t length = std::min<size_t>(2279, clusterBytes);
+  const std::string payload(length, 's');
+  for (const char* path : {"/settings.json", "/snapshot.json"}) {
+    auto file = volume.open(path, O_CREAT | O_EXCL | O_WRONLY);
+    assert(file && file.write(payload.data(), payload.size()) == payload.size() && file.close());
+  }
+  auto source = volume.open("/settings.json", O_RDONLY), snapshot = volume.open("/snapshot.json", O_RDONLY);
+  assert(source && snapshot && settingsFilesHaveDifferentFirstClusters(source, snapshot));
+  assert(source.close() && snapshot.close());
+  auto large = volume.open("/large.json", O_CREAT | O_EXCL | O_WRONLY);
+  const std::string excess(std::min<size_t>(32768, clusterBytes) + 1, 'x');
+  assert(large && large.write(excess.data(), excess.size()) == excess.size() && large.close());
+  source = volume.open("/settings.json", O_RDONLY);
+  large = volume.open("/large.json", O_RDONLY);
+  assert(source && large && !settingsFilesHaveDifferentFirstClusters(source, large));
+  assert(source.close() && large.close());
+  std::printf("exFAT settings single-cluster identity passed (cluster=%zu)\n", clusterBytes);
+}
+
+void exerciseFatTerminalMarkers(bool fat32) {
+  Disk baseline;
+  if (fat32) baseline.sectorsTotal = 64 * 1024 * 1024;
+  uint8_t scratch[512];
+  FatFormatter formatter;
+  assert(formatter.format(&baseline, scratch));
+  Cluster_t cluster = 0;
+  Sector_t fatStart = 0;
+  uint8_t fatCount = 0;
+  {
+    FsVolume volume;
+    assert(volume.begin(&baseline) && volume.fatType() == (fat32 ? 32 : 16));
+    fatStart = volume.fatStartSector();
+    fatCount = volume.fatCount();
+    auto file = volume.open("/stats.bin", O_CREAT | O_EXCL | O_WRONLY);
+    assert(file && file.write(uint8_t{1}) == 1);
+    cluster = file.firstCluster();
+    assert(cluster >= 2 && file.close());
+  }
+  const auto le16 = [](const uint8_t* p) { return uint16_t(p[0] | uint16_t(p[1]) << 8); };
+  const auto le32 = [&](const uint8_t* p) { return uint32_t(le16(p) | uint32_t(le16(p + 2)) << 16); };
+  uint8_t mbr[512], boot[512];
+  assert(baseline.readSector(0, mbr) && baseline.readSector(le32(mbr + 454), boot));
+  const uint32_t sectorsPerFat = le16(boot + 22) ? le16(boot + 22) : le32(boot + 36);
+  assert(sectorsPerFat);
+  const uint32_t values[] = {fat32 ? 0x0FFFFFF7U : 0xFFF7U, fat32 ? 0x0FFFFFF0U : 0xFFF0U,
+                             fat32 ? 0x0FFFFFF8U : 0xFFF8U, fat32 ? 0x0FFFFFFFU : 0xFFFFU};
+  const unsigned width = fat32 ? 4 : 2;
+  for (size_t index = 0; index < std::size(values); ++index) {
+    Disk disk;
+    disk.sectorsTotal = baseline.sectorsTotal;
+    disk.sectors = baseline.sectors;
+    const uint64_t offset = uint64_t(cluster) * width;
+    for (unsigned i = 0; i < fatCount; ++i) {
+      auto& sector = disk.sectors[fatStart + Sector_t(i) * sectorsPerFat + offset / 512];
+      for (unsigned j = 0; j < width; ++j) sector[offset % 512 + j] = uint8_t(values[index] >> (8 * j));
+    }
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    auto file = volume.open("/stats.bin", O_RDONLY);
+    assert(file);
+    const bool expected = index >= 2;
+    assert(file.smallSingleClusterChain() == expected && file.settingsSingleClusterChain() == expected);
+    assert(file.close());
+  }
+  std::printf("FAT%u bad and reserved markers refused; valid EOC accepted\n", fat32 ? 32 : 16);
+}
+
+void exerciseExfatAllocationBitmap() {
+  Disk baseline;
+  uint8_t scratch[512];
+  ExFatFormatter formatter;
+  assert(formatter.format(&baseline, scratch));
+  Cluster_t cluster = 0;
+  Sector_t bitmapStart = 0;
+  {
+    FsVolume volume;
+    assert(volume.begin(&baseline));
+    bitmapStart = volume.dataStartSector();
+    auto file = volume.open("/settings.json", O_CREAT | O_EXCL | O_WRONLY);
+    assert(file && file.write(uint8_t{42}) == 1);
+    cluster = file.firstCluster();
+    assert(cluster >= 2 && file.close());
+  }
+  const uint32_t bit = cluster - 2;
+  const Sector_t sectorNumber = bitmapStart + bit / (512 * 8);
+  const size_t byte = (bit / 8) % 512;
+  const uint8_t mask = uint8_t{1} << (bit % 8);
+  assert((baseline.sectors[sectorNumber][byte] & mask) != 0);
+  {
+    Disk disk;
+    disk.sectors = baseline.sectors;
+    disk.sectors[sectorNumber][byte] &= static_cast<uint8_t>(~mask);
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    auto file = volume.open("/settings.json", O_RDONLY);
+    assert(file && !file.smallSingleClusterChain() && !file.settingsSingleClusterChain());
+    uint8_t data = 0;
+    assert(file.read(&data, 1) == 1 && data == 42 && file.close());
+  }
+  {
+    Disk disk;
+    disk.sectors = baseline.sectors;
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    auto file = volume.open("/settings.json", O_RDONLY);
+    assert(file);
+    disk.failReadSector = sectorNumber;
+    assert(!file.settingsSingleClusterChain() && disk.injectedRead);
+    assert(file.settingsSingleClusterChain() && file.close());
+  }
+  std::puts("exFAT free bitmap and bitmap read failure refused; retry succeeded");
+}
+
 int main() {
   for (bool exfat : {false, true})
     for (bool initial : {false, true})
@@ -341,4 +492,10 @@ int main() {
   exerciseFatChainedExfat();
   exerciseLongThirdFileTail();
   exerciseFatChainReadFailure();
+  exerciseSettingsClusters(false);
+  exerciseSettingsClusters(true);
+  exerciseExfatSettingsClusters();
+  exerciseFatTerminalMarkers(false);
+  exerciseFatTerminalMarkers(true);
+  exerciseExfatAllocationBitmap();
 }

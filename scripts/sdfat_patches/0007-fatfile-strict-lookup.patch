@@ -1,27 +1,16 @@
 --- a/src/FatLib/FatFile.h
 +++ b/src/FatLib/FatFile.h
-@@ -230,6 +230,8 @@
-   }
-   /** Clear all error bits. */
+@@ -232,2 +232,4 @@
    void clearError() { m_error = 0; }
 +  /** Enable conservative directory validation for this handle. */
 +  void setStrictLookup(bool enabled) { m_strictLookup = enabled; }
    /** Set writeError to zero */
-   void clearWriteError() { m_error &= ~WRITE_ERROR; }
-   /** Close a file and force cached data and directory information
-@@ -247,6 +249,7 @@
-    * The parameters may be nullptr to only set the flag.
-    * \return true for success or false for failure.
+@@ -249,2 +251,4 @@
     */
++  bool settingsSingleClusterChain();
 +  bool smallSingleClusterChain();
    bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
-   /** Create and open a new contiguous file of a specified size.
-    *
-@@ -1070,6 +1073,7 @@
-   uint8_t m_attributes = FILE_ATTR_CLOSED;
-   uint8_t m_error = 0;  // Error bits.
+@@ -1072,2 +1076,3 @@
    uint8_t m_flags = 0;  // See above for definition of m_flags bits
 +  bool m_strictLookup = false;  // Only this directory handle opts in.
    uint8_t m_lfnOrd;
-   uint16_t m_dirIndex;  // index of directory entry in dir file
-   FatVolume* m_vol;     // volume where file is located

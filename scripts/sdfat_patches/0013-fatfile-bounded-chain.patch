@@ -1,10 +1,7 @@
 --- a/src/FatLib/FatFile.h
 +++ b/src/FatLib/FatFile.h
-@@ -249,6 +249,7 @@
-    * The parameters may be nullptr to only set the flag.
-    * \return true for success or false for failure.
+@@ -251,2 +251,4 @@
     */
++  bool settingsSingleClusterChain();
 +  bool smallSingleClusterChain();
    bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
-   /** Create and open a new contiguous file of a specified size.
-    *

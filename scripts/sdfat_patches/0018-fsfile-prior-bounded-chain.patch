@@ -1,8 +1,6 @@
 --- a/src/FsLib/FsFile.h
 +++ b/src/FsLib/FsFile.h
-@@ -114,11 +114,17 @@
-    * \return true if a file is open.
-    */
+@@ -116,7 +116,13 @@
    operator bool() const { return isOpen(); }
 -  /** Enable checked FAT lookup; exFAT is not yet supported. */
 -  bool enableStrictFatLookup() {
@@ -21,15 +19,12 @@
 +    }
 +    return false;
    }
-   /**
-    * \return user settable file attributes for success else -1.
-@@ -174,6 +180,9 @@
-    *
-    * \return true for success or false for failure.
+@@ -176,2 +182,8 @@
     */
++  bool settingsSingleClusterChain() {
++    return m_fFile ? m_fFile->settingsSingleClusterChain() : m_xFile ? m_xFile->settingsSingleClusterChain() : false;
++  }
 +  bool smallSingleClusterChain() {
 +    return m_fFile ? m_fFile->smallSingleClusterChain() : m_xFile ? m_xFile->smallSingleClusterChain() : false;
 +  }
    bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector) {
-     return m_fFile   ? m_fFile->contiguousRange(bgnSector, endSector)
-            : m_xFile ? m_xFile->contiguousRange(bgnSector, endSector)

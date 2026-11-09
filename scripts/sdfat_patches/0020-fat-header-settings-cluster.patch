@@ -1,0 +1,6 @@
+--- a/src/FatLib/FatFile.h
++++ b/src/FatLib/FatFile.h
+@@ -251,2 +251,3 @@
+    */
++  bool settingsSingleClusterChain();
+   bool smallSingleClusterChain();

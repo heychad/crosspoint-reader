@@ -1,0 +1,7 @@
+--- a/src/FatLib/FatPartition.h
++++ b/src/FatLib/FatPartition.h
+@@ -234,3 +234,3 @@
+   }
+-  int8_t fatGet(Cluster_t cluster, Cluster_t* value);
++  int8_t fatGet(Cluster_t cluster, Cluster_t* value, bool* strictEoc = nullptr);
+   bool fatPut(Cluster_t cluster, Cluster_t value);

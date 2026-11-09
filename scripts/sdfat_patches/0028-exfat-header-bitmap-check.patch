@@ -1,0 +1,6 @@
+--- a/src/ExFatLib/ExFatFile.h
++++ b/src/ExFatLib/ExFatFile.h
+@@ -201,2 +201,3 @@
+    */
++  bool firstClusterMarkedAllocated();
+   bool settingsSingleClusterChain();

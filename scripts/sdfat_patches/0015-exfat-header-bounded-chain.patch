@@ -1,10 +1,8 @@
 --- a/src/ExFatLib/ExFatFile.h
 +++ b/src/ExFatLib/ExFatFile.h
-@@ -199,6 +199,7 @@
-    *
-    * \return true for success or false for failure.
+@@ -201,2 +201,5 @@
     */
++  bool firstClusterMarkedAllocated();
++  bool settingsSingleClusterChain();
 +  bool smallSingleClusterChain();
    bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
-   /** \return The current cluster number for a file or directory. */
-   Cluster_t curCluster() const { return m_curCluster; }

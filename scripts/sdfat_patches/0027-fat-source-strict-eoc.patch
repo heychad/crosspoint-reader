@@ -1,0 +1,15 @@
+--- a/src/FatLib/FatFile.cpp
++++ b/src/FatLib/FatFile.cpp
+@@ -1509,3 +1509,4 @@
+   Cluster_t next;
+-  return m_vol->fatGet(m_firstCluster, &next) == 0;
++  bool strictEoc = false;
++  return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;
+ }
+@@ -1518,3 +1519,4 @@
+   Cluster_t next;
+-  return m_vol->fatGet(m_firstCluster, &next) == 0;
+-}
++  bool strictEoc = false;
++  return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;
++}

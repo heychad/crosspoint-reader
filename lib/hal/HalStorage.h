@@ -72,6 +72,10 @@ class HalStorage {
   // Caller must hold withStorageLock across the transaction; this does not
   // validate the entire filesystem.
   bool distinctFirstClusters(const char* first, const char* second);
+  // Settings snapshots require distinct, checked single-cluster allocations;
+  // each file is limited to 32 KiB and must fit its volume's cluster size.
+  bool distinctSettingsClusters(const char* first, const char* second);
+  bool settingsSingleClusterEligible(const char* path);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);
   // Move a fully written temp file over `path`, replacing any existing file.

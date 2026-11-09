@@ -1,0 +1,19 @@
+--- a/src/FatLib/FatFile.cpp
++++ b/src/FatLib/FatFile.cpp
+@@ -1509,3 +1509,14 @@
+   Cluster_t next;
+-  return m_vol->fatGet(m_firstCluster, &next) == 0;
+-}
++  bool strictEoc = false;
++  return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;
++}
++
++bool FatFile::settingsSingleClusterChain() {
++  if (!isFile() || !fileSize() || fileSize() > 32768 || m_firstCluster < 2) return false;
++  const uint8_t shift = m_vol->bytesPerClusterShift();
++  if (shift >= 63 || uint64_t(fileSize()) > (uint64_t{1} << shift) ||
++      m_firstCluster - 2 >= m_vol->clusterCount()) return false;
++  Cluster_t next;
++  bool strictEoc = false;
++  return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;
++}

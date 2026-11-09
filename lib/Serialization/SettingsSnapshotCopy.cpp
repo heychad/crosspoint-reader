@@ -61,6 +61,9 @@ bool copyLocked(void* raw) {
       return true;
     }
   }
+  // Refuse unsupported or unverifiable source allocation before creating a
+  // destination. This does not validate ownership of other filesystem files.
+  if (!Storage.settingsSingleClusterEligible(c.source)) return true;
   HalFile destination = Storage.openChecked(c.destination, O_WRONLY | O_CREAT | O_EXCL);
   if (!destination) return true;
   const bool written = destination.write(bytes.get(), static_cast<size_t>(size)) == size;
@@ -77,7 +80,7 @@ bool copyLocked(void* raw) {
     offset += amount;
   }
   const bool checkClosed = check.close();
-  if (same && checkClosed) c.result = CopyResult::Copied;
+  if (same && checkClosed && Storage.distinctSettingsClusters(c.source, c.destination)) c.result = CopyResult::Copied;
   return true;
 }
 }  // namespace

@@ -186,6 +186,46 @@ TEST(SettingsSnapshotCopy, CheckedHandleFailuresDoNotOverwriteSource) {
   }
 }
 
+TEST(SettingsSnapshotCopy, UnverifiableAllocationDoesNotReportACopy) {
+  auto& storage = HalStorage::getInstance();
+  storage.reset();
+  constexpr auto primary = "/.crosspoint/settings.json";
+  constexpr auto backup = "/.crosspoint/settings.snapshot";
+  const char content[] = "{\"fontSize\":14}";
+  HalFile file;
+  ASSERT_TRUE(storage.openFileForWrite("TEST", primary, file));
+  ASSERT_EQ(file.write(content, sizeof(content) - 1), sizeof(content) - 1);
+  ASSERT_TRUE(file.close());
+  storage.failSettingsIdentity();
+  EXPECT_EQ(settingsrecovery::copySnapshot(primary, backup), settingsrecovery::CopyResult::Failed);
+  ASSERT_TRUE(storage.openFileForRead("TEST", primary, file));
+  char after[sizeof(content)]{};
+  ASSERT_EQ(file.read(after, sizeof(content) - 1), static_cast<int>(sizeof(content) - 1));
+  EXPECT_STREQ(after, content);
+  EXPECT_TRUE(file.close());
+  EXPECT_TRUE(storage.exists(backup));
+}
+
+TEST(SettingsSnapshotCopy, IneligibleSourceDoesNotCreateDestination) {
+  auto& storage = HalStorage::getInstance();
+  storage.reset();
+  constexpr auto primary = "/.crosspoint/settings.json";
+  constexpr auto backup = "/.crosspoint/settings.snapshot";
+  const char content[] = "{\"fontSize\":14}";
+  HalFile file;
+  ASSERT_TRUE(storage.openFileForWrite("TEST", primary, file));
+  ASSERT_EQ(file.write(content, sizeof(content) - 1), sizeof(content) - 1);
+  ASSERT_TRUE(file.close());
+  storage.failSettingsEligibility();
+  EXPECT_EQ(settingsrecovery::copySnapshot(primary, backup), settingsrecovery::CopyResult::Failed);
+  EXPECT_FALSE(storage.exists(backup));
+  ASSERT_TRUE(storage.openFileForRead("TEST", primary, file));
+  char after[sizeof(content)]{};
+  ASSERT_EQ(file.read(after, sizeof(content) - 1), static_cast<int>(sizeof(content) - 1));
+  EXPECT_STREQ(after, content);
+  EXPECT_TRUE(file.close());
+}
+
 TEST(SettingsJsonAllocator, RefusesGrowthBeyondBudgetAndPreservesOriginalAllocation) {
   settingsrecovery::SettingsJsonAllocator allocator;
   auto* first = static_cast<char*>(allocator.allocate(100));

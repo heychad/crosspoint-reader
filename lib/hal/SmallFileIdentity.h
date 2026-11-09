@@ -16,3 +16,17 @@ bool smallFilesHaveDifferentFirstClusters(File& left, File& right) {
   if (first == 0 || second == 0 || first == second) return false;
   return left.smallSingleClusterChain() && right.smallSingleClusterChain();
 }
+
+// Settings snapshots may exceed 512 bytes. Both files must still fit within
+// one actual allocation cluster, bounded to 32 KiB and verified separately.
+template <typename File>
+bool settingsFilesHaveDifferentFirstClusters(File& left, File& right) {
+  if (!left.isFile() || !right.isFile() || left.fileSize() == 0 || right.fileSize() == 0 ||
+      left.fileSize() > 32768 || right.fileSize() > 32768 || left.dataLength() > 32768 ||
+      right.dataLength() > 32768)
+    return false;
+  const auto first = left.firstCluster();
+  const auto second = right.firstCluster();
+  if (first == 0 || second == 0 || first == second) return false;
+  return left.settingsSingleClusterChain() && right.settingsSingleClusterChain();
+}

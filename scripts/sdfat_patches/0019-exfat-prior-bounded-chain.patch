@@ -1,31 +1,42 @@
 --- a/src/ExFatLib/ExFatFile.cpp
 +++ b/src/ExFatLib/ExFatFile.cpp
-@@ -295,7 +295,7 @@
-     uint16_t checksum = 0;
-     for (unsigned j = 0; j < FS_DIR_SIZE; ++j) {
+@@ -297,3 +297,3 @@
        if (j == 2 || j == 3) continue;
 -      checksum = ((checksum << 15) | (checksum >> 1)) + entry[j];
 +      checksum = static_cast<uint16_t>((static_cast<uint32_t>(checksum) << 15 | checksum >> 1) + entry[j]);
      }
-     uint8_t names = 0;
-     for (uint8_t i = 0; i < count; ++i) {
-@@ -311,7 +311,7 @@
-         goto fail;
-       }
+@@ -313,3 +313,3 @@
        for (unsigned j = 0; j < FS_DIR_SIZE; ++j)
 -        checksum = ((checksum << 15) | (checksum >> 1)) + entry[j];
 +        checksum = static_cast<uint16_t>((static_cast<uint32_t>(checksum) << 15 | checksum >> 1) + entry[j]);
      }
-     if (checksum != expected) goto fail;
-   }
-@@ -798,3 +798,10 @@
-   m_curCluster = tmp;
-   return false;
+@@ -800 +800,29 @@
  }
 +
 +bool ExFatFile::smallSingleClusterChain() {
 +  if (!isFile() || !fileSize() || !m_dataLength || m_dataLength > 512 || m_firstCluster < 2) return false;
++  if (!firstClusterMarkedAllocated()) return false;
 +  if (isContiguous()) return true;
 +  Cluster_t next;
 +  return m_vol->fatGet(m_firstCluster, &next) == 0;
++}
++
++bool ExFatFile::settingsSingleClusterChain() {
++  if (!isFile() || !fileSize() || !m_dataLength || m_dataLength > 32768 || m_firstCluster < 2) return false;
++  const uint8_t shift = m_vol->bytesPerClusterShift();
++  if (shift >= 63 || m_dataLength > (uint64_t{1} << shift) ||
++      m_firstCluster - 2 >= m_vol->clusterCount()) return false;
++  if (!firstClusterMarkedAllocated()) return false;
++  if (isContiguous()) return true;
++  Cluster_t next;
++  return m_vol->fatGet(m_firstCluster, &next) == 0;
++}
++
++bool ExFatFile::firstClusterMarkedAllocated() {
++  if (!isFile() || m_firstCluster < 2 || m_firstCluster - 2 >= m_vol->clusterCount()) return false;
++  const uint32_t bit = m_firstCluster - 2;
++  const uint8_t shift = m_vol->bytesPerSectorShift();
++  const Sector_t sector = m_vol->clusterHeapStartSector() + (bit >> (shift + 3));
++  const uint8_t* data = m_vol->bitmapCachePrepare(sector, FsCache::CACHE_FOR_READ);
++  return data && (data[(bit >> 3) & ((uint32_t{1} << shift) - 1)] & (uint8_t{1} << (bit & 7)));
 +}

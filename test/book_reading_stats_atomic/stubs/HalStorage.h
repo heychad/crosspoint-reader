@@ -109,6 +109,8 @@ class HalStorage {
     failNewClosePaths_.clear();
     failNewSyncPaths_.clear();
     failCheckedOpenAt_ = -1;
+    failSettingsIdentity_ = false;
+    failSettingsEligibility_ = false;
   }
 
   HalFile open(const char* path) {
@@ -155,6 +157,12 @@ class HalStorage {
     const auto a = files_.find(first), b = files_.find(second);
     return a != files_.end() && b != files_.end() && a->second != b->second;
   }
+  bool distinctSettingsClusters(const char* first, const char* second) const {
+    return !failSettingsIdentity_ && distinctFirstClusters(first, second);
+  }
+  void failSettingsIdentity() { failSettingsIdentity_ = true; }
+  bool settingsSingleClusterEligible(const char* path) const { return !failSettingsEligibility_ && exists(path); }
+  void failSettingsEligibility() { failSettingsEligibility_ = true; }
   PathStatus lookupPath(const char* path) const {
     if (failReadPaths_.contains(path)) return PathStatus::Failed;
     return exists(path) ? PathStatus::Present : PathStatus::Missing;
@@ -278,6 +286,8 @@ class HalStorage {
   std::unordered_set<std::string> failNewSyncPaths_;
   std::string failRemovePath_;
   int failCheckedOpenAt_ = -1;
+  bool failSettingsIdentity_ = false;
+  bool failSettingsEligibility_ = false;
 };
 
 #ifndef Storage
