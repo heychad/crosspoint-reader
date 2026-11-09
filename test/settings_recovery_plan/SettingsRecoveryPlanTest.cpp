@@ -203,6 +203,29 @@ TEST(SettingsJsonAllocator, RefusesGrowthBeyondBudgetAndPreservesOriginalAllocat
   EXPECT_EQ(allocator.bytesInUse(), 0u);
 }
 
+TEST(SettingsJsonAllocator, CountsBothAllocationsDuringGrowth) {
+  settingsrecovery::SettingsJsonAllocator allocator;
+  auto* original = static_cast<char*>(allocator.allocate(9000));
+  ASSERT_NE(original, nullptr);
+  original[0] = 'x';
+  // Each allocation fits by itself, but both cannot coexist within the cap.
+  EXPECT_EQ(allocator.reallocate(original, 8000), nullptr);
+  EXPECT_EQ(original[0], 'x');
+  EXPECT_LE(allocator.peakBytes(), settingsrecovery::SettingsJsonAllocator::LIMIT);
+  allocator.deallocate(original);
+  EXPECT_EQ(allocator.bytesInUse(), 0u);
+}
+
+TEST(SettingsRecoveryPlan, SyntacticObjectRequiresInspectionBeforeUse) {
+  using settingsrecovery::Candidate;
+  using settingsrecovery::Plan;
+  // An object alone provides no evidence that it is a compatible settings file.
+  EXPECT_EQ(settingsrecovery::plan(Candidate::JsonObject, Candidate::Missing, Candidate::Missing),
+            Plan::InspectPrimary);
+  EXPECT_EQ(settingsrecovery::plan(Candidate::Missing, Candidate::JsonObject, Candidate::Missing),
+            Plan::InspectBackup);
+}
+
 TEST(SettingsRecoveryProbe, ExcessiveJsonTreeReturnsUnavailableWithoutWriting) {
   auto& storage = HalStorage::getInstance();
   storage.reset();
