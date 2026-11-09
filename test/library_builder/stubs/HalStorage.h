@@ -27,6 +27,11 @@ inline int failRename = -1;
 inline int failAlloc = -1;
 inline bool failDirectorySeek = false;
 inline std::string failClosePath;
+inline std::string failOpenPath;
+inline std::string failNamePath;
+inline std::string failEnumerationPath;
+inline int failEnumerationAt = -1;
+inline unsigned emptyCloseCalls = 0;
 inline std::string failWritePath;
 inline unsigned parses = 0;
 inline unsigned reads = 0;
@@ -58,6 +63,11 @@ inline void reset() {
   failAlloc = -1;
   failDirectorySeek = false;
   failClosePath.clear();
+  failOpenPath.clear();
+  failNamePath.clear();
+  failEnumerationPath.clear();
+  failEnumerationAt = -1;
+  emptyCloseCalls = 0;
   failWritePath.clear();
   parses = 0;
   reads = 0;
@@ -101,10 +111,12 @@ class HalFile {
   std::shared_ptr<fake::Node> node;
   std::string path;
   size_t pos = 0;
+  bool error = false;
 
   explicit operator bool() const { return bool(node); }
   bool isOpen() const { return bool(node); }
   bool close() {
+    if (!node) ++fake::emptyCloseCalls;
     const bool failed = !fake::failClosePath.empty() && path == fake::failClosePath;
     if (failed) {
       fake::failClosePath.clear();
@@ -114,8 +126,15 @@ class HalFile {
     return !failed;
   }
   bool isDirectory() const { return node && node->directory; }
+  bool hasError() const { return !node || error; }
   void rewindDirectory() { pos = 0; }
   HalFile openNextFile() {
+    if (path == fake::failEnumerationPath && static_cast<int>(pos) == fake::failEnumerationAt) {
+      error = true;
+      fake::failEnumerationAt = -1;
+      fake::failureTriggered = true;
+      return {};
+    }
     std::vector<std::string> children;
     for (const auto& [name, value] : fake::files) {
       std::string parent = name.substr(0, name.find_last_of('/'));
@@ -134,7 +153,16 @@ class HalFile {
     return file;
   }
   size_t getName(char* out, const size_t size) {
+    if (path == fake::failNamePath) {
+      fake::failureTriggered = true;
+      if (size > 0) out[0] = '\0';
+      return 0;
+    }
     const std::string name = path.substr(path.find_last_of('/') + 1);
+    if (name.size() >= size) {
+      if (size > 0) out[0] = '\0';
+      return 0;
+    }
     if (size > 0) {
       std::strncpy(out, name.c_str(), size);
       out[size - 1] = '\0';
@@ -196,6 +224,11 @@ class HalFile {
 
 class HalStorage {
  public:
+  enum class PathStatus { Present, Missing, Failed };
+  PathStatus lookupPath(const char* path) const {
+    if (fake::failOpenPath == path) return PathStatus::Failed;
+    return fake::files.count(path) ? PathStatus::Present : PathStatus::Missing;
+  }
   static HalStorage& getInstance() {
     static HalStorage storage;
     return storage;
@@ -209,6 +242,7 @@ class HalStorage {
   }
   HalFile open(const char* path) {
     HalFile file;
+    if (fake::failOpenPath == path) return file;
     const auto found = fake::files.find(path);
     if (found != fake::files.end()) {
       file.node = found->second;

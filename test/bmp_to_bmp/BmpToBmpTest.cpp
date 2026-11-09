@@ -1,3 +1,4 @@
+#include <Bitmap.h>
 #include <BmpToBmpConverter.h>
 #include <HalStorage.h>
 #include <Print.h>
@@ -79,6 +80,17 @@ class BmpToBmpTest : public ::testing::Test {
     file.close();
     return out;
   }
+  BmpReaderError parse(const std::vector<uint8_t>& bmp) {
+    {
+      std::ofstream out(path, std::ios::binary);
+      out.write(reinterpret_cast<const char*>(bmp.data()), bmp.size());
+    }
+    if (!file.open(path.c_str(), "rb")) return BmpReaderError::FileInvalid;
+    Bitmap bitmap(file);
+    const auto result = bitmap.parseHeaders();
+    file.close();
+    return result;
+  }
   // Display stub is 64x40, so portrait output is at most 40x64. Returns level of pixel (x, y).
   static int level(const Output& out, int x, int y) {
     const unsigned bits = out.bytes[28];
@@ -127,6 +139,20 @@ TEST_F(BmpToBmpTest, OneBitSourceStaysOneBit) {
   EXPECT_EQ(le32(out.bytes, 18), 40u);
   EXPECT_EQ(level(out, 3, 2), 0);
   EXPECT_EQ(level(out, 3, 61), 1);
+}
+
+TEST_F(BmpToBmpTest, RejectsMinimumSignedHeightAndTruncatedPalette) {
+  auto valid = splitBmp(20, 32, false, true);
+  EXPECT_EQ(parse(valid), BmpReaderError::Ok);
+  auto invalidHeight = valid;
+  invalidHeight[22] = 0;
+  invalidHeight[23] = 0;
+  invalidHeight[24] = 0;
+  invalidHeight[25] = 0x80;
+  EXPECT_EQ(parse(invalidHeight), BmpReaderError::BadDimensions);
+  auto shortPalette = valid;
+  shortPalette.resize(59);
+  EXPECT_EQ(parse(shortPalette), BmpReaderError::ShortReadPalette);
 }
 
 }  // namespace

@@ -2,13 +2,19 @@
 
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
 #include <Logging.h>
+#include <Memory.h>
 #include <SDCardManager.h>
 #include <esp_heap_caps.h>
+
+#include "CheckedStoragePath.h"
+#include "SmallFileIdentity.h"
 #if FREEINK_CAP_USB_MSC
 #include <UsbMassStorage.h>
 #endif
 
 #include <cassert>
+#include <cstring>
+#include <utility>
 
 #define SDCard SDCardManager::getInstance()
 
@@ -189,9 +195,77 @@ HalFile HalStorage::open(const char* path, const oflag_t oflag) {
   return HalFile(std::make_unique<HalFile::Impl>(SDCard.open(path, oflag)));
 }
 
+HalFile HalStorage::openChecked(const char* path, const oflag_t oflag) {
+  StorageLock lock;
+  auto wrapper = makeUniqueNoThrow<HalFile::Impl>(FsFile{});
+  if (!wrapper) return {};
+  wrapper->file = SDCard.open(path, oflag);
+  return HalFile(std::move(wrapper));
+}
+
 bool HalStorage::mkdir(const char* path, const bool pFlag) { HAL_STORAGE_WRAPPED_CALL(mkdir, path, pFlag); }
 
 bool HalStorage::exists(const char* path) { HAL_STORAGE_WRAPPED_CALL(exists, path); }
+
+HalStorage::PathStatus HalStorage::lookupPath(const char* path) {
+  StorageLock lock;
+  if (!SDCard.ready() || !path || path[0] != '/') return PathStatus::Failed;
+  const size_t length = strlen(path);
+  auto components = makeUniqueNoThrow<char[]>(length + 1);
+  if (!components) return PathStatus::Failed;
+  memcpy(components.get(), path, length + 1);
+  char* component = components.get() + 1;
+  // Validate the entire path before reporting an earlier component missing.
+  for (char* part = component; *part;) {
+    char* separator = strchr(part, '/');
+    if (separator) *separator = '\0';
+    if (!validCheckedStorageComponent(part)) return PathStatus::Failed;
+    if (!separator) break;
+    *separator = '/';
+    part = separator + 1;
+    if (!*part) return PathStatus::Failed;
+  }
+  auto directory = SDCard.open("/");
+  if (!directory || !directory.isDirectory()) return PathStatus::Failed;
+  while (*component) {
+    // Only this handle opts in; regular readers retain their existing behavior.
+    if (!directory.enableStrictLookup()) return PathStatus::Failed;
+    char* separator = strchr(component, '/');
+    if (separator) *separator = '\0';
+    FsFile entry;
+    // The pinned SdFat patch carries long-filename read errors to the parent.
+    if (!entry.open(&directory, component, O_RDONLY)) {
+      const bool failed = directory.getError() != 0;
+      const bool closed = directory.close();
+      return failed || !closed ? PathStatus::Failed : PathStatus::Missing;
+    }
+    if (directory.getError() != 0 || !directory.close()) return PathStatus::Failed;
+    if (!separator) return entry.close() ? PathStatus::Present : PathStatus::Failed;
+    if (!entry.isDirectory()) return PathStatus::Failed;
+    directory = std::move(entry);
+    component = separator + 1;
+    if (!*component) return PathStatus::Failed;
+  }
+  return directory.close() ? PathStatus::Present : PathStatus::Failed;
+}
+
+bool HalStorage::withStorageLock(bool (*operation)(void*), void* context) {
+  if (!operation) return false;
+  StorageLock lock;
+  return operation(context);
+}
+
+bool HalStorage::distinctFirstClusters(const char* first, const char* second) {
+  StorageLock lock;
+  if (!first || !second || lookupPath(first) != PathStatus::Present || lookupPath(second) != PathStatus::Present)
+    return false;
+  auto left = SDCard.open(first, O_RDONLY);
+  auto right = SDCard.open(second, O_RDONLY);
+  const bool distinct = left && right && smallFilesHaveDifferentFirstClusters(left, right);
+  const bool leftClosed = !left || left.close();
+  const bool rightClosed = !right || right.close();
+  return distinct && leftClosed && rightClosed;
+}
 
 bool HalStorage::remove(const char* path) { HAL_STORAGE_WRAPPED_CALL(remove, path); }
 bool HalStorage::rename(const char* oldPath, const char* newPath) {
@@ -252,6 +326,7 @@ bool HalStorage::removeDir(const char* path) { HAL_STORAGE_WRAPPED_CALL(removeDi
   return impl->file.method(__VA_ARGS__);
 
 void HalFile::flush() { HAL_FILE_WRAPPED_CALL(flush, ); }
+bool HalFile::sync() { HAL_FILE_WRAPPED_CALL(sync, ); }
 size_t HalFile::getName(char* name, size_t len) { HAL_FILE_WRAPPED_CALL(getName, name, len); }
 size_t HalFile::size() { HAL_FILE_FORWARD_CALL(size, ); }              // already thread-safe, no need to wrap
 size_t HalFile::fileSize() { HAL_FILE_FORWARD_CALL(fileSize, ); }      // already thread-safe, no need to wrap
@@ -283,6 +358,10 @@ HalFile HalFile::openNextFile() {
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   return HalFile(std::make_unique<Impl>(impl->file.openNextFile()));
+}
+bool HalFile::hasError() const {
+  HalStorage::StorageLock lock;
+  return !impl || impl->file.getError() != 0;
 }
 bool HalFile::isOpen() const { return impl != nullptr && impl->file.isOpen(); }  // already thread-safe, no need to wrap
 HalFile::operator bool() const { return isOpen(); }

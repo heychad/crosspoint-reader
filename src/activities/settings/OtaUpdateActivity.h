@@ -11,6 +11,7 @@ class OtaUpdateActivity : public Activity {
     WAITING_CONFIRMATION,
     UPDATE_IN_PROGRESS,
     NO_UPDATE,
+    ONLINE_DISABLED,
     FAILED,
     FINISHED,
     SHUTTING_DOWN
@@ -22,6 +23,7 @@ class OtaUpdateActivity : public Activity {
   State state = WIFI_SELECTION;
   unsigned int lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
   OtaUpdater updater;
+  bool wifiStarted = false;
   // Optional detail line shown under the generic "Update failed" heading.
   // Points into the i18n string table (flash-resident, so no lifetime concern);
   // nullptr means no extra detail.

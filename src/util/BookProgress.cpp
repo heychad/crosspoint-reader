@@ -27,8 +27,9 @@ int loadBookProgress(const std::string& path) {
     if (!epub->load(false, true)) return -1;
     HalFile file;
     if (!Storage.openFileForRead("HOME", epub->getCachePath() + "/progress.bin", file)) return -1;
-    const int size = file.read(data, sizeof(data));
+    const size_t size = file.fileSize();
     if (size != 4 && size != 6 && size != 10) return -1;
+    if (file.read(data, size) != static_cast<int>(size)) return -1;
     const int spine = data[0] | (data[1] << 8);
     const int page = data[2] | (data[3] << 8);
     const int total = size >= 6 ? data[4] | (data[5] << 8) : 0;
@@ -46,11 +47,13 @@ int loadBookProgress(const std::string& path) {
     }
     if (!xtc->load()) return -1;
     HalFile file;
-    if (!Storage.openFileForRead("HOME", xtc->getCachePath() + "/progress.bin", file) || file.read(data, 4) != 4)
+    if (!Storage.openFileForRead("HOME", xtc->getCachePath() + "/progress.bin", file) || file.fileSize() != 4 ||
+        file.read(data, 4) != 4)
       return -1;
     const uint32_t page = readLe32(data);
     if (xtc->getPageCount() == 0) return -1;
-    if (page >= xtc->getPageCount()) return 100;
+    if (page > xtc->getPageCount()) return -1;
+    if (page == xtc->getPageCount()) return 100;
     return xtc->calculateProgress(page);
   }
   return -1;

@@ -96,18 +96,83 @@ TEST_F(SdFontRegistryTest, HiddenRootWinsAndKeepsItsOwnRoot) {
   EXPECT_EQ(pathOf(*inter, inter->files[0]), "/fonts/Inter/Inter_14.cpfont");
 }
 
-TEST_F(SdFontRegistryTest, OutOfMemoryNameCopySkipsOnlyThatFile) {
+TEST_F(SdFontRegistryTest, OutOfMemoryNameCopyDiscardsIncompleteRegistry) {
   fake::add("/.fonts/Bookerly/Bookerly-SD_14.cpfont");
   fake::add("/.fonts/Bookerly/Bookerly_16.cpfont");
 
+  ASSERT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::Ready);
   failNextArraySize = sizeof("Bookerly-SD_14.cpfont");
-  ASSERT_TRUE(registry.discover());
+  EXPECT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::FilenameAllocationFailed);
   EXPECT_EQ(failNextArraySize, 0u);
-  const auto* family = registry.findFamily("Bookerly");
-  ASSERT_NE(family, nullptr);
-  EXPECT_EQ(family->findFile(14), nullptr);
-  ASSERT_NE(family->findFile(16), nullptr);
-  EXPECT_EQ(pathOf(*family, *family->findFile(16)), "/.fonts/Bookerly/Bookerly_16.cpfont");
+  EXPECT_EQ(registry.getFamilyCount(), 0);
+}
+
+TEST_F(SdFontRegistryTest, AllocationFailureIsDistinctFromEmptyRegistry) {
+  fake::add("/.fonts/Bookerly/Bookerly-SD_14.cpfont");
+  ASSERT_TRUE(registry.discover());
+  ASSERT_NE(registry.findFamily("Bookerly"), nullptr);
+  failNextArraySize = sizeof("Bookerly-SD_14.cpfont");
+  EXPECT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::FilenameAllocationFailed);
+  EXPECT_EQ(failNextArraySize, 0u);
+  EXPECT_EQ(registry.findFamily("Bookerly"), nullptr);
+  SdCardFontRegistry genuinelyEmpty;
+  fake::reset();
+  EXPECT_EQ(genuinelyEmpty.discoverChecked(), SdCardFontRegistry::Discovery::Empty);
+}
+
+TEST_F(SdFontRegistryTest, CompletedRescanReplacesOldFamiliesAndCanClearThem) {
+  fake::add("/.fonts/Bitter/Bitter_14.cpfont");
+  ASSERT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::Ready);
+  fake::reset();
+  fake::add("/fonts/Inter/Inter_14.cpfont");
+  ASSERT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::Ready);
+  EXPECT_EQ(registry.findFamily("Bitter"), nullptr);
+  EXPECT_NE(registry.findFamily("Inter"), nullptr);
+  fake::reset();
+  EXPECT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::Empty);
+  EXPECT_EQ(registry.getFamilyCount(), 0);
+}
+
+TEST_F(SdFontRegistryTest, DirectoryReadFailuresDiscardPartialDiscovery) {
+  using Discovery = SdCardFontRegistry::Discovery;
+  fake::add("/.fonts/Bitter/Bitter_14.cpfont");
+  fake::add("/.fonts/Lora/Lora_14.cpfont");
+  ASSERT_EQ(registry.discoverChecked(), Discovery::Ready);
+
+  for (const auto& [path, position] :
+       {std::pair{"/.fonts", 0}, std::pair{"/.fonts", 1}, std::pair{"/.fonts/Bitter", 0}}) {
+    fake::failEnumerationPath = path;
+    fake::failEnumerationAt = position;
+    fake::failureTriggered = false;
+    EXPECT_EQ(registry.discoverChecked(), Discovery::DirectoryReadFailed);
+    EXPECT_TRUE(fake::failureTriggered);
+    EXPECT_EQ(registry.getFamilyCount(), 0);
+  }
+  fake::failOpenPath = "/.fonts";
+  EXPECT_EQ(registry.discoverChecked(), Discovery::DirectoryReadFailed);
+  EXPECT_EQ(registry.getFamilyCount(), 0);
+  fake::failOpenPath.clear();
+  fake::failNamePath = "/.fonts/Bitter/Bitter_14.cpfont";
+  EXPECT_EQ(registry.discoverChecked(), Discovery::DirectoryReadFailed);
+  EXPECT_EQ(registry.getFamilyCount(), 0);
+  fake::failNamePath.clear();
+  fake::failClosePath = "/.fonts/Bitter/Bitter_14.cpfont";
+  EXPECT_EQ(registry.discoverChecked(), Discovery::DirectoryReadFailed);
+  EXPECT_EQ(registry.getFamilyCount(), 0);
+  fake::failClosePath = "/.fonts";
+  EXPECT_EQ(registry.discoverChecked(), Discovery::DirectoryReadFailed);
+  EXPECT_EQ(registry.getFamilyCount(), 0);
+  fake::reset();
+  EXPECT_EQ(registry.discoverChecked(), Discovery::Empty);
+}
+
+TEST_F(SdFontRegistryTest, LongUnrelatedNamesDoNotBlockFonts) {
+  fake::add("/.fonts/Bitter/Bitter_14.cpfont");
+  fake::add("/.fonts/._" + std::string(200, 'x'));
+  fake::add("/.fonts/Bitter/" + std::string(127, 'x'));
+  fake::add("/.fonts/Bitter/" + std::string(240, 'y'));
+  EXPECT_EQ(registry.discoverChecked(), SdCardFontRegistry::Discovery::Ready);
+  EXPECT_NE(registry.findFamily("Bitter"), nullptr);
 }
 
 TEST_F(SdFontRegistryTest, OverlongPathsAreSkippedAtDiscovery) {

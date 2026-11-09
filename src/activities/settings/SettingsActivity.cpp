@@ -19,6 +19,8 @@
 #include "ClearCacheActivity.h"
 #include "ClockSettingsActivity.h"
 #include "CrossPointSettings.h"
+#include "DeviceDiagnosticsActivity.h"
+#include "EnumSelectionActivity.h"
 #include "FontDownloadActivity.h"
 #include "HomeButtonSettingsActivity.h"
 #include "KOReaderSettingsActivity.h"
@@ -27,6 +29,8 @@
 #include "MappedInputManager.h"
 #include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
+#include "ReaderBarsSettingsActivity.h"
+#include "ReadingStatsActivity.h"
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
@@ -34,11 +38,13 @@
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/reader/QuickActionsActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "personalization/ReaderQuickBindings.h"
 #include "util/PluginEvents.h"
 
 namespace fui = freeink::ui;
@@ -67,6 +73,7 @@ bool showOnDevice(const SettingInfo& setting) {
 // End = not a row here: other categories (KOReader Sync, Status Bar, ...)
 // only group the web UI; their rows live on their own sub-screens.
 SettingsSection sectionFor(const SettingInfo& setting) {
+  if (setting.category == StrId::STR_LIBRARY) return SettingsSection::Library;
   if (setting.valuePtr == &CrossPointSettings::libraryUseMetadata ||
       setting.valuePtr == &CrossPointSettings::removeReadBooksFromRecents ||
       setting.valuePtr == &CrossPointSettings::moveFinishedToReadFolder) {
@@ -81,7 +88,7 @@ SettingsSection sectionFor(const SettingInfo& setting) {
 }
 
 // Device-only action rows added per section, beyond the shared list.
-constexpr size_t EXTRA_ROWS_PER_SECTION = 6;
+constexpr size_t EXTRA_ROWS_PER_SECTION = 7;
 }  // namespace
 
 void SettingsActivity::rebuildSettings() {
@@ -110,6 +117,8 @@ void SettingsActivity::rebuildSettings() {
   addAction(SettingsSection::General, StrId::STR_LANGUAGE, SettingAction::Language);
   addAction(SettingsSection::General, StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts);
   addAction(SettingsSection::Reader, StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings);
+  addAction(SettingsSection::Reader, StrId::STR_READING_STATISTICS, SettingAction::ReadingStatistics);
+  addAction(SettingsSection::Controls, StrId::STR_QUICK_ACTIONS, SettingAction::QuickActions);
   addAction(SettingsSection::Reader, StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts);
   if (BoardConfig::hasHomeKey()) {
     addAction(SettingsSection::Controls, StrId::STR_HOME_BUTTON, SettingAction::HomeButton);
@@ -128,6 +137,7 @@ void SettingsActivity::rebuildSettings() {
     addAction(SettingsSection::General, StrId::STR_CLOCK, SettingAction::ClockSettings);
   }
   addAction(SettingsSection::Reader, StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar);
+  addAction(SettingsSection::Reader, StrId::STR_READER_BARS, SettingAction::ReaderBars);
   addAction(SettingsSection::Reader, StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache);
 
   addAction(SettingsSection::Network, StrId::STR_WIFI_NETWORKS, SettingAction::Network);
@@ -138,15 +148,16 @@ void SettingsActivity::rebuildSettings() {
   addAction(SettingsSection::Network, StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser);
   addAction(SettingsSection::Network, StrId::STR_PLUGINS, SettingAction::Plugins);
 
-  // OTA fetches this board's own release asset (see OtaUpdater); boards whose
-  // asset isn't published yet just report no update available. The Picco's
-  // stock layout has one app slot (partitions_picco.csv), so it cannot update
-  // itself either way.
+  // Online updates are disabled until the release transport is authenticated.
+  // The Picco's single app slot prevents either local update path.
   if (!BoardConfig::isPicco()) {
     addAction(SettingsSection::General, StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates);
     addAction(SettingsSection::General, StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate);
   }
   addAction(SettingsSection::General, StrId::STR_ABOUT, SettingAction::About);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  addAction(SettingsSection::General, StrId::STR_DEVICE_DIAGNOSTICS, SettingAction::DeviceDiagnostics);
+#endif
   rebuildRowItems();
 }
 
@@ -234,11 +245,34 @@ void SettingsActivity::toggleSelectedSetting() {
   } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
     const auto enumLabels = setting.enumLabels();
+    if (enumLabels.size() > static_cast<size_t>(OptionPopup::maxOptions())) {
+      const auto valuePtr = setting.valuePtr;
+      const int count = static_cast<int>(enumLabels.size());
+      auto picker =
+          makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, setting.nameId, enumLabels, currentValue);
+      if (!picker) {
+        LOG_ERR("SETTINGS", "OOM: enum selection");
+        return;
+      }
+      startActivityForResult(std::move(picker), [this, valuePtr, count, sleepScreenChanged,
+                                                 quickResumeTimeoutChanged](const ActivityResult& result) {
+        const auto* selected = std::get_if<MenuResult>(&result.data);
+        if (result.isCancelled || !selected || selected->action < 0 || selected->action >= count) return;
+        SETTINGS.*valuePtr = static_cast<uint8_t>(selected->action);
+        readerquickactions::normalizeBindings(SETTINGS, valuePtr);
+        syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
+        SETTINGS.saveToFile();
+        rebuildSettings();
+        applyUiSettingChange(valuePtr);
+      });
+      return;
+    }
     if (enumLabels.size() > 2) {
       const auto valuePtr = setting.valuePtr;
       optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), currentValue,
                        [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
                          SETTINGS.*valuePtr = idx;
+                         readerquickactions::normalizeBindings(SETTINGS, valuePtr);
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
                          SETTINGS.saveToFile();
                          rebuildSettings();
@@ -256,7 +290,9 @@ void SettingsActivity::toggleSelectedSetting() {
     if (totalValues > 2) {
       const auto valueSetter = setting.valueSetter;
       auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+        const auto bindingsBefore = readerquickactions::bindingValues(SETTINGS);
         valueSetter(idx);
+        readerquickactions::normalizeChangedBindings(SETTINGS, bindingsBefore);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
         rebuildSettings();
@@ -271,7 +307,9 @@ void SettingsActivity::toggleSelectedSetting() {
       requestUpdate();
       return;
     }
+    const auto bindingsBefore = readerquickactions::bindingValues(SETTINGS);
     setting.valueSetter((cur + 1) % totalValues);
+    readerquickactions::normalizeChangedBindings(SETTINGS, bindingsBefore);
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
     const int8_t currentValue = SETTINGS.*(setting.valuePtr);
     if (currentValue + setting.valueRange.step > setting.valueRange.max) {
@@ -296,8 +334,30 @@ void SettingsActivity::toggleSelectedSetting() {
       case SettingAction::RemapFrontButtons:
         startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
         break;
+      case SettingAction::QuickActions:
+        if (auto activity = makeUniqueNoThrow<QuickActionsActivity>(
+                renderer, mappedInput, QuickActionsActivity::Mode::Configure,
+                (uint64_t{1} << static_cast<unsigned>(readershortcuts::Action::Count)) - 1)) {
+          startActivityForResult(std::move(activity), resultHandler);
+        } else
+          LOG_ERR("SETTINGS", "OOM: Quick Actions");
+        break;
+      case SettingAction::ReaderBars:
+        if (auto activity = makeUniqueNoThrow<ReaderBarsSettingsActivity>(renderer, mappedInput)) {
+          startActivityForResult(std::move(activity), resultHandler);
+        } else {
+          LOG_ERR("SETTINGS", "OOM: ReaderBarsSettingsActivity");
+        }
+        break;
       case SettingAction::CustomiseStatusBar:
         startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::ReadingStatistics:
+        if (auto activity = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput)) {
+          startActivityForResult(std::move(activity), resultHandler);
+        } else {
+          LOG_ERR("SETTINGS", "OOM: ReadingStatsActivity");
+        }
         break;
       case SettingAction::ClockSettings:
         if (auto activity = makeUniqueNoThrow<ClockSettingsActivity>(renderer, mappedInput)) {
@@ -406,6 +466,13 @@ void SettingsActivity::toggleSelectedSetting() {
           LOG_ERR("SETTINGS", "OOM: AboutActivity");
         }
         break;
+      case SettingAction::DeviceDiagnostics:
+        if (auto activity = makeUniqueNoThrow<DeviceDiagnosticsActivity>(renderer, mappedInput)) {
+          startActivityForResult(std::move(activity), nullptr);
+        } else {
+          LOG_ERR("SETTINGS", "OOM: DeviceDiagnosticsActivity");
+        }
+        break;
       case SettingAction::None:
         // Do nothing
         break;
@@ -416,6 +483,7 @@ void SettingsActivity::toggleSelectedSetting() {
   }
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
+  readerquickactions::normalizeBindings(SETTINGS, setting.valuePtr);
   SETTINGS.saveToFile();
   const auto valuePtr = setting.valuePtr;  // rebuildSettings() replaces `setting`
   rebuildSettings();
@@ -485,6 +553,12 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
     return "";
   }
   if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
+    if (setting.valuePtr == &CrossPointSettings::readingIdleTimeThresholdUnits) {
+      char value[32];
+      snprintf(value, sizeof(value), tr(STR_STATS_SECONDS_FORMAT),
+               static_cast<unsigned>(SETTINGS.readingIdleTimeThresholdUnits) * 10U);
+      return value;
+    }
     if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
       if (SETTINGS.sleepTimeoutMinutes >= CrossPointSettings::SLEEP_TIMEOUT_NEVER_MINUTES) {
         return tr(STR_SLEEP_NEVER);

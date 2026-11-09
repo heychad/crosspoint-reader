@@ -23,6 +23,7 @@
 #include <XteinkDetect.h>
 #include <builtinFonts/all.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 #include <esp_wifi.h>
 #include <time.h>
 
@@ -42,9 +43,11 @@
 #include "WifiCredentialStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/reader/StatsSaveNotice.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "personalization/PhysicalShortcuts.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
@@ -466,6 +469,7 @@ static bool holdSleepWhileUsbPowered() {
 
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
+  physicalshortcuts::beforeSleep(activityManager);
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
 
@@ -579,6 +583,7 @@ void setup() {
 #endif
 
   HalSystem::begin();
+  statsSaveNotice().initialize(esp_reset_reason() == ESP_RST_DEEPSLEEP);
   // checkPanic() clears the watchdog capture marker after a successful SD
   // dump, so retain the boot classification for the later activity route.
   const bool rebootedFromPanic = HalSystem::isRebootFromPanic();
@@ -852,6 +857,8 @@ void loop() {
   static unsigned long lastMemPrint = 0;
 
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
+  mappedInputManager.setReaderHomeBlocked(activityManager.isForegroundReaderPage() &&
+                                          !SETTINGS.homeButtonInReaderEnabled && !activityManager.isInputLocked());
   mappedInputManager.update();
 
   // Bluetooth page turner, before the USB drive's early return: a card handed to USB stops the radio
@@ -944,37 +951,28 @@ void loop() {
     return;
   }
 
-  static bool screenshotButtonsReleased = true;
-  static bool screenshotComboActive = false;
-  if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.isPressed(HalGPIO::BTN_DOWN)) {
-    screenshotComboActive = true;
-    if (screenshotButtonsReleased) {
-      screenshotButtonsReleased = false;
-      {
-        RenderLock lock;
-        ScreenshotUtil::takeScreenshot(renderer);
-      }
-    }
+  const auto shortcutOutcome = physicalshortcuts::update(activityManager, mappedInputManager, gpio, renderer, millis());
+  if (shortcutOutcome == physicalshortcuts::Outcome::Sleep ||
+      shortcutOutcome == physicalshortcuts::Outcome::SleepTimeout) {
+    enterDeepSleep(shortcutOutcome == physicalshortcuts::Outcome::SleepTimeout);
     return;
   }
-  if (screenshotComboActive) {
-    if (gpio.isPressed(HalGPIO::BTN_POWER)) return;
-    if (gpio.wasReleased(HalGPIO::BTN_POWER)) {
-      screenshotButtonsReleased = true;
-      screenshotComboActive = false;
-      return;
-    }
-    screenshotButtonsReleased = true;
-    screenshotComboActive = false;
+  if (shortcutOutcome != physicalshortcuts::Outcome::Pass) {
+    if (shortcutOutcome == physicalshortcuts::Outcome::Handled) lastX4ProPowerClickAt = 0;
+    lastActivityTime = millis();
+    powerManager.setPowerSaving(activityManager.isInputLocked());
+    delay(10);
+    return;
   }
 
   // Consume the second X4 Pro power-button release so it does not also run a
   // configured short-power action after toggling the frontlight.
-  if (handleX4ProFrontlightDoubleClick()) {
+  if (!physicalshortcuts::overridesPowerTap() && handleX4ProFrontlightDoubleClick()) {
     return;
   }
 
-  const bool x4ProDoubleClickPwrLight = BoardConfig::isX4Pro() && SETTINGS.doubleClickPwrLight;
+  const bool x4ProDoubleClickPwrLight =
+      !physicalshortcuts::overridesPowerTap() && BoardConfig::isX4Pro() && SETTINGS.doubleClickPwrLight;
 
 #if FREEINK_CAP_TOUCH
   // A single X4 Pro power click becomes Confirm only after the frontlight
@@ -1028,7 +1026,8 @@ void loop() {
                                         SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP &&
                                         gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS;
 
-  if (!x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
+  if (!physicalshortcuts::overridesPowerHold() && !physicalshortcuts::overridesPowerTap() &&
+      !x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
       gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
     // If the screenshot combination is potentially being pressed, don't sleep
     if (gpio.isPressed(HalGPIO::BTN_DOWN)) {
@@ -1037,6 +1036,14 @@ void loop() {
     LOG_DBG("MAIN", "Power button held %lums, sleeping", gpio.getPowerButtonHeldTime());
     enterDeepSleep();
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
+    return;
+  }
+
+  // A custom hold defers the legacy single-tap Sleep until release.
+  if (physicalshortcuts::overridesPowerHold() && !physicalshortcuts::overridesPowerTap() && !x4ProDoubleClickPwrLight &&
+      SETTINGS.shortPwrBtn == CrossPointSettings::SLEEP && gpio.wasReleased(HalGPIO::BTN_POWER) &&
+      millis() >= allowSleepAt) {
+    enterDeepSleep();
     return;
   }
 

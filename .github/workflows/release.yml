@@ -12,35 +12,15 @@ permissions:
 
 jobs:
   build-release:
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - release_env: gh_release
-            rc_env: gh_release_rc
-            device: x3-x4
-          - release_env: sticky-gh_release
-            rc_env: sticky-gh_release_rc
-            device: sticky
           - release_env: x4pro-gh_release
             rc_env: x4pro-gh_release_rc
             device: x4pro
-          - release_env: x4c-gh_release
-            rc_env: x4c-gh_release_rc
-            device: x4c
-          - release_env: papermono-gh_release
-            rc_env: papermono-gh_release_rc
-            device: papermono
-          - release_env: metalio_eink4-gh_release
-            rc_env: metalio_eink4-gh_release_rc
-            device: metalio_eink4
-          - release_env: eego_a4-gh_release
-            rc_env: eego_a4-gh_release_rc
-            device: eego_a4
-          - release_env: picco-gh_release
-            rc_env: picco-gh_release_rc
-            device: picco
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,13 +31,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="${RELEASE_TAG#v}"
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}-chad\.[0-9]{1,9}$ ]]
+          (( ${#RELEASE_TAG} <= 26 ))
           configured_version="$(sed -n 's/^version = //p' platformio.ini | head -n1)"
-          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
-            test "$version" = "${configured_version}rc"
-          else
-            test "$version" = "$configured_version"
-          fi
+          test "$RELEASE_TAG" = "$configured_version"
 
       - uses: actions/setup-python@v6
         with:
@@ -112,7 +90,7 @@ jobs:
           PIO_ENV: ${{ github.event.release.prerelease && matrix.rc_env || matrix.release_env }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="${RELEASE_TAG#v}"
+          version="$RELEASE_TAG"
           asset="crosspoint-${version}-${{ matrix.device }}.bin"
           cp ".pio/build/${PIO_ENV}/firmware.bin" "$asset"
           echo "name=$asset" >> "$GITHUB_OUTPUT"
@@ -144,10 +122,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="${RELEASE_TAG#v}"
-          for device in x3-x4 sticky x4pro x4c papermono metalio_eink4 eego_a4 picco; do
-            test -f "dist/crosspoint-${version}-${device}.bin"
-          done
-          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 8
-          gh release upload "$RELEASE_TAG" dist/crosspoint-*.bin \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          set -euo pipefail
+          version="$RELEASE_TAG"
+          asset="dist/crosspoint-${version}-x4pro.bin"
+          test -f "$asset"
+          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 1
+          gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY"

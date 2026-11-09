@@ -49,6 +49,8 @@ std::string joinLibraryPath(std::string_view folder, std::string_view name);
 // dropped. Apostrophes survive as ASCII '\'' so names and elisions keep their
 // shape.
 std::string fold(std::string_view text);
+// Reuse output capacity during repeated metadata sorting. Input must not alias output.
+void foldInto(std::string_view text, std::string& out);
 
 // First letter of an already-folded sort key, or 0 when the key starts with a
 // number/non-letter. The Library renders 0 as its shared '#' group.

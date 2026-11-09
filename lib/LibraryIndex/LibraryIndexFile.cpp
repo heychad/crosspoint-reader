@@ -1,5 +1,6 @@
 #include "LibraryIndexFile.h"
 
+#include <Arduino.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -44,6 +45,7 @@ bool LibraryIndexFile::openImpl(const char* path, const bool acceptStaleFold) {
 }
 
 void LibraryIndexFile::close() {
+  ++generation;
   if (file.isOpen()) file.close();
   opened = false;
 }
@@ -85,6 +87,18 @@ uint16_t LibraryIndexFile::ordinalForRow(const SortOrder order, const uint16_t r
       uint16_t ordinal = NONE;
       return readAt(arrivalOrderOffset(head, k), &ordinal, sizeof(ordinal)) && ordinal < head.bookCount ? ordinal
                                                                                                         : NONE;
+    }
+    case SortOrder::SeriesAsc:
+    case SortOrder::SeriesDesc:
+    case SortOrder::GenreAsc:
+    case SortOrder::GenreDesc: {
+      if (head.formatVersion != CLIX_FORMAT_VERSION) return NONE;
+      const bool series = order == SortOrder::SeriesAsc || order == SortOrder::SeriesDesc;
+      const bool ascending = order == SortOrder::SeriesAsc || order == SortOrder::GenreAsc;
+      const uint16_t k = ascending ? row : static_cast<uint16_t>(head.bookCount - 1 - row);
+      const uint32_t offset = series ? seriesOrderOffset(head, k) : genreOrderOffset(head, k);
+      uint16_t ordinal = NONE;
+      return readAt(offset, &ordinal, sizeof(ordinal)) && ordinal < head.bookCount ? ordinal : NONE;
     }
   }
   return NONE;
@@ -196,6 +210,15 @@ bool LibraryIndexFile::readPathHash(const ClixRecord& record, uint64_t& out) {
 
 bool LibraryIndexFile::readBlobField(const ClixRecord& record, const uint8_t field, std::string& out) {
   out.clear();
+  uint32_t offset = 0;
+  uint8_t length = 0;
+  if (!locateBlobField(record, field, offset, length)) return false;
+  out.resize(length);
+  return length == 0 || readAt(head.nameStart + offset, out.data(), length);
+}
+
+bool LibraryIndexFile::locateBlobField(const ClixRecord& record, const uint8_t field, uint32_t& offset,
+                                       uint8_t& length) {
   if (!opened || record.nameLen == 0) return false;
   if (record.nameOff > head.nameLen || sizeof(uint64_t) > head.nameLen - record.nameOff ||
       record.nameLen > head.nameLen - record.nameOff - sizeof(uint64_t))
@@ -209,8 +232,9 @@ bool LibraryIndexFile::readBlobField(const ClixRecord& record, const uint8_t fie
     ++at;
     if (len > head.nameLen - at) return false;
     if (i == field) {
-      out.resize(len);
-      return len == 0 || readAt(head.nameStart + at, out.data(), len);
+      offset = at;
+      length = len;
+      return true;
     }
     at += len;
   }
@@ -231,16 +255,77 @@ bool LibraryIndexFile::readSourceAuthor(const ClixRecord& record, std::string& o
   return readBlobField(record, 2, out);
 }
 
+bool LibraryIndexFile::readSeries(const ClixRecord& record, std::string& out) {
+  out.clear();
+  if (!opened) return false;
+  return head.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION || readBlobField(record, 3, out);
+}
+
+bool LibraryIndexFile::readGenre(const ClixRecord& record, std::string& out) {
+  out.clear();
+  if (!opened) return false;
+  return head.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION || readBlobField(record, 4, out);
+}
+
+bool LibraryIndexFile::readSeriesPosition(const ClixRecord& record, uint32_t& out) {
+  out = CLIX_UNKNOWN_SERIES_POSITION;
+  if (!opened) return false;
+  if (head.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION) return true;
+  uint32_t offset = 0;
+  uint8_t length = 0;
+  if (!locateBlobField(record, 4, offset, length) || sizeof(out) > head.nameLen - offset - length) return false;
+  return readAt(head.nameStart + offset + length, &out, sizeof(out));
+}
+
 bool LibraryIndexFile::readPath(const ClixRecord& record, std::string& out) {
+  return readPathFrom(record, out, 0, head.folderStart);
+}
+
+LibraryIndexFile::PathLookup LibraryIndexFile::preparePathLookup() {
+  constexpr uint32_t MAX_CHECKPOINTS = 128;
+  PathLookup lookup;
+  if (!opened || head.folderCount == 0) return lookup;
+  lookup.stride = static_cast<uint16_t>((head.folderCount + MAX_CHECKPOINTS - 1) / MAX_CHECKPOINTS);
+  const uint32_t count = (head.folderCount + lookup.stride - 1) / lookup.stride;
+  lookup.offsets = makeUniqueNoThrow<uint32_t[]>(count);
+  if (!lookup.offsets) {
+    LOG_ERR("LIBIDX", "Failed to allocate %u bytes for folder lookup",
+            static_cast<unsigned int>(count * sizeof(uint32_t)));
+    return {};
+  }
+
+  uint32_t offset = head.folderStart;
+  const uint32_t folderEnd = head.folderStart + head.folderLen;
+  for (uint32_t folder = 0; folder < head.folderCount; ++folder) {
+    if ((folder & 31U) == 0) delay(1);
+    if (offset >= folderEnd) return {};
+    if (folder % lookup.stride == 0) lookup.offsets[folder / lookup.stride] = offset;
+    uint8_t length = 0;
+    if (!readAt(offset, &length, sizeof(length)) || length == 0 || length > folderEnd - offset - 1U) return {};
+    offset += 1U + length;
+  }
+  lookup.owner = this;
+  lookup.generation = generation;
+  return lookup;
+}
+
+bool LibraryIndexFile::readPath(const ClixRecord& record, std::string& out, const PathLookup& lookup) {
+  if (!lookup || lookup.owner != this || lookup.generation != generation || record.folderId >= head.folderCount) {
+    out.clear();
+    return false;
+  }
+  const uint16_t checkpoint = record.folderId / lookup.stride;
+  return readPathFrom(record, out, checkpoint * lookup.stride, lookup.offsets[checkpoint]);
+}
+
+bool LibraryIndexFile::readPathFrom(const ClixRecord& record, std::string& out, const uint16_t firstFolder,
+                                    uint32_t offset) {
   out.clear();
   if (!opened || record.folderId >= head.folderCount) return false;
 
-  // Folder records are variable length, so reaching folder n means walking the
-  // n preceding length bytes. At one seek per folder this is only done when a
-  // book is opened or its details are shown, never while paging.
-  uint32_t offset = head.folderStart;
   const uint32_t folderEnd = head.folderStart + head.folderLen;
-  for (uint16_t i = 0; i <= record.folderId; i++) {
+  for (uint32_t i = firstFolder; i <= record.folderId; i++) {
+    if (i > firstFolder && (i - firstFolder) % 32U == 0) delay(1);
     if (offset >= folderEnd) return false;
     uint8_t pathLen = 0;
     if (!readAt(offset, &pathLen, sizeof(pathLen)) || pathLen == 0) return false;

@@ -71,7 +71,7 @@ constexpr UiFontSize kUiFontSizes[] = {
 }  // namespace
 
 void SdCardFontSystem::begin(GfxRenderer& renderer) {
-  registry_.discover();
+  const auto discovery = registry_.discoverChecked();
   renderer_ = &renderer;
   cpfontVariants_.reserve(MAX_CPFONT_VARIANTS);
 #if CROSSPOINT_VECTOR_FONTS
@@ -91,6 +91,12 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
     return static_cast<SdCardFontSystem*>(ctx)->resolveFontId(familyName, pointSize);
   };
   SETTINGS.sdFontResolverCtx = this;
+
+  if (SdCardFontRegistry::discoveryFailed(discovery)) {
+    registryDirty_.store(true, std::memory_order_release);
+    LOG_ERR("SDFS", "Font discovery incomplete; retry required");
+    return;
+  }
 
   // If user has a saved SD font selection, load it
   if (SETTINGS.sdFontFamilyName[0] != '\0') {
@@ -123,6 +129,15 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
 }
 
 void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
+  const uint8_t requestedPointSize = SETTINGS.fontPointSize;
+  const auto useFallback = [requestedPointSize]() {
+    if (SETTINGS.bookReaderSettingsActive()) {
+      // Keep the book's selection so a later open can use a restored font.
+      SETTINGS.fontPointSize = requestedPointSize;
+    } else {
+      SETTINGS.clearSdFontFamily();
+    }
+  };
   // If the web server (or another task) installed/deleted fonts, re-discover.
   // Track whether we just re-discovered so we can force a reload below even
   // when the wanted family/size still maps to the same point size — the file
@@ -130,7 +145,12 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   const bool registryWasDirty = registryDirty_.exchange(false, std::memory_order_acquire);
   if (registryWasDirty) {
     LOG_DBG("SDFS", "Registry dirty — re-discovering fonts");
-    registry_.discover();
+    if (SdCardFontRegistry::discoveryFailed(registry_.discoverChecked())) {
+      registryDirty_.store(true, std::memory_order_release);
+      LOG_ERR("SDFS", "Font discovery incomplete; retry required");
+      return;
+    }
+    if (registryDirty_.load(std::memory_order_acquire)) return;
   }
 
   const char* wantedFamily = SETTINGS.sdFontFamilyName;
@@ -143,6 +163,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     if (wantedFam && wantedFam->vector) {
       if (!manager_.currentFamilyName().empty()) unloadCpfonts(renderer);
       loadTtfFamily(*wantedFam, renderer, registryWasDirty);
+      if (ttfFontId_ == 0 && SETTINGS.bookReaderSettingsActive()) SETTINGS.fontPointSize = requestedPointSize;
       return;
     }
   }
@@ -171,9 +192,9 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   if (familyMatches) {
     const auto* family = registry_.findFamily(wantedFamily);
     if (!family) {
-      LOG_DBG("SDFS", "SD font family disappeared: %s (clearing)", wantedFamily);
+      LOG_DBG("SDFS", "SD font family disappeared: %s", wantedFamily);
       unloadCpfonts(renderer);
-      SETTINGS.clearSdFontFamily();
+      useFallback();
       return;
     }
     const auto* selected = family->findNearestSize(SETTINGS.fontPointSize);
@@ -197,12 +218,12 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
       setupUiFallbacks(renderer);
       LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
     } else {
-      LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", wantedFamily);
-      SETTINGS.clearSdFontFamily();
+      LOG_ERR("SDFS", "Failed to load SD font family: %s", wantedFamily);
+      useFallback();
     }
   } else {
-    LOG_DBG("SDFS", "SD font family not found: %s (clearing)", wantedFamily);
-    SETTINGS.clearSdFontFamily();
+    LOG_DBG("SDFS", "SD font family not found: %s", wantedFamily);
+    useFallback();
   }
 }
 
@@ -650,7 +671,7 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
 
   if (family.files.empty()) {
     LOG_ERR("SDFS", "Vector family %s has no file", family.name.c_str());
-    SETTINGS.clearSdFontFamily();
+    if (!SETTINGS.bookReaderSettingsActive()) SETTINGS.clearSdFontFamily();
     return;
   }
 

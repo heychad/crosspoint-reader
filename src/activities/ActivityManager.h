@@ -12,13 +12,17 @@
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+#include "personalization/LockBadge.h"
+#include "personalization/QuickLockTrigger.h"
+#include "personalization/ReaderShortcuts.h"
 #include "settings/SettingsSection.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
+enum class SavedItemKind : uint8_t;
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, SAVED_ITEMS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
 
 /**
  * ActivityManager
@@ -36,6 +40,13 @@ enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSF
  */
 class ActivityManager {
   friend class RenderLock;
+
+ public:
+  enum class ControlKind { None, Sleep, ToggleLock };
+  struct ControlRequest {
+    ControlKind kind = ControlKind::None;
+    QuickLockTrigger trigger = QuickLockTrigger::None;
+  };
 
  protected:
   GfxRenderer& renderer;
@@ -63,6 +74,13 @@ class ActivityManager {
   // Must only be used via RenderLock
   SemaphoreHandle_t renderingMutex = nullptr;
 
+  ControlRequest pendingControl;
+  std::atomic<bool> inputLocked{false};
+  std::atomic<bool> renderInFlight{false};
+  bool lockedRenderPending = false;  // Protected by RenderLock.
+  LockBadge lockBadge;
+  bool lockLightWasOn = false;
+
   // Whether to trigger a render after the current loop()
   // This variable must only be set by the main loop, to avoid race conditions
   std::atomic<bool> requestedUpdate{false};
@@ -77,6 +95,23 @@ class ActivityManager {
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput);
   ~ActivityManager();
 
+  // Main-loop-owned command handoff; rendering never produces these requests.
+  void requestSleep() {
+    if (pendingControl.kind == ControlKind::None) pendingControl.kind = ControlKind::Sleep;
+  }
+  void requestInputLock(QuickLockTrigger trigger) {
+    if (trigger != QuickLockTrigger::None && pendingControl.kind == ControlKind::None)
+      pendingControl = {ControlKind::ToggleLock, trigger};
+  }
+  ControlRequest takeControlRequest() {
+    auto result = pendingControl;
+    pendingControl = {};
+    return result;
+  }
+  bool canApplyInputLock() const;
+  bool isInputLocked() const { return inputLocked.load(std::memory_order_acquire); }
+  bool applyInputLock(bool locked, bool restoreLight = true);
+  bool dispatchShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None);
   void begin();
   void loop();
 
@@ -91,6 +126,8 @@ class ActivityManager {
   void goToSettings(SettingsSection openSection = SettingsSection::End);
   void goToFileBrowser(std::string path = {});
   void goToLibrary();
+  void goToSavedItems();
+  void goToSavedBook(std::string path, SavedItemKind kind);
   void goToBrowser();
   void goToPlugins(bool showOpds);
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
@@ -113,6 +150,7 @@ class ActivityManager {
   // Bluetooth page turner (lib/BlePageTurner): the book in front, whether it has painted a page, and
   // a page or chapter turn from a remote. False when no book in front took the turn.
   bool isForegroundReader() const;
+  bool isForegroundReaderPage() const;
   bool isRemoteReaderContext() const;
   bool remoteClick(RemoteButton button);
   // Home is in front and has painted a frame of its own (not one left from the screen before).

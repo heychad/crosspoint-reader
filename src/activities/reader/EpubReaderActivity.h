@@ -10,6 +10,7 @@
 #include <optional>
 #include <vector>
 
+#include "BookReaderPreferences.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "ClipSelectionActivity.h"
@@ -19,8 +20,21 @@
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
 #include "components/OptionPopup.h"
+#include "personalization/ReaderPageLayout.h"
+#include "personalization/ReaderShortcuts.h"
+#include "util/SavedItems.h"
 
 class EpubReaderActivity final : public ReaderActivity {
+  ReaderPageLayout readerPageLayout() const;
+  char barChapterTitle[192]{};
+  int barChapterSpine = -1;
+  readershortcuts::Tracker shortcutTracker;
+  bool handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None) override;
+  bool supportsReaderShortcut(readershortcuts::Action action) const override;
+  void onReaderGestureStarted() override;
+  bool handleReaderShortcutInput();
+  bool customSideShortcuts() const;
+  void cycleAutoPageTurn();
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
@@ -38,8 +52,15 @@ class EpubReaderActivity final : public ReaderActivity {
   bool pendingManualTurnTouch = false;
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
+  std::optional<uint16_t> pendingParagraphJump;
+  std::optional<SavedItemKind> pendingSavedView;
+  void openSavedView(SavedItemKind kind);
   bool pendingScreenshot = false;
   bool pendingSyncSaveError = false;
+  std::atomic<bool> pendingBookSettingsSaveError{false};
+  std::atomic<bool> pendingFontPickerMemoryError{false};
+  std::atomic<bool> pendingFontCycleError{false};
+  std::atomic<bool> pendingFontListRefresh{false};
   uint8_t pageLoadRetryCount = 0;
   static constexpr uint8_t MAX_PAGE_LOAD_RETRIES = 3;
   bool skipNextButtonCheck = false;
@@ -152,6 +173,8 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr uint32_t BUILD_ROOM_WAIT_MS = 5000;
   static constexpr uint32_t BUILD_ROOM_STEP_MS = 50;
   bool inputOverPage() const override { return overlay != Overlay::None || ReaderActivity::inputOverPage(); }
+  bool showPendingFormatWarning() override;
+  bool formatPopupVisible() const override;
   // "Connecting Bluetooth…" or "Bluetooth failed" in place of the status bar title.
   mutable LinkNoteTitle linkNoteTitle;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
@@ -176,6 +199,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
   void openOverlay(Overlay target);
+  void openFontFamilyPicker(bool returnToTextPanel);
+  void cycleFontFamily();
   void closeOverlayToPage();
   void discardOverlayPage();
   void handleOverlayInput();
@@ -216,7 +241,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
   void drawClippingHighlights(const Page& page, int fontId, int orientedMarginTop, int orientedMarginLeft) const;
-  void renderStatusBar() const;
+  void renderStatusBar();
   void applyOrientation(uint8_t orientation);
   void applyInitialOrientation() override;
   // The orientation the current layout was built for. The control center's
@@ -233,7 +258,13 @@ class EpubReaderActivity final : public ReaderActivity {
   // failed Epub itself does not outlive loadBook().
   std::string loadProtectionError;
 
+  BookReaderPreferences bookPreferences;
+  bool bookSettingsActive = false;
+  void prepareReaderSettings() override;
+  bool saveBookReaderSettings();
+  void resetBookReaderSettings();
   bool loadBook() override;
+  const std::string& getBookCachePath() const override { return epub->getCachePath(); }
   bool handleLoadFailure() override;
   // Wi-Fi join + SNTP for a loan whose date could not be verified, then a
   // clean re-open of the book.
@@ -251,6 +282,9 @@ class EpubReaderActivity final : public ReaderActivity {
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~EpubReaderActivity() override;
 
+  void setInitialSavedView(SavedItemKind kind) { pendingSavedView = kind; }
+  void onExit() override;
+  void prepareForSleep() override;
   void loop() override;
   void render(RenderLock&& lock) override;
 

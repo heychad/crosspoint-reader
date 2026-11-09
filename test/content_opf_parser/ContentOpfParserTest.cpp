@@ -71,6 +71,27 @@ TEST(ContentOpfParserMetadata, ExtractsIsbnAsinAndCalibreSeries) {
   EXPECT_FLOAT_EQ(*parser.seriesIndex, 3.5f);
 }
 
+TEST(ContentOpfParserMetadata, UsesFirstNonemptySubjectAsGenreAcrossChunks) {
+  const std::string xml = R"(<package xmlns:dc="urn:dc"><metadata>
+    <dc:subject>   </dc:subject>
+    <dc:subject>Science  Fiction &amp; Fantasy</dc:subject>
+    <dc:subject>Adventure</dc:subject>
+  </metadata></package>)";
+  ContentOpfParser parser("", "", xml.size(), nullptr);
+  ASSERT_TRUE(parser.setup());
+  for (const unsigned char value : xml) ASSERT_EQ(parser.write(value), 1u);
+
+  EXPECT_EQ(parser.subject, "Science Fiction & Fantasy");
+}
+
+TEST(ContentOpfParserMetadata, BoundsOversizedSubjectText) {
+  const std::string xml = "<package><metadata><subject>" + std::string(65536, 'S') + "</subject></metadata></package>";
+  ContentOpfParser parser("", "", xml.size(), nullptr);
+  parse(parser, xml);
+
+  EXPECT_EQ(parser.subject, std::string(512, 'S'));
+}
+
 TEST(ContentOpfParserMetadata, ExtractsAmazonSchemeAsin) {
   const std::string xml = R"(<package xmlns:dc="urn:dc" xmlns:opf="urn:opf"><metadata>
     <dc:identifier opf:scheme="AMAZON">B0BF8Y54MS</dc:identifier>

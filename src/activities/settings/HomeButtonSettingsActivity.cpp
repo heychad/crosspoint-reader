@@ -1,34 +1,41 @@
 #include "HomeButtonSettingsActivity.h"
 
+#include <Logging.h>
+#include <Memory.h>
+
 #include <utility>
 
+#include "EnumSelectionActivity.h"
 #include "components/UITheme.h"
+#include "personalization/ReaderQuickBindings.h"
 
 namespace fui = freeink::ui;
 
-bool HomeButtonSettingsActivity::handleCustomInput() {
-  return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
-}
-
 void HomeButtonSettingsActivity::activateIndex(int index) {
-  if (index < 0 || index >= listCount() || optionPopup.isActive()) return;
+  if (index < 0 || index >= listCount()) return;
   mappedInput.resetHomeButtonInput();
   app.clearTapFlash();
   nav.selected = index;
   const auto field = home_button::FIELDS[index];
   const uint8_t value = SETTINGS.*field;
   const int current = value < static_cast<uint8_t>(HomeButtonAction::Count) ? value : 0;
-  optionPopup.show(home_button::GESTURE_LABELS[index], home_button::ACTION_LABELS,
-                   static_cast<int>(HomeButtonAction::Count), current, [field](int selected) {
-                     SETTINGS.*field = static_cast<uint8_t>(selected);
-                     SETTINGS.saveToFile();
-                   });
-  requestUpdate();
-}
-
-void HomeButtonSettingsActivity::render(RenderLock&& lock) {
-  if (optionPopup.processRender(renderer, mappedInput)) return;
-  UiListActivity::render(std::move(lock));
+  auto picker = makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, home_button::GESTURE_LABELS[index],
+                                                         std::span<const StrId>(home_button::ACTION_LABELS), current);
+  if (!picker) {
+    LOG_ERR("SETTINGS", "OOM: Home button action picker");
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(picker), [this, field](const ActivityResult& result) {
+    const auto* selected = std::get_if<MenuResult>(&result.data);
+    if (!result.isCancelled && selected && selected->action >= 0 &&
+        selected->action < static_cast<int>(HomeButtonAction::Count)) {
+      SETTINGS.*field = static_cast<uint8_t>(selected->action);
+      readerquickactions::normalizeBindings(SETTINGS, field);
+      SETTINGS.saveToFile();
+    }
+    requestUpdate();
+  });
 }
 
 void HomeButtonSettingsActivity::buildScreen(UiScreen& screen) {

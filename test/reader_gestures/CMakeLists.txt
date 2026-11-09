@@ -1,0 +1,5 @@
+FetchContent_GetProperties(ArduinoJson)
+add_executable(ReaderGesturesTest ReaderGesturesTest.cpp TwoFingerSwipeTest.cpp EdgeSlideTest.cpp PinchFontResizeTest.cpp ../../src/personalization/ReaderGestures.cpp)
+target_include_directories(ReaderGesturesTest PRIVATE ../../src ${arduinojson_SOURCE_DIR}/src)
+target_link_libraries(ReaderGesturesTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(ReaderGesturesTest)

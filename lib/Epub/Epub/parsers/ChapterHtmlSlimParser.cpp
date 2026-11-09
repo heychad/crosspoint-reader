@@ -493,12 +493,63 @@ uint8_t ChapterHtmlSlimParser::dropCapLines(const CssStyle& style) {
   return large ? static_cast<uint8_t>(std::clamp(static_cast<int>(style.fontSize.value + 0.5f), 2, 4)) : 3;
 }
 
+CssStyle ChapterHtmlSlimParser::resolveElementStyle(const std::string_view tag, const std::string_view classes,
+                                                    const std::string_view id, const bool firstLetter) const {
+  const size_t elementDepth = static_cast<size_t>(depth);
+  return cssParser->resolveStyle(tag, classes, id, cssAncestors.data(),
+                                 elementDepth <= MAX_CSS_ANCESTORS ? elementDepth : 0, firstLetter);
+}
+
+void ChapterHtmlSlimParser::simplifyPublisherStyle(CssStyle& style) const {
+  if (renderMode != EpubRenderMode::Light) return;
+  style.textIndent = {};
+  style.marginTop = {};
+  style.marginBottom = {};
+  style.marginLeft = {};
+  style.marginRight = {};
+  style.paddingTop = {};
+  style.paddingBottom = {};
+  style.paddingLeft = {};
+  style.paddingRight = {};
+  style.imageHeight = {};
+  style.imageWidth = {};
+  style.fontSize = {};
+  style.borderTop = {};
+  style.borderRight = {};
+  style.borderBottom = {};
+  style.borderLeft = {};
+  style.borderWidthsDefined = 0;
+  style.borderStylesDefined = 0;
+  style.shaded = false;
+  style.floatLeft = false;
+  style.initialLetter = 0;
+  style.defined.textIndent = 0;
+  style.defined.marginTop = 0;
+  style.defined.marginBottom = 0;
+  style.defined.marginLeft = 0;
+  style.defined.marginRight = 0;
+  style.defined.paddingTop = 0;
+  style.defined.paddingBottom = 0;
+  style.defined.paddingLeft = 0;
+  style.defined.paddingRight = 0;
+  style.defined.imageHeight = 0;
+  style.defined.imageWidth = 0;
+  style.defined.fontSize = 0;
+  style.defined.borderTop = 0;
+  style.defined.borderRight = 0;
+  style.defined.borderBottom = 0;
+  style.defined.borderLeft = 0;
+  style.defined.shaded = 0;
+  style.defined.floatLeft = 0;
+  style.defined.initialLetter = 0;
+}
+
 void ChapterHtmlSlimParser::armFirstLetterDropCap(const char* tagName, const std::string& classAttr,
                                                   const char* idAttr) {
-  if (!cssParser || !cssParser->hasFirstLetterRules() || tableDepth > 0 || dropCap.length > 0) return;
-  const auto elementDepth = static_cast<size_t>(depth);
-  const CssStyle firstLetter = cssParser->resolveStyle(tagName, classAttr, idAttr, cssAncestors.data(),
-                                                       elementDepth <= MAX_CSS_ANCESTORS ? elementDepth : 0, true);
+  if (renderMode == EpubRenderMode::Light || !cssParser || !cssParser->hasFirstLetterRules() || tableDepth > 0 ||
+      dropCap.length > 0)
+    return;
+  const CssStyle firstLetter = resolveElementStyle(tagName, classAttr, idAttr, true);
   const uint8_t lines = dropCapLines(firstLetter);
   if (lines == 0) return;
   dropCap.firstLetterPending = true;
@@ -840,6 +891,8 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
     startNewTextBlock(parentBlockStyle);
   }
 
+  // Keep the word boundary when Light omits the rule.
+  if (renderMode == EpubRenderMode::Light) return;
   if (!currentPage) {
     currentPage.reset(new (std::nothrow) Page());
     if (!currentPage) {
@@ -957,6 +1010,7 @@ void ChapterHtmlSlimParser::closeTableCell() {
 }
 
 void ChapterHtmlSlimParser::addTableRowSeparator() {
+  if (renderMode == EpubRenderMode::Light) return;
   // The rule starts below the row's last glyphs.
   const int top = std::max<int>(currentPageNextY, lastLineGlyphBottom());
   if (!currentPage || currentPage->elements.empty() || viewportWidth == 0 ||
@@ -1422,8 +1476,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   CssStyle cssStyle;
   if (self->cssParser) {
     const auto elementDepth = static_cast<size_t>(self->depth);
-    cssStyle = self->cssParser->resolveStyle(name, classAttr, idAttr, self->cssAncestors.data(),
-                                             elementDepth <= MAX_CSS_ANCESTORS ? elementDepth : 0);
+    cssStyle = self->resolveElementStyle(name, classAttr, idAttr);
     if (elementDepth < MAX_CSS_ANCESTORS) {
       self->cssAncestors[elementDepth] = CssParser::makeAncestor(name, classAttr, idAttr);
     }
@@ -1432,6 +1485,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       cssStyle.applyOver(inlineStyle);
     }
   }
+
+  self->simplifyPublisherStyle(cssStyle);
 
   // Resolve explicit inheritance after the cascade, before this element changes the active style.
   switch (cssStyle.fontWeight) {
@@ -1515,15 +1570,15 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->pushBlockTextStyleEntry(cssStyle);
     self->tableDepth = 1;
     self->insideTableCell = false;
-    self->tableRowStacked = false;
+    self->tableRowStacked = self->renderMode != EpubRenderMode::Default;
     self->tableRowRtl = cssStyle.hasDirection() && cssStyle.direction == CssTextDirection::Rtl;
     self->tableRowsSpannedRemaining = 0;
     self->tableRowTextBytes = 0;
     self->tableRowCells.clear();
-    self->tableRowCells.reserve(MAX_GRID_TABLE_COLUMNS);
+    if (self->renderMode == EpubRenderMode::Default) self->tableRowCells.reserve(MAX_GRID_TABLE_COLUMNS);
     self->tableBorder = CssBorderSide{};
     self->tableColumnCount = 0;
-    if (self->xmlParser_) {
+    if (self->renderMode == EpubRenderMode::Default && self->xmlParser_) {
       // Rows stream in one at a time, so plan shared column widths from the raw markup first.
       HalFile tableFile;
       TableColumnMeasure measure;
@@ -1553,7 +1608,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     }
     self->currentTextBlock.reset();
     self->tableRowTextBytes = 0;
-    self->tableRowStacked = self->tableRowsSpannedRemaining > 0;
+    self->tableRowStacked = self->renderMode != EpubRenderMode::Default || self->tableRowsSpannedRemaining > 0;
     self->tableRowRtl = cssStyle.hasDirection() && cssStyle.direction == CssTextDirection::Rtl;
     if (self->tableRowsSpannedRemaining != UINT16_MAX && self->tableRowsSpannedRemaining > 0) {
       self->tableRowsSpannedRemaining--;
@@ -1573,6 +1628,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     }
     self->currentTextBlock.reset();
 
+    if (self->renderMode != EpubRenderMode::Default) self->tableRowStacked = true;
     const uint16_t columnSpan = parseTableSpan(getAttribute(atts, "colspan"));
     const uint16_t rowSpan = parseTableSpan(getAttribute(atts, "rowspan"));
     if (columnSpan > 1 || rowSpan > 1) {
@@ -1595,6 +1651,10 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     tableCellBlockStyle.paddingRight = cssStyle.hasPaddingRight()
                                            ? padding(cssStyle.paddingRight, self->viewportWidth / 4)
                                            : TABLE_CELL_HORIZONTAL_PADDING;
+    if (self->renderMode == EpubRenderMode::Light) {
+      tableCellBlockStyle.paddingLeft = 0;
+      tableCellBlockStyle.paddingRight = 0;
+    }
     tableCellBlockStyle.paddingTop = padding(cssStyle.paddingTop, self->viewportHeight / 4);
     tableCellBlockStyle.paddingBottom = padding(cssStyle.paddingBottom, self->viewportHeight / 4);
     tableCellBlockStyle.textAlignDefined = true;
@@ -2264,7 +2324,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     // Handle span and other inline elements for CSS styling.
     const bool inheritedTableTextAlign = self->tableDepth >= 1 && cssStyle.hasTextAlign();
     // <small>/<big> default to the browser's relative sizes.
-    const float tagScale = strcmp(name, "small") == 0 ? 0.83f : (strcmp(name, "big") == 0 ? 1.2f : 0.0f);
+    const float tagScale = self->renderMode == EpubRenderMode::Light ? 0.0f
+                           : strcmp(name, "small") == 0              ? 0.83f
+                                                                     : (strcmp(name, "big") == 0 ? 1.2f : 0.0f);
     const bool sized = cssStyle.hasFontSize() || tagScale > 0.0f;
     if (sized || cssStyle.hasFontWeight() || cssStyle.hasFontStyle() || cssStyle.hasTextDecoration() ||
         cssStyle.hasSmallCaps() || cssStyle.defined.whiteSpace || cssStyle.hasDirection() ||
@@ -3014,6 +3076,7 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 
 void ChapterHtmlSlimParser::applyBlockFontScale(BlockStyle& blockStyle, const CssStyle& cssStyle,
                                                 const char* tagName) const {
+  if (renderMode == EpubRenderMode::Light) return;
   float parentScale = blockStyleStack.empty() ? 1.0f : blockStyleStack.back().fontScale;
   for (const auto& entry : inlineStyleStack) {
     if (entry.hasFontScale) parentScale = entry.fontScaleRem ? entry.fontScale : parentScale * entry.fontScale;

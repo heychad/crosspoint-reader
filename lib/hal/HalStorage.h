@@ -21,6 +21,7 @@ enum class UsbDriveState : uint8_t {
 
 class HalStorage {
  public:
+  enum class PathStatus { Missing, Present, Failed };
   HalStorage();
   bool begin();
   bool ready() const;
@@ -55,8 +56,21 @@ class HalStorage {
   bool ensureDirectoryExists(const char* path);
 
   HalFile open(const char* path, const oflag_t oflag = O_RDONLY);
+  // Allocate the wrapper before opening or creating the file; returns an empty
+  // handle if that allocation fails. Other I/O failures also return empty.
+  HalFile openChecked(const char* path, const oflag_t oflag = O_RDONLY);
   bool mkdir(const char* path, const bool pFlag = true);
   bool exists(const char* path);
+  // Missing alone does not authorize recovery writes on FAT or exFAT.
+  PathStatus lookupPath(const char* path);
+  // Execute a bounded transaction under the same recursive lock used by all
+  // storage operations. The callback must not block waiting for another task
+  // which needs storage. This only serializes operations through HalStorage.
+  bool withStorageLock(bool (*operation)(void*), void* context);
+  // Check distinct first clusters of two regular files with allocated lengths
+  // from 1 to 512 bytes. Caller must hold withStorageLock across the complete
+  // transaction; this does not validate the entire filesystem.
+  bool distinctFirstClusters(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);
   // Move a fully written temp file over `path`, replacing any existing file.
@@ -99,6 +113,8 @@ class HalFile : public Print {
   HalFile& operator=(const HalFile&) = delete;
 
   void flush();
+  // Unlike flush(), report the underlying storage synchronization result.
+  bool sync();
   size_t getName(char* name, size_t len);
   size_t size();
   size_t fileSize();
@@ -121,6 +137,8 @@ class HalFile : public Print {
   void rewindDirectory();
   bool close();
   HalFile openNextFile();
+  // A directory iteration can fail rather than reach the end.
+  bool hasError() const;
   bool isOpen() const;
   operator bool() const;
 };

@@ -7,12 +7,17 @@
 
 #include <cstdint>
 
+#include "personalization/BookReaderSettings.h"
+#include "personalization/ReaderBars.h"
+#include "personalization/ReaderShortcuts.h"
+#include "personalization/UiScale.h"
 #include "util/HomeButtonInput.h"
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
   // Private constructor for singleton
   CrossPointSettings() = default;
+  BookReaderSettingsScope bookReaderSettings;
 
   friend class PersistableStore<CrossPointSettings>;
 
@@ -27,6 +32,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     QUICK_RESUME = 6,
     TRANSPARENT_CUSTOM = 7,
     COVER_TRANSPARENT = 8,
+    READING_STATS_SLEEP = 9,
+    READING_SUMMARY_SLEEP = 10,
+    COVER_SUMMARY_SLEEP = 11,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -174,6 +182,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     PWR_BOOKMARK = 7,
     PWR_SYNC = 8,
     PWR_READER_MENU = 9,
+    PWR_QUICK_ACTIONS = 10,
     SHORT_PWRBTN_COUNT
   };
 
@@ -187,6 +196,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_READER_MENU = 4,
     LP_MENU_CREATE_CLIPPING = 5,
     LP_MENU_FOOTNOTES = 6,
+    LP_MENU_QUICK_ACTIONS = 7,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
@@ -202,7 +212,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // UI Theme
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, COVER_GRID = 4 };
+  enum UI_THEME {
+    CLASSIC = 0,
+    LYRA = 1,
+    LYRA_3_COVERS = 2,
+    ROUNDEDRAFF = 3,
+    COVER_GRID = 4,
+    MINIMAL_HOME = 5,
+    DASHBOARD_HOME = 6
+  };
+  enum RECENT_BOOKS_VIEW { RECENT_BOOKS_LIST = 0, RECENT_BOOKS_GRID = 1, RECENT_BOOKS_VIEW_COUNT };
 
   // Image rendering in EPUB reader. IMAGES_DISPLAY_BW lays images out like
   // IMAGES_DISPLAY but draws them as a B/W dither, so image pages skip the
@@ -259,6 +278,30 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepScreenCoverMode = FIT;
   // Sleep screen cover filter
   uint8_t sleepScreenCoverFilter = NO_FILTER;
+  std::array<uint8_t, 5> readerQuickActions{};
+  uint8_t powerTapAction = 0;
+  uint8_t powerHoldAction = 0;
+  uint8_t powerUpChordAction = 0;
+  uint8_t backHoldAction = 0;
+  uint8_t confirmHoldAction = 0;
+  uint8_t readerUpTap = 0;
+  uint8_t readerUpHold = 0;
+  uint8_t readerDownTap = 0;
+  uint8_t readerDownHold = 0;
+  uint8_t readerSideChord = 0;
+  uint8_t pinchFontResizeEnabled = 1;
+  uint8_t twoFingerRotationEnabled = 1;
+  std::array<uint8_t, 4> twoFingerActions{};
+  void setTwoFingerAction(size_t index, uint8_t value);
+  uint8_t readerLeftEdgeUp = 0;
+  uint8_t readerLeftEdgeDown = 0;
+  uint8_t readerRightEdgeUp = 0;
+  uint8_t readerRightEdgeDown = 0;
+
+  bool readerBarsEnabled = false;
+  ReaderBar readerTopBar;
+  ReaderBar readerBottomBar;
+
   // Status bar settings
   uint8_t statusBarChapterPageCount = 1;
   uint8_t statusBarBookProgressPercentage = 1;
@@ -304,6 +347,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
   uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
   uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
+  uint8_t homeButtonInReaderEnabled = 1;
+  uint8_t uiScale = static_cast<uint8_t>(uiscale::Value::Large);
   // EPUB reading orientation settings
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
@@ -361,6 +406,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t embeddedStyle = 1;
   // Focus Reading - emphasizes the first part of words with bold
   uint8_t focusReadingEnabled = 0;
+  uint8_t trackReadingStats = 1;
+  uint8_t readingIdleTimeThresholdUnits = 30;  // Ten-second units, 30s to 10 min.
   uint8_t readerMenuStyle = READER_MENU_LIST;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
@@ -377,6 +424,19 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Show the title and author read from inside each book rather than its
   // filename. Users can disable this to make index rebuilds skip EPUB parsing.
   uint8_t libraryUseMetadata = 1;
+  uint8_t libraryListExpanded = 1;
+  uint8_t recentBooksView = RECENT_BOOKS_LIST;
+  uint8_t libraryTitleCoverGrid = 0;
+  uint8_t libraryFirstOnHome = 0;
+  uint8_t libraryShowSeries = 1;
+  uint8_t libraryShowGenre = 1;
+  uint8_t libraryShowEpub = 1;
+  uint8_t libraryShowXtc = 1;
+  uint8_t libraryShowTxt = 1;
+  uint8_t libraryShowMarkdown = 1;
+  uint8_t libraryHideFinishedBooks = 0;
+  uint8_t hideFileExtension = 0;
+  uint8_t fileBrowserDisplay = 1;  // 0 = one line, 1 = two lines
   // Remove a book from the Recent Books list when its End-of-Book screen is reached (0 = off, 1 = on)
   uint8_t removeReadBooksFromRecents = 0;
   // Move epub to /Read/ folder on SD card when finished (0 = disabled, 1 = enabled)
@@ -385,6 +445,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t backShortToFileBrowser = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
+  uint8_t epubRenderMode = static_cast<uint8_t>(EpubRenderMode::Default);
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)
   uint8_t tiltPageTurn = TILT_OFF;
   // Master reader-touch toggle on boards with a touch controller.
@@ -484,6 +545,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // passing it in keeps a spec from ever existing in a half-filled state.
   // Unlocked for the same reason as statusBarSpec(); see the note above.
   ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;
+
+  void beginBookReaderSettings(const BookReaderSettings& book);
+  bool bookReaderSettingsActive();
+  BookReaderSettings captureBookReaderSettings();
+  void resetBookReaderSettings();
+  void endBookReaderSettings();
 
   static const char* getFilePath() { return "/.crosspoint/settings.json"; }
   void toJson(JsonDocument& doc) const;

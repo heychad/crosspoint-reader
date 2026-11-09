@@ -1,0 +1,83 @@
+"""Exercise the production sleep dashboard's layout with a simulated display."""
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+
+root = Path(__file__).resolve().parents[2]
+source = (root / 'src/activities/boot_sleep/ReadingStatsSleep.cpp').read_text()
+source = source[source.index('namespace sleepstats {'):]
+ids = sorted(set(re.findall(r'\bSTR_[A-Z_]+\b', source)))
+prelude = r'''
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+enum class StrId { IDS };
+using enum StrId;
+const char* tr(StrId id) { static std::string s; s=std::to_string(static_cast<int>(id)); return s.c_str(); }
+struct { const char* get(StrId id) { return tr(id); } } I18N;
+struct EpdFontFamily { enum Style { REGULAR, BOLD }; };
+constexpr int SMALL_FONT_ID=1, UI_10_FONT_ID=2, UI_12_FONT_ID=3;
+struct Rect { int x,y,width,height; };
+struct GfxRenderer {
+ int width=480,height=800; mutable bool cleared=false; mutable std::vector<std::string> text;
+ int getLineHeight(int f) const { return f==SMALL_FONT_ID?10:14; }
+ int getTextWidth(int,const char* s,EpdFontFamily::Style=EpdFontFamily::REGULAR) const {return int(strlen(s))*5;}
+ void valid(int x,int y,int w,int h) const { assert(x>=0 && y>=0 && w>=0 && h>=0 && x+w<=width && y+h<=height); }
+ void drawText(int f,int x,int y,const char* s,bool,EpdFontFamily::Style st) const {valid(x,y,getTextWidth(f,s,st),getLineHeight(f)); text.emplace_back(s);}
+ void drawRect(int x,int y,int w,int h) const {valid(x,y,w,h);}
+ void drawLine(int x,int y,int x2,int y2) const {assert(x2>=x && y2>=y);valid(x,y,x2-x+1,y2-y+1);}
+ void fillRect(int x,int y,int w,int h) const {valid(x,y,w,h);}
+ void clearScreen() const {cleared=true;}
+};
+struct UITheme {static Rect getContentArea(const GfxRenderer& r){return {0,0,r.width,r.height};}};
+struct Bitmap {}; bool coverDrawOk=true;
+struct BaseTheme {static bool drawCoverThumbFill(const GfxRenderer& r,const Bitmap&,Rect box){r.valid(box.x,box.y,box.width,box.height);return coverDrawOk;}};
+struct ReadingStatsDate {uint16_t year=0;uint8_t month=0,day=0;bool isValid()const{return year&&month&&day;}};
+struct ReadingStatsDateTime {};
+struct BookReadingStats {
+ uint16_t sessionCount=0; uint32_t totalReadingSeconds=0,totalPagesTurned=0; bool isCompleted=false;
+ ReadingStatsDate startDate,finishedDate; std::array<uint32_t,4> timeOfDaySeconds{};std::array<uint32_t,7> dayOfWeekSeconds{};
+ static void formatDuration(uint32_t n,char* out,size_t size){snprintf(out,size,"%us",n);}
+ uint32_t remainingReadingSeconds(int) const {return 0;}
+ ReadingStatsDate projectedFinishDate(const ReadingStatsDateTime&,int) const {return {};}
+};
+struct GlobalReadingStats { uint32_t totalSessions=0,totalReadingSeconds=0,totalPagesTurned=0; };
+namespace sleepstats {struct Data { BookReadingStats book;GlobalReadingStats device;ReadingStatsDateTime now;int progress=-1;bool hasClock=false,hasDevice=false;};}
+int utf8SafeTruncateBuffer(const char* b,int n){if(!n)return 0;int p=n-1;while(p>0 && (static_cast<unsigned char>(b[p])&0xc0)==0x80)--p;unsigned char c=b[p];int len=c<128?1:c<224?2:c<240?3:4;return n-p<len?p:n;}
+namespace readingcharts {int barWidth(uint32_t v,uint32_t max,int width){return max?int(uint64_t(v)*width/max):0;}}
+'''.replace('IDS', ','.join(ids))
+main = r'''
+bool saw(const GfxRenderer& r,const char* s){return std::find(r.text.begin(),r.text.end(),s)!=r.text.end();}
+int main(){
+ sleepstats::Data data; data.book.sessionCount=4;data.book.totalReadingSeconds=400;data.book.timeOfDaySeconds[0]=20;data.book.dayOfWeekSeconds[6]=30;
+ GfxRenderer r;data.hasClock=true;data.progress=37;
+ assert(sleepstats::draw(r,"Sample title",data));assert(r.cleared && saw(r,"37%") && saw(r,"Sample title"));
+ GfxRenderer unknown;data.hasClock=false;data.progress=-1;data.hasDevice=false;
+ assert(sleepstats::draw(unknown,"Book",data));assert(saw(unknown,"-"));
+ GfxRenderer device;data.hasDevice=true;
+ assert(sleepstats::draw(device,"Book",data));assert(saw(device,tr(STR_STATS_DEVICE)));
+ GfxRenderer small;small.width=200;small.height=200;assert(!sleepstats::draw(small,"Book",data));assert(!small.cleared);
+ GfxRenderer summary;data.progress=37;assert(sleepstats::drawSummary(summary,"Sample title",data));assert(summary.cleared && saw(summary,"37%") && saw(summary,"Sample title"));
+ GfxRenderer emptySummary;data.progress=-1;assert(sleepstats::drawSummary(emptySummary,"Book",data));assert(saw(emptySummary,"-"));
+ GfxRenderer tinySummary;tinySummary.width=200;tinySummary.height=200;assert(!sleepstats::drawSummary(tinySummary,"Book",data));assert(!tinySummary.cleared);
+ for(int height=120;height<=820;height+=7){GfxRenderer resized;resized.height=height;sleepstats::drawSummary(resized,"Book",data);}
+ Bitmap cover;GfxRenderer withCover;data.progress=42;assert(sleepstats::drawCoverSummary(withCover,"Book",data,cover));assert(saw(withCover,"42%") && saw(withCover,"Book"));
+ GfxRenderer badCover;coverDrawOk=false;assert(!sleepstats::drawCoverSummary(badCover,"Book",data,cover));coverDrawOk=true;
+ for(int height=120;height<=820;height+=7){GfxRenderer resized;resized.height=height;sleepstats::drawCoverSummary(resized,"Book",data,cover);}
+ GfxRenderer wide;wide.width=800;wide.height=480;data.hasClock=true;
+ assert(sleepstats::draw(wide,"An extremely long book title that must be clipped to fit even when translated",data));
+}
+'''
+with tempfile.TemporaryDirectory() as d:
+    source_file = Path(d) / 'render.cpp'
+    source_file.write_text(prelude + source + main)
+    executable = Path(d) / 'render'
+    subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', str(source_file), '-o', str(executable)], check=True)
+    subprocess.run([str(executable)], check=True)
+print('Statistics sleep rendering and fallback geometry passed')

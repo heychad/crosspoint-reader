@@ -22,6 +22,7 @@ class OtaUpdater {
     INTERNAL_UPDATE_ERROR,
     OOM_ERROR,
     WRONG_DEVICE_ERROR,
+    UNVERIFIED_TRANSPORT_ERROR,
   };
 
   size_t getOtaSize() const { return otaSize; }

@@ -136,6 +136,46 @@ bool moveTreeStores(const std::string& from, const std::string& to, const MovePh
 
 ClippingStore ClippingStore::instance;
 
+bool ClippingStore::countForBook(const std::string& bookPath, uint16_t& count) {
+  count = 0;
+  std::string path = storeFilePathForBook(bookPath, "epub");
+  if (!Storage.exists(path.c_str())) {
+    path += ".bak";
+    if (!Storage.exists(path.c_str())) return true;
+  }
+  HalFile file = Storage.open(path.c_str());
+  uint8_t version = 0;
+  uint16_t storedCount = 0;
+  if (!file || !serialization::tryReadPod(file, version) || version < LEGACY_VERSION || version > VERSION ||
+      !serialization::tryReadPod(file, storedCount) || storedCount > CLIPPING_MAX_PER_BOOK)
+    return false;
+  const auto skip = [&file](uint32_t bytes) {
+    return file.available() >= 0 && bytes <= static_cast<uint32_t>(file.available()) &&
+           file.seek(file.position() + bytes);
+  };
+  for (int field = 0; field < 3; ++field) {
+    uint32_t length = 0;
+    if (!serialization::tryReadPod(file, length) || length > HEADER_STRING_MAX || !skip(length)) return false;
+  }
+  for (uint16_t row = 0; row < storedCount; ++row) {
+    size_t fields = 8 * sizeof(uint16_t) + sizeof(uint32_t) + CLIPPING_CHAPTER_TITLE_MAX;
+    if (version >= LAYOUT_VERSION) fields += sizeof(uint32_t);
+    if (version >= VERSION) fields += 2 * sizeof(uint32_t) + sizeof(uint64_t) + sizeof(bool) + sizeof(Clipping::id);
+    if (!skip(fields)) return false;
+    uint32_t length = 0;
+    if (version == LEGACY_VERSION) {
+      if (!serialization::tryReadPod(file, length)) return false;
+    } else {
+      uint16_t shortLength = 0;
+      if (!serialization::tryReadPod(file, shortLength) || shortLength > CLIPPING_TEXT_MAX) return false;
+      length = shortLength;
+    }
+    if (!skip(length)) return false;
+  }
+  count = storedCount;
+  return true;
+}
+
 bool ClippingStore::loadForBook(const std::string& filePath, const std::string& title, const std::string& author,
                                 const std::string& bookType) {
   dirty = false;

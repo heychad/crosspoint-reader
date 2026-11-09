@@ -81,7 +81,7 @@ The Control Center is available on all touch devices. Devices with a frontlight 
 * **Quick toggle (X4 Pro only):** Double-click the **Power** button to turn the frontlight on or off instantly, without opening the panel.
 
 > [!NOTE]
-> Frontlight brightness and warmth are intentionally not listed in **[Display Settings](#361-display)** — the swipe panel is the only place to adjust them. On the X4 Pro, the on/off state can also be toggled with the Power-button double-click above.
+> Frontlight brightness and warmth are intentionally not listed in **[Display Settings](#361-display)** — use the swipe panel to adjust them. While reading, the new **Controls** bindings can also increase or decrease brightness by 10 percentage points or toggle the frontlight. On the X4 Pro, the on/off state can also be toggled with the Power-button double-click above.
 
 If the frontlight doesn't come back on after the device wakes from sleep, check **Restore Light on Wake** in **[Display Settings](#361-display)** (on by default). Turning it off is intentional if you'd rather have the light stay off on wake and switch it on yourself each time — but it's easy to forget you changed it.
 
@@ -126,24 +126,26 @@ The Browse Files screen acts as a file and folder browser. The full path to the 
 
 ### 3.4 Library Screen
 
-The Library indexes up to 4,096 supported books on the SD card and shows their titles and authors without requiring you to remember their folders. Its four tabs provide different views. An arrow beside an indexed tab shows the sort direction:
+The Library indexes up to 4,096 supported books. Its five tabs let you browse
+by Recent, Title, Author, Series, or Genre. Recent combines recently opened
+books with additions. Its options menu can open or delete a book, rebuild the
+index, or remove a recently opened book from the recent list.
 
-- **Recent** lists the ten books you opened most recently. Hold a book to remove it from this list.
-- **Added** keeps books in the order in which the Library first discovered them. Down shows newest additions first; up shows oldest first.
-- **Title** groups books by the first letter of the title. Up sorts A-Z and down sorts Z-A. Titles beginning with numbers or punctuation appear under `#`; letters from non-English scripts, including Hebrew, have their own groups.
-- **Author** groups books by author. Up sorts A-Z and down sorts Z-A.
+Series and Genre use EPUB metadata. Genre uses the first subject; books without
+a value appear under No series or Uncategorized. Use **Settings → Library**
+to filter formats and finished books, change row density, or show recent books
+as covers.
 
-On a button-only device:
+Tap a tab or use the navigation buttons to switch views. Tap a book or press
+**Confirm** to open it. Search narrows the current view. Without a search, hold
+a book in a grouped view to choose a group; **Back** returns to the list. In
+Recent, holding a book opens its options menu. Holding a non-Recent search result
+opens a deletion confirmation.
 
-- Use **Up/Down** or **Left/Right** to move one row at a time. Hold a direction to move a page at a time.
-- Press **Confirm** to open the selected book.
-- Press **Back** from the book list to focus the tabs. Use **Left/Right** to select another tab, press **Confirm** to reverse its sort direction, or press **Down** to return to the list.
-- While the tabs are focused, hold **Confirm** to open Search.
-- In the Title or Author views, hold **Confirm** on a book to collapse the list to its letter or author groups. The matching group remains selected. Press **Confirm** to enter a group, or **Back** to restore the exact book and position you came from.
-
-On a touch device, tap tabs, books, and the Search icon directly. Tap an active indexed tab again to reverse its sort direction. Swipe to scroll. Long-press a book in the Recent view to remove it from the list. Long-press a book in a Title or Author view to collapse to the group list, then tap a group to expand it. The **Added** view is not grouped; tapping or long-pressing a book opens it.
-
-The index is created automatically the first time the Library is opened. To pick up later file changes or updated metadata, use **Settings → System → Rebuild library index**. The **Use book metadata** setting controls whether the index reads titles and authors stored inside books.
+The index is created when you first open the Library. Use the refresh icon in
+the Library header, or **Rebuild** in a Recent book's options, to pick up file
+changes or updated metadata. **Use book metadata** controls whether the index
+reads metadata inside books.
 
 ### 3.5 File Transfer Screen
 
@@ -208,6 +210,10 @@ Books cannot be removed from your device through Calibre. Use the web interface 
 
 Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **Library**, and **Connectivity**. System contains language, keyboard layouts, hidden-file visibility, Clock (where available), firmware updates, and About. Library contains Use Book Metadata, Clear Read Books from Recent List, and Move Finished Books to Read Folder. Time to Sleep is under Display; Clear Reading Cache is under Reader. Connectivity contains Wi-Fi, Bluetooth Page Turner, CrossPoint Sync, OPDS, and the Plugins toggle. The options below describe these settings.
 
+Choose an EPUB rendering mode in Settings > Reader or the reader menu. Default
+keeps publisher styling. Balanced stacks tables, and Light also simplifies
+publisher formatting. The reader-menu choice is per book.
+
 #### 3.6.1 Display
 
 - **Sleep Screen**: Which sleep screen to display when the device sleeps:
@@ -221,18 +227,21 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
   - "Quick resume" - The text of the last page read will be displayed on the sleep screen and a moon icon is shown on the edge of the screen. Waking up the device will return to the same page of the opened book. This is useful for quickly resuming reading without waiting for the device to fully wake up and load the book.
   - "Transparent" - A transparent overlay image drawn over the current screen; see [Sleep Screen](#37-sleep-screen) below for more information
   - "Cover + Transparent" - The transparent overlay image drawn over the cover of the last opened book, falls back to "Transparent" behavior if there is no book cover
+  - "Reading statistics" - A dashboard for the last opened book, with saved reading totals and progress. Falls back to the default screen when usable tracked statistics are unavailable.
+  - "Reading summary" - Shows the last opened book, its progress, reading time, and estimated time left. Unavailable values show a dash; TXT and Markdown progress and time left are unavailable. Uses the same fallback as Reading statistics.
+  - "Cover and reading summary" - Adds a compatible cached Home cover to Reading summary. If the cover is unavailable, shows the text summary; if tracked statistics are unavailable, shows the default sleep screen.
 - **Sleep Screen Cover Mode**: How to display the book cover or custom sleep image:
   
   - "Fit" (default) - Scale the image to fit centered on the screen, padding with white borders as necessary
   - "Crop" - Scale the image and crop as necessary to try to fill the screen
 
-- **Sleep Screen Cover Filter**: What filter will be applied to the book cover when "Cover" sleep screen is selected:
+- **Sleep Screen Cover Filter**: What filter will be applied to the book cover when "Cover" sleep screen is selected. The Reading statistics and both reading summary screens also use the Inverted choice to select their polarity:
   
   - "None" (default) - The cover image will be converted to a grayscale image and displayed as it is
   - "Contrast" - The image will be displayed as a black & white image without grayscale conversion
   - "Inverted" - The image will be inverted as in white & black and will be displayed without grayscale conversion
 
-- **Quick Resume on Timeout**: Whether to enable the "Quick Resume" sleep screen when the device goes to sleep due to inactivity (Display > Time to Sleep). This is useful for quickly resuming reading without waiting for the device to fully wake up and load the book. This overwrites the Sleep Screen Cover Mode when enabled.
+- **Quick Resume on Timeout**: Whether to enable the "Quick Resume" sleep screen when the device goes to sleep due to inactivity (Display > Time to Sleep). This is useful for quickly resuming reading without waiting for the device to fully wake up and load the book. On an inactivity timeout, this overrides the selected Sleep Screen when enabled.
 
 - **Status Bar**: Configure the status bar displayed while reading:
   
@@ -251,12 +260,17 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Refresh Frequency**: Set how often the screen does a full refresh while reading to reduce ghosting; options are every 1, 5, 10, 15, or 30 pages.
 
+- **Interface size (restart)**: Choose Small or Large (default) for body text in shared menus and lists, including Settings and Library, and selected text on Classic, Lyra, and Lyra Extended Home. Restart to apply. This does not change book text or fixed-size labels.
+
 - **UI Theme**: Set which UI theme to use:
   
   - "Classic" - The original Crosspoint theme
   - "Lyra" - The new theme for Crosspoint featuring rounded elements and menu icons
   - "Lyra Extended" - Lyra, but displays 3 books instead of 1 on the **[Home Screen](#31-home-screen)**
   - "RoundedRaff" - A rounded theme with additional visual styling
+  - "Cover Grid" - Browse recent books by cover when PSRAM is available
+  - "Minimal Home" - Show a centered recent cover, title, and author when PSRAM is available
+  - "Dashboard Home" - Show the recent cover and available reading statistics when PSRAM is available; progress and time left are shown for EPUB and XTC
 
 - **Sunlight Fading Fix**: Configure whether to enable a software-fix for the issue where white X4 models may fade when used in direct sunlight:
   
@@ -306,7 +320,17 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Focus Reading**: Bolds the first part of each word to create visual fixation points, similar to Bionic Reading. This can help improve reading speed and focus; options are "ON" or "OFF" (default).
 
+On any **Library** shelf, hold a book and choose **Reading statistics** to view its data or change tracking for its next session. Global tracking must also be enabled. To edit dates, open the book first.
+
 #### 3.6.3 Controls
+
+- **Home Button Gestures**: Assign tap, double-tap, and hold. Browse Files, Library, Saved Items, File Transfer, and Reading statistics work inside a book and do nothing on other screens.
+- **Home Button in Reader**: Turn off the Home key on reading pages without changing its gesture assignments. Home remains available in reader menus. Use this setting, or a different button assigned to **Toggle Home Button**, to turn it back on.
+
+In an EPUB, choose **Home Button Gestures** from the reader menu to change these bindings without leaving the book.
+
+Reader bar layouts can show estimated time left in the current EPUB section. A
+section often matches a chapter, but a book can split or combine chapters.
 
 - **Remap Front Buttons**: A menu for customising the function of each bottom edge button.
 
@@ -336,7 +360,7 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Time to Sleep** (**Settings → Display**): Set the duration of inactivity before the device automatically goes to sleep; options are 1, 3, 5, 10 (default), 15 or 30 minutes.
 
-- **Wi-Fi Networks**: Connect to Wi-Fi networks for file transfers and firmware updates.
+- **Wi-Fi Networks**: Connect to Wi-Fi networks for file transfers and other network features.
 
 - **Bluetooth Page Turner** (**Settings → Connectivity**): Enable Bluetooth, then open **Scan for Remotes** to connect a page turner. **Paired Remotes** lists saved remotes; selecting a row marked **Forget** removes it. Once connected, open **Map Buttons**, choose a page, chapter, Confirm, Back, reader menu, or clipping action, and press the remote button within 15 seconds. Release the button within 15 seconds: a hold of at least 0.7 seconds is mapped separately from its tap. If the remote never reports a release, learning waits 15 seconds and saves the press as a tap. Hold Confirm on an action, or long-press its row, to clear it. Back cancels learning or returns to the Bluetooth menu. Mapping is optional: without custom mappings, the default remote controls remain available. Each button gesture maps to one action; assigning it again replaces its previous action. Confirm and Back act like the device buttons while reading and in the reader list menu. Next/Previous Page navigate items while a reader menu is open and turn pages when it is closed. Bluetooth can also be toggled from the reader list menu or the toolbar’s **More** menu.
 
@@ -350,7 +374,9 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Rebuild library index**: Rescan the SD card for books while preserving the arrival history of books already in the index.
 
-- **Check for updates**: Check for Crosspoint firmware updates over Wi-Fi. Firmware can also be updated without a USB connection by placing a `firmware.bin` file on the SD card. Neither option is available on the BOOX Picco, which is updated over USB.
+- **Device diagnostics** (X4 Pro): View free internal RAM and PSRAM, their largest free blocks, and the sums of each memory region's low-water marks since boot. Select **Refresh measurements** to sample again.
+
+- **Check for updates**: Online updates are disabled until their security is ready. To update from a compatible `.bin` file on the SD card, use **Settings → System → SD Card Firmware Update**.
 
 - **Plugins** (**Settings → Connectivity**): Enable or disable SD-card plugins. Clean installs start disabled; upgrades with existing plugins are kept enabled automatically. Disabling plugins leaves all plugin files on the SD card but stops plugin discovery and execution until they are enabled again.
   - Enabling plugins immediately adds **Plugins** to the Home screen, even when no plugins are installed yet. Sideloaded SD-card plugins work without Plugin Hub.
@@ -568,6 +594,7 @@ The **Sleep Screen** setting controls what is displayed when the device goes to 
 | **Cover + Custom** | The cover of the currently open book, shown only while actively reading. Falls back to **Custom** behavior when not reading. |
 | **Transparent**    | A BMP or PNG overlay drawn over the current screen. Supports PNG and 32-bit BGRA alpha transparency, and treats white as transparent in regular BMPs. Falls back to **Dark** if no valid overlay image is found. |
 | **Cover + Transparent** | The **Transparent** overlay drawn over the cover of the last opened book, from any screen. Falls back to **Transparent** behavior if there is no book cover, and to the plain cover if no valid overlay image is found. |
+| **Reading statistics** | Saved statistics for the last opened book, including progress and reading patterns when available. Falls back to **Dark** when usable tracked statistics are unavailable. |
 | **None**           | A blank screen.                                                                                                              |
 
 #### Cover settings
@@ -623,6 +650,8 @@ There are three ways to install fonts:
 3. **Manual SD card copy:** Copy `.cpfont` families from the [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts) to `/.fonts/` or `/fonts/`. If your device have external RAM, you can also copy TTF/OTF/TTC files there without conversion.
 
 Once installed, custom fonts appear in **Settings → Reader → Font Family** alongside the built-in fonts.
+
+If the font list cannot be refreshed, your saved font selection is kept. Close and reopen Text Settings or Manage Fonts to retry. If the error persists, check the SD card.
 
 If the reader shows **Damaged font file**, a `.cpfont` file on the SD card is broken (for example, from an interrupted copy). The affected characters are drawn blank. Delete the font family's folder and install it again.
 
@@ -693,7 +722,7 @@ The UI includes Arabic and Hebrew (menus use built-in fonts with presentation-fo
 
 ## 5. Reader Menu
 
-Press **Confirm** while reading to open the Reader Menu. From here you can access reading utilities and navigation options without leaving the book.
+Press **Confirm** while reading to open the Reader Menu and access reading utilities and navigation options.
 
 The list menu remembers the selected entry while the book stays open. If that entry is no longer available, the cursor returns to the first entry. Closing the book resets the selection.
 
@@ -710,6 +739,8 @@ Available options include:
 - **Go to %** – Jump to a specific position in the book by percentage.
 - **Take screenshot** – Save a screenshot of the current page to the `screenshots/` folder.
 - **Show page as QR** – Display a QR code encoding the current reading position.
+- **File Transfer** – Close the book and choose a file-transfer mode. This is also available in the toolbar's More panel, Quick Actions, and reader button bindings. The device may restart when leaving an active Wi-Fi session.
+- **Browse Files** – Close the book and open the file browser. This is also available in the toolbar's More panel. Reopen the book from Recents to resume reading.
 - **Go Home** – Close the book and return to the Home screen.
 - **Sync Progress** – Push or pull reading progress with a KOReader sync server (see [KOReader Sync Quick Setup](#367-koreader-sync-quick-setup)). This entry appears when sync credentials are saved or an enabled plugin subscribes to device events. Without sync credentials, it connects to Wi-Fi to send queued plugin events.
 - **Delete Book Cache** – Clear the cached layout data for the current book, forcing a re-index on next open.
@@ -806,4 +837,165 @@ Press **Ctrl-C** or close the graph window to exit.
 
 If the device is stuck in a bootloop, press and release the Reset button. Then, press and hold on to the configured Back button and the Power Button to boot to the Home Screen.
 
-There can be issues with broken cache or config. In this case, delete the `.crosspoint` directory on your SD card (or consider deleting only `settings.json`, `state.json`, or `epub_*` cache directories in the `.crosspoint/` folder).
+If cache or configuration files appear damaged, back up the entire hidden
+`.crosspoint` directory before changing anything. It contains reading progress,
+bookmarks and settings. Avoid deleting it or clearing caches during the initial
+device test; investigate the affected files with the backup available.
+
+
+## Personal fork: reader layouts and shortcuts
+
+Under **Settings > Reader > Reader bar layouts**, enable **Use custom reader bars**
+to configure the top and bottom bars independently. Each has three left slots,
+a center slot and three right slots, plus its own progress bar and percentage
+precision. Leave the switch off to retain the standard CrossPoint footer.
+Clock and date require an available device clock. EPUB bars can show estimated
+time left in the book using tracked time and progress. A dash means there is not
+enough data. Chapter time and stable-page items remain in the backlog.
+
+**Settings > Controls** contains reader-only actions for side buttons 1 and 2:
+tap, hold, and pressing both together. Side button numbers follow the existing
+Up/Down hardware roles. **Default behavior** keeps the existing side-button
+layout and hold action. A configured hold runs once at 0.7 seconds and consumes
+its release even if it opens a menu. The next fresh press works normally.
+
+Four bindings cover vertical gestures along the left or right edge. Brightness
+and warmth adjust continuously while dragging; other actions run on release.
+These light gestures also work in XTC. See [downstream reader gestures](#downstream-reader-gestures)
+for multi-touch controls and format limits.
+
+Open **Reader bar layouts** from the EPUB reader menu or toolbar **More** panel
+to edit these global settings while reading.
+If you followed a link or footnote, return from it first so its saved position
+is preserved.
+
+Changing bar heights repaginates the displayed book while retaining its visible
+text position. Existing progress files and cache directory keys are preserved.
+The full port inventory and physical-test status are tracked in
+[feature parity](docs/downstream/FEATURE_PARITY.md).
+
+### Reading statistics in the personal build
+
+In **Settings > Reader**, use **Track reading statistics** to enable or disable
+collection. **Reading idle limit** sets the longest page interval counted as
+reading. Longer idle periods and time in reader menus are excluded.
+
+**Reading statistics** shows saved reading time, qualifying sessions, forward
+pages and streaks. Totals are saved when you leave the book or the reader sleeps.
+Sessions need at least one minute of tracked reading; brief visits do not add a
+session. Set the clock for calendar history and streaks. Time/page totals still
+work without a clock.
+
+On the **This device** statistics tab, select **Back up device statistics** to
+save a verified copy on the SD card. This covers device totals, not individual
+book statistics. Restore and reset controls are still in development.
+
+The screen has **This device** and **All devices** views. Open it from a
+reader shortcut, the EPUB reader menu, or the toolbar's **More** panel for a
+**Book** view with progress, dates, pace, and time left
+when available. Select **Per-book tracking setting** there to change tracking
+for the next time you open that book. The global switch still applies. Existing
+statistics and reading positions are kept. If the setting cannot be checked
+when a book opens, tracking stays off for that session. All devices uses compatible statistics files already on the
+card; it does not transfer them between readers.
+The device view also shows recorded reading days over the last 7 and 30 days,
+including today. These counts use available tracked history; days without
+recorded tracking are not necessarily days without reading. A missing clock or
+history shifted too far into the future leaves these counts unavailable. All
+devices can only include statistics files already present on the card; compare
+the source count to your devices because missing files cannot be detected.
+Automatic completion and finish-date recording are not included yet. Opening
+statistics saves a snapshot without ending the current reading session.
+
+### Downstream reader gestures
+
+On multi-touch devices, Settings > Controls adds pinch text sizing, two-finger
+rotation, and four configurable two-finger swipe directions. Pinch moves one
+installed font size per contact sequence. Rotation changes the EPUB orientation
+by 90 degrees opposite the finger rotation. These two gestures default to on;
+two-finger swipe bindings default to disabled. Assigning an action to a new
+direction clears its previous direction. The touch-reader switch disables these
+gestures together with existing reader touch controls.
+
+Reader side and edge shortcuts also offer warmer/cooler light, larger/smaller
+text and 180-degree rotation. Edge light gestures adjust continuously: slide
+back toward the starting point to reduce the adjustment. Light settings save
+once when the gesture ends or the reader is left. Unsupported light controls
+have no effect. Pre-rendered XTC books support light gestures but do not change
+font size or orientation. Menus retain their normal touch behavior.
+
+This firmware is still awaiting device validation. See
+[gesture implementation and test steps](docs/downstream/GESTURES.md).
+
+
+### Quick Actions in the personal build
+
+Open **Settings > Controls > Quick Actions** to choose up to five commands.
+The command chooser scrolls and includes navigation, reading statistics,
+screenshots, sync, clippings, font size, Focus Reading, rotation and light
+controls. Empty slots are hidden when the menu runs. Commands unavailable for
+the current reader format or hardware are not offered there.
+
+In an EPUB, **Reader Font Family** opens the font picker and returns to the
+book. It is also available as a reader button shortcut. **Cycle Font Family**
+switches between built-in and SD font families with names up to 31 bytes in EPUB.
+If the font list changes, reopen the book before cycling.
+
+Assign **Quick Actions** to a reader side/edge binding, a Home-key gesture,
+Power tap, Power hold, or Power + Up. Button-only readers can also use Back or
+Confirm hold. These bindings open the menu
+while reading. Assigning a new trigger clears the previous Quick Actions
+binding; ordinary side/edge behavior and the Home key's usual defaults return.
+Other configured commands are preserved. A menu can also enter its configuration
+from the last row; Back returns to the menu, and a second Back returns to the book.
+
+After choosing a command, the reader paints the page before dispatching it so
+menu pixels are not included in screenshots or reused as the reader backdrop.
+Back can cancel a command waiting for that paint. Existing shortcut numbers
+are unchanged. The implementation and remaining control gaps are tracked in
+[Quick Actions integration](docs/downstream/QUICK_ACTIONS.md).
+
+
+### Quick Lock and extended physical controls in the personal build
+
+**Settings > Controls** can assign Power tap/hold and Power + Up. Button-only
+readers can also assign Back/Confirm hold while reading. Choose **Quick Lock**
+there, on an EPUB side-button
+binding, or for a Home-key gesture. Release the buttons, then repeat the same
+gesture to unlock. The lock pauses reading and turns the frontlight off;
+unlocking restores it. The normal inactivity timeout can still put the reader
+to sleep. Default bindings preserve existing behavior. See the exact Power
+precedence and hardware checklist in [Lock controls](docs/downstream/LOCK_CONTROLS.md).
+
+### Per-book layout in the personal build
+
+EPUB, TXT, and Markdown books remember their own font and layout changes.
+Use **Reset book to global defaults** in the reader menu to remove those
+overrides. Existing CrossInk binary preferences are preserved; import is pending.
+
+### Library browsing in the personal build
+
+**Settings > Library** controls visible formats, finished books, compact rows,
+filenames, separate cover-grid settings for Recent and the Title shelf, and
+whether Library appears before Browse Files on Home.
+The Title shelf grid follows title sorting and search; missing covers use a
+placeholder. Hold a book for options, including Reading statistics. With no
+search active, choose Browse groups, then select a group to return to the grid. If the grid cannot be allocated, the
+shelf uses its list view. The Library's **Series** and **Genre** tabs use EPUB metadata. Books without those fields appear in groups
+for unknown values. Open **Library** from the EPUB reader menu or **More**
+panel to browse; this leaves the book, which you can reopen from Recents.
+
+### Saved Items in the personal build
+
+Open **Saved Items** from Home, the EPUB reader menu, or its **More** panel to
+browse books with bookmarks or clippings. You can also assign it to a reader
+button or a Quick Actions slot. Opening it leaves the book; Back returns to
+Home, where you can reopen the book from Recents. Choose a book and a saved
+item to open it in the reader. Existing CrossInk bookmarks can be opened here; their older files remain read-only in this build.
+The list covers indexed EPUB, text, and Markdown books. A warning means some
+items may be missing; rebuilding the Library can refresh an older index.
+
+### Reading charts in the personal build
+
+Select **Charts and history** in a statistics view to explore reading time by
+time of day and weekday. Device views also show a calendar of recorded days.

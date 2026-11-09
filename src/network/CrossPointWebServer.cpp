@@ -56,6 +56,7 @@
 #include "html/js/epub_optimizerJs.generated.h"
 #include "html/js/jszip_minJs.generated.h"
 #include "html/js/plugin_hostJs.generated.h"
+#include "personalization/ReaderQuickBindings.h"
 #include "util/BookCacheUtils.h"
 #include "util/DictionaryRegistry.h"
 #include "util/FirmwareIdentity.h"
@@ -1409,6 +1410,10 @@ void CrossPointWebServer::handleSettingsPage() const {
 }
 
 void CrossPointWebServer::handleGetSettings() const {
+  if (!const_cast<SdCardFontSystem&>(sdFontSystem).refreshIfDirty()) {
+    server->send(503, "application/json", "{\"error\":\"Font list unavailable; retry.\"}");
+    return;
+  }
   // Pass the SD font registry so the fontFamily setting's enumStringValues
   // includes SD-resident families — otherwise the web API only exposes the
   // three built-in fonts.
@@ -1538,9 +1543,14 @@ void CrossPointWebServer::handlePostSettings() {
     return;
   }
 
+  if (!sdFontSystem.refreshIfDirty()) {
+    server->send(503, "application/json", "{\"error\":\"Font list unavailable; retry.\"}");
+    return;
+  }
   std::vector<DictionaryEntry> dictionaries;
   DictionaryRegistry::discover(dictionaries);
   const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
+  const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);
   int applied = 0;
 
   for (const auto& s : settings) {
@@ -1597,6 +1607,7 @@ void CrossPointWebServer::handlePostSettings() {
     }
   }
 
+  readerquickactions::normalizeChangedBindings(SETTINGS, quickBindingsBefore);
   SETTINGS.saveToFile();
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
@@ -3036,7 +3047,10 @@ void CrossPointWebServer::handleFontsPage() const {
 
 void CrossPointWebServer::handleFontList() const {
   // Pick up any uploads/deletes that happened since the last reader load.
-  const_cast<SdCardFontSystem&>(sdFontSystem).refreshIfDirty();
+  if (!const_cast<SdCardFontSystem&>(sdFontSystem).refreshIfDirty()) {
+    server->send(503, "application/json", "{\"error\":\"Font list unavailable; retry.\"}");
+    return;
+  }
   const auto& families = sdFontSystem.registry().getFamilies();
 
   // Stream one family per chunk: with many families, the whole document plus

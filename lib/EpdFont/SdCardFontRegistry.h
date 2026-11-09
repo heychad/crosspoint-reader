@@ -53,6 +53,10 @@ struct SdCardFontFamilyInfo {
 
 class SdCardFontRegistry {
  public:
+  enum class Discovery { Ready, Empty, FilenameAllocationFailed, DirectoryReadFailed };
+  static bool discoveryFailed(Discovery result) {
+    return result == Discovery::FilenameAllocationFailed || result == Discovery::DirectoryReadFailed;
+  }
   static constexpr int MAX_SD_FAMILIES = 128;
   // Two top-level roots are scanned at discovery time. Hidden is preferred
   // when creating new installs; both are read from if present.
@@ -69,9 +73,12 @@ class SdCardFontRegistry {
   // the two roots exists, otherwise the hidden root.
   static const char* defaultWriteRoot();
 
-  // Scan SD card, populate families_. Invalidates pointers and references
-  // obtained from getFamilies()/findFamily(). Returns true if any families found.
+  // Scanning invalidates the list and its pointers. Returns false for an empty
+  // list or a detected discovery failure.
   bool discover();
+  // Reports detected filename-allocation and directory-read failures. Other
+  // failures may still leave the result incomplete.
+  Discovery discoverChecked();
 
   const std::vector<SdCardFontFamilyInfo>& getFamilies() const { return families_; }
   const SdCardFontFamilyInfo* findFamily(const std::string& name) const;
@@ -104,7 +111,7 @@ class SdCardFontRegistry {
   // filename-derived role when the face can't be read. Then dedup by role.
   static void refineVectorStyles(const char* dirPath, std::vector<SdCardFontFileInfo>& files);
 #endif
-  static void scanDirectory(const char* dirPath, SdCardFontFamilyInfo& family);
+  static void scanDirectory(const char* dirPath, SdCardFontFamilyInfo& family, Discovery& status);
   // Scan one root (e.g. "/.fonts"), append families to `out`, dedup by name.
-  static void scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out);
+  static void scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out, Discovery& status);
 };

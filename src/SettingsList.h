@@ -3,6 +3,7 @@
 #include <BoardConfig.h>
 #include <HalClock.h>
 #include <HalFrontlight.h>
+#include <HalGPIO.h>
 #include <HalTiltSensor.h>
 #include <I18n.h>
 #include <SdCardFontRegistry.h>
@@ -190,6 +191,7 @@ inline std::vector<StrId> buildLongPressMenuValues() {
   if (BoardConfig::hasHomeKey()) values.push_back(StrId::STR_READER_MENU);
   values.push_back(StrId::STR_SAVE_CLIPPING);
   values.push_back(StrId::STR_FOOTNOTES);
+  values.push_back(StrId::STR_QUICK_ACTIONS);
   return values;
 }
 
@@ -240,6 +242,7 @@ inline std::vector<ShortPowerButtonOption> shortPowerButtonOptions() {
     options.push_back({StrId::STR_KOSYNC, CrossPointSettings::PWR_SYNC});
     options.push_back({StrId::STR_READER_MENU, CrossPointSettings::PWR_READER_MENU});
   }
+  options.push_back({StrId::STR_QUICK_ACTIONS, CrossPointSettings::PWR_QUICK_ACTIONS});
   return options;
 }
 
@@ -268,9 +271,11 @@ inline SettingInfo buildShortPowerButtonSetting() {
 }
 
 inline std::vector<StrId> homeThemeValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
-                                     StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_COVER_GRID};
-  const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : std::size(VALUES) - 1;
+  static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC,       StrId::STR_THEME_LYRA,
+                                     StrId::STR_THEME_LYRA_EXTENDED, StrId::STR_THEME_ROUNDEDRAFF,
+                                     StrId::STR_THEME_COVER_GRID,    StrId::STR_THEME_MINIMAL_HOME,
+                                     StrId::STR_THEME_DASHBOARD_HOME};
+  const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : std::size(VALUES) - 3;
   return {VALUES, VALUES + count};
 }
 
@@ -293,6 +298,31 @@ std::vector<SettingInfo> getBaseSettingsList(size_t extraCapacity = 0);
 inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* registry = nullptr,
                                                 const std::vector<DictionaryEntry>* dictionaries = nullptr) {
   auto v = getBaseSettingsList(dictionaries && !dictionaries->empty() ? 1 : 0);
+  if (!UITheme::supportsCoverGrid()) {
+    v.erase(std::remove_if(v.begin(), v.end(),
+                           [](const SettingInfo& info) {
+                             return info.nameId == StrId::STR_RECENT_BOOKS_VIEW ||
+                                    info.nameId == StrId::STR_LIBRARY_TITLE_COVER_GRID;
+                           }),
+            v.end());
+  }
+  if (!gpio.supportsMultiTouch()) {
+    v.erase(std::remove_if(v.begin(), v.end(),
+                           [](const SettingInfo& info) {
+                             switch (info.nameId) {
+                               case StrId::STR_PINCH_FONT_RESIZE:
+                               case StrId::STR_TWO_FINGER_ROTATION:
+                               case StrId::STR_TWO_FINGER_UP:
+                               case StrId::STR_TWO_FINGER_DOWN:
+                               case StrId::STR_TWO_FINGER_LEFT:
+                               case StrId::STR_TWO_FINGER_RIGHT:
+                                 return true;
+                               default:
+                                 return false;
+                             }
+                           }),
+            v.end());
+  }
   // Frontlit and lightless variants of a board share one binary (EEGO A4);
   // presence is the I2C probe result from Frontlight.begin(). UI-only: the probe
   // has not run at load time, so the base list must keep the persisted key.

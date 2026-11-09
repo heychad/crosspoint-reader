@@ -158,6 +158,7 @@ bool FontDownloadActivity::internString(const char* text, StrRef& outRef) {
 }
 
 bool FontDownloadActivity::fetchAndParseManifest() {
+  registryRefreshFailed_ = false;
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
   }
@@ -165,7 +166,12 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   // frees and reallocates every registry entry, which fragments the heap if it
   // runs while the manifest DOM and the catalog arena are live.
   clearManifest();
-  fontInstaller_.refreshRegistry();
+  if (!fontInstaller_.refreshRegistry()) {
+    sdFontSystem.markRegistryDirty();
+    registryRefreshFailed_ = true;
+    errorMessage_ = tr(STR_FONT_LIST_REOPEN);
+    return false;
+  }
 
   // Download manifest to a temp file on SD card to avoid holding both
   // TLS buffers and the full JSON string in RAM simultaneously.
@@ -663,7 +669,14 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     currentFileIndex_++;
   }
 
-  fontInstaller_.refreshRegistry();
+  if (!fontInstaller_.refreshRegistry()) {
+    sdFontSystem.markRegistryDirty();
+    RenderLock lock(*this);
+    state_ = ERROR;
+    registryRefreshFailed_ = true;
+    errorMessage_ = tr(STR_FONT_LIST_REOPEN);
+    return;
+  }
   family.installed = true;
   family.hasUpdate = false;
 
@@ -704,7 +717,15 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
     state_ = ERROR;
     errorMessage_ = "Failed to delete font";
   } else {
-    fontInstaller_.refreshRegistry();
+    if (!fontInstaller_.refreshRegistry()) {
+      sdFontSystem.markRegistryDirty();
+      RenderLock lock(*this);
+      state_ = ERROR;
+      registryRefreshFailed_ = true;
+      errorMessage_ = tr(STR_FONT_LIST_REOPEN);
+      requestUpdate();
+      return;
+    }
     family.installed = false;
     family.hasUpdate = false;
     // Unlike the other family_ mutations, this one stays in FAMILY_LIST (no
@@ -869,6 +890,16 @@ bool FontDownloadActivity::handleCustomInput() {
       requestUpdate();
     }
   } else if (state_ == ERROR) {
+    if (registryRefreshFailed_) {
+      int x = 0;
+      int y = 0;
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+          mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(x, y)) {
+        finish();
+        return true;
+      }
+      return true;
+    }
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
       {
         RenderLock lock(*this);
@@ -980,12 +1011,13 @@ void FontDownloadActivity::render(RenderLock&& lock) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == ERROR) {
-    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, tr(STR_FONT_INSTALL_FAILED), true,
-                              EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight,
+                              registryRefreshFailed_ ? tr(STR_FONT_LIST_REFRESH_FAILED) : tr(STR_FONT_INSTALL_FAILED),
+                              true, EpdFontFamily::BOLD);
     if (!errorMessage_.empty()) {
       renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, errorMessage_.c_str());
     }
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_RETRY), "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), registryRefreshFailed_ ? "" : tr(STR_RETRY), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
 

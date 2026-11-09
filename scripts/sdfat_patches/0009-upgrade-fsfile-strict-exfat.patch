@@ -1,0 +1,21 @@
+--- a/src/FsLib/FsFile.h
++++ b/src/FsLib/FsFile.h
+@@ -116,7 +116,13 @@
+   operator bool() const { return isOpen(); }
+-  /** Enable checked FAT lookup; exFAT is not yet supported. */
+-  bool enableStrictFatLookup() {
+-    if (!m_fFile) return false;
+-    m_fFile->setStrictLookup(true);
+-    return true;
++  /** Enable checked lookup for this directory handle. */
++  bool enableStrictLookup() {
++    if (m_fFile) {
++      m_fFile->setStrictLookup(true);
++      return true;
++    }
++    if (m_xFile) {
++      m_xFile->setStrictLookup(true);
++      return true;
++    }
++    return false;
+   }

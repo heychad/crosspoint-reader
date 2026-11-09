@@ -112,6 +112,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
     tabs[i].indicator = tabIndicator(i);
   }
   fui::TabBarProps tabProps;
+  tabProps.layout = tabBarLayout();
   tabProps.tabs = tabs;
   tabProps.count = static_cast<uint16_t>(count);
   tabProps.action = ACTION_TAB;

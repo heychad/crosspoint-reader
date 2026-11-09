@@ -90,6 +90,13 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 78
+
+Version 78 adds a one-byte EPUB rendering mode after the word-spacing field in
+the section header. The header identifies the profile, so changing it rebuilds the section.
+Older completed and partial sections rebuild when opened; book metadata
+and saved reading progress are kept.
+
 ### Version 73
 
 Version 73 keeps the binary layout and rebuilds completed and partial sections.
@@ -650,8 +657,9 @@ Written by `lib/LibraryIndex/LibraryBuilder.cpp`, read by `LibraryIndexFile`. On
 file describing every book on the card, so the shelf can sort and search
 thousands of titles without opening any of them.
 
-Format version 2. An index written by another version fails validation on open
-and is rebuilt; that is the entire migration mechanism.
+Format version 3 adds series and genre browsing. Version 2 is accepted only
+for rebuild reconciliation, preserving its firstSeen values. Other formats
+are rejected. Normal display opens require version 3.
 
 ### Layout
 
@@ -660,8 +668,8 @@ and is rebuilt; that is the entire migration mechanism.
 | Header | 0 | 64 bytes, `ClixHeader` |
 | Folders | `folderStart` | length-prefixed paths, one per folder |
 | Records | `recordStart` | `bookCount` × 128-byte `ClixRecord` |
-| Permutations | `permStart` | `bookCount` u16 author order, then `bookCount` u16 arrival order |
-| Name blob | `nameStart` | per record: path hash, name, canonical author, title, source author (see below) |
+| Permutations | `permStart` | Four `bookCount` u16 arrays, in author, arrival, series and genre order |
+| Name blob | `nameStart` | Per-record path hash, name, canonical author, title, source author, series, genre and series position |
 
 The arrival permutation runs oldest first, keyed by the record's FAT
 modification time (when the file landed on the card); `firstSeen` — the
@@ -703,6 +711,9 @@ Per record, at `nameStart + nameOff`:
 [u8][author]     display author, one spelling chosen per authorKey across the library
 [u8][title]      the book's own title, or length 0 if it never gave one
 [u8][source]     cleaned author spelling before the library-wide spelling vote
+[u8][series]     up to 128 UTF-8 bytes, or length 0
+[u8][genre]      up to 128 UTF-8 bytes, or length 0
+[u32 position]  sortable IEEE-754 series index, or 0xFFFFFFFF for unknown
 ```
 
 The filename must stay the first textual field and stay the filename: `readPath`
@@ -717,7 +728,7 @@ display reads still stop at the author or title fields and retain their offsets.
 
 Reconciliation treats the persisted 64-bit complete-path fingerprint as the
 book identity. Metadata is reused only when the fingerprint, size, nonzero FAT
-timestamp, fold version, metadata mode, and expected extraction status agree.
+timestamp, format version, fold version, metadata mode, and expected extraction status agree.
 EPUBs with a zero timestamp or a previous extraction failure are parsed again.
 
 If every current record reuses metadata, the old and new counts agree, and no
@@ -764,3 +775,7 @@ Book moves rename the store and its `.deleted` journal (plus recovery sidecars)
 together. The stored source path is informational and is refreshed on the next
 save; the current file path selects the store. Local book deletion cleans up all
 of these sidecars but preserves the independent `My Clippings.txt` export.
+
+## Per-book reader preferences in the personal fork
+
+`/.crosspoint/reading_stats/epub_<book-hash>/reader_prefs.json` holds version 1 sparse layout overrides. The book hash is the existing CrossPoint cache identity. The object contains `version` and `overrides`. Known override keys match the global settings JSON. See [per-book settings](downstream/BOOK_SETTINGS.md) for field scope, validation, recovery, and pending CrossInk binary import.

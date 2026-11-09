@@ -2,6 +2,7 @@
 
 #include <SdCardFontRegistry.h>
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -93,6 +94,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   };
 
   const SdCardFontRegistry* registry_;
+  std::atomic<bool> registryUnavailable_{false};
   OptionPopup optionPopup_;
   std::vector<FontEntry> fonts_;
   std::vector<SizeEntry> sizes_;

@@ -7,12 +7,38 @@
 
 #include "EndOfBookOptions.h"
 #include "ReaderSession.h"
+#include "ReaderStats.h"
 #include "activities/Activity.h"
+#include "personalization/QuickLockTrigger.h"
+#include "personalization/ReaderGestures.h"
 
 class ReaderActivity : public Activity {
   friend class ActivityManager;  // turns pages for a Bluetooth remote (ActivityManager::remoteTurn)
 
  protected:
+#if FREEINK_CAP_TOUCH
+  readergestures::Controller gestureController;
+  readergestures::Frame gestureFrame;
+  struct LightGesture {
+    bool active = false;
+    bool initialOn = false;
+    uint8_t initialValue = 0;
+    readershortcuts::Action action = readershortcuts::Action::Default;
+  } lightGesture;
+  void applyLightGesture(const readergestures::Event& event);
+  bool applyReaderGestureResult(const readergestures::Result& result);
+#endif
+  virtual bool handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None);
+  virtual bool supportsReaderShortcut(readershortcuts::Action action) const;
+  void openQuickActions();
+  bool handlePendingQuickAction();
+  bool handleHomeReaderShortcut();
+  std::atomic<readershortcuts::Action> pendingQuickAction{readershortcuts::Action::Default};
+  uint32_t quickActionPaintGeneration = 0;
+  // Called with the render lock held, before dispatching a new gesture.
+  virtual void onReaderGestureStarted() {}
+  bool handleReaderGestureInput();
+  void finishReaderGestures();
   std::string bookPath;
   int pagesUntilFullRefresh = 0;
   bool forcedRefreshPending = false;
@@ -20,15 +46,34 @@ class ReaderActivity : public Activity {
   std::unique_ptr<EndOfBookOptions> endOfBookOptions;
   std::atomic<bool> endOfBookOptionsReady{false};
   ReaderSession readerSession;
+  ReaderStats readingStats;
+  std::atomic<bool> pendingStatsLoadWarning{false};
+  std::atomic<bool> pendingStatsSaveWarning{false};
+  // 1 = enabled, 2 = disabled, 3 = save failed. The render task owns painting.
+  std::atomic<uint8_t> pendingHomeButtonFeedback{0};
+  std::atomic<bool> homeButtonFeedbackVisible{false};
+  std::atomic<unsigned long> homeButtonFeedbackStarted{0};
+  bool showPendingHomeButtonFeedback();
+  void expireHomeButtonFeedback();
+  bool showPendingStatsWarning();
+  virtual bool showPendingFormatWarning() { return false; }
+  virtual bool formatPopupVisible() const { return false; }
+  void showNextReaderNotice(bool formatPopupDrawn);
   std::atomic<bool> pageRendered{false};
   bool bookRemembered = false;
-  void markPageRendered() { pageRendered.store(true, std::memory_order_release); }
+  uint32_t renderedPageGeneration = 0;
+  void markPageRendered() {
+    ++renderedPageGeneration;
+    pageRendered.store(true, std::memory_order_release);
+  }
   void rememberBookOnceRendered();
 
   explicit ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                           std::string bookPath, bool allowFastInitialRefresh);
 
+  virtual void prepareReaderSettings() {}
   virtual bool loadBook() = 0;
+  virtual const std::string& getBookCachePath() const = 0;
   // Called when loadBook() failed. Return true to keep the activity alive
   // (e.g. showing a dialog); false finishes it (the default).
   virtual bool handleLoadFailure() { return false; }
@@ -63,7 +108,9 @@ class ReaderActivity : public Activity {
   /** True while the end-of-book suggestion menu is on screen and owning input. */
   bool endOfBookMenuActive() const;
   /** True while a toolbar, panel or menu over the page owns the device keys: a remote turn is refused. */
-  virtual bool inputOverPage() const { return endOfBookMenuActive(); }
+  virtual bool inputOverPage() const {
+    return pendingQuickAction != readershortcuts::Action::Default || endOfBookMenuActive();
+  }
   bool handleEndOfBookMenu(bool suppressConfirmRelease = false);
   bool handleEndOfBookPageTurn(bool prevTriggered, bool nextTriggered);
   void clearEndOfBookOptionsIfNeeded();
@@ -80,10 +127,12 @@ class ReaderActivity : public Activity {
   void onEnter() override;
   void onExit() override;
   void prepareForSleep() override;
+  void onInputLockChanged(bool locked) override;
   void loop() override;
   void render(RenderLock&& lock) override;
 
   bool isReaderActivity() const final { return true; }
+  bool isReaderPage() const final { return !inputOverPage(); }
   bool acceptsRemoteInput() const final { return pageRendered.load(std::memory_order_acquire); }
   bool handleForcedRefresh() final;
 };

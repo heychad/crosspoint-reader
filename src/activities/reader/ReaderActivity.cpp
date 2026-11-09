@@ -3,6 +3,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
+#include <I18n.h>
 #include <KOReaderDocumentId.h>
 #include <Memory.h>
 #include <TrustedTime.h>
@@ -17,7 +18,9 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "StatsSaveNotice.h"
 #include "XtcReaderActivity.h"
+#include "components/UITheme.h"
 #include "util/PluginEvents.h"
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -52,6 +55,7 @@ void ReaderActivity::disableFastInitialRefresh() { pagesUntilFullRefresh = 0; }
 void ReaderActivity::notePageTurn(const bool forward, const bool succeeded) {
   RenderLock lock(*this);
   readerSession.noteTurn(forward, succeeded);
+  readingStats.noteTurn(forward, succeeded);
 }
 
 void ReaderActivity::onEnter() {
@@ -73,6 +77,7 @@ void ReaderActivity::onEnter() {
     APP_STATE.saveToFile();
   }
 
+  prepareReaderSettings();
   sdFontSystem.ensureLoaded(renderer);
   applyInitialOrientation();
 
@@ -81,6 +86,13 @@ void ReaderActivity::onEnter() {
     return;
   }
 
+  {
+    RenderLock lock(*this);
+    readingStats.begin(getBookCachePath(), bookPath, SETTINGS.trackReadingStats != 0,
+                       static_cast<uint16_t>(SETTINGS.readingIdleTimeThresholdUnits) * 10U);
+    pendingStatsLoadWarning.store(readingStats.unavailableAtStart());
+    pendingStatsSaveWarning.store(statsSaveNotice().pending() != 0);
+  }
   requestUpdate();
 }
 
@@ -95,6 +107,7 @@ void ReaderActivity::rememberBookOnceRendered() {
 }
 
 void ReaderActivity::onExit() {
+  finishReaderGestures();
   Activity::onExit();
 
   // Keep rebuildable font buffers from pinning the heap between reading sessions.
@@ -107,6 +120,7 @@ void ReaderActivity::onExit() {
   // Flush BEFORE the ReaderExit event: the session's final progress must be
   // durable before a subscriber can act on the exit notification.
   flushReaderSession();
+  if (!readingStats.finish()) statsSaveNotice().recordFailure();
 
   if (pluginevents::anySubscriber(pluginevents::Event::ReaderExit)) {
     const ScreenshotInfo info = getScreenshotInfo();
@@ -126,7 +140,11 @@ void ReaderActivity::onExit() {
   endOfBookOptionsReady.store(false, std::memory_order_release);
 }
 
-void ReaderActivity::prepareForSleep() { flushReaderSession(); }
+void ReaderActivity::prepareForSleep() {
+  finishReaderGestures();
+  flushReaderSession();
+  if (!readingStats.finish()) statsSaveNotice().recordFailure();
+}
 
 void ReaderActivity::flushReaderSession() {
   if (!readerSession.isEmitWorthy() || !pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
@@ -190,6 +208,8 @@ bool ReaderActivity::handleEndOfBookMenu(const bool suppressConfirmRelease) {
       onGoHome();
       return true;
     case EndOfBookOptions::Action::LastPage:
+      // A delayed Home tap belongs to the menu, not the restored page.
+      mappedInput.resetHomeButtonInput();
       onReturnFromEndOfBook();
       requestUpdate();
       return true;
@@ -219,10 +239,13 @@ bool ReaderActivity::handleEndOfBookPageTurn(const bool prevTriggered, const boo
 }
 
 void ReaderActivity::loop() {
+  expireHomeButtonFeedback();
+  if (handlePendingQuickAction()) return;
   rememberBookOnceRendered();
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) return;
   if (handleFormatInput()) return;
+  if (!endOfBookMenuActive() && handleHomeReaderShortcut()) return;
   if (handleBackNavigation()) return;
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
@@ -237,10 +260,48 @@ void ReaderActivity::loop() {
       !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
 
   const bool changed = skip ? skipPages(prevTriggered ? -10 : 10) : pageTurn(!prevTriggered);
-  // A skip is navigation, not reading: it never counts toward session dwell.
+  // Skips do not train forward-page pace or the plugin session.
   notePageTurn(!skip && !prevTriggered, changed);
   if (changed && (touch.prev || touch.next)) haptic_feedback::touchAction(skip);
   requestUpdate();
+}
+
+bool ReaderActivity::showPendingStatsWarning() {
+  if (pendingStatsSaveWarning.exchange(false)) {
+    GUI.drawPopup(renderer, tr(STR_READER_STATS_SAVE_FAILED));
+    return true;
+  } else if (pendingStatsLoadWarning.exchange(false)) {
+    GUI.drawPopup(renderer, tr(STR_READER_STATS_UNAVAILABLE));
+    return true;
+  }
+  return false;
+}
+
+bool ReaderActivity::showPendingHomeButtonFeedback() {
+  const uint8_t feedback = pendingHomeButtonFeedback.exchange(0);
+  if (!feedback) return false;
+  const auto message = feedback == 1   ? StrId::STR_HOME_BUTTON_READER_ON
+                       : feedback == 2 ? StrId::STR_HOME_BUTTON_READER_OFF
+                                       : StrId::STR_HOME_BUTTON_SAVE_FAILED;
+  GUI.drawPopup(renderer, I18N.get(message));
+  return true;
+}
+
+void ReaderActivity::showNextReaderNotice(bool formatPopupDrawn) {
+  if (homeButtonFeedbackVisible.load()) return;
+  const bool shown =
+      formatPopupDrawn || showPendingStatsWarning() || showPendingFormatWarning() || showPendingHomeButtonFeedback();
+  if (shown) {
+    homeButtonFeedbackStarted.store(millis());
+    homeButtonFeedbackVisible.store(true);
+  }
+}
+
+void ReaderActivity::expireHomeButtonFeedback() {
+  if (homeButtonFeedbackVisible.load() && millis() - homeButtonFeedbackStarted.load() >= 1200) {
+    homeButtonFeedbackVisible.store(false);
+    requestUpdate();
+  }
 }
 
 void ReaderActivity::render(RenderLock&&) {
@@ -261,11 +322,21 @@ void ReaderActivity::render(RenderLock&&) {
     onEndOfBookRendered();
     markPageRendered();
     readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
+    readingStats.onRender(ReadingStatsFrame::EndOfBook);
+    showNextReaderNotice(false);
     return;
   }
 
+  const uint32_t previousGeneration = renderedPageGeneration;
+  const bool formatPopupDrawn = formatPopupVisible();
   renderBook();
   readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
+  readingStats.onRender(previousGeneration != renderedPageGeneration && !inputOverPage()
+                            ? ReadingStatsFrame::Page
+                            : ReadingStatsFrame::Unavailable);
+  if (pageRendered.load(std::memory_order_acquire)) {
+    showNextReaderNotice(formatPopupDrawn || formatPopupVisible());
+  }
 }
 
 bool ReaderActivity::handleForcedRefresh() {
@@ -276,4 +347,16 @@ bool ReaderActivity::handleForcedRefresh() {
   }
   requestUpdate();
   return true;
+}
+
+void ReaderActivity::onInputLockChanged(bool locked) {
+  if (locked) {
+    finishReaderGestures();
+    onReaderGestureStarted();
+    readingStats.pause();
+    flushReaderSession();
+  } else if (pageRendered.load(std::memory_order_acquire) && !inputOverPage()) {
+    readingStats.onRender(isAtEndOfBook() ? ReadingStatsFrame::EndOfBook : ReadingStatsFrame::Page);
+    readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
+  }
 }

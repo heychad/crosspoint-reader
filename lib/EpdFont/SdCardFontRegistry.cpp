@@ -291,9 +291,12 @@ void SdCardFontRegistry::refineVectorStyles(const char* dirPath, std::vector<SdC
 
 #endif  // CROSSPOINT_VECTOR_FONTS
 
-void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo& family) {
+void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo& family, Discovery& status) {
   HalFile dir = Storage.open(dirPath);
-  if (!dir || !dir.isDirectory()) return;
+  if (!dir || !dir.isDirectory()) {
+    status = Discovery::DirectoryReadFailed;
+    return;
+  }
 
   // Collect .cpfont and vector (.ttf/.otf/.ttc) candidates separately in one
   // pass (the dir handle is forward-only), then commit whichever kind the folder
@@ -302,17 +305,35 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
   std::vector<SdCardFontFileInfo> cpfontFiles;
   std::vector<SdCardFontFileInfo> vectorFiles;
 
-  char nameBuffer[128];
+  // FAT and exFAT names have at most 255 UTF-16 code units. Four UTF-8
+  // bytes per unit plus the terminator safely covers every valid name.
+  constexpr size_t nameCapacity = 255 * 4 + 1;
+  auto nameStorage = makeUniqueNoThrow<char[]>(nameCapacity);
+  if (!nameStorage) {
+    status = Discovery::FilenameAllocationFailed;
+    return;
+  }
+  char* nameBuffer = nameStorage.get();
   while (true) {
     HalFile entry = dir.openNextFile();
-    if (!entry) break;
+    if (!entry) {
+      if (dir.hasError()) status = Discovery::DirectoryReadFailed;
+      break;
+    }
     if (entry.isDirectory()) {
-      entry.close();
+      if (!entry.close()) {
+        status = Discovery::DirectoryReadFailed;
+        return;
+      }
       continue;
     }
 
-    entry.getName(nameBuffer, sizeof(nameBuffer));
-    entry.close();
+    const size_t nameLength = entry.getName(nameBuffer, nameCapacity);
+    const bool closed = entry.close();
+    if (nameLength == 0 || nameLength >= nameCapacity || !closed) {
+      status = Discovery::DirectoryReadFailed;
+      return;
+    }
 
     // Skip macOS resource fork files (._*) and other hidden files
     if (nameBuffer[0] == '.' || nameBuffer[0] == '_') continue;
@@ -335,7 +356,10 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
       SdCardFontFileInfo info;
       if (!isCanonicalCpfontName(nameBuffer, family.name, size)) {
         info.name = copyFileName(nameBuffer);
-        if (!info.name) continue;
+        if (!info.name) {
+          status = Discovery::FilenameAllocationFailed;
+          return;
+        }
       }
       info.pointSize = size;
       info.style = style;
@@ -355,7 +379,10 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
       // upgrades it from the face's own metadata and dedups by role afterwards.
       SdCardFontFileInfo info;
       info.name = copyFileName(nameBuffer);
-      if (!info.name) continue;
+      if (!info.name) {
+        status = Discovery::FilenameAllocationFailed;
+        return;
+      }
       info.pointSize = 0;  // size-free
       info.style = parseVectorStyle(nameBuffer, baseLen);
       if (!pathFits(family, info)) {
@@ -365,6 +392,11 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
       vectorFiles.push_back(std::move(info));
     }
 #endif
+  }
+
+  if (discoveryFailed(status) || !dir.close()) {
+    if (!discoveryFailed(status)) status = Discovery::DirectoryReadFailed;
+    return;
   }
 
   if (!cpfontFiles.empty()) {
@@ -383,25 +415,39 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
 // Scan a single root (e.g. "/.fonts") and append its families to `out`.
 // Skips families whose names already exist in `out` (de-duplicates between
 // the hidden and visible roots — first scan wins).
-void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out) {
+void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out, Discovery& status) {
   HalFile root = Storage.open(rootPath);
   if (!root) {
-    LOG_DBG("SDREG", "Fonts directory not found: %s", rootPath);
+    if (Storage.lookupPath(rootPath) != HalStorage::PathStatus::Missing) status = Discovery::DirectoryReadFailed;
     return;
   }
   if (!root.isDirectory()) {
     LOG_ERR("SDREG", "Fonts path is not a directory: %s", rootPath);
+    status = Discovery::DirectoryReadFailed;
     return;
   }
 
-  char nameBuffer[128];
+  constexpr size_t nameCapacity = 255 * 4 + 1;
+  auto nameStorage = makeUniqueNoThrow<char[]>(nameCapacity);
+  if (!nameStorage) {
+    status = Discovery::FilenameAllocationFailed;
+    return;
+  }
+  char* nameBuffer = nameStorage.get();
   while (true) {
     HalFile entry = root.openNextFile();
-    if (!entry) break;
-    if (entry.isDirectory()) {
-      entry.getName(nameBuffer, sizeof(nameBuffer));
-      entry.close();
-
+    if (!entry) {
+      if (root.hasError()) status = Discovery::DirectoryReadFailed;
+      break;
+    }
+    const bool isDirectory = entry.isDirectory();
+    const size_t nameLength = entry.getName(nameBuffer, nameCapacity);
+    const bool closed = entry.close();
+    if (nameLength == 0 || nameLength >= nameCapacity || !closed) {
+      status = Discovery::DirectoryReadFailed;
+      return;
+    }
+    if (isDirectory) {
       // Skip hidden/system directories inside the root (macOS ._*, .Trashes, etc.)
       if (nameBuffer[0] == '.' || nameBuffer[0] == '_') continue;
 
@@ -419,7 +465,8 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
       family.name = nameBuffer;
       family.root = rootPath;
       std::string subDirPath = std::string(rootPath) + "/" + nameBuffer;
-      SdCardFontRegistry::scanDirectory(subDirPath.c_str(), family);
+      SdCardFontRegistry::scanDirectory(subDirPath.c_str(), family, status);
+      if (discoveryFailed(status)) return;
 
       if (!family.files.empty()) {
         out.push_back(std::move(family));
@@ -430,8 +477,6 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
 #if CROSSPOINT_VECTOR_FONTS
       // Loose TrueType/OpenType file directly under the root (e.g.
       // /fonts/Bookerly.ttf). Rendered at any size via the FreeInkFont engine.
-      entry.getName(nameBuffer, sizeof(nameBuffer));
-      entry.close();
       if (nameBuffer[0] == '.' || nameBuffer[0] == '_') continue;
       size_t baseLen = 0;
       if (!parseVectorFontName(nameBuffer, baseLen)) continue;
@@ -453,7 +498,10 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
       family.loose = true;
       SdCardFontFileInfo info;
       info.name = copyFileName(nameBuffer);
-      if (!info.name) continue;
+      if (!info.name) {
+        status = Discovery::FilenameAllocationFailed;
+        return;
+      }
       info.pointSize = 0;  // size-free
       info.style = 0;
       if (!pathFits(family, info)) {
@@ -466,15 +514,23 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
 #endif  // CROSSPOINT_VECTOR_FONTS — loose .ttf/.otf files are ignored without the engine
     }
   }
+  if (!root.close() && !discoveryFailed(status)) status = Discovery::DirectoryReadFailed;
 }
 
-bool SdCardFontRegistry::discover() {
+bool SdCardFontRegistry::discover() { return discoverChecked() == Discovery::Ready; }
+
+SdCardFontRegistry::Discovery SdCardFontRegistry::discoverChecked() {
   families_.clear();
+  Discovery status = Discovery::Ready;
 
   // Hidden root is scanned first so it wins on name collisions, matching the
   // sleep-folder pattern (/.sleep preferred over /sleep).
-  scanRoot(FONTS_DIR_HIDDEN, families_);
-  scanRoot(FONTS_DIR_VISIBLE, families_);
+  scanRoot(FONTS_DIR_HIDDEN, families_, status);
+  if (!discoveryFailed(status)) scanRoot(FONTS_DIR_VISIBLE, families_, status);
+  if (discoveryFailed(status)) {
+    families_.clear();
+    return status;
+  }
 
   // Sort families alphabetically
   std::sort(families_.begin(), families_.end(),
@@ -487,7 +543,7 @@ bool SdCardFontRegistry::discover() {
   shrinkToFit(families_);  // the list is read-only until the next scan
 
   LOG_DBG("SDREG", "Discovery complete: %d families", static_cast<int>(families_.size()));
-  return !families_.empty();
+  return families_.empty() ? Discovery::Empty : Discovery::Ready;
 }
 
 const char* SdCardFontRegistry::findFamilyRoot(const char* familyName) {

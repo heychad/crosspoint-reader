@@ -1,0 +1,39 @@
+--- a/src/FatLib/FatFileLFN.cpp
++++ b/src/FatLib/FatFileLFN.cpp
+@@ -277,2 +277,4 @@
+   uint8_t checksum = 0;
++  uint8_t checkedOrdinal = 0;
++  uint8_t checkedChecksum = 0;
+   uint8_t ms10;
+@@ -300,3 +302,4 @@
+     if (!dir) {
+-      if (dirFile->getError()) {
++      if (dirFile->getError() || (dirFile->m_strictLookup && checkedOrdinal)) {
++        dirFile->m_error |= READ_ERROR;
+         DBG_FAIL_MACRO;
+@@ -306,2 +309,25 @@
+       goto create;
++    }
++    if (dirFile->m_strictLookup) {
++      const bool active = dir->name[0] != FAT_NAME_DELETED && dir->name[0] != FAT_NAME_FREE;
++      if (active && isFatLongName(dir)) {
++        const DirLfn_t* checked = reinterpret_cast<const DirLfn_t*>(dir);
++        const uint8_t ordinal = checked->order & 0X1F;
++        const bool last = (checked->order & FAT_ORDER_LAST_LONG_ENTRY) != 0;
++        const bool badFlags = (checked->order & ~(FAT_ORDER_LAST_LONG_ENTRY | 0X1F)) != 0;
++        if (badFlags || !ordinal || ordinal > 20 ||
++            (last ? checkedOrdinal != 0
++                  : checkedOrdinal <= 1 || ordinal + 1 != checkedOrdinal || checked->checksum != checkedChecksum)) {
++          dirFile->m_error |= READ_ERROR;
++          goto fail;
++        }
++        if (last) checkedChecksum = checked->checksum;
++        checkedOrdinal = ordinal;
++      } else if (checkedOrdinal) {
++        if (!active || checkedOrdinal != 1 || !isFatFileOrSubdir(dir) || lfnChecksum(dir->name) != checkedChecksum) {
++          dirFile->m_error |= READ_ERROR;
++          goto fail;
++        }
++        checkedOrdinal = 0;
++      }
+     }

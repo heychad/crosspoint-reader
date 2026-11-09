@@ -34,6 +34,7 @@ void ReleaseJsonParser::reset() {
   firmwareUrl[0] = '\0';
   firmwareSize = 0;
   tagFound = false;
+  tagSeen = false;
   firmwareFound = false;
   currentAssetName[0] = '\0';
   currentAssetUrl[0] = '\0';
@@ -49,7 +50,7 @@ const char* ReleaseJsonParser::getFirmwareUrl() const { return firmwareUrl; }
 size_t ReleaseJsonParser::getFirmwareSize() const { return firmwareSize; }
 
 void ReleaseJsonParser::commitAsset() {
-  if (strcmp(currentAssetName, firmwareAssetName) == 0) {
+  if (firmwareAssetName[0] != '\0' && strcmp(currentAssetName, firmwareAssetName) == 0) {
     memcpy(firmwareUrl, currentAssetUrl, sizeof(firmwareUrl));
     firmwareSize = currentAssetSize;
     firmwareFound = true;
@@ -98,13 +99,21 @@ void ReleaseJsonParser::sOnString(void* ctx, const char* value, size_t len) {
   switch (self->lastKey) {
     case LastKey::TAG_NAME:
       if (self->position == Position::TOP_LEVEL && self->depth == 1) {
-        safeCopy(self->tagName, sizeof(self->tagName), value, len);
-        self->tagFound = true;
+        self->tagFound = !self->tagSeen && len > 0 && len < sizeof(self->tagName) && !memchr(value, '\0', len);
+        self->tagSeen = true;
+        if (self->tagFound)
+          safeCopy(self->tagName, sizeof(self->tagName), value, len);
+        else
+          self->tagName[0] = '\0';
       }
       break;
     case LastKey::ASSET_NAME:
-      if (self->position == Position::IN_ASSET_OBJECT && self->assetDepth == 1)
-        safeCopy(self->currentAssetName, sizeof(self->currentAssetName), value, len);
+      if (self->position == Position::IN_ASSET_OBJECT && self->assetDepth == 1) {
+        if (len < sizeof(self->currentAssetName) && !memchr(value, '\0', len))
+          safeCopy(self->currentAssetName, sizeof(self->currentAssetName), value, len);
+        else
+          self->currentAssetName[0] = '\0';
+      }
       break;
     case LastKey::ASSET_URL:
       if (self->position == Position::IN_ASSET_OBJECT && self->assetDepth == 1)

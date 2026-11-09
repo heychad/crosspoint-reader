@@ -16,7 +16,10 @@
 #include "components/themes/BaseTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
+#include "components/themes/minimal/DashboardHomeTheme.h"
+#include "components/themes/minimal/MinimalHomeTheme.h"
 #include "components/themes/roundedraff/RoundedRaffTheme.h"
+#include "personalization/ReaderBarRenderer.h"
 
 UITheme UITheme::instance;
 
@@ -56,6 +59,26 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
       currentTheme = std::move(theme);
       currentMetrics = &LyraMetrics::values;
       LOG_DBG("UI", "Using Lyra theme");
+      break;
+    }
+    case CrossPointSettings::UI_THEME::DASHBOARD_HOME: {
+      auto theme = makeUniqueNoThrow<DashboardHomeTheme>();
+      if (!theme) {
+        LOG_ERR("UI", "OOM: Dashboard home theme");
+        return;
+      }
+      currentTheme = std::move(theme);
+      currentMetrics = &MinimalHomeMetrics::values;
+      break;
+    }
+    case CrossPointSettings::UI_THEME::MINIMAL_HOME: {
+      auto theme = makeUniqueNoThrow<MinimalHomeTheme>();
+      if (!theme) {
+        LOG_ERR("UI", "OOM: Minimal home theme");
+        return;
+      }
+      currentTheme = std::move(theme);
+      currentMetrics = &MinimalHomeMetrics::values;
       break;
     }
     case CrossPointSettings::UI_THEME::ROUNDEDRAFF:
@@ -170,6 +193,18 @@ int UITheme::getStatusBarHeight() {
   // reserved height does not depend on whether an RTC is present.
   return (sb.textLaneVisible(true) ? (metrics.statusBarVerticalMargin) : 0) +
          (sb.showsProgressBar() ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0);
+}
+
+int UITheme::getReaderTopBarHeight() {
+  return SETTINGS.readerBarsEnabled ? readerbars::height(SETTINGS.readerTopBar) : 0;
+}
+
+int UITheme::getReaderBottomBarHeight(bool forceText) {
+  if (SETTINGS.readerBarsEnabled) return readerbars::height(SETTINGS.readerBottomBar, forceText);
+  const int legacy = getStatusBarHeight();
+  return legacy + (forceText && !SETTINGS.statusBarSpec().textLaneVisible(true)
+                       ? getInstance().getMetrics().statusBarVerticalMargin
+                       : 0);
 }
 
 int UITheme::getProgressBarHeight() {

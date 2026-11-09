@@ -72,6 +72,12 @@ const char* TextSettingsActivity::tabLabel(const int index) const { return I18N.
 void TextSettingsActivity::onEnter() {
   UiTabListActivity::onEnter();
 
+  if (registry_ && !sdFontSystem.refreshIfDirty()) {
+    registryUnavailable_.store(true);
+    requestUpdate();
+    return;
+  }
+
   metrics_ = UITheme::getInstance().getMetrics();
   const Rect safeArea = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
   const int safeBottom = safeArea.y + safeArea.height;
@@ -183,6 +189,17 @@ void TextSettingsActivity::activateIndex(const int index) {
 }
 
 bool TextSettingsActivity::handleCustomInput() {
+  if (registry_ && sdFontSystem.registryNeedsRefresh()) {
+    if (!registryUnavailable_.exchange(true)) requestUpdate();
+  }
+  if (registryUnavailable_.load()) {
+    int x = 0;
+    int y = 0;
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(x, y))
+      finish();
+    return true;
+  }
   return optionPopup_.handleInput(mappedInput, [this] { requestUpdate(); });
 }
 
@@ -301,6 +318,16 @@ void TextSettingsActivity::drawFooter() {
 }
 
 void TextSettingsActivity::render(RenderLock&& lock) {
+  if (registryUnavailable_.load()) {
+    renderer.clearScreen();
+    const int center = renderer.getScreenHeight() / 2;
+    renderer.drawCenteredText(UI_10_FONT_ID, center - 12, tr(STR_FONT_LIST_REFRESH_FAILED));
+    renderer.drawCenteredText(UI_10_FONT_ID, center + 12, tr(STR_FONT_SETTINGS_REOPEN));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
   UiListActivity::render(std::move(lock));
 }

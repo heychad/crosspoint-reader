@@ -3,7 +3,8 @@ PlatformIO post: script: apply CrossPoint's SdFat patches via `git apply`.
 
 The patches in `scripts/sdfat_patches/` make USE_SEPARATE_FAT_CACHE
 overridable, invalidate the sector cache after a failed read, and write the
-FAT cache before the data cache on sync (see the file headers). They target
+FAT cache before the data cache on sync, preserve LFN lookup read errors, and
+provide scoped FAT and exFAT directory checks (see the patches). They target
 SdFat 2.3.1 only.
 
 Unlike JPEGDEC, SdFat is a registry dependency of the SDK, so the script
@@ -35,7 +36,39 @@ PATCHES = (
     ("0003-sync-fat-before-data-cache.patch", "src/FatLib/FatPartition.h",
      "fb91c81beac2779a0d4b08e886a5fefdf8062b8ad422ccec4e178ae4e88b72e5",
      "10d66a5d2424ed9c6919a9dc65305ebd5854170bdeea29f4b7c70f57bee929af"),
+    ("0004-preserve-lfn-read-errors.patch", "src/FatLib/FatFileLFN.cpp",
+     "e7a13328625505c5f2c18279087a36d90b308bc7c97513371a6ce14884026be2",
+     "e5506cfd44e2776482404d3e378a458538aa9debd3d8a2640c42728b56f846ac"),
+    ("0007-fatfile-strict-lookup.patch", "src/FatLib/FatFile.h",
+     "42355cd5bf5dc6e37b13931922e029a7c2a64bc409e7b3e56b632021ee925644",
+     "ec69d17ea1acae4b153099f3c4f5d142a536e41987a8872c09eb8378667724f8"),
+    ("0008-fsfile-strict-lookup.patch", "src/FsLib/FsFile.h",
+     "4c77e48772c707876f56c48ab71dbfb0b66f4de12375ead237c8d929d7755126",
+     "1763b25f564226de9886e25efefa4b6d74bb6280550b1d891d6d752caa9305e6"),
+    ("0010-exfat-strict-header.patch", "src/ExFatLib/ExFatFile.h",
+     "a0863afa1035a8dd799e8d17899a62369f9b50b3916a197ce99504ba3cb8ab13",
+     "a6e2641cf08e28c3ea03b8d56d0d14633bfacebef2844c7d9189caad9f33cccc"),
+    ("0011-exfat-strict-scan.patch", "src/ExFatLib/ExFatFile.cpp",
+     "ebcdb4c15e9200caf15a93095a37428d987e96da0f85733104550373ce6f0aa0",
+     "37e029d11544dacdd13790fead896fe5a246190e7a93c7b24426fdffc7998fdd"),
 )
+
+MIGRATIONS = {
+    "src/FatLib/FatFileLFN.cpp": {
+        "7aa833b48168d6f102babd0f0804fc3a6206c60e211ccf117f12ff3273992c84":
+            "0005-upgrade-lfn-create-guard.patch",
+        "69da34b4283eb63603404f0c3ecfa3d73ab8210cba9d341596cd1750a3c19919":
+            "0006-enable-strict-fat-lookup.patch",
+    },
+    "src/FsLib/FsFile.h": {
+        "e72a825f134494e240ee85f3406949dd45e5562de7de9ff0afa2f84d536897b6":
+            "0009-upgrade-fsfile-strict-exfat.patch",
+    },
+    "src/ExFatLib/ExFatFile.cpp": {
+        "927452f417c657b0c6ec593b805e72b5121080d6719ebd1650b3941a30602703":
+            "0012-upgrade-exfat-checksum.patch",
+    },
+}
 
 
 def digest(path):
@@ -73,9 +106,11 @@ def apply_patches(project_dir, dependency_dir):
     for name, relative, upstream, patched in PATCHES:
         target = dependency / relative
         current = digest(target)
-        if current not in (upstream, patched):
+        migrations = MIGRATIONS.get(relative, {})
+        if current not in (upstream, patched) and current not in migrations:
             raise RuntimeError("Unrecognized SdFat source: " + relative)
-        patch = project / "scripts" / "sdfat_patches" / name
+        patch_name = migrations.get(current, name)
+        patch = project / "scripts" / "sdfat_patches" / patch_name
         # Validate the entire set before changing any dependency files.
         command = ["git", "apply", "--check"]
         if current == patched:
@@ -84,7 +119,7 @@ def apply_patches(project_dir, dependency_dir):
                                 env=process_env, capture_output=True, text=True)
         if result.returncode:
             raise RuntimeError("SdFat patch does not apply: " + name + "\n" + result.stderr)
-        if current == upstream:
+        if current != patched:
             pending.append((patch, target, patched))
     for patch, target, expected in pending:
         subprocess.run(["git", "apply", str(patch)], cwd=dependency, env=process_env, check=True)

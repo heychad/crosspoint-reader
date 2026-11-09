@@ -26,6 +26,8 @@
 // publication so a release cannot be dropped during a highlight repaint.
 class OptionPopup {
  public:
+  static constexpr int maxOptions() { return MAX_OPTIONS; }
+
   void show(StrId titleId, const StrId* optionIds, int optionCount, int currentIndex,
             std::function<void(int)> onSelect) {
     title = I18N.get(titleId);

@@ -17,19 +17,18 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
-
-namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
-}  // namespace
+#include "PersonalUpdateVersion.h"
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+  if (!personalupdate::AUTHENTICATED_TRANSPORT) return UNVERIFIED_TRANSPORT_ERROR;
   LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
 
   // Stream the ~32KB release JSON straight into the parser as it arrives.
   // Buffering the whole body in a std::string would add a growing allocation
   // on top of the TLS session's heap during the fetch; with -fno-exceptions an
-  // OOM there aborts. fetchUrl handles the verified-https GET, redirects, and
-  // User-Agent (see HttpDownloader).
+  // OOM there aborts. fetchUrl handles the GET, redirects, and User-Agent
+  // (see HttpDownloader). The transport guard above remains closed until
+  // peer and firmware authenticity are verified.
   // Heap-allocated: the parser embeds a 2 KB JSON token buffer.
   auto releaseParserPtr = makeUniqueNoThrow<ReleaseJsonParser>();
   if (!releaseParserPtr) {
@@ -48,14 +47,16 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   }
   char assetName[48] = {};
   bool assetNameSet = false;
-  const bool ok = HttpDownloader::fetchUrl(latestReleaseUrl, [&](const uint8_t* data, size_t len) {
+  const bool ok = HttpDownloader::fetchUrl(personalupdate::RELEASE_API, [&](const uint8_t* data, size_t len) {
     size_t offset = 0;
     while (!assetNameSet && offset < len) {
       releaseParser.feed(reinterpret_cast<const char*>(data + offset), 1);
       offset++;
       if (releaseParser.foundTag()) {
-        snprintf(assetName, sizeof(assetName), "crosspoint-%s%s.bin", releaseParser.getTagName(), assetSuffix);
-        releaseParser.setFirmwareAssetName(assetName);
+        const int length =
+            snprintf(assetName, sizeof(assetName), "crosspoint-%s%s.bin", releaseParser.getTagName(), assetSuffix);
+        if (length > 0 && static_cast<size_t>(length) < sizeof(assetName))
+          releaseParser.setFirmwareAssetName(assetName);
         assetNameSet = true;
       }
     }
@@ -95,48 +96,14 @@ bool OtaUpdater::isUpdateNewer() const {
   if (!updateAvailable || latestVersion.empty() || latestVersion == CROSSPOINT_VERSION) {
     return false;
   }
-
-  int currentMajor, currentMinor, currentPatch;
-  int latestMajor, latestMinor, latestPatch;
-
-  const auto currentVersion = CROSSPOINT_VERSION;
-
-  // semantic version check (only match on 3 segments)
-  sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
-  sscanf(currentVersion, "%d.%d.%d", &currentMajor, &currentMinor, &currentPatch);
-
-  /*
-   * Compare major versions.
-   * If they differ, return true if latest major version greater than current major version
-   * otherwise return false.
-   */
-  if (latestMajor != currentMajor) return latestMajor > currentMajor;
-
-  /*
-   * Compare minor versions.
-   * If they differ, return true if latest minor version greater than current minor version
-   * otherwise return false.
-   */
-  if (latestMinor != currentMinor) return latestMinor > currentMinor;
-
-  /*
-   * Check patch versions.
-   */
-  if (latestPatch != currentPatch) return latestPatch > currentPatch;
-
-  // If we reach here, it means all segments are equal.
-  // One final check, if we're on an RC build (contains "-rc"), we should consider the latest version as newer even if
-  // the segments are equal, since RC builds are pre-release versions.
-  if (strstr(currentVersion, "-rc") != nullptr) {
-    return true;
-  }
-
-  return false;
+  if (board_tag::boardNameLen() != 5 || memcmp(board_tag::boardName(), "x4pro", 5) != 0) return false;
+  return personalupdate::isNewer(latestVersion, CROSSPOINT_VERSION);
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
 
 OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgress, void* ctx) {
+  if (!personalupdate::AUTHENTICATED_TRANSPORT) return UNVERIFIED_TRANSPORT_ERROR;
   if (!isUpdateNewer()) {
     return UPDATE_OLDER_ERROR;
   }

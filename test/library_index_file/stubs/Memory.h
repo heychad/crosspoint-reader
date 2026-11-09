@@ -5,6 +5,9 @@
 #include <type_traits>
 #include <utility>
 
+inline bool failIndexAllocation = false;
+inline size_t lastIndexArrayCount = 0;
+
 template <typename T, typename... Args>
   requires(!std::is_array_v<T>)
 std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
@@ -14,5 +17,7 @@ std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
 template <typename T>
   requires std::is_unbounded_array_v<T>
 std::unique_ptr<T> makeUniqueNoThrow(size_t count) {
+  lastIndexArrayCount = count;
+  if (failIndexAllocation) return {};
   return std::make_unique<T>(count);
 }

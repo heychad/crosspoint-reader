@@ -10,6 +10,7 @@
 #include <HalStorage.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "LibraryFormat.h"
@@ -25,6 +26,10 @@ enum class SortOrder : uint8_t {
   TitleDesc,
   AuthorAsc,
   AuthorDesc,
+  SeriesAsc,
+  SeriesDesc,
+  GenreAsc,
+  GenreDesc,
 };
 
 // One book to locate in the index: the complete-path hash (clixPathHash) is
@@ -38,6 +43,21 @@ struct BookIdentity {
 
 class LibraryIndexFile {
  public:
+  class PathLookup {
+   public:
+    PathLookup() = default;
+    PathLookup(PathLookup&&) = default;
+    PathLookup& operator=(PathLookup&&) = default;
+    explicit operator bool() const { return offsets != nullptr; }
+
+   private:
+    friend class LibraryIndexFile;
+    std::unique_ptr<uint32_t[]> offsets;
+    const LibraryIndexFile* owner = nullptr;
+    uint64_t generation = 0;
+    uint16_t stride = 0;
+  };
+
   LibraryIndexFile() = default;
   ~LibraryIndexFile();
   LibraryIndexFile(const LibraryIndexFile&) = delete;
@@ -88,20 +108,29 @@ class LibraryIndexFile {
   // Cleaned author spelling before the library-wide spelling vote. Empty is a
   // valid value, so success is independent of `out.empty()`.
   bool readSourceAuthor(const ClixRecord& record, std::string& out);
+  bool readSeries(const ClixRecord& record, std::string& out);
+  bool readGenre(const ClixRecord& record, std::string& out);
+  bool readSeriesPosition(const ClixRecord& record, uint32_t& out);
 
   // Absolute path of the book, rebuilt from its folder record.
   bool readPath(const ClixRecord& record, std::string& out);
+  // Scan-scoped folder checkpoints, at most 512 bytes. Invalid after this index closes.
+  PathLookup preparePathLookup();
+  bool readPath(const ClixRecord& record, std::string& out, const PathLookup& lookup);
 
  private:
   bool openImpl(const char* path, bool acceptStaleFold);
   bool readAt(uint32_t offset, void* dst, size_t len);
   bool readBlobField(const ClixRecord& record, uint8_t field, std::string& out);
+  bool locateBlobField(const ClixRecord& record, uint8_t field, uint32_t& offset, uint8_t& length);
+  bool readPathFrom(const ClixRecord& record, std::string& out, uint16_t firstFolder, uint32_t offset);
 
   HalFile file;
   ClixHeader head{};
   bool opened = false;
   bool readFailed = false;
   ClixValidity lastValidity = ClixValidity::BadMagic;
+  uint64_t generation = 0;
 };
 
 }  // namespace library

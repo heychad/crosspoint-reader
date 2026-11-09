@@ -87,9 +87,29 @@ class HalGPIO {
   // Cheap enough to call every few ms.
   bool rawInputActive();
   bool hasTouch() const;
+  struct TouchContact {
+    float x = 0;
+    float y = 0;
+    uint8_t id = 0;
+    bool valid = false;
+  };
+  struct TouchSnapshot {
+    static constexpr uint8_t MAX_CONTACTS = 4;
+    TouchContact contacts[MAX_CONTACTS]{};
+    uint8_t count = 0;
+    uint8_t reportedCount = 0;
+    bool idsStable = false;
+  };
+  // Normalized, calibrated panel-native coordinates; no allocation or new poll.
+  bool supportsMultiTouch() const;
+  TouchSnapshot getTouchSnapshot() const;
+  bool wasMultiTouchSwipe(uint8_t& count, float& sx, float& sy, float& ex, float& ey, unsigned long& durationMs) const;
+  bool wasMultiTouchRotation(float& degrees, float& x, float& y, unsigned long& durationMs) const;
+  bool wasMultiTouchPinch(float& scale, float& x, float& y, unsigned long& durationMs) const;
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
   // event fires on release and excludes a long hold.
   bool hasHomeKey() const;
+  bool isHomeKeyDown() const;
   // Two-position slide switch (Picco). Debounced position and its change edge.
   bool hasToggleSwitch() const;
   bool isToggleSwitchOn() const;

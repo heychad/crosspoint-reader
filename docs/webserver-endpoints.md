@@ -265,6 +265,9 @@ Types:
 | `string` | `value` |
 
 The font-family setting includes SD-card font families when they are installed.
+If the font list cannot be refreshed, `GET /api/settings`, `POST /api/settings`,
+and `GET /api/fonts` return HTTP 503 with `{"error":"Font list unavailable; retry."}`.
+A failed settings POST applies no settings; retry after the font list is available.
 
 ### `POST /api/settings`
 

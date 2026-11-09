@@ -16,6 +16,11 @@
 #include "ReaderLineSpacing.h"
 #include "SettingsList.h"
 #include "fontIds.h"
+#include "personalization/LegacyHomeShortcut.h"
+#include "personalization/ReaderBarsJson.h"
+#include "personalization/ReaderGestureJson.h"
+#include "personalization/ReaderQuickActions.h"
+#include "personalization/ReaderQuickBindings.h"
 #include "util/ParagraphIndentMigration.h"
 #include "util/PluginLocations.h"
 
@@ -120,12 +125,22 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     doc["keyboardLayouts"] = keyboardLayouts;
   }
 
+  doc["readerBarsEnabled"] = readerBarsEnabled;
+  auto bars = doc["readerBarsV1"].to<JsonObject>();
+  writeReaderBar(bars["top"].to<JsonObject>(), readerTopBar);
+  writeReaderBar(bars["bottom"].to<JsonObject>(), readerBottomBar);
+
+  readergestures::writeBindings(doc, twoFingerActions);
+  readerquickactions::write(doc, readerQuickActions);
   bleturner::writeJson(ble, doc);
+  bookReaderSettings.writeGlobal(doc.as<JsonObject>());
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
+  bookReaderSettings.beforeGlobalLoad(*this);
   CrossPointSettings& s = *this;
   bool needsResave = false;
+  const auto quickBindingsBefore = readerquickactions::bindingValues(s);
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
 
@@ -190,6 +205,13 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   };
   forEachBaseSetting(visit);
+  if (BoardConfig::hasTouch()) {
+    // A normal settings save later persists imported values under modern keys.
+    readergestures::readEmbeddedLegacyEdges(
+        doc, {&readerLeftEdgeUp, &readerLeftEdgeDown, &readerRightEdgeUp, &readerRightEdgeDown});
+  }
+  needsResave |= readergestures::readBindings(doc, twoFingerActions);
+  needsResave |= readerquickactions::read(doc, readerQuickActions);
 
   // Plugin System did not exist in older settings files. Preserve the behavior
   // of users who already have SD plugins installed, while keeping the new
@@ -260,6 +282,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   longPressMenuFunction = clamp(doc["longPressMenuFunction"] | (uint8_t)LP_MENU_DISABLED,
                                 (uint8_t)LONG_PRESS_MENU_FUNCTION_COUNT, (uint8_t)LP_MENU_DISABLED);
   shortPwrBtn = clamp(doc["shortPwrBtn"] | (uint8_t)IGNORE, (uint8_t)SHORT_PWRBTN_COUNT, (uint8_t)IGNORE);
+  // Do not force a resave solely for this import: a normal settings save will
+  // persist the modern binding, while loading leaves the legacy file intact.
+  readershortcuts::migrateLegacyHomePowerTap(doc, BoardConfig::hasHomeKey(), powerTapAction);
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync,       HomeButtonAction::Ignore,
@@ -298,15 +323,42 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
   }
 
+  // An absent/invalid custom layout starts from the existing CrossPoint footer.
+  readerTopBar = {};
+  readerBottomBar = {};
+  if (statusBarBattery) readerBottomBar.slots[0] = ReaderBarItem::Battery;
+  if (statusBarClock != STATUS_BAR_CLOCK_HIDE) {
+    readerBottomBar.slots[statusBarClock == STATUS_BAR_CLOCK_LEFT ? 1 : 6] = ReaderBarItem::Clock;
+  }
+  if (statusBarChapterPageCount) readerBottomBar.slots[4] = ReaderBarItem::ChapterPages;
+  if (statusBarBookProgressPercentage) readerBottomBar.slots[5] = ReaderBarItem::BookPercent;
+  if (statusBarTitle == BOOK_TITLE) readerBottomBar.slots[3] = ReaderBarItem::BookTitle;
+  if (statusBarTitle == CHAPTER_TITLE) readerBottomBar.slots[3] = ReaderBarItem::ChapterTitle;
+  readerBottomBar.progress = statusBarProgressBar;
+  readerBottomBar.thickness = statusBarProgressBarThickness;
+  const auto bars = doc["readerBarsV1"];
+  if (!bars.isNull()) {
+    const bool topValid = readReaderBar(bars["top"], readerTopBar);
+    const bool bottomValid = readReaderBar(bars["bottom"], readerBottomBar);
+    needsResave = needsResave || !topValid || !bottomValid;
+    readerBarsEnabled = topValid && bottomValid && (doc["readerBarsEnabled"] | false);
+  } else {
+    readerBarsEnabled = false;
+  }
+
   if (!bleturner::readJson(ble, doc)) {
     needsResave = true;
   }
+
+  needsResave |= readerquickactions::normalizeChangedBindings(s, quickBindingsBefore);
 
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");
     requestResave();
   }
 
+  bookReaderSettings.afterGlobalLoad(*this);
+  uiscale::publish(uiScale);
   LOG_DBG("CPS", "Settings loaded from file");
 
   return true;
@@ -345,6 +397,7 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   // Same layout as Display, so switching between them keeps the section cache.
   spec.imageRendering = imageRendering == IMAGES_DISPLAY_BW ? static_cast<uint8_t>(IMAGES_DISPLAY) : imageRendering;
   spec.focusReadingEnabled = focusReadingEnabled != 0;
+  spec.renderMode = normalizeEpubRenderMode(epubRenderMode);
   return spec;
 }
 
@@ -411,4 +464,35 @@ int CrossPointSettings::getReaderFontId() const {
     default:
       return NOTOSANS_14_FONT_ID;
   }
+}
+
+void CrossPointSettings::setTwoFingerAction(size_t index, uint8_t value) {
+  if (index >= twoFingerActions.size()) return;
+  twoFingerActions[index] = value;
+  readergestures::normalize(twoFingerActions, static_cast<int>(index));
+}
+
+void CrossPointSettings::beginBookReaderSettings(const BookReaderSettings& book) {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  bookReaderSettings.begin(*this, book);
+}
+
+bool CrossPointSettings::bookReaderSettingsActive() {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  return bookReaderSettings.active();
+}
+
+BookReaderSettings CrossPointSettings::captureBookReaderSettings() {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  return bookReaderSettings.capture(*this);
+}
+
+void CrossPointSettings::resetBookReaderSettings() {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  bookReaderSettings.reset(*this);
+}
+
+void CrossPointSettings::endBookReaderSettings() {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  bookReaderSettings.end(*this);
 }

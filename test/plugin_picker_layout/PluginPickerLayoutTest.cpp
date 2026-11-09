@@ -1,9 +1,11 @@
 #include <EpdFont.h>
 #include <builtinFonts/ubuntu_10_regular.h>
 #include <builtinFonts/ubuntu_12_regular.h>
+#include <components/bars/tab-bar.h>
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 #include "util/PluginPickerLayout.h"
 
@@ -25,7 +27,8 @@ class FontTarget final : public fui::DrawTarget {
   void stroke(fui::Rect, fui::Paint, uint8_t, uint8_t, uint8_t) override {}
   void line(fui::Point, fui::Point, uint8_t, fui::Paint) override {}
   void triangle(fui::Point, fui::Point, fui::Point, fui::Paint) override {}
-  void text(fui::Rect, const char*, fui::TextStyle) override {}
+  std::vector<std::pair<fui::Rect, std::string>> drawnText;
+  void text(fui::Rect rect, const char* value, fui::TextStyle) override { drawnText.emplace_back(rect, value); }
   void bitmap(fui::Rect, fui::BitmapRef, fui::BitmapMode, fui::Paint, fui::Rotation) override {}
 
  private:
@@ -99,4 +102,57 @@ TEST(PluginPickerLayout, ShortSubtitlesKeepTheirOriginalRowHeight) {
   fitPluginSubtitleToViewport(target, 640, props);
   const auto after = fui::measureListRow(target, nullptr, 480, props, item);
   EXPECT_EQ(after.height, before.height);
+}
+TEST(LibraryMetadataTabs, AllFiveLabelsAndTouchTargetsFitReaderOrientations) {
+  const char* labels[] = {"Recent", "Title", "Author", "Series", "Genre"};
+  struct Theme {
+    int font;
+    int gap;
+    bool fullSlot;
+  };
+  // Production Base, Lyra and RoundedRaff properties, plus a wider-gap stress case.
+  const Theme themes[] = {{0, 10, false}, {0, 8, false}, {1, 0, true}, {1, 10, true}};
+  for (const auto size : {fui::Size{480, 800}, fui::Size{800, 480}}) {
+    for (const Theme theme : themes) {
+      for (const bool focused : {false, true}) {
+        for (int selected = 0; selected < 5; ++selected) {
+          FontTarget target;
+          fui::TabItem tabs[5];
+          for (int i = 0; i < 5; ++i) {
+            tabs[i] = fui::tabItem(i, i == selected, true, labels[i]);
+            if (i == selected) tabs[i].indicator = fui::TabIndicator::Down;
+          }
+          fui::TabBarProps props;
+          props.tabs = tabs;
+          props.count = 5;
+          props.layout = fui::TabBarLayout::ContentWidth;
+          props.action = 1;
+          props.inputMask = fui::InputTouch;
+          props.text.font = theme.font;
+          props.text.maxLines = 1;
+          props.contentInset = {2, 0, 2, 0};
+          props.gap = theme.gap;
+          props.tabInset = theme.fullSlot ? fui::Insets{4, 4, 7, 4}
+                           : focused      ? fui::Insets{2, 4, 4, 4}
+                                          : fui::Insets{2, 4, 0, 4};
+          if (!focused && !theme.fullSlot) props.selectedUnderline = 2;
+          const int height = std::max(50, target.lineHeight(theme.font) + 10);
+          fui::DeviceContext device;
+          device.width = size.width;
+          device.height = size.height;
+          fui::InteractionBuffer<8> interactions;
+          fui::Frame<8> frame(target, device, {}, interactions);
+          fui::tabBar(frame, {20, 0, static_cast<int16_t>(size.width - 40), static_cast<int16_t>(height - 1)}, props);
+          ASSERT_EQ(target.drawnText.size(), 5u);
+          EXPECT_EQ(interactions.count(), 5u);
+          for (size_t i = 0; i < 5; ++i) {
+            EXPECT_EQ(target.drawnText[i].second, labels[i]);
+            EXPECT_GE(target.drawnText[i].first.x, 20);
+            EXPECT_LE(target.drawnText[i].first.right(), size.width - 20);
+            EXPECT_LE(target.drawnText[i].first.bottom(), height);
+          }
+        }
+      }
+    }
+  }
 }

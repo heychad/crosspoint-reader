@@ -1,0 +1,5 @@
+FetchContent_GetProperties(ArduinoJson)
+add_executable(SettingsRecoveryPlanTest SettingsRecoveryPlanTest.cpp ${REPO_ROOT}/lib/Serialization/SettingsRecoveryProbe.cpp ${REPO_ROOT}/lib/Serialization/SettingsSnapshotCopy.cpp)
+target_include_directories(SettingsRecoveryPlanTest PRIVATE stubs ../book_reading_stats_atomic/stubs ${REPO_ROOT}/lib/Serialization ${arduinojson_SOURCE_DIR}/src)
+target_link_libraries(SettingsRecoveryPlanTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(SettingsRecoveryPlanTest)

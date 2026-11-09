@@ -221,6 +221,14 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     return;
   }
 
+  if (self->state == IN_METADATA && xmlLocalNameEquals(name, "subject")) {
+    if (self->subject.empty()) {
+      self->state = IN_BOOK_SUBJECT;
+      self->metadataSpacePending = false;
+    }
+    return;
+  }
+
   if (self->state == IN_METADATA && xmlLocalNameEquals(name, "identifier")) {
     self->state = IN_BOOK_IDENTIFIER;
     self->identifierText.clear();
@@ -488,6 +496,11 @@ void XMLCALL ContentOpfParser::characterData(void* userData, const XML_Char* s, 
     return;
   }
 
+  if (self->state == IN_BOOK_SUBJECT) {
+    appendMetadataText(self->subject, s, len, self->metadataSpacePending);
+    return;
+  }
+
   if (self->state == IN_BOOK_IDENTIFIER) {
     appendMetadataText(self->identifierText, s, len, self->metadataSpacePending);
     return;
@@ -536,6 +549,11 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
   }
 
   if (self->state == IN_BOOK_LANGUAGE && xmlLocalNameEquals(name, "language")) {
+    self->state = IN_METADATA;
+    return;
+  }
+
+  if (self->state == IN_BOOK_SUBJECT && xmlLocalNameEquals(name, "subject")) {
     self->state = IN_METADATA;
     return;
   }

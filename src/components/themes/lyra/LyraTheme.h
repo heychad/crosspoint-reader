@@ -84,6 +84,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
 
 class LyraTheme : public BaseTheme {
  public:
+  int getMenuTopInset() const override { return 0; }
   // Component drawing methods
   void fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const override;
   void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,

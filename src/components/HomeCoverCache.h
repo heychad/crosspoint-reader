@@ -19,7 +19,8 @@ class HomeCoverCache {
   void prepare();
   void invalidate();
   void invalidate(size_t index);
-  bool paint(freeink::ui::Rect rect, size_t index, const std::string& path);
+  bool paint(freeink::ui::Rect rect, size_t index, const char* path);
+  bool paint(freeink::ui::Rect rect, size_t index, const std::string& path) { return paint(rect, index, path.c_str()); }
 
  private:
   struct CachedCover {

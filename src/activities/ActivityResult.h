@@ -57,6 +57,9 @@ struct ProgressChangeResult {
   int spineIndex = 0;
   int page = 0;
   int totalPages = 0;
+  bool hasChapterProgress = false;
+  float chapterProgress = 0.0f;
+  uint16_t paragraphIndex = UINT16_MAX;
   std::string xpath;
   float percentage = 0.0f;
   bool hasSavedProgress = false;
