@@ -542,6 +542,50 @@ void exerciseSettingsPreallocation(bool exfat) {
   }
 }
 
+// Characterize a damaged allocation bitmap: comparing only source and
+// destination clusters cannot establish that a third file owns neither.
+void exercisePreallocationThirdFileAlias() {
+  Disk disk;
+  uint8_t scratch[512];
+  ExFatFormatter formatter;
+  assert(formatter.format(&disk, scratch));
+  Cluster_t sourceCluster = 0, thirdCluster = 0;
+  Sector_t bitmapStart = 0;
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    bitmapStart = volume.dataStartSector();
+    auto source = volume.open("/settings.json", O_CREAT | O_EXCL | O_WRONLY);
+    assert(source && source.write("settings", 8) == 8);
+    sourceCluster = source.firstCluster();
+    assert(source.close());
+    auto third = volume.open("/third.bin", O_CREAT | O_EXCL | O_WRONLY);
+    assert(third && third.write("original", 8) == 8);
+    thirdCluster = third.firstCluster();
+    assert(third.close() && thirdCluster != sourceCluster);
+  }
+  // Force the allocator to choose the third file's falsely free cluster.
+  const uint32_t bit = thirdCluster - 2;
+  disk.sectors[bitmapStart + bit / 4096][(bit / 8) % 512] &= static_cast<uint8_t>(~(uint8_t{1} << (bit % 8)));
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    auto source = volume.open("/settings.json", O_RDONLY);
+    auto dest = volume.open("/snapshot.json", O_CREAT | O_EXCL | O_RDWR);
+    assert(source && dest && dest.preAllocate(8));
+    assert(source.firstCluster() != dest.firstCluster() && dest.firstCluster() == thirdCluster);
+    assert(dest.write("replaced", 8) == 8 && dest.close() && source.close());
+  }
+  {
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    auto third = volume.open("/third.bin", O_RDONLY);
+    char read[8];
+    assert(third && third.read(read, sizeof(read)) == 8 && std::memcmp(read, "replaced", 8) == 0 && third.close());
+  }
+  std::puts("exFAT preallocation: pairwise distinct clusters did not protect a third file with a falsely free bitmap bit");
+}
+
 int main() {
   for (bool exfat : {false, true})
     for (bool initial : {false, true})
@@ -561,4 +605,5 @@ int main() {
   exerciseExfatAllocationBitmap();
   exerciseSettingsPreallocation(false);
   exerciseSettingsPreallocation(true);
+  exercisePreallocationThirdFileAlias();
 }
