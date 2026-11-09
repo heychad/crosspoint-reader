@@ -8,6 +8,7 @@ struct Snapshot {
   Candidate backup = Candidate::Unavailable;
   Candidate temporary = Candidate::Unavailable;
   Plan decision() const { return plan(primary, backup, temporary); }
+  BootPlan bootDecision() const { return bootPlan(primary, backup, temporary); }
 };
 
 // Read-only classification of three candidate JSON files under the storage

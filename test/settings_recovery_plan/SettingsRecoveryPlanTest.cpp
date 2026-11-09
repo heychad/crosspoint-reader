@@ -5,6 +5,7 @@
 #include <HalStorage.h>
 #include <Memory.h>
 #include <gtest/gtest.h>
+#include <cstring>
 
 using settingsrecovery::Candidate;
 using settingsrecovery::Plan;
@@ -97,6 +98,38 @@ TEST(SettingsRecoveryProbe, ReadCloseAndAllocationFailuresNeverAppearMissing) {
   failNextBackupAllocation = true;
   EXPECT_EQ(settingsrecovery::probe(path, "/missing.bak", "/missing.tmp").primary, Candidate::Unavailable);
   EXPECT_TRUE(storage.exists(path));
+}
+
+TEST(SettingsRecoveryProbe, BootDecisionPreservesInterruptedSaveArtifacts) {
+  using settingsrecovery::BootCandidate;
+  auto& storage = HalStorage::getInstance();
+  storage.reset();
+  constexpr auto primary = "/.crosspoint/settings.json";
+  constexpr auto backup = "/.crosspoint/settings.json.bak";
+  constexpr auto temporary = "/.crosspoint/settings.json.tmp";
+  HalFile file;
+  auto create = [&](const char* path, const char* content) {
+    ASSERT_TRUE(storage.openFileForWrite("TEST", path, file));
+    const size_t length = std::strlen(content);
+    ASSERT_EQ(file.write(content, length), length);
+    ASSERT_TRUE(file.close());
+  };
+  create(backup, "{\"fontSize\":14}");
+  create(temporary, "{broken");
+  auto snapshot = settingsrecovery::probe(primary, backup, temporary);
+  EXPECT_EQ(snapshot.bootDecision().candidate, BootCandidate::Backup);
+  EXPECT_FALSE(snapshot.bootDecision().allowSave);
+  create(primary, "{\"fontSize\":16}");
+  snapshot = settingsrecovery::probe(primary, backup, temporary);
+  EXPECT_EQ(snapshot.bootDecision().candidate, BootCandidate::Primary);
+  EXPECT_FALSE(snapshot.bootDecision().allowSave);
+  storage.failNextReadFor(primary);
+  snapshot = settingsrecovery::probe(primary, backup, temporary);
+  EXPECT_EQ(snapshot.bootDecision().candidate, BootCandidate::None);
+  EXPECT_FALSE(snapshot.bootDecision().allowSave);
+  EXPECT_TRUE(storage.exists(primary));
+  EXPECT_TRUE(storage.exists(backup));
+  EXPECT_TRUE(storage.exists(temporary));
 }
 
 TEST(SettingsSnapshotCopy, CreatesVerifiedCopyWithoutOverwritingExistingBackup) {
