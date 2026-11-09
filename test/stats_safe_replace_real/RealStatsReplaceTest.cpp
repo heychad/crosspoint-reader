@@ -481,6 +481,67 @@ void exerciseExfatAllocationBitmap() {
   std::puts("exFAT free bitmap and bitmap read failure refused; retry succeeded");
 }
 
+void exerciseSettingsPreallocation(bool exfat) {
+  Disk baseline;
+  baseline.sectorsTotal = 64 * 1024 * 1024;
+  uint8_t scratch[512];
+  if (exfat) {
+    ExFatFormatter formatter;
+    assert(formatter.format(&baseline, scratch));
+  } else {
+    FatFormatter formatter;
+    assert(formatter.format(&baseline, scratch));
+  }
+  const std::string original = "{\"data\":\"" + std::string(2268, 'x') + "\"}";
+  {
+    FsVolume volume;
+    assert(volume.begin(&baseline));
+    auto source = volume.open("/settings.json", O_CREAT | O_EXCL | O_WRONLY);
+    assert(source && source.write(original.data(), original.size()) == original.size() && source.close());
+  }
+  for (bool stop : {false, true}) {
+    int injected = 0;
+    for (int fault = -1; fault < 128; ++fault) {
+      Disk disk;
+      disk.sectorsTotal = baseline.sectorsTotal;
+      disk.sectors = baseline.sectors;
+      {
+        FsVolume volume;
+        assert(volume.begin(&disk));
+        disk.writes = 0;
+        disk.failAt = fault;
+        disk.failStop = stop;
+        auto source = volume.open("/settings.json", O_RDONLY);
+        auto dest = volume.open("/snapshot.json", O_CREAT | O_EXCL | O_RDWR);
+        if (source && dest && dest.preAllocate(original.size())) {
+          const auto sourceCluster = source.firstCluster();
+          const auto destinationCluster = dest.firstCluster();
+          assert(sourceCluster >= 2 && destinationCluster >= 2 && sourceCluster != destinationCluster);
+          assert(dest.dataLength() == original.size());
+          assert(dest.fileSize() == original.size());
+          assert(exfat ? dest.validLength() == 0 : dest.validLength() == original.size());
+          if (dest.write(original.data(), original.size()) == original.size()) dest.sync();
+        }
+        if (source) source.close();
+        if (dest) dest.close();
+      }
+      if (fault >= 0 && !disk.injected) break;
+      if (disk.injected) ++injected;
+      disk.dead = false;
+      disk.failAt = -1;
+      FsVolume after;
+      assert(after.begin(&disk));
+      auto source = after.open("/settings.json", O_RDONLY);
+      assert(source && source.fileSize() == original.size());
+      std::string read(original.size(), '\0');
+      assert(source.read(read.data(), read.size()) == static_cast<int>(read.size()) && read == original && source.close());
+    }
+    assert(injected > 0);
+    std::printf("%s preallocation (%s): %d injected writes, source preserved\n", exfat ? "exFAT" : "FAT32",
+                stop ? "fail-stop" : "transient", injected);
+  }
+}
+
 int main() {
   for (bool exfat : {false, true})
     for (bool initial : {false, true})
@@ -498,4 +559,6 @@ int main() {
   exerciseFatTerminalMarkers(false);
   exerciseFatTerminalMarkers(true);
   exerciseExfatAllocationBitmap();
+  exerciseSettingsPreallocation(false);
+  exerciseSettingsPreallocation(true);
 }
