@@ -17,7 +17,10 @@ enum class SettingAction {
   None,
   RemapFrontButtons,
   CustomiseStatusBar,
+  ReaderBars,
+  QuickActions,
   ClockSettings,
+  ReadingStatistics,
   KOReaderSync,
   OPDSBrowser,
   Network,
@@ -32,6 +35,7 @@ enum class SettingAction {
   KeyboardLayouts,
   HomeButton,
   About,
+  DeviceDiagnostics,
 };
 
 struct SettingInfo {

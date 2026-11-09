@@ -21,8 +21,15 @@ class Section {
   std::string filePath;
   HalFile file;
 
-  void writeSectionFileHeader(const ReaderRenderSpec& spec);
+  bool writeSectionFileHeader(const ReaderRenderSpec& spec);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
+  bool openSpeculativeOutput();
+  bool startBuildInternal(const ReaderRenderSpec& spec, const std::function<void()>& popupFn, uint16_t speculativePages,
+                          uint16_t speculativeAnchors);
+  bool buildSomeMoreInternal(int maxPages, bool (*yieldNow)());
+  bool closeSpeculativeOutput();
+  bool reopenSpeculativeOutput();
+  void discardOpenBuildOutput();
 
   // Page-offset table entry, kept in RAM while an incremental build is running so
   // already-built pages can be located in the partially-written .bin.
@@ -57,6 +64,13 @@ class Section {
     uint32_t smoothedAtConsumed = 0;
   };
   std::unique_ptr<BuildContext> build_;
+  // Nonzero only for an explicitly configured speculative build.
+  uint16_t speculativeMaxPages_ = 0;
+  uint16_t speculativeMaxAnchors_ = 0;
+  HalStorage::MutationMarker speculativeMarker_;
+  uint64_t speculativeSize_ = 0;
+  uint64_t speculativePosition_ = 0;
+  bool preserveSpeculativeOutput_ = false;
   bool buildComplete_ = false;
   // Pages laid out by the active build (== build_->lut.size()). Distinct from pageCount,
   // which is the pages *available to read* and also counts a loaded partial file's pages.
@@ -74,7 +88,9 @@ class Section {
   bool commitBuildFile(uint8_t version, uint32_t bytesConsumed, uint32_t totalBytes);
   // Builds write here and are swapped over filePath only on commit, so a prior
   // partial/finalized file stays readable while a rebuild is in progress.
-  std::string binTmpPath() const { return filePath + ".part"; }
+  std::string speculativeFilePath() const { return filePath + ".prefetch"; }
+  // A speculative build owns a separate name that older firmware ignores.
+  std::string binTmpPath() const { return speculativeMaxPages_ ? speculativeFilePath() : filePath + ".part"; }
   std::unique_ptr<Page> loadPageAt(int page) const;
   // Read a page already laid out by the in-progress build (page < build LUT size), from
   // the partially-written tmp .bin without disturbing the build's write cursor.
@@ -98,7 +114,8 @@ class Section {
   // builds. createSectionFile() above is the one-shot wrapper over these.
   //   if (!startBuild(...)) fail;
   //   each tick: buildSomeMore(N); render up to pageCount; when isBuildComplete() stop.
-  bool startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr);
+  bool startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr,
+                  uint16_t speculativePages = 0, uint16_t speculativeAnchors = 0);
   // Lay out up to maxPages more pages (maxPages <= 0 = build to completion). Returns
   // false on error (the build is abandoned). Sets isBuildComplete() when finished.
   // yieldNow, when given, is asked after every parse step (1 KB of HTML, whose callbacks may
@@ -136,6 +153,7 @@ class Section {
   // True if this spine's unzipped HTML is already cached, so a build won't pay the (multi-second on a
   // giant spine) zip inflation. Lets the reader skip the indexing popup on a fast reopen/rebuild.
   bool hasHtmlCache() const;
+  bool getHtmlCacheSize(size_t& size) const;
 
   // Look up the page number for an anchor id from the section cache file.
   std::optional<uint16_t> getPageForAnchor(const std::string& anchor) const;

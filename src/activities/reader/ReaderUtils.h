@@ -63,7 +63,7 @@ struct PageTurnResult {
   bool fromTilt;
 };
 
-inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
+inline PageTurnResult detectPageTurn(const MappedInputManager& input, bool useSideButtons = true) {
   const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
@@ -74,12 +74,12 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
     if (usePress) return input.wasPressed(button);
     return input.wasLongPressed(button, SKIP_HOLD_MS) || input.wasReleased(button);
   };
-  const bool prev =
-      tiltPrev || (pageButtonTriggered(MappedInputManager::Button::PageBack) || pageButtonTriggered(prevButton));
+  const bool prev = tiltPrev || ((useSideButtons && pageButtonTriggered(MappedInputManager::Button::PageBack)) ||
+                                 pageButtonTriggered(prevButton));
   const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                          input.wasReleased(MappedInputManager::Button::Power);
   const bool next = input.homeButtonAction() == HomeButtonAction::NextPage || tiltNext ||
-                    pageButtonTriggered(MappedInputManager::Button::PageForward) || powerTurn ||
+                    (useSideButtons && pageButtonTriggered(MappedInputManager::Button::PageForward)) || powerTurn ||
                     pageButtonTriggered(nextButton);
   return {prev, next, tiltPrev || tiltNext};
 }
@@ -266,11 +266,13 @@ inline bool handleBackNavigation(const MappedInputManager& mappedInput, Activity
     return false;
   }
 
-  const bool backTriggered = mappedInput.wasLongPressed(MappedInputManager::Button::Back, GO_BACK_OR_HOME_MS) ||
-                             mappedInput.wasReleased(MappedInputManager::Button::Back);
+  const bool useLegacyHold = SETTINGS.backHoldAction == 0;
+  const bool backTriggered =
+      (useLegacyHold && mappedInput.wasLongPressed(MappedInputManager::Button::Back, GO_BACK_OR_HOME_MS)) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Back);
   if (!backTriggered) return false;
 
-  const bool longPress = mappedInput.getHeldTime() >= GO_BACK_OR_HOME_MS;
+  const bool longPress = useLegacyHold && mappedInput.getHeldTime() >= GO_BACK_OR_HOME_MS;
   if (longPress != SETTINGS.backShortToFileBrowser) {
     activityManager.goToFileBrowser(filePath);
   } else {

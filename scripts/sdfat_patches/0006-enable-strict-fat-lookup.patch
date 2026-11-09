@@ -1,0 +1,65 @@
+--- a/src/FatLib/FatFileLFN.cpp
++++ b/src/FatLib/FatFileLFN.cpp
+@@ -221,13 +221,14 @@
+   uint8_t pos = fname->seqPos;
+   const DirFat_t* dir;
+   uint16_t hex = 0;
++  const uint16_t seed = static_cast<uint16_t>(millis());
+ 
+   DBG_HALT_IF(!(fname->flags & FNAME_FLAG_LOST_CHARS));
+   DBG_HALT_IF(fname->sfn[pos] != '~' && fname->sfn[pos + 1] != '1');
+ 
+   for (uint8_t seq = FIRST_HASH_SEQ; seq < 100; seq++) {
+     DBG_WARN_IF(seq > FIRST_HASH_SEQ);
+-    hex += millis();
++    hex = static_cast<uint16_t>(seed + seq);
+     if (pos > 3) {
+       // Make space in name for ~HHHH.
+       pos = 3;
+@@ -275,6 +276,8 @@
+   uint8_t freeNeed;
+   uint8_t order = 0;
+   uint8_t checksum = 0;
++  uint8_t checkedOrdinal = 0;
++  uint8_t checkedChecksum = 0;
+   uint8_t ms10;
+   uint8_t nameOrd;
+   uint16_t curIndex;
+@@ -298,12 +301,36 @@
+     curIndex = dirFile->m_curPosition / FS_DIR_SIZE;
+     dir = dirFile->readDirCache();
+     if (!dir) {
+-      if (dirFile->getError()) {
++      if (dirFile->getError() || (dirFile->m_strictLookup && checkedOrdinal)) {
++        dirFile->m_error |= READ_ERROR;
+         DBG_FAIL_MACRO;
+         goto fail;
+       }
+       // At EOF
+       goto create;
++    }
++    if (dirFile->m_strictLookup) {
++      const bool active = dir->name[0] != FAT_NAME_DELETED && dir->name[0] != FAT_NAME_FREE;
++      if (active && isFatLongName(dir)) {
++        const DirLfn_t* checked = reinterpret_cast<const DirLfn_t*>(dir);
++        const uint8_t ordinal = checked->order & 0X1F;
++        const bool last = (checked->order & FAT_ORDER_LAST_LONG_ENTRY) != 0;
++        const bool badFlags = (checked->order & ~(FAT_ORDER_LAST_LONG_ENTRY | 0X1F)) != 0;
++        if (badFlags || !ordinal || ordinal > 20 ||
++            (last ? checkedOrdinal != 0
++                  : checkedOrdinal <= 1 || ordinal + 1 != checkedOrdinal || checked->checksum != checkedChecksum)) {
++          dirFile->m_error |= READ_ERROR;
++          goto fail;
++        }
++        if (last) checkedChecksum = checked->checksum;
++        checkedOrdinal = ordinal;
++      } else if (checkedOrdinal) {
++        if (!active || checkedOrdinal != 1 || !isFatFileOrSubdir(dir) || lfnChecksum(dir->name) != checkedChecksum) {
++          dirFile->m_error |= READ_ERROR;
++          goto fail;
++        }
++        checkedOrdinal = 0;
++      }
+     }
+     if (dir->name[0] == FAT_NAME_DELETED || dir->name[0] == FAT_NAME_FREE) {
+       if (freeFound == 0) {

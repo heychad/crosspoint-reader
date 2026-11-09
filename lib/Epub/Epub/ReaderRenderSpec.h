@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 
+#include "EpubRenderMode.h"
+
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built
 // with a different spec is discarded and rebuilt.
@@ -24,6 +26,7 @@ struct ReaderRenderSpec {
   bool embeddedStyle = true;
   uint8_t imageRendering = 0;
   bool focusReadingEnabled = false;
+  EpubRenderMode renderMode = EpubRenderMode::Default;
 };
 
 // Stable signature for clipping anchors. Page-local word ordinals are valid
@@ -49,5 +52,6 @@ inline uint32_t readerRenderSpecSignature(const ReaderRenderSpec& spec) {
   mix(spec.embeddedStyle);
   mix(spec.imageRendering);
   mix(spec.focusReadingEnabled);
+  if (spec.renderMode != EpubRenderMode::Default) mix(static_cast<uint8_t>(spec.renderMode));
   return signature == 0 ? 1 : signature;
 }

@@ -9,8 +9,10 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "Epub/EpubRenderMode.h"
 #include "Epub/FootnoteEntry.h"
 #include "Epub/ParsedText.h"
 #include "Epub/blocks/ImageBlock.h"
@@ -59,9 +61,14 @@ class ChapterHtmlSlimParser {
   uint16_t viewportHeight;
   bool hyphenationEnabled;
   bool focusReadingEnabled;
+  EpubRenderMode renderMode = EpubRenderMode::Default;
+  CssStyle resolveElementStyle(std::string_view tag, std::string_view classes, std::string_view id,
+                               bool firstLetter = false) const;
+  void simplifyPublisherStyle(CssStyle& style) const;
   const CssParser* cssParser;
   bool embeddedStyle;
   uint8_t imageRendering;
+  bool rejectSpeculativeImages = false;
   std::string contentBase;
   std::string imageBasePath;
   int imageCounter = 0;
@@ -325,6 +332,9 @@ class ChapterHtmlSlimParser {
     wordSpacingPercent = wordPercent;
   }
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
+  // Speculative chapter builds must stop before image extraction or decoding.
+  void setRejectSpeculativeImages() { rejectSpeculativeImages = true; }
+  void setRenderMode(EpubRenderMode mode) { renderMode = mode; }
 
   // One-shot parse: builds every page before returning (begin + step* + finish).
   bool parseAndBuildPages();

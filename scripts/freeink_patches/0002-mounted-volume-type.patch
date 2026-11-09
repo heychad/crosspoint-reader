@@ -1,0 +1,42 @@
+diff --git a/libs/hardware/SDCardManager/include/SDCardManager.h b/libs/hardware/SDCardManager/include/SDCardManager.h
+index 50d87bd..2df2ec5 100644
+--- a/libs/hardware/SDCardManager/include/SDCardManager.h
++++ b/libs/hardware/SDCardManager/include/SDCardManager.h
+@@ -32,6 +32,37 @@ class SDCardManager {
+   SDCardManager();
+   bool begin();
+   bool ready() const;
++  // SdFat volume type, or zero when not mounted.
++  uint8_t filesystemType() { return initialized ? vol().fatType() : 0; }
++  struct VolumeGeometry {
++    uint8_t type = 0;
++    uint32_t deviceSectors = 0;
++    uint32_t fatStart = 0;
++    uint32_t dataStart = 0;
++    uint32_t clusterCount = 0;
++    uint32_t clusterBytes = 0;
++  };
++  // Caller must serialize access and verify the mount remains unchanged.
++  bool volumeGeometry(VolumeGeometry& out) {
++    out = {};
++    auto* device = rawBlockDevice();
++    if (!initialized || !device) return false;
++    out = {vol().fatType(), device->sectorCount(), vol().fatStartSector(), vol().dataStartSector(),
++           vol().clusterCount(), vol().bytesPerCluster()};
++    return out.type && out.deviceSectors && out.clusterCount && out.clusterBytes;
++  }
++#if FREEINK_DEVICE_X4PRO
++  // Caller serializes storage access and verifies its snapshot.
++  bool syncReadExFatMetadataSector(uint32_t sector, uint8_t* out) {
++    return initialized && vol().syncReadExFatMetadataSector(sector, out);
++  }
++  bool syncReadExFatFatSector(uint32_t offset, uint8_t* out) {
++    return initialized && vol().syncReadExFatFatSector(offset, out);
++  }
++  bool syncReadExFatBitmapSector(uint32_t offset, uint8_t* out) {
++    return initialized && vol().syncReadExFatBitmapSector(offset, out);
++  }
++#endif
+   // Returns the total card capacity in bytes. Cached at begin(); 0 if not mounted.
+   uint64_t sdTotalBytes() const;
+   // Returns used space in bytes, cached with a 20-second TTL (freeClusterCount

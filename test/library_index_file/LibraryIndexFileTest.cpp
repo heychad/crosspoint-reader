@@ -1,3 +1,4 @@
+#include <Memory.h>
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -221,4 +222,108 @@ TEST(LibraryIndexFile, RejectsFolderRecordBeyondFolderBlob) {
   ASSERT_TRUE(index.open("/library.clx"));
   std::string path;
   EXPECT_FALSE(index.readPath(record, path));
+}
+
+namespace {
+std::vector<uint8_t> makeFolderIndex(uint16_t folderCount) {
+  library::ClixHeader header{};
+  std::memcpy(header.magic, library::CLIX_MAGIC, sizeof(header.magic));
+  header.formatVersion = library::CLIX_FORMAT_VERSION;
+  header.foldVersion = library::CLIX_FOLD_VERSION;
+  header.bookCount = std::min<uint16_t>(folderCount, library::CLIX_MAX_RECORDS);
+  header.folderCount = folderCount;
+  std::vector<uint8_t> folders;
+  for (uint32_t folder = 0; folder < folderCount; ++folder) {
+    const std::string path = "/f" + std::to_string(folder);
+    folders.push_back(static_cast<uint8_t>(path.size()));
+    folders.insert(folders.end(), path.begin(), path.end());
+  }
+  library::layoutSections(header, static_cast<uint32_t>(folders.size()), 14);
+  std::vector<uint8_t> bytes(header.selfSize, 0);
+  std::memcpy(bytes.data(), &header, sizeof(header));
+  std::memcpy(bytes.data() + header.folderStart, folders.data(), folders.size());
+  std::memcpy(bytes.data() + header.nameStart + 8, "b.epub", 6);
+  return bytes;
+}
+library::ClixRecord pathRecord(uint16_t folder) {
+  library::ClixRecord record{};
+  record.folderId = folder;
+  record.nameLen = 6;
+  return record;
+}
+}  // namespace
+
+TEST(LibraryIndexFile, SparseFolderLookupBoundsACompleteLibraryScan) {
+  Storage.setFile("/folders.clx", makeFolderIndex(4096));
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  HalFile::resetReadCount();
+  auto paths = index.preparePathLookup();
+  ASSERT_TRUE(paths);
+  EXPECT_EQ(lastIndexArrayCount, 128);
+  EXPECT_EQ(HalFile::readCount(), 4096);
+  HalFile::resetReadCount();
+  for (uint16_t folder = 0; folder < 4096; ++folder) {
+    std::string path;
+    ASSERT_TRUE(index.readPath(pathRecord(folder), path, paths));
+    EXPECT_EQ(path, "/f" + std::to_string(folder) + "/b.epub");
+  }
+  EXPECT_LE(HalFile::readCount(), 4096U * 34U);
+  HalFile::resetReadCount();
+  std::string path;
+  ASSERT_TRUE(index.readPath(pathRecord(4095), path));
+  EXPECT_EQ(HalFile::readCount(), 4098);
+}
+
+TEST(LibraryIndexFile, SparseLookupSupportsMoreFoldersThanBooksWithoutGrowingItsTable) {
+  Storage.setFile("/folders.clx", makeFolderIndex(65535));
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  auto paths = index.preparePathLookup();
+  ASSERT_TRUE(paths);
+  EXPECT_LE(lastIndexArrayCount, 128);
+  HalFile::resetReadCount();
+  std::string path;
+  ASSERT_TRUE(index.readPath(pathRecord(65534), path, paths));
+  EXPECT_LE(HalFile::readCount(), 514);
+}
+
+TEST(LibraryIndexFile, FolderLookupRejectsWrongOwnersAndClosedOrReopenedFiles) {
+  Storage.setFile("/folders.clx", makeFolderIndex(1));
+  library::LibraryIndexFile index, other;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  ASSERT_TRUE(other.open("/folders.clx"));
+  auto paths = index.preparePathLookup();
+  ASSERT_TRUE(paths);
+  std::string path;
+  EXPECT_FALSE(other.readPath(pathRecord(0), path, paths));
+  index.close();
+  EXPECT_FALSE(index.readPath(pathRecord(0), path, paths));
+  ASSERT_TRUE(index.open("/folders.clx"));
+  EXPECT_FALSE(index.readPath(pathRecord(0), path, paths));
+  auto fresh = index.preparePathLookup();
+  auto moved = std::move(fresh);
+  EXPECT_FALSE(fresh);
+  EXPECT_TRUE(index.readPath(pathRecord(0), path, moved));
+}
+
+TEST(LibraryIndexFile, FolderLookupAllocationFailureLeavesOrdinaryLookupAvailable) {
+  Storage.setFile("/folders.clx", makeFolderIndex(1));
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  failIndexAllocation = true;
+  auto paths = index.preparePathLookup();
+  failIndexAllocation = false;
+  EXPECT_FALSE(paths);
+  std::string path;
+  EXPECT_TRUE(index.readPath(pathRecord(0), path));
+}
+
+TEST(LibraryIndexFile, FolderLookupRejectsMalformedFolderRecords) {
+  auto bytes = makeFolderIndex(1);
+  bytes[library::CLIX_ALIGN] = 0;
+  Storage.setFile("/folders.clx", std::move(bytes));
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  EXPECT_FALSE(index.preparePathLookup());
 }

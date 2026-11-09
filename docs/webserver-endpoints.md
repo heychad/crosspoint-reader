@@ -69,6 +69,91 @@ Response:
 
 ## File Management
 
+### Experimental X4 Pro inventory session
+
+These read-only endpoints support an inventory spread across multiple directory
+requests. They do not upload books or provide authentication. The session token
+coordinates requests; it is not a user identity or a restart-safe credential.
+
+1. `POST /api/sync/inventory/start` returns `{"token":"..."}`. One session may
+   run at a time. An idle session expires after 60 seconds.
+2. `GET /api/sync/inventory/files?token=...&path=/` streams a JSON object with
+   `entries` and `complete: true` when that directory finishes. Each entry has
+   `name`, `size`, and `isDirectory`. Hidden dot names, `XTCache`, and `System
+   Volume Information` are excluded, ignoring case for the latter two.
+3. Visit every included directory returned by earlier requests, then call
+   `POST /api/sync/inventory/finish?token=...`. A `snapshotValid: true` response
+   confirms that the storage snapshot did not change. It does not prove the
+   client visited every directory.
+
+Treat all entries as provisional until traversal and the final snapshot check
+both succeed. Discard them on any failed request, truncated response, cancelled
+scan, changed snapshot, or session expiry. Paths must be absolute and valid FAT
+names, with at most 32 components and 2,048 UTF-8 bytes. Hidden components,
+protected folders, and names that may be short-name aliases are rejected. A
+directory response is limited to two minutes, with a two-second limit for each
+socket write. The standard `/api/status` does not advertise this experimental
+protocol. The Mac sync client offers an opt-in, read-only
+`--experimental-inventory` preview; it has not been validated on the device.
+
+### Experimental stage hash
+
+`GET /api/sync/stage-hash` is compiled only when
+`CROSSPOINT_EXPERIMENTAL_STAGE_HASH=1` is explicitly defined. It is disabled in
+the normal build and is not advertised in `/api/status`. The Mac library client
+reserves `syncStageHashVersion: 2` for this polling contract; the firmware does
+not advertise that capability yet. It accepts `name`,
+`size`, and `deviceId`: the stage filename, its exact decimal byte length, and
+the 64-character sync-scoped reader ID. The initial request returns 202 with
+`{"status":"pending"}`. Repeat the same request to check progress; a completed
+request returns `{"sha256":"<64 lowercase hex characters>"}`. Invalid input
+returns 400, a conflicting job or verification failure returns 409, and
+unavailable memory returns 503. One job is retained at a time, and expires
+after one hour or when the web server stops.
+Returning the digest consumes the job; another matching GET starts a new
+verification, including after a lost response.
+`POST /api/sync/stage-hash/cancel` takes the same three parameters and cancels
+the matching job, returning 200 with `{"cancelled":true}` or 404 if none
+matches. A failed job is released after 30 seconds if no client polls for the
+error.
+
+The reader ID coordinates requests; it is not authentication. The hash checks
+a process-local storage snapshot and represents the bytes observed at that
+moment. It does not prevent later changes, detect raw writers outside the HAL,
+or authorize publication. Hashing advances one chunk per web-server loop;
+individual storage operations and existing web-server waits can still block.
+This draft is not ready for device use or validated on the X4 Pro.
+
+### Experimental X4 Pro staging
+
+`GET /api/sync/identity` reads the existing sync-scoped device ID without
+creating one. It returns `{"deviceId":null}` when the underlying device
+secret is absent, or `503` if it cannot be read. The existing
+`/api/status?plugin=xteink-book-sync` flow can initialize the secret.
+
+The staging POST route is disabled pending bounded request parsing, so wireless
+upload is not yet available through this protocol. A staged filename must be
+`__xsync_` followed by 32 lowercase hexadecimal
+digits and `.part`; its size will be the exact decimal file size in bytes, with a
+maximum of 2,147,482,623. The staging core creates the root-level file exclusively;
+it does not replace an existing file. Failures and disconnects may leave a
+partial or complete stage for inspection. Staging does not verify a
+SHA-256, move the file into the library, or authorize publication. The device
+ID coordinates which reader receives the request; it is not authentication.
+The experimental identity endpoint is not advertised as a sync capability.
+
+An unadvertised raw staging listener is compiled only with
+`CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD=1` on the X4 Pro and starts only in File
+Transfer mode. On port 8182, `PUT /api/sync/stage-raw` takes `Content-Length`,
+`Content-Type: application/octet-stream`, `X-XSync-Device`, and `X-XSync-Stage`
+headers followed by the raw bytes. This is separate from the disabled POST route
+above. At admission it requires the rounded file size, a 64 MiB free-space
+margin, and two additional clusters. It stops with File Transfer and while other
+transfer services are suspended. The reader ID is not authentication, and the
+listener binds all interfaces. This is an experimental integration probe, not
+a production or device-tested sync service. Do not enable it on an untrusted
+network. FAT-card support, publication, and recovery remain unfinished.
+
 ### `GET /api/files`
 
 Lists files and folders under a directory.

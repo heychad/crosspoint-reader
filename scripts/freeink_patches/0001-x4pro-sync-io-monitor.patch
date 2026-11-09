@@ -1,0 +1,75 @@
+diff --git a/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp b/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp
+index 7688607..87c7985 100644
+--- a/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp
++++ b/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp
+@@ -6,6 +6,21 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#if FREEINK_DEVICE_X4PRO
++#include <atomic>
++
++namespace {
++std::atomic<bool> syncMonitorArmed{false};
++std::atomic<bool> syncMonitorFault{false};
++void noteSyncIoFailure() {
++  if (syncMonitorArmed.load(std::memory_order_relaxed)) syncMonitorFault.store(true, std::memory_order_relaxed);
++}
++}  // namespace
++
++extern "C" void crosspoint_sdmmc_monitor_arm() { syncMonitorArmed.store(true, std::memory_order_relaxed); }
++extern "C" bool crosspoint_sdmmc_monitor_healthy() { return !syncMonitorFault.load(std::memory_order_relaxed); }
++#endif
++
+ #include "esp_heap_caps.h"
+ 
+ #include "driver/gpio.h"
+@@ -159,11 +174,21 @@ void SdmmcBlockDevice::end() {
+ // (PSRAM / arbitrary alignment), which makes sdmmc_read/write_sectors fail. Bounce
+ // through a DMA-capable buffer. (heap_caps_aligned_alloc via MALLOC_CAP_DMA.)
+ bool SdmmcBlockDevice::readSectors(Sector_t sector, uint8_t* dst, size_t ns) {
+-  if (!_card || !_dmaBuffer || !dst || ns == 0) return false;
++  if (!_card || !_dmaBuffer || !dst || ns == 0) {
++#if FREEINK_DEVICE_X4PRO
++    noteSyncIoFailure();
++#endif
++    return false;
++  }
+   while (ns > 0) {
+     const size_t count = ns > kMaxTransferSectors ? kMaxTransferSectors : ns;
+     const size_t bytes = count * kSectorSize;
+-    if (sdmmc_read_sectors(static_cast<sdmmc_card_t*>(_card), _dmaBuffer, sector, count) != ESP_OK) return false;
++    if (sdmmc_read_sectors(static_cast<sdmmc_card_t*>(_card), _dmaBuffer, sector, count) != ESP_OK) {
++#if FREEINK_DEVICE_X4PRO
++      noteSyncIoFailure();
++#endif
++      return false;
++    }
+     memcpy(dst, _dmaBuffer, bytes);
+     sector += count;
+     dst += bytes;
+@@ -173,12 +198,22 @@ bool SdmmcBlockDevice::readSectors(Sector_t sector, uint8_t* dst, size_t ns) {
+ }
+ 
+ bool SdmmcBlockDevice::writeSectors(Sector_t sector, const uint8_t* src, size_t ns) {
+-  if (!_card || !_dmaBuffer || !src || ns == 0) return false;
++  if (!_card || !_dmaBuffer || !src || ns == 0) {
++#if FREEINK_DEVICE_X4PRO
++    noteSyncIoFailure();
++#endif
++    return false;
++  }
+   while (ns > 0) {
+     const size_t count = ns > kMaxTransferSectors ? kMaxTransferSectors : ns;
+     const size_t bytes = count * kSectorSize;
+     memcpy(_dmaBuffer, src, bytes);
+-    if (sdmmc_write_sectors(static_cast<sdmmc_card_t*>(_card), _dmaBuffer, sector, count) != ESP_OK) return false;
++    if (sdmmc_write_sectors(static_cast<sdmmc_card_t*>(_card), _dmaBuffer, sector, count) != ESP_OK) {
++#if FREEINK_DEVICE_X4PRO
++      noteSyncIoFailure();
++#endif
++      return false;
++    }
+     sector += count;
+     src += bytes;
+     ns -= count;

@@ -26,6 +26,7 @@ class XtcReaderActivity final : public ReaderActivity {
   void loadProgress();
 
   bool loadBook() override;
+  const std::string& getBookCachePath() const override { return xtc->getCachePath(); }
   std::string getBookTitle() const override { return xtc ? xtc->getTitle() : ""; }
   std::string getBookAuthor() const override { return xtc ? xtc->getAuthor() : ""; }
   std::string getBookThumbBmpPath() const override { return xtc ? xtc->getThumbBmpPath() : ""; }

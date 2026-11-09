@@ -8,7 +8,12 @@
 #include <string>
 #include <vector>
 
+#include "StorageMutationFence.h"
+
 class HalFile;
+namespace wirecheck {
+class StageHash;
+}
 
 enum class UsbDriveState : uint8_t {
   Unsupported,
@@ -21,9 +26,46 @@ enum class UsbDriveState : uint8_t {
 
 class HalStorage {
  public:
+  enum class PathStatus { Missing, Present, Failed };
+  enum class SnapshotRead { Record, End, Changed, Failed };
+  enum class SnapshotFormat { Unknown, Fat, ExFat };
+  enum class ExFatSector { Metadata, Fat, Bitmap };
+  struct VolumeGeometry {
+    uint8_t type = 0;
+    uint32_t deviceSectors = 0, fatStart = 0, dataStart = 0, clusterCount = 0, clusterBytes = 0;
+  };
+  using MutationSnapshot = checkedscan::StorageMutationFence::Snapshot;
+  using MutationMarker = checkedscan::StorageMutationFence::Marker;
+  class RootDirectoryCursor {
+    friend class HalStorage;
+    MutationSnapshot snapshot{};
+    uint64_t position = 0;
+    uint32_t cluster = 0;
+    bool started = false, failed = false;
+  };
   HalStorage();
   bool begin();
   bool ready() const;
+  // Process-local snapshots only; valid only when every mutation uses this HAL.
+  bool beginMutationSnapshot(MutationSnapshot& snapshot);
+  bool mutationSnapshotUnchanged(const MutationSnapshot& snapshot);
+  // Check storage health even while a writable handle prevents snapshots.
+  bool monitoredStorageHealthy();
+  bool captureMutationMarker(MutationMarker& marker);
+  bool mutationMarkerUnchanged(const MutationMarker& marker);
+  // Read the mounted format only while the same snapshot is still valid.
+  SnapshotFormat snapshotFormat(const MutationSnapshot& snapshot);
+  // Geometry is valid only while this snapshot remains unchanged.
+  bool snapshotGeometry(const MutationSnapshot& snapshot, VolumeGeometry& out);
+  // Metadata is for absolute MBR/boot sectors only; FAT and bitmap use
+  // relative offsets and the appropriate cache. out must hold 512 bytes; discard
+  // its contents on failure.
+  bool readExFatSector(const MutationSnapshot& snapshot, ExFatSector kind, uint32_t sector, uint8_t* out);
+  // One directory record under the same lock as the snapshot check. The caller
+  // owns the handle and a 32-byte buffer; this is not an inventory guarantee.
+  SnapshotRead readDirectoryRecord(HalFile& directory, const MutationSnapshot& snapshot, uint8_t* record);
+  // Read one root record and close its handle under the same storage lock.
+  SnapshotRead readRootDirectoryRecord(const MutationSnapshot& snapshot, RootDirectoryCursor& cursor, uint8_t* record);
   // Stop the SD card for deep sleep: unmount, stop the SDMMC host, and release
   // the bus pads (no-op on SPI boards). Call only after all file users have
   // stopped; open HalFiles become invalid. A deep-sleep wake resets the MCU and
@@ -57,6 +99,16 @@ class HalStorage {
   HalFile open(const char* path, const oflag_t oflag = O_RDONLY);
   bool mkdir(const char* path, const bool pFlag = true);
   bool exists(const char* path);
+  // Missing alone does not authorize recovery writes on FAT or exFAT.
+  PathStatus lookupPath(const char* path);
+  // Execute a bounded transaction under the same recursive lock used by all
+  // storage operations. The callback must not block waiting for another task
+  // which needs storage. This only serializes operations through HalStorage.
+  bool withStorageLock(bool (*operation)(void*), void* context);
+  // Check distinct first clusters of two regular files with allocated lengths
+  // from 1 to 512 bytes. Caller must hold withStorageLock across the complete
+  // transaction; this does not validate the entire filesystem.
+  bool distinctFirstClusters(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);
   // Move a fully written temp file over `path`, replacing any existing file.
@@ -76,7 +128,9 @@ class HalStorage {
   class StorageLock;  // private class, used internally
 
  private:
+  friend class HalFile;
   static HalStorage instance;
+  checkedscan::StorageMutationFence mutationFence;
 
   bool initialized = false;
   SemaphoreHandle_t storageMutex = nullptr;
@@ -86,6 +140,15 @@ class HalStorage {
 
 class HalFile : public Print {
   friend class HalStorage;
+  friend class wirecheck::StageHash;
+  // Valid only for the same unchanged file and mounted volume. StageHash
+  // checks its storage snapshot and keeps the storage lock while using it.
+  struct ReadCursor {
+    uint64_t position = 0;
+    uint32_t cluster = 0;
+  };
+  bool captureReadCursor(ReadCursor& cursor);
+  bool restoreReadCursor(const ReadCursor& cursor);
   class Impl;
   std::unique_ptr<Impl> impl;
   explicit HalFile(std::unique_ptr<Impl> impl);
@@ -99,6 +162,8 @@ class HalFile : public Print {
   HalFile& operator=(const HalFile&) = delete;
 
   void flush();
+  // Unlike flush(), report the underlying storage synchronization result.
+  bool sync();
   size_t getName(char* name, size_t len);
   size_t size();
   size_t fileSize();

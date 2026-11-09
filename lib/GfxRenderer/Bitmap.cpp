@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 // ============================================================================
 // IMAGE PROCESSING OPTIONS
@@ -82,6 +83,8 @@ const char* Bitmap::errorToString(BmpReaderError err) {
       return "OomDitherer";
     case BmpReaderError::ShortReadRow:
       return "ShortReadRow";
+    case BmpReaderError::ShortReadPalette:
+      return "ShortReadPalette";
   }
   return "Unknown";
 }
@@ -103,6 +106,7 @@ BmpReaderError Bitmap::parseHeaders() {
 
   width = static_cast<int32_t>(readLE32(file));
   const auto rawHeight = static_cast<int32_t>(readLE32(file));
+  if (rawHeight == std::numeric_limits<int32_t>::min()) return BmpReaderError::BadDimensions;
   topDown = rawHeight < 0;
   height = topDown ? -rawHeight : rawHeight;
 
@@ -139,7 +143,7 @@ BmpReaderError Bitmap::parseHeaders() {
   if (colorsUsed > 0) {
     for (uint32_t i = 0; i < colorsUsed; i++) {
       uint8_t rgb[4];
-      file.read(rgb, 4);  // Read B, G, R, Reserved in one go
+      if (file.read(rgb, sizeof(rgb)) != static_cast<int>(sizeof(rgb))) return BmpReaderError::ShortReadPalette;
       paletteLum[i] = (77u * rgb[2] + 150u * rgb[1] + 29u * rgb[0]) >> 8;
     }
   }

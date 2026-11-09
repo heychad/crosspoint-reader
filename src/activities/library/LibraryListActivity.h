@@ -11,8 +11,10 @@
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
 
+class LibraryCoverGrid;
+
 // One Library screen: every indexed book on the card shown by recency, title,
-// or author. The Recent shelf orders by file modification time (when a book
+// author, series or genre. The Recent shelf orders by file modification time (when a book
 // landed on the card) and pins the recently OPENED books from RecentBooksStore
 // on top, so active reads and fresh arrivals share one list.
 //
@@ -32,9 +34,11 @@
 class LibraryListActivity final : public UiTabListActivity {
  public:
   LibraryListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  ~LibraryListActivity() override;
 
   void onEnter() override;
   void onExit() override;
+  void loop() override;
 
  protected:
   // --- UiListActivity / UiTabListActivity contract ---------------------------
@@ -43,12 +47,15 @@ class LibraryListActivity final : public UiTabListActivity {
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
 #if FREEINK_CAP_TOUCH
-  bool canSwipeDelete(int index) const override { return !groupsCollapsed && index >= 0 && index < listCount(); }
+  bool canSwipeDelete(int index) const override {
+    return !gridEnabled() && !groupsCollapsed && index >= 0 && index < listCount();
+  }
   void swipeDelete(int index) override;
 #endif
   int tabCount() const override;
   int activeTab() const override;
   const char* tabLabel(int index) const override;
+  freeink::ui::TabBarLayout tabBarLayout() const override { return freeink::ui::TabBarLayout::ContentWidth; }
   freeink::ui::TabIndicator tabIndicator(int index) const override;
   void onTabAction(int index) override;
   void stepTab(int direction) override;
@@ -75,18 +82,19 @@ class LibraryListActivity final : public UiTabListActivity {
 
   // Input
   void openSelectedBook();
+  bool rowPathFor(int entry, std::string& path);
   void openSearch();
   // Shared tail of row activation and the options menu's Open entry.
   void openBookByPath(const std::string& path);
+  void openBookStatistics(const std::string& path, const std::string& title);
+  void restoreIndexAfterStatistics(bool reopenIndex);
   void promptRebuildIndex();
   void resetAfterRebuild();
-  // Recent-row long-press menu: open / remove from recents / delete / rebuild.
+  // Long-press menus for Recent and the other shelves.
   void showRecentBookOptions(int entry);
+  void showShelfBookOptions(int entry);
   void promptRemoveRecentBook(const std::string& path, const std::string& title);
-  // Long-press delete owns the gesture where grouping does not apply: the
-  // Recent sort, degraded lists, and any active search result.
-  bool deleteEligible() const;
-  // Resolves the row's path and title, then confirms via promptDeleteBookByPath.
+  // Resolve a swipe-delete row before opening its confirmation.
   void promptDeleteBook(int entry);
   void promptDeleteBookByPath(const std::string& path, const std::string& title);
   bool collapseGroups(int bookEntry);
@@ -110,6 +118,7 @@ class LibraryListActivity final : public UiTabListActivity {
   // fileName, when asked for, is the on-card name the row's icon derives from
   // (the display title may come from metadata and carry no extension).
   bool rowTextFor(int entry, std::string& title, std::string& author, std::string* fileName = nullptr);
+  bool rowMetadataFor(int entry, std::string& series, std::string& genre);
   uint32_t titleInitialFor(int entry);
   bool buildGroupStarts();
   int groupForBook(int bookEntry) const;
@@ -119,8 +128,15 @@ class LibraryListActivity final : public UiTabListActivity {
   void buildHeader(UiScreen& screen);
   // Materializes ListItems and their strings for the visible window only.
   void buildRows(UiScreen& screen);
+  bool buildGrid(UiScreen& screen);
+  bool gridRequested() const;
+  bool gridEnabled() const;
+  int navigationPageSize();
+  bool handleGridSwipe();
+  void loadNextGridCover();
   static void formatInitialHeading(uint32_t initial, std::string& out);
   void formatAuthorHeading(const std::string& author, std::string& out) const;
+  void formatMetadataHeading(const std::string& value, std::string& out) const;
   void drawPositionReadout() const;
   void drawHoldHelp() const;
   const char* headerTitle() const override;
@@ -131,13 +147,16 @@ class LibraryListActivity final : public UiTabListActivity {
   bool tabsFocused() const { return ringPos() == 0; }
 
   // --- pinned recently-opened overlay ---------------------------------------
-  // On the unfiltered Recent shelf the RecentBooksStore entries sit on top, in
-  // read order; the modification-time list follows with those books skipped.
+  // On the newest-first Recent shelf, visible RecentBooksStore entries sit on
+  // top in read order; the modification-time list skips their duplicates.
   // Entries below pinnedCount() are store rows; the rest go through rowFor().
   int pinnedCount() const;
   // Re-match the store against the index (chunked scan). Call whenever the
   // index or the store changes.
   void resolvePinned();
+  bool filtersActive() const;
+  bool matchesFilters(const std::string& path) const;
+  bool matchesFormat(const std::string& path) const;
   // Direction-space translation of the matched rows. Call on sort toggles.
   void refreshOverlap();
 
@@ -150,9 +169,9 @@ class LibraryListActivity final : public UiTabListActivity {
   // order is discovery order rather than silently showing a wrong one.
   bool degraded = false;
 
-  // Rows surviving the current query, as positions in the active sort order.
-  // Empty query means no filtering and this owns no allocation, so the ordinary
-  // shelf pays nothing proportional to the library for the feature.
+  // Rows surviving search and configured filters, as positions in the active
+  // sort order. With all formats visible and no search or completion filter,
+  // the ordinary shelf owns no per-book allocation.
   std::string query;
   // The active query, pre-quoted for the header: headerTitle() returns a
   // stable c_str the render task can hold across a build.
@@ -160,10 +179,10 @@ class LibraryListActivity final : public UiTabListActivity {
   std::unique_ptr<uint16_t[]> filtered;
   uint16_t filteredCount = 0;
   bool filterFailed = false;
+  bool statisticsOpenFailed = false;
 
-  // One start row per group. Grouping is only offered for the sorted <=512-book
-  // index, so this fallible allocation is at most 1 KiB and is reused after its
-  // first successful allocation.
+  // One start row per group. This checked array is bounded by the indexed
+  // books plus the ten recent entries and reused after its first allocation.
   std::unique_ptr<uint16_t[]> groupStarts;
   uint16_t groupCapacity = 0;
   uint16_t groupCount = 0;
@@ -178,11 +197,19 @@ class LibraryListActivity final : public UiTabListActivity {
   std::vector<std::string> winTitles;
   std::vector<std::string> winAuthors;
   std::vector<std::string> winHeaders;
+  // Reused render scratch. Owned with the window storage and released on exit.
+  std::string rowFileScratch;
+  std::string seriesScratch;
+  std::string genreScratch;
+  std::string metadataKeyScratch;
+  std::string previousGroupScratch;
+  std::unique_ptr<LibraryCoverGrid> recentGrid;
 
   // Pinned overlay state: per store entry its RecentAsc row (0xFFFF when the
   // book is not in the index), and the current-direction rows to skip, sorted
   // ascending, so unpinned entries map to sort rows with a <=10-step walk.
   uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
+  uint8_t pinnedStoreIndices[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint8_t pinnedTotal = 0;
   uint8_t overlapCount = 0;

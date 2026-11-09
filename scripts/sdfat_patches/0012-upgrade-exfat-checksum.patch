@@ -1,0 +1,12 @@
+--- a/src/ExFatLib/ExFatFile.cpp
++++ b/src/ExFatLib/ExFatFile.cpp
+@@ -297,3 +297,3 @@
+       if (j == 2 || j == 3) continue;
+-      checksum = ((checksum << 15) | (checksum >> 1)) + entry[j];
++      checksum = static_cast<uint16_t>((static_cast<uint32_t>(checksum) << 15 | checksum >> 1) + entry[j]);
+     }
+@@ -313,3 +313,3 @@
+       for (unsigned j = 0; j < FS_DIR_SIZE; ++j)
+-        checksum = ((checksum << 15) | (checksum >> 1)) + entry[j];
++        checksum = static_cast<uint16_t>((static_cast<uint32_t>(checksum) << 15 | checksum >> 1) + entry[j]);
+     }

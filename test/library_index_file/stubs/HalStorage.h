@@ -22,6 +22,7 @@ class HalFile {
 
   bool isOpen() const { return hasImpl && open; }
   int read(void* dst, size_t len) {
+    ++reads;
     if (!isOpen() || !data || position + len > data->size()) return 0;
     std::memcpy(dst, data->data() + position, len);
     position += len;
@@ -34,6 +35,9 @@ class HalFile {
     return true;
   }
 
+  static void resetReadCount() { reads = 0; }
+  static size_t readCount() { return reads; }
+
   static void resetInvalidCloseCount() { invalidCloses = 0; }
   static int invalidCloseCount() { return invalidCloses; }
 
@@ -43,6 +47,7 @@ class HalFile {
   const std::vector<uint8_t>* data = nullptr;
   size_t position = 0;
   static inline int invalidCloses = 0;
+  static inline size_t reads = 0;
 };
 
 class HalStorage {

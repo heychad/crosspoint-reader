@@ -50,6 +50,8 @@ class UITheme {
   static UIIcon getFileIcon(const std::string& filename);
   static int getStatusBarHeight();
   static int getProgressBarHeight();
+  static int getReaderTopBarHeight();
+  static int getReaderBottomBarHeight(bool forceText = false);
 
  private:
   BaseTheme fallbackTheme;

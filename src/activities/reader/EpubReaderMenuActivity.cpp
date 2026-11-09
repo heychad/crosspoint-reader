@@ -1,6 +1,7 @@
 #include "EpubReaderMenuActivity.h"
 
 #include <BlePageTurner.h>
+#include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
 #include <I18n.h>
@@ -92,6 +93,13 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
+  items.push_back({MenuAction::READING_STATISTICS, StrId::STR_READING_STATISTICS});
+  items.push_back({MenuAction::READER_BARS, StrId::STR_READER_BARS});
+  if (BoardConfig::hasHomeKey()) items.push_back({MenuAction::HOME_BUTTON, StrId::STR_HOME_BUTTON});
+  items.push_back({MenuAction::SAVED_ITEMS, StrId::STR_SAVED_ITEMS});
+  items.push_back({MenuAction::LIBRARY, StrId::STR_LIBRARY});
+  items.push_back({MenuAction::FILE_BROWSER, StrId::STR_BROWSE_FILES});
+  items.push_back({MenuAction::FILE_TRANSFER, StrId::STR_FILE_TRANSFER});
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
   items.push_back({MenuAction::DISPLAY_QR, StrId::STR_DISPLAY_QR});
   items.push_back({MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON});
@@ -104,6 +112,8 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   }
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
   items.push_back({MenuAction::TEXT_SETTINGS, StrId::STR_TEXT_SETTINGS});
+  items.push_back({MenuAction::RENDER_MODE, StrId::STR_EPUB_RENDER_MODE});
+  items.push_back({MenuAction::RESET_BOOK_SETTINGS, StrId::STR_RESET_BOOK_SETTINGS});
 }
 
 void EpubReaderMenuActivity::toggleBluetooth() {
@@ -234,6 +244,10 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
     } else if (action == MenuAction::AUTO_PAGE_TURN) {
       menuRowItems[i].value = pageTurnLabels[selectedPageTurnOption];
+    } else if (action == MenuAction::RENDER_MODE) {
+      static constexpr StrId labels[] = {StrId::STR_RENDER_DEFAULT, StrId::STR_RENDER_BALANCED,
+                                         StrId::STR_RENDER_LIGHT};
+      menuRowItems[i].value = I18N.get(labels[static_cast<uint8_t>(normalizeEpubRenderMode(SETTINGS.epubRenderMode))]);
     } else if (action == MenuAction::NIGHT_MODE) {
       GUI.setCheckboxRow(menuRowItems[i], SETTINGS.screenInverted);
     } else if (action == MenuAction::BLUETOOTH) {

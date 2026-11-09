@@ -209,6 +209,69 @@ TEST_F(ChapterHtmlSlimParserTest, AbandonedLayoutStopsExtractingLines) {
 
 class ParserStopTest : public ChapterHtmlSlimParserTest {};
 
+TEST_F(ChapterHtmlSlimParserTest, TruncatedCachedPagesFailWithoutReadingUninitializedCounts) {
+  const auto path = (std::filesystem::temp_directory_path() / "crosspoint-truncated-page.bin").string();
+  const std::vector<std::vector<uint8_t>> truncated = {{},        {0},          {1, 0},         {0, 0},
+                                                       {0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0, 0}};
+  for (const auto& bytes : truncated) {
+    {
+      HalFile output;
+      ASSERT_TRUE(output.open(path.c_str(), "wb"));
+      if (!bytes.empty()) ASSERT_EQ(output.write(bytes.data(), bytes.size()), bytes.size());
+    }
+    HalFile input;
+    ASSERT_TRUE(input.open(path.c_str(), "rb"));
+    EXPECT_EQ(Page::deserialize(input), nullptr);
+  }
+  {
+    HalFile output;
+    ASSERT_TRUE(output.open(path.c_str(), "wb"));
+    const uint8_t emptyPage[] = {0, 0, 0, 0, 0, 0};
+    ASSERT_EQ(output.write(emptyPage, sizeof(emptyPage)), sizeof(emptyPage));
+  }
+  HalFile input;
+  ASSERT_TRUE(input.open(path.c_str(), "rb"));
+  EXPECT_NE(Page::deserialize(input), nullptr);
+  input.close();
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, SpeculativeImageGuardStopsBeforeImageHandling) {
+  parser.completePageFn = [](std::unique_ptr<Page>, auto, auto, auto) {};
+  parser.setRejectSpeculativeImages();
+  filepath = (std::filesystem::temp_directory_path() / "crosspoint-speculative-image.xhtml").string();
+  for (const char* tag : {"img", "image"}) {
+    {
+      HalFile file;
+      ASSERT_TRUE(file.open(filepath.c_str(), "wb"));
+      const std::string html = std::string("<html><body><") + tag + " src='missing.png'/></body></html>";
+      ASSERT_EQ(file.write(html.data(), html.size()), html.size());
+    }
+    ASSERT_TRUE(parser.beginParse());
+    EXPECT_EQ(parser.parseStep(), ChapterHtmlSlimParser::ParseStatus::Error);
+    EXPECT_TRUE(parser.stopRequested);
+    parser.abortParse();
+    EXPECT_FALSE(parser.parseFile_.isOpen());
+  }
+  std::filesystem::remove(filepath);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, SpeculativeImageGuardAllowsTextOnlyChapter) {
+  parser.completePageFn = [](std::unique_ptr<Page>, auto, auto, auto) {};
+  parser.setRejectSpeculativeImages();
+  filepath = (std::filesystem::temp_directory_path() / "crosspoint-speculative-text.xhtml").string();
+  {
+    HalFile file;
+    ASSERT_TRUE(file.open(filepath.c_str(), "wb"));
+    const std::string html = "<html><body><p>Text only.</p></body></html>";
+    ASSERT_EQ(file.write(html.data(), html.size()), html.size());
+  }
+  ASSERT_TRUE(parser.beginParse());
+  EXPECT_EQ(parser.parseStep(), ChapterHtmlSlimParser::ParseStatus::Done);
+  EXPECT_TRUE(parser.finishParse());
+  std::filesystem::remove(filepath);
+}
+
 TEST_P(ParserStopTest, PageCallbackStopsParsingAndClosesFile) {
   filepath = (std::filesystem::temp_directory_path() / "crosspoint-parser-stop.xhtml").string();
   std::string html = "<html><body>";

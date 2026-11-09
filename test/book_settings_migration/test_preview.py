@@ -1,0 +1,113 @@
+"""Exercise the read-only CrossInk binary settings decoder."""
+import importlib.util
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location('preview', ROOT / 'scripts/preview_crossink_book_settings.py')
+preview = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(preview)
+
+
+def record(version, flags=1, mask=(1 << 19) - 1):
+    if version == 1:
+        return bytes([1, 45, 0])
+    data = bytearray([version, flags, 45, 0, 2, 3, 18, 110])
+    if version >= 3:
+        data.append(4)  # word spacing
+    data.append(1)  # orientation
+    data.extend([7, 8] if version >= 8 else [7])
+    data.extend([1, 2, 1, 0, 1])  # page number, alignment, style, hyphenation, AA
+    if version <= 8:
+        data.append(1)  # obsolete dark mode
+    data.extend([2, 1, 0, 1, 0, 1])  # image, spacing, indent, focus, guide, render
+    if version >= 4:
+        data.append(2)
+    data.extend(b'Font\0' + bytes(59))
+    if version >= 5:
+        data.extend(b'Dict\0' + bytes(59))
+    if version >= 7:
+        data.append(16)
+    if version >= 10:
+        data.extend(mask.to_bytes(4, 'little'))
+    return bytes(data)
+
+
+class DecodeTest(unittest.TestCase):
+    def test_all_versions_and_truncation(self):
+        for version in range(1, 11):
+            data = record(version)
+            self.assertEqual(preview.decode(data)['version'], version)
+            for length in range(len(data)):
+                with self.subTest(version=version, length=length):
+                    with self.assertRaises(ValueError):
+                        preview.decode(data[:length])
+            with self.assertRaises(ValueError):
+                preview.decode(data + b'\0')
+
+    def test_v10_only_owned_compatible_values_are_proposed(self):
+        result = preview.decode(record(10, mask=(1 << 4) | (1 << 6) | (1 << 8)))
+        self.assertEqual(result['preview'], {'orientation': 1, 'paragraphAlignment': 2})
+        self.assertEqual(result['unmapped'], ['screenMarginHorizontal'])
+        self.assertNotIn('embeddedStyle', result['overrides'])
+
+    def test_flag_off_does_not_invent_overrides(self):
+        result = preview.decode(record(10, flags=0))
+        self.assertEqual(result['preview'], {})
+        self.assertEqual(result['overrides'], {})
+
+    def test_point_size_and_exact_line_height(self):
+        result = preview.decode(record(10, mask=(1 << 1) | (1 << 2)))
+        self.assertEqual(result['preview'], {'fontSize': 18, 'lineHeight': 1})
+        self.assertEqual(result['firmware_import_excluded'], ['fontSize'])
+        data = bytearray(record(10, mask=(1 << 1) | (1 << 2)))
+        data[6], data[7] = 3, 111  # Old font slot and non-native line height.
+        result = preview.decode(bytes(data))
+        self.assertEqual(result['preview'], {})
+        self.assertEqual(result['unmapped'], ['readerFontPointSize', 'lineHeightPercent'])
+
+    def test_margin_requires_both_explicit_and_equal(self):
+        mask = (1 << 5) | (1 << 6)
+        unequal = preview.decode(record(10, mask=mask))
+        self.assertEqual(unequal['preview'], {})
+        data = bytearray(record(10, mask=mask))
+        data[11] = data[10]  # Equal vertical/horizontal margins.
+        self.assertEqual(preview.decode(bytes(data))['preview'], {'screenMargin': 7})
+        single = preview.decode(record(10, mask=1 << 5))
+        self.assertEqual(single['preview'], {})
+
+    def test_rejects_unknown_version_flags_and_masks(self):
+        for data in (b'\x0b', record(10, flags=0x80), record(10, mask=1 << 20)):
+            with self.assertRaises(ValueError):
+                preview.decode(data)
+
+    def test_current_preferences_take_precedence(self):
+        result = preview.decode(record(10, mask=(1 << 1) | (1 << 2) | (1 << 4)))
+        self.assertEqual(preview.compare_current(result, None)['patch_for_missing_fields_only'], {})
+        comparison = preview.compare_current(result, {'version': 1, 'overrides': {'fontSize': 22, 'orientation': 1}})
+        self.assertEqual(comparison['fields'], {'fontSize': 'existing_value_preserved',
+                                               'lineHeight': 'missing_requires_manual_review', 'orientation': 'already_matching'})
+        self.assertEqual(comparison['patch_for_missing_fields_only'], {})
+        for invalid in ({'version': True, 'overrides': {}}, {'version': 1, 'overrides': []}):
+            with self.assertRaises(ValueError):
+                preview.compare_current(result, invalid)
+
+    def test_duplicate_current_keys_are_rejected(self):
+        with self.assertRaises(ValueError):
+            preview.unique_object([('fontSize', 14), ('fontSize', 16)])
+
+    def test_safe_mode_never_proposes_a_patch(self):
+        result = preview.decode(record(10, flags=0x11))
+        comparison = preview.compare_current(result, {'version': 1, 'overrides': {}})
+        self.assertEqual(comparison['status'], 'safe_mode_requires_review')
+        self.assertEqual(comparison['patch_for_missing_fields_only'], {})
+
+    def test_unterminated_name_is_rejected(self):
+        data = bytearray(record(10))
+        name = data.index(b'Font\0')
+        data[name:name + 64] = b'A' * 64
+        with self.assertRaises(ValueError):
+            preview.decode(data)
+
+if __name__ == '__main__':
+    unittest.main()

@@ -75,6 +75,7 @@ class ClippingStore {
   bool readClippingText(size_t index, std::string& out) const;
   bool readClippingText(const Clipping& clipping, std::string& out) const;
 
+  static bool countForBook(const std::string& bookPath, uint16_t& count);
   static bool deleteForFilePath(const std::string& filePath, const std::string& bookType);
   // Move a book or folder together with its clipping stores and deletion journals.
   static bool moveBook(const std::string& from, const std::string& to);

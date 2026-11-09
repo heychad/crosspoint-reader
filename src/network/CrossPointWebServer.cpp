@@ -22,8 +22,12 @@
 #include <WiFi.h>
 #include <WolfsslCrypto.h>
 #include <base64.h>
+#include <errno.h>
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
+#include <esp_random.h>
+#include <lwip/sockets.h>
+#include <nvs.h>
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/hash.h>
 
@@ -56,6 +60,14 @@
 #include "html/js/epub_optimizerJs.generated.h"
 #include "html/js/jszip_minJs.generated.h"
 #include "html/js/plugin_hostJs.generated.h"
+#include "personalization/ReaderQuickBindings.h"
+#include "sync/CooperativeStageHash.h"
+#include "sync/ExclusiveStage.h"
+#include "sync/InventorySession.h"
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+#include "sync/GuardedRawStageListener.h"
+#endif
 #include "util/BookCacheUtils.h"
 #include "util/DictionaryRegistry.h"
 #include "util/FirmwareIdentity.h"
@@ -147,13 +159,480 @@ bool isProtectedItemName(const String& name) {
 
 }  // namespace
 
+struct CrossPointWebServer::InventoryWebState {
+  std::unique_ptr<wirecheck::InventorySession> session;
+  char token[33]{};
+  char output[1024]{};
+  unsigned long lastActivity = 0;
+  bool first = true;
+};
+
+struct CrossPointWebServer::SyncStageUpload {
+  static constexpr size_t BUFFER_SIZE = 16384;
+  std::unique_ptr<wirecheck::ExclusiveStage> stage;
+  std::unique_ptr<uint8_t[]> buffer;
+  uint64_t expected = 0;
+  uint64_t received = 0;
+  size_t used = 0;
+  bool complete = false;
+  const char* error = nullptr;
+};
+
+namespace {
+constexpr unsigned long INVENTORY_IDLE_MS = 60000;
+constexpr unsigned long INVENTORY_RESPONSE_MS = 120000;
+constexpr unsigned long INVENTORY_WRITE_MS = 2000;
+
+enum class SyncIdentityResult { Ready, Missing, Failed };
+
+SyncIdentityResult readSyncIdentity(char (&hex)[65]) {
+  nvs_handle_t handle;
+  const esp_err_t opened = nvs_open("devid", NVS_READONLY, &handle);
+  if (opened == ESP_ERR_NVS_NOT_FOUND) return SyncIdentityResult::Missing;
+  if (opened != ESP_OK) return SyncIdentityResult::Failed;
+  uint8_t secret[32];
+  size_t size = sizeof(secret);
+  const esp_err_t read = nvs_get_blob(handle, "secret", secret, &size);
+  nvs_close(handle);
+  if (read == ESP_ERR_NVS_NOT_FOUND) return SyncIdentityResult::Missing;
+  if (read != ESP_OK || size != sizeof(secret)) return SyncIdentityResult::Failed;
+  static constexpr char scope[] = "xteink-book-sync";
+  uint8_t input[sizeof(secret) + sizeof(scope) - 1];
+  std::memcpy(input, secret, sizeof(secret));
+  std::memcpy(input + sizeof(secret), scope, sizeof(scope) - 1);
+  uint8_t digest[32];
+  if (wc_Sha256Hash(input, sizeof(input), digest) != 0) return SyncIdentityResult::Failed;
+  for (size_t i = 0; i < sizeof(digest); ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
+  return SyncIdentityResult::Ready;
+}
+
+bool parseSyncSize(const char* text, uint64_t& out) {
+  constexpr uint64_t maximum = 0x7fffffffULL - 1024;
+  if (!text || !*text || (text[0] == '0' && text[1])) return false;
+  uint64_t value = 0;
+  for (const char* p = text; *p; ++p) {
+    if (*p < '0' || *p > '9') return false;
+    const unsigned digit = static_cast<unsigned>(*p - '0');
+    if (value > (maximum - digit) / 10) return false;
+    value = value * 10 + digit;
+  }
+  out = value;
+  return true;
+}
+
+using InventoryActive = bool (*)(void*);
+
+bool inventoryWrite(NetworkClient& client, const char* data, size_t length, InventoryActive active, void* context) {
+  const unsigned long started = millis();
+  while (length) {
+    if (!active(context) || millis() - started >= INVENTORY_WRITE_MS) return false;
+    const int descriptor = client.fd();
+    if (descriptor < 0) return false;
+    const int written = send(descriptor, data, length, MSG_DONTWAIT);
+    if (written > 0) {
+      if (static_cast<size_t>(written) > length) return false;
+      data += written;
+      length -= static_cast<size_t>(written);
+    } else if (written == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+      return false;
+    } else {
+      delay(5);
+    }
+    yield();
+    resetTaskWatchdogIfSubscribed();
+  }
+  return true;
+}
+
+bool inventoryChunk(NetworkClient& client, const char* data, size_t length, InventoryActive active, void* context) {
+  char header[24];
+  const int count = snprintf(header, sizeof(header), "%lx\r\n", static_cast<unsigned long>(length));
+  return count > 0 && static_cast<size_t>(count) < sizeof(header) &&
+         inventoryWrite(client, header, static_cast<size_t>(count), active, context) &&
+         inventoryWrite(client, data, length, active, context) && inventoryWrite(client, "\r\n", 2, active, context);
+}
+}  // namespace
+
+void CrossPointWebServer::expireInventory() {
+  if (inventory && millis() - inventory->lastActivity > INVENTORY_IDLE_MS) inventory.reset();
+}
+
+bool CrossPointWebServer::inventoryActive() const {
+  return running && inventory && server && server->client().connected() &&
+         millis() - inventory->lastActivity < INVENTORY_RESPONSE_MS && (!uploadCancelCheck || !uploadCancelCheck());
+}
+
+bool CrossPointWebServer::inventoryEmit(const wirecheck::DirectoryEntry& entry) {
+  if (!inventoryActive()) return false;
+  if (!wirecheck::InventorySession::includedName(entry.name)) return true;
+  // DirectoryEnumerator has already rejected JSON control and escape bytes.
+  const int length =
+      snprintf(inventory->output, sizeof(inventory->output), "%s{\"name\":\"%s\",\"size\":%llu,\"isDirectory\":%s}",
+               inventory->first ? "" : ",", entry.name, static_cast<unsigned long long>(entry.size),
+               entry.directory ? "true" : "false");
+  if (length < 0 || static_cast<size_t>(length) >= sizeof(inventory->output)) return false;
+  const auto active = [](void* ctx) { return static_cast<CrossPointWebServer*>(ctx)->inventoryActive(); };
+  if (!inventoryChunk(server->client(), inventory->output, static_cast<size_t>(length), active, this)) return false;
+  inventory->first = false;
+  return true;
+}
+
+void CrossPointWebServer::handleInventoryStart() {
+  if (inventory) {
+    server->send(409, "application/json", "{\"error\":\"inventory busy\"}");
+    return;
+  }
+  auto state = makeUniqueNoThrow<InventoryWebState>();
+  if (!state) {
+    server->send(503, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  const wirecheck::InventorySession::Callbacks callbacks{
+      this, [](void* ctx) { return static_cast<CrossPointWebServer*>(ctx)->inventoryActive(); },
+      [](void* ctx, const wirecheck::DirectoryEntry& entry) {
+        return static_cast<CrossPointWebServer*>(ctx)->inventoryEmit(entry);
+      }};
+  state->session = makeUniqueNoThrow<wirecheck::InventorySession>(Storage, callbacks);
+  if (!state->session || !state->session->snapshotValid()) {
+    server->send(503, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  uint8_t nonce[16];
+  esp_fill_random(nonce, sizeof(nonce));
+  static constexpr char hexDigits[] = "0123456789abcdef";
+  for (size_t i = 0; i < sizeof(nonce); ++i) {
+    state->token[i * 2] = hexDigits[nonce[i] >> 4];
+    state->token[i * 2 + 1] = hexDigits[nonce[i] & 15];
+  }
+  state->lastActivity = millis();
+  snprintf(state->output, sizeof(state->output), "{\"token\":\"%s\"}", state->token);
+  inventory = std::move(state);
+  server->send(200, "application/json", inventory->output);
+}
+
+void CrossPointWebServer::handleInventoryDirectory() {
+  if (!inventory || !server->hasArg("token") || server->arg("token") != inventory->token) {
+    server->send(404, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  if (!server->hasArg("path") || !inventory->session->beginDirectory(server->arg("path").c_str())) {
+    inventory.reset();
+    server->send(409, "application/json", "{\"error\":\"inventory invalid\"}");
+    return;
+  }
+  inventory->lastActivity = millis();
+  inventory->first = true;
+  NetworkClient& client = server->client();
+  static constexpr char RESPONSE[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+      "Transfer-Encoding: chunked\r\nConnection: close\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
+      "Access-Control-Allow-Methods: *\r\n"
+      "Access-Control-Allow-Headers: *\r\n"
+      "Cache-Control: no-store\r\n\r\n";
+  static constexpr char START[] = "{\"entries\":[";
+  const auto active = [](void* ctx) { return static_cast<CrossPointWebServer*>(ctx)->inventoryActive(); };
+  bool ok = inventoryWrite(client, RESPONSE, sizeof(RESPONSE) - 1, active, this) &&
+            inventoryChunk(client, START, sizeof(START) - 1, active, this);
+  wirecheck::ScanResult result = wirecheck::ScanResult::Failed;
+  if (ok) {
+    do {
+      result = inventory->session->step();
+      yield();
+      resetTaskWatchdogIfSubscribed();
+    } while (result == wirecheck::ScanResult::Pending);
+    ok = result == wirecheck::ScanResult::Complete && inventoryActive();
+  }
+  static constexpr char END[] = "],\"complete\":true}";
+  if (ok)
+    ok = inventoryChunk(client, END, sizeof(END) - 1, active, this) &&
+         inventoryWrite(client, "0\r\n\r\n", 5, active, this);
+  client.stop();
+  if (!ok)
+    inventory.reset();
+  else
+    inventory->lastActivity = millis();
+}
+
+void CrossPointWebServer::handleInventoryFinish() {
+  if (!inventory || !server->hasArg("token") || server->arg("token") != inventory->token) {
+    server->send(404, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  const bool valid = inventory->session->snapshotValid();
+  inventory.reset();
+  server->send(valid ? 200 : 409, "application/json", valid ? "{\"snapshotValid\":true}" : "{\"snapshotValid\":false}");
+}
+
+void CrossPointWebServer::handleSyncIdentity() const {
+  char identity[65]{};
+  const auto result = readSyncIdentity(identity);
+  if (result == SyncIdentityResult::Failed) {
+    server->send(503, "application/json", "{\"error\":\"identity unavailable\"}");
+    return;
+  }
+  if (result == SyncIdentityResult::Missing) {
+    server->send(200, "application/json", "{\"deviceId\":null}");
+    return;
+  }
+  char response[81];
+  snprintf(response, sizeof(response), "{\"deviceId\":\"%s\"}", identity);
+  server->send(200, "application/json", response);
+}
+
+void CrossPointWebServer::expireSyncStage() {
+  if (syncStageSeen && millis() - syncStageLastActivity > INVENTORY_IDLE_MS) {
+    clearSyncStageRequest();
+  }
+}
+
+void CrossPointWebServer::clearSyncStageRequest() {
+  syncStage.reset();
+  syncStageSeen = false;
+}
+
+void CrossPointWebServer::handleSyncStageData() {
+  if (!running || !server) return;
+  resetTaskWatchdogIfSubscribed();
+  const HTTPUpload& part = server->upload();
+  if (part.status == UPLOAD_FILE_ABORTED) {
+    clearSyncStageRequest();
+    return;
+  }
+  if (part.status == UPLOAD_FILE_START) {
+    if (syncStageSeen) {
+      if (syncStage) syncStage->error = "multiple files";
+      return;
+    }
+    syncStageSeen = true;
+    syncStageLastActivity = millis();
+    syncStage = makeUniqueNoThrow<SyncStageUpload>();
+    if (!syncStage) return;
+    auto& state = *syncStage;
+    char identity[65]{};
+    const auto suppliedId = server->arg("deviceId");
+    const auto suppliedPath = server->arg("path");
+    const auto suppliedSize = server->arg("size");
+    if (!server->hasArg("deviceId") || readSyncIdentity(identity) != SyncIdentityResult::Ready ||
+        suppliedId.length() != 64 || suppliedId != identity || !server->hasArg("path") || suppliedPath.length() != 1 ||
+        suppliedPath != "/" || !server->hasArg("size") || suppliedSize.length() != std::strlen(suppliedSize.c_str()) ||
+        !parseSyncSize(suppliedSize.c_str(), state.expected) || part.filename.length() != 45 ||
+        !wirecheck::ExclusiveStage::validName(part.filename.c_str())) {
+      state.error = "invalid stage request";
+      return;
+    }
+    state.buffer = makeUniqueNoThrow<uint8_t[]>(SyncStageUpload::BUFFER_SIZE);
+    state.stage = makeUniqueNoThrow<wirecheck::ExclusiveStage>(Storage);
+    if (!state.buffer || !state.stage) {
+      state.error = "stage unavailable";
+      return;
+    }
+    if (!state.stage->begin(part.filename.c_str(), state.expected)) state.error = "stage unavailable";
+    return;
+  }
+  if (part.status == UPLOAD_FILE_WRITE && dropUploadIfCancelled()) return;
+  if (!syncStage || syncStage->error || !syncStage->stage) return;
+  auto& state = *syncStage;
+  syncStageLastActivity = millis();
+  if (part.status == UPLOAD_FILE_WRITE) {
+    if (part.currentSize > state.expected - state.received) {
+      state.error = "stage too large";
+      return;
+    }
+    const uint8_t* data = part.buf;
+    size_t left = part.currentSize;
+    while (left) {
+      const size_t count = std::min(left, SyncStageUpload::BUFFER_SIZE - state.used);
+      std::memcpy(state.buffer.get() + state.used, data, count);
+      state.used += count;
+      state.received += count;
+      data += count;
+      left -= count;
+      if (state.used == SyncStageUpload::BUFFER_SIZE) {
+        if (!state.stage->append(state.buffer.get(), state.used)) {
+          state.error = "stage write failed";
+          return;
+        }
+        state.used = 0;
+        yield();
+        resetTaskWatchdogIfSubscribed();
+      }
+    }
+  } else if (part.status == UPLOAD_FILE_END) {
+    if (!server->client().connected() || dropUploadIfCancelled() || state.received != state.expected) {
+      state.error = "incomplete stage";
+      return;
+    }
+    if (state.used && !state.stage->append(state.buffer.get(), state.used)) {
+      state.error = "stage write failed";
+      return;
+    }
+    char identity[65]{};
+    if (!state.stage->finish() || readSyncIdentity(identity) != SyncIdentityResult::Ready ||
+        server->arg("deviceId") != identity) {
+      state.error = "stage verification failed";
+      return;
+    }
+    state.complete = true;
+  }
+}
+
+void CrossPointWebServer::handleSyncStagePost() {
+  const bool complete = syncStageSeen && syncStage && syncStage->complete && !syncStage->error;
+  clearSyncStageRequest();
+  server->send(complete ? 200 : 400, "application/json", complete ? "{\"staged\":true}" : "{\"staged\":false}");
+}
+
 // File listing page template - now using generated headers:
 // - HomePageHtml (from html/HomePage.html)
 // - FilesPageHeaderHtml (from html/FilesPageHeader.html)
 // - FilesPageFooterHtml (from html/FilesPageFooter.html)
+#if defined(CROSSPOINT_EXPERIMENTAL_STAGE_HASH) && CROSSPOINT_EXPERIMENTAL_STAGE_HASH
+struct CrossPointWebServer::SyncHashState {
+  CrossPointWebServer* owner;
+  uint8_t buffer[4096]{};
+  wirecheck::CooperativeStageHash job;
+  uint32_t failedAt = 0;
+  bool failureRecorded = false;
+  explicit SyncHashState(CrossPointWebServer* server)
+      : owner(server),
+        job(Storage, buffer, sizeof(buffer),
+            {this,
+             [](void* ptr) {
+               const auto* self = static_cast<SyncHashState*>(ptr)->owner;
+               return self->running && self->server && (!self->uploadCancelCheck || !self->uploadCancelCheck());
+             },
+             [](void*, const char* requested) {
+               char current[65]{};
+               return readSyncIdentity(current) == SyncIdentityResult::Ready && std::strcmp(current, requested) == 0;
+             }}) {}
+};
+#endif
+
 CrossPointWebServer::CrossPointWebServer() {}
 
 CrossPointWebServer::~CrossPointWebServer() { stop(); }
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+struct CrossPointWebServer::SyncRawState {
+  static constexpr uint64_t RESERVE_BYTES = 64ULL * 1024 * 1024;
+  static constexpr uint16_t PORT = 8182;
+  CrossPointWebServer* owner;
+  std::atomic_flag cancelled{};
+  wirecheck::GuardedRawStageListener listener;
+  explicit SyncRawState(CrossPointWebServer* server)
+      : owner(server),
+        listener(Storage, RESERVE_BYTES,
+                 {this, [](void*) { return static_cast<uint32_t>(millis()); },
+                  [](void* context) {
+                    const auto* self = static_cast<SyncRawState*>(context)->owner;
+                    return self->running && self->server && (!self->uploadCancelCheck || !self->uploadCancelCheck());
+                  },
+                  [](void*, const char* requested) {
+                    char current[65]{};
+                    return readSyncIdentity(current) == SyncIdentityResult::Ready &&
+                           std::strcmp(current, requested) == 0;
+                  }},
+                 cancelled) {}
+};
+
+void CrossPointWebServer::startSyncRaw() {
+  if (!running || !experimentalSyncUploadEnabled || syncRaw) return;
+  syncRaw.reset(new (std::nothrow) SyncRawState(this));
+  if (!syncRaw || !syncRaw->listener.begin(SyncRawState::PORT)) {
+    syncRaw.reset();
+    LOG_ERR("WEB", "Experimental sync upload unavailable");
+  }
+}
+
+void CrossPointWebServer::stopSyncRaw() { syncRaw.reset(); }
+#endif
+
+#if defined(CROSSPOINT_EXPERIMENTAL_STAGE_HASH) && CROSSPOINT_EXPERIMENTAL_STAGE_HASH
+void CrossPointWebServer::handleSyncStageHash() {
+  const auto name = server->arg("name");
+  const auto sizeText = server->arg("size");
+  const auto deviceId = server->arg("deviceId");
+  uint64_t size = 0;
+  if (!server->hasArg("name") || !server->hasArg("size") || !server->hasArg("deviceId") || name.length() != 45 ||
+      !wirecheck::ExclusiveStage::validName(name.c_str()) || sizeText.length() != std::strlen(sizeText.c_str()) ||
+      !parseSyncSize(sizeText.c_str(), size) || deviceId.length() != 64 || std::strlen(deviceId.c_str()) != 64) {
+    server->send(400, "application/json", "{\"error\":\"invalid stage request\"}");
+    return;
+  }
+  if (syncHash && syncHash->job.state() == wirecheck::CooperativeStageHash::State::Failed) {
+    if (!syncHash->job.matches(name.c_str(), size, deviceId.c_str())) {
+      server->send(409, "application/json", "{\"error\":\"verification busy\"}");
+      return;
+    }
+    syncHash.reset();
+    server->send(409, "application/json", "{\"error\":\"verification failed\"}");
+    return;
+  }
+  if (!syncHash) {
+    syncHash = makeUniqueNoThrow<SyncHashState>(this);
+    if (!syncHash) {
+      server->send(503, "application/json", "{\"error\":\"verification unavailable\"}");
+      return;
+    }
+    if (!syncHash->job.begin(name.c_str(), size, deviceId.c_str(), millis())) {
+      syncHash.reset();
+      server->send(409, "application/json", "{\"error\":\"verification failed\"}");
+      return;
+    }
+  }
+  if (!syncHash->job.matches(name.c_str(), size, deviceId.c_str())) {
+    server->send(409, "application/json", "{\"error\":\"verification busy\"}");
+    return;
+  }
+  if (syncHash->job.state() == wirecheck::CooperativeStageHash::State::Reading) {
+    server->send(202, "application/json", "{\"status\":\"pending\"}");
+    return;
+  }
+  char digest[65]{};
+  if (!syncHash->job.copyHex(name.c_str(), size, deviceId.c_str(), millis(), digest)) {
+    syncHash.reset();
+    server->send(409, "application/json", "{\"error\":\"verification failed\"}");
+    return;
+  }
+  syncHash.reset();
+  char response[80];
+  snprintf(response, sizeof(response), "{\"sha256\":\"%s\"}", digest);
+  server->send(200, "application/json", response);
+}
+
+void CrossPointWebServer::stepSyncStageHash() {
+  if (!syncHash) return;
+  const uint32_t now = millis();
+  if (syncHash->job.step(now) != wirecheck::CooperativeStageHash::State::Failed) return;
+  if (!syncHash->failureRecorded) {
+    syncHash->failedAt = now;
+    syncHash->failureRecorded = true;
+  } else if (now - syncHash->failedAt >= 30000U) {
+    syncHash.reset();
+  }
+}
+
+void CrossPointWebServer::handleSyncStageHashCancel() {
+  const auto name = server->arg("name");
+  const auto sizeText = server->arg("size");
+  const auto deviceId = server->arg("deviceId");
+  uint64_t size = 0;
+  if (!server->hasArg("name") || !server->hasArg("size") || !server->hasArg("deviceId") || name.length() != 45 ||
+      !wirecheck::ExclusiveStage::validName(name.c_str()) || sizeText.length() != std::strlen(sizeText.c_str()) ||
+      !parseSyncSize(sizeText.c_str(), size) || deviceId.length() != 64 || std::strlen(deviceId.c_str()) != 64) {
+    server->send(400, "application/json", "{\"error\":\"invalid stage request\"}");
+    return;
+  }
+  if (!syncHash || !syncHash->job.matches(name.c_str(), size, deviceId.c_str())) {
+    server->send(404, "application/json", "{\"error\":\"no matching verification\"}");
+    return;
+  }
+  syncHash.reset();
+  server->send(200, "application/json", "{\"cancelled\":true}");
+}
+#endif
 
 void CrossPointWebServer::begin() {
   if (running) {
@@ -241,6 +720,16 @@ void CrossPointWebServer::begin() {
 
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
   server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  server->on("/api/sync/inventory/start", HTTP_POST, [this] { handleInventoryStart(); });
+  server->on("/api/sync/inventory/files", HTTP_GET, [this] { handleInventoryDirectory(); });
+  server->on("/api/sync/inventory/finish", HTTP_POST, [this] { handleInventoryFinish(); });
+  server->on("/api/sync/identity", HTTP_GET, [this] { handleSyncIdentity(); });
+#if defined(CROSSPOINT_EXPERIMENTAL_STAGE_HASH) && CROSSPOINT_EXPERIMENTAL_STAGE_HASH
+  server->on("/api/sync/stage-hash", HTTP_GET, [this] { handleSyncStageHash(); });
+  server->on("/api/sync/stage-hash/cancel", HTTP_POST, [this] { handleSyncStageHashCancel(); });
+#endif
+#endif
   server->on("/download", HTTP_GET, [this] { handleDownload(); });
 
   // Upload endpoint with special handling for multipart form data
@@ -325,6 +814,10 @@ void CrossPointWebServer::begin() {
   // catches hard CPU lockups, matching the rest of the application lifecycle.
 
   running = true;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  startSyncRaw();
+#endif
 
   LOG_DBG("WEB", "Web server started on port %d", port);
   // Show the correct IP based on network mode
@@ -335,6 +828,10 @@ void CrossPointWebServer::begin() {
 }
 
 void CrossPointWebServer::suspendTransferServices() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  stopSyncRaw();
+#endif
   // Leave the WebSocket server alone mid-upload; killing it would abort the
   // transfer. The fetch just stalls that upload until it completes.
   if (wsServer && !wsUploadInProgress) {
@@ -348,6 +845,10 @@ void CrossPointWebServer::suspendTransferServices() {
 
 void CrossPointWebServer::resumeTransferServices() {
   if (!running) return;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  startSyncRaw();
+#endif
   if (!wsServer) {
     auto* ws = new (std::nothrow) WebSocketsServer(wsPort);
     if (ws) {
@@ -387,6 +888,15 @@ void CrossPointWebServer::abortWsUpload(const char* tag) {
 }
 
 void CrossPointWebServer::stop() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  stopSyncRaw();
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_STAGE_HASH) && CROSSPOINT_EXPERIMENTAL_STAGE_HASH
+  syncHash.reset();
+#endif
+  inventory.reset();
+  clearSyncStageRequest();
   if (!running || !server) {
     LOG_DBG("WEB", "stop() called but already stopped (running=%d, server=%p)", running, server.get());
     return;
@@ -448,6 +958,16 @@ void CrossPointWebServer::handleClient() {
     return;
   }
 
+  expireInventory();
+  expireSyncStage();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  if (syncRaw) syncRaw->listener.poll();
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_STAGE_HASH) && CROSSPOINT_EXPERIMENTAL_STAGE_HASH
+  stepSyncStageHash();
+#endif
+
   // Print debug every 10 seconds to confirm handleClient is being called
   if (millis() - lastDebugPrint > 10000) {
     LOG_DBG("WEB", "handleClient active, server running on port %d", port);
@@ -455,6 +975,8 @@ void CrossPointWebServer::handleClient() {
   }
 
   server->handleClient();
+  // Multipart parsing can fail without calling the upload or POST handler.
+  clearSyncStageRequest();
   // WebServer otherwise keeps the last request's argument strings allocated
   // until another request arrives. They are no longer observable once its
   // handler returns, so release them now instead of retaining a JSON body.
@@ -1541,6 +2063,7 @@ void CrossPointWebServer::handlePostSettings() {
   std::vector<DictionaryEntry> dictionaries;
   DictionaryRegistry::discover(dictionaries);
   const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
+  const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);
   int applied = 0;
 
   for (const auto& s : settings) {
@@ -1597,6 +2120,7 @@ void CrossPointWebServer::handlePostSettings() {
     }
   }
 
+  readerquickactions::normalizeChangedBindings(SETTINGS, quickBindingsBefore);
   SETTINGS.saveToFile();
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);

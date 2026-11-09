@@ -7,6 +7,8 @@
 #include <XteinkDetect.h>
 #include <esp_sleep.h>
 
+#include <algorithm>
+
 #if FREEINK_DEVICE_LILYGO
 #include <BoardT5S3.h>
 #endif
@@ -163,6 +165,49 @@ unsigned long HalGPIO::getHeldTime() const { return inputMgr.getHeldTime(); }
 unsigned long HalGPIO::getPowerButtonHeldTime() const { return inputMgr.getPowerButtonHeldTime(); }
 
 bool HalGPIO::hasTouch() const { return inputMgr.hasTouch(); }
+
+bool HalGPIO::supportsMultiTouch() const { return inputMgr.supportsMultiTouch(); }
+
+HalGPIO::TouchSnapshot HalGPIO::getTouchSnapshot() const {
+  TouchSnapshot result;
+  if (!hasTouch()) return result;
+  const auto& touch = BoardConfig::ACTIVE.touch;
+  const float width = std::max(1, touch.rawMaxX - touch.rawMinX);
+  const float height = std::max(1, touch.rawMaxY - touch.rawMinY);
+  if (!supportsMultiTouch()) {
+    const auto point = inputMgr.getTouchPoint();
+    if (inputMgr.isTouchPressed() && point.valid) {
+      result.count = result.reportedCount = 1;
+      result.contacts[0] = {std::clamp(point.x / width, 0.0f, 1.0f), std::clamp(point.y / height, 0.0f, 1.0f), 0, true};
+    }
+    return result;
+  }
+  const auto source = inputMgr.getTouchSnapshot();
+  result.count = std::min<uint8_t>(source.count, TouchSnapshot::MAX_CONTACTS);
+  result.reportedCount = source.reportedCount;
+  result.idsStable = source.idsStable;
+  for (uint8_t i = 0; i < result.count; ++i) {
+    const auto& point = source.points[i];
+    result.contacts[i] = {std::clamp(point.point.x / width, 0.0f, 1.0f), std::clamp(point.point.y / height, 0.0f, 1.0f),
+                          point.id, point.point.valid};
+  }
+  return result;
+}
+
+bool HalGPIO::wasMultiTouchSwipe(uint8_t& count, float& sx, float& sy, float& ex, float& ey,
+                                 unsigned long& durationMs) const {
+  return supportsMultiTouch() && inputMgr.wasMultiTouchSwipe(count, sx, sy, ex, ey, durationMs);
+}
+
+bool HalGPIO::wasMultiTouchRotation(float& degrees, float& x, float& y, unsigned long& durationMs) const {
+  return supportsMultiTouch() && inputMgr.wasMultiTouchRotation(degrees, x, y, durationMs);
+}
+
+bool HalGPIO::wasMultiTouchPinch(float& scale, float& x, float& y, unsigned long& durationMs) const {
+  return supportsMultiTouch() && inputMgr.wasMultiTouchPinch(scale, x, y, durationMs);
+}
+
+bool HalGPIO::isHomeKeyDown() const { return inputMgr.isHomeKeyDown(); }
 
 bool HalGPIO::hasHomeKey() const { return BoardConfig::hasHomeKey(); }
 

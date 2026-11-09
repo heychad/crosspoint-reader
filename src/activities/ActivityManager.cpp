@@ -5,6 +5,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalDisplay.h>
+#include <HalFrontlight.h>
 #include <HalPowerManager.h>
 #include <Memory.h>
 #include <VectorFontSupport.h>
@@ -22,10 +23,12 @@
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "home/SavedItemsActivity.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
+#include "reader/EpubReaderActivity.h"
 #include "reader/ReaderActivity.h"
 #include "reader/RemoteTurnGate.h"
 #include "settings/OpdsServerListActivity.h"
@@ -81,14 +84,17 @@ void ActivityManager::renderTaskLoop() {
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
-    if (currentActivity) {
+    if (isInputLocked()) lockedRenderPending = true;
+    if (currentActivity && !isInputLocked()) {
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
       const uint32_t renderingVisit = screenVisit;
+      renderInFlight.store(true, std::memory_order_release);
       currentActivity->render(std::move(lock));
       paintedVisit.store(renderingVisit, std::memory_order_release);
+      renderInFlight.store(false, std::memory_order_release);
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
@@ -103,6 +109,7 @@ void ActivityManager::renderTaskLoop() {
 }
 
 void ActivityManager::loop() {
+  if (isInputLocked()) return;
   if (mappedInput.consumeSuppressedRelease()) return;
 
   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
@@ -116,7 +123,19 @@ void ActivityManager::loop() {
     return;
   }
 
-  if (currentActivity) {
+  bool readerGestureHandled = false;
+  if (currentActivity && currentActivity->isReaderActivity()) {
+    auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+    if (mappedInput.homeButtonAction() == HomeButtonAction::QuickActions) {
+      reader->finishReaderGestures();
+      reader->handleReaderShortcut(readershortcuts::Action::QuickActions);
+      readerGestureHandled = true;
+    } else if (mappedInput.homeButtonAction() != HomeButtonAction::Ignore)
+      reader->finishReaderGestures();
+    else
+      readerGestureHandled = reader->handleReaderGestureInput();
+  }
+  if (currentActivity && !readerGestureHandled) {
     if (!currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
       if (currentActivity->handleHomeGesture()) {
         return;
@@ -216,6 +235,11 @@ void ActivityManager::loop() {
           stackActivities.pop_back();
         }
       } else if (pendingAction == PendingAction::Push) {
+        if (currentActivity && currentActivity->isReaderActivity()) {
+          auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+          reader->readingStats.pause();
+          reader->finishReaderGestures();
+        }
         // Move current activity to stack
         stackActivities.push_back(std::move(currentActivity));
         // The parent's header back rect must not route taps on the pushed
@@ -271,7 +295,12 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 }
 
 void ActivityManager::goToFileTransfer() {
-  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+  auto activity = makeUniqueNoThrow<CrossPointWebServerActivity>(renderer, mappedInput);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: file transfer activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
 }
 
 void ActivityManager::goToJoinNetwork() {
@@ -298,7 +327,12 @@ void ActivityManager::goToSettings(const SettingsSection openSection) {
 }
 
 void ActivityManager::goToFileBrowser(std::string path) {
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
+  auto activity = makeUniqueNoThrow<FileBrowserActivity>(renderer, mappedInput, std::move(path));
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: file browser activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
 }
 
 void ActivityManager::goToLibrary() {
@@ -307,6 +341,26 @@ void ActivityManager::goToLibrary() {
     LOG_ERR("ACT", "OOM: library activity");
     return;
   }
+  replaceActivity(std::move(activity));
+}
+
+void ActivityManager::goToSavedItems() {
+  auto activity = makeUniqueNoThrow<SavedItemsActivity>(renderer, mappedInput);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: Saved Items activity (%zu bytes)", sizeof(SavedItemsActivity));
+    return;
+  }
+  replaceActivity(std::move(activity));
+}
+
+void ActivityManager::goToSavedBook(std::string path, const SavedItemKind kind) {
+  if (!FsHelpers::hasReflowableBookExtension(path)) return;
+  auto activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), false);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: reader for Saved Items");
+    return;
+  }
+  activity->setInitialSavedView(kind);
   replaceActivity(std::move(activity));
 }
 
@@ -363,6 +417,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
+    } else if (activityName == "SavedItems") {
+      initialMenuItem = HomeMenuItem::SAVED_ITEMS;
     } else if (activityName == "Library") {
       initialMenuItem = HomeMenuItem::LIBRARY;
     } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog") {
@@ -415,6 +471,7 @@ bool ActivityManager::isForegroundReader() const {
 }
 
 bool ActivityManager::isRemoteReaderContext() const {
+  if (isInputLocked()) return false;
   return pendingAction == PendingAction::None && currentActivity && currentActivity->acceptsRemoteInput();
 }
 
@@ -429,6 +486,7 @@ bool ActivityManager::isForegroundHomeShown() const {
 }
 
 bool ActivityManager::remoteShortcut(const bool readerMenu) {
+  if (isInputLocked()) return false;
   if (!isForegroundReader()) return false;
   auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
   if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
@@ -439,6 +497,7 @@ bool ActivityManager::remoteShortcut(const bool readerMenu) {
 }
 
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
+  if (isInputLocked()) return false;
   if (!isRemoteReaderContext() || mappedInput.hasRemoteClick()) return false;
   auto* reader = isForegroundReader() ? static_cast<ReaderActivity*>(currentActivity.get()) : nullptr;
   if (!reader || reader->inputOverPage()) {
@@ -449,6 +508,7 @@ bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
     return false;
   }
   const bool turned = chapter ? reader->skipPages(forward ? 1 : -1) : reader->pageTurn(forward);
+  reader->notePageTurn(!chapter && forward, turned);
   if (turned) requestUpdate();
   return turned;
 }
@@ -542,3 +602,82 @@ void RenderLock::unlock() {
  *
  */
 bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL, 0) != pdTRUE; };
+
+bool ActivityManager::canApplyInputLock() const {
+  return currentActivity && !renderInFlight.load(std::memory_order_acquire) && pendingAction == PendingAction::None &&
+         !currentActivity->requiresExclusiveStorageLoop() && !currentActivity->preventAutoSleep();
+}
+
+bool ActivityManager::applyInputLock(bool locked, bool restoreLight) {
+  if (locked == isInputLocked()) return true;
+  HalPowerManager::Lock powerLock;
+  RenderLock lock;
+  // A render can release RenderLock temporarily for I/O. Do not paint over that frame.
+  if (locked && renderInFlight.load(std::memory_order_acquire)) return false;
+  inputLocked.store(locked, std::memory_order_release);
+  mappedInput.resetHomeButtonInput();
+  mappedInput.suppressTouchContact();
+  if (locked) {
+    if (currentActivity) currentActivity->onInputLockChanged(true);
+    for (const auto& activity : stackActivities) activity->onInputLockChanged(true);
+    lockedRenderPending = false;
+    lockLightWasOn = Frontlight.isOn();
+    Frontlight.setOn(false);
+    lockBadge.show(renderer);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  } else if (restoreLight) {
+    const bool restored = lockBadge.restore(renderer);
+    if (lockLightWasOn) Frontlight.setOn(true);
+    lockLightWasOn = false;
+    if (currentActivity) currentActivity->onInputLockChanged(false);
+    if (restored && !lockedRenderPending)
+      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    else
+      requestUpdate();
+    lockedRenderPending = false;
+  } else {
+    lockBadge.restore(renderer);
+    lockBadge.invalidate();
+    lockedRenderPending = false;
+    lockLightWasOn = false;
+  }
+  return true;
+}
+
+bool ActivityManager::dispatchShortcut(readershortcuts::Action action, QuickLockTrigger trigger) {
+  using Action = readershortcuts::Action;
+  if (action == Action::Default || action == Action::Disabled) return false;
+  if (action == Action::QuickLock) {
+    requestInputLock(trigger);
+    return true;
+  }
+  if (action == Action::Sleep) {
+    requestSleep();
+    return true;
+  }
+  if (isInputLocked()) return false;
+  if (isForegroundReader())
+    return static_cast<ReaderActivity*>(currentActivity.get())->handleReaderShortcut(action, trigger);
+  switch (action) {
+    case Action::Home:
+      goHome();
+      return true;
+    case Action::FileBrowser:
+      goToFileBrowser();
+      return true;
+    case Action::Library:
+      goToLibrary();
+      return true;
+    case Action::Refresh:
+      return handleForcedRefresh();
+    case Action::ToggleFrontlight:
+      if (Frontlight.present()) {
+        Frontlight.setOn(!Frontlight.isOn());
+        SETTINGS.frontlightOn = Frontlight.isOn();
+        SETTINGS.saveToFile();
+      }
+      return true;
+    default:
+      return false;  // Reader-only commands are inert outside a reader.
+  }
+}

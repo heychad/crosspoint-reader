@@ -3,6 +3,8 @@
 #include <array>
 #include <utility>
 
+#include "personalization/ReaderShortcutLabels.h"
+
 void forEachBaseSetting(SettingVisitor visit, void* context) {
   // Load and save walk this list, so every condition here must be fixed before
   // settings load. Runtime probes belong in getSettingsList().
@@ -20,6 +22,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
     values[CrossPointSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
     values[CrossPointSettings::TRANSPARENT_CUSTOM] = StrId::STR_TRANSPARENT;
     values[CrossPointSettings::COVER_TRANSPARENT] = StrId::STR_COVER_TRANSPARENT;
+    values[CrossPointSettings::READING_STATS_SLEEP] = StrId::STR_READING_STATISTICS;
+    values[CrossPointSettings::READING_SUMMARY_SLEEP] = StrId::STR_READING_SUMMARY;
+    values[CrossPointSettings::COVER_SUMMARY_SLEEP] = StrId::STR_COVER_READING_SUMMARY;
     return values;
   }();
   static constexpr auto STATUS_BAR_CLOCK_VALUES = [] {
@@ -51,6 +56,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          "refreshFrequency", StrId::STR_CAT_DISPLAY));
   emit(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme, homeThemeValues(), "uiTheme",
                          StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Enum(StrId::STR_UI_SCALE, &CrossPointSettings::uiScale,
+                         {StrId::STR_UI_SCALE_SMALL, StrId::STR_UI_SCALE_LARGE}, "uiScale", StrId::STR_CAT_DISPLAY)
+           .withWebHidden());
   if (!BoardConfig::hasTouch())
     emit(SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                              StrId::STR_CAT_DISPLAY));
@@ -64,6 +72,11 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            StrId::STR_CAT_DISPLAY));
 
   // --- Reader ---
+  emit(SettingInfo::Toggle(StrId::STR_TRACK_READING_STATS, &CrossPointSettings::trackReadingStats, "trackReadingStats",
+                           StrId::STR_CAT_READER));
+  emit(SettingInfo::Value(StrId::STR_READING_IDLE_LIMIT, &CrossPointSettings::readingIdleTimeThresholdUnits, {3, 60, 1},
+                          "readingIdleTimeThresholdUnits", StrId::STR_CAT_READER)
+           .withWebHidden());
   // Built-in font-family entry. Replaced per-call with a registry-aware
   // version when SD fonts are installed.
   emit(SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily, {StrId::STR_NOTO_SANS}, "fontFamily",
@@ -123,10 +136,73 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS,
                           StrId::STR_IMAGES_DISPLAY_BW},
                          "imageRendering", StrId::STR_CAT_READER));
+  emit(SettingInfo::Enum(StrId::STR_EPUB_RENDER_MODE, &CrossPointSettings::epubRenderMode,
+                         {StrId::STR_RENDER_DEFAULT, StrId::STR_RENDER_BALANCED, StrId::STR_RENDER_LIGHT},
+                         "epubRenderMode", StrId::STR_CAT_READER));
   emit(SettingInfo::Enum(StrId::STR_READER_MENU_STYLE, &CrossPointSettings::readerMenuStyle,
                          {StrId::STR_MENU_STYLE_LIST, StrId::STR_MENU_STYLE_TOOLBAR}, "readerMenuStyle",
                          StrId::STR_CAT_READER));
+  if (BoardConfig::hasTouch()) {
+    emit(SettingInfo::Toggle(StrId::STR_PINCH_FONT_RESIZE, &CrossPointSettings::pinchFontResizeEnabled,
+                             "pinchFontResizeEnabled", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::Toggle(StrId::STR_TWO_FINGER_ROTATION, &CrossPointSettings::twoFingerRotationEnabled,
+                             "twoFingerRotationEnabled", StrId::STR_CAT_CONTROLS));
+    static constexpr StrId directions[] = {StrId::STR_TWO_FINGER_UP, StrId::STR_TWO_FINGER_DOWN,
+                                           StrId::STR_TWO_FINGER_LEFT, StrId::STR_TWO_FINGER_RIGHT};
+    static constexpr const char* keys[] = {"twoFingerSwipeUp", "twoFingerSwipeDown", "twoFingerSwipeLeft",
+                                           "twoFingerSwipeRight"};
+    for (size_t i = 0; i < 4; ++i) {
+      emit(SettingInfo::DynamicEnum(
+          directions[i],
+          {StrId::STR_DISABLED, StrId::STR_SHORTCUT_BRIGHTER, StrId::STR_SHORTCUT_DIMMER, StrId::STR_SHORTCUT_WARMER,
+           StrId::STR_SHORTCUT_COOLER, StrId::STR_SHORTCUT_NEXT_CHAPTER, StrId::STR_SHORTCUT_PREV_CHAPTER,
+           StrId::STR_SHORTCUT_LARGER_TEXT, StrId::STR_SHORTCUT_SMALLER_TEXT},
+          [i] { return SETTINGS.twoFingerActions[i]; },
+          [i](uint8_t value) {
+            SETTINGS.setTwoFingerAction(i, value);
+            SETTINGS.saveToFile();
+          },
+          keys[i], StrId::STR_CAT_CONTROLS));
+    }
+  }
   // --- Controls ---
+  // Reader-only shortcuts preserve the standard controls when set to Default.
+  const auto& readerActions = readershortcuts::ACTION_LABELS;
+  emit(SettingInfo::StaticEnum(StrId::STR_POWER_TAP_BINDING, &CrossPointSettings::powerTapAction, readerActions,
+                               "powerTapAction", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_POWER_HOLD_BINDING, &CrossPointSettings::powerHoldAction, readerActions,
+                               "powerHoldAction", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_POWER_UP_CHORD_BINDING, &CrossPointSettings::powerUpChordAction,
+                               readerActions, "powerUpChordAction", StrId::STR_CAT_CONTROLS));
+  if (!BoardConfig::hasTouch()) {
+    emit(SettingInfo::StaticEnum(StrId::STR_BACK_HOLD_BINDING, &CrossPointSettings::backHoldAction, readerActions,
+                                 "backHoldAction", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::StaticEnum(StrId::STR_CONFIRM_HOLD_BINDING, &CrossPointSettings::confirmHoldAction, readerActions,
+                                 "confirmHoldAction", StrId::STR_CAT_CONTROLS));
+  }
+
+  emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_UP_TAP, &CrossPointSettings::readerUpTap, readerActions,
+                               "readerUpTap", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_UP_HOLD, &CrossPointSettings::readerUpHold, readerActions,
+                               "readerUpHold", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_DOWN_TAP, &CrossPointSettings::readerDownTap, readerActions,
+                               "readerDownTap", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_DOWN_HOLD, &CrossPointSettings::readerDownHold, readerActions,
+                               "readerDownHold", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_CHORD, &CrossPointSettings::readerSideChord, readerActions,
+                               "readerSideChord", StrId::STR_CAT_CONTROLS));
+  if (BoardConfig::hasTouch()) {
+    const auto edgeActions = std::span<const StrId>(readerActions).first(readershortcuts::EDGE_ACTION_COUNT);
+    emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_LEFT_UP, &CrossPointSettings::readerLeftEdgeUp, edgeActions,
+                                 "readerLeftEdgeUp", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_LEFT_DOWN, &CrossPointSettings::readerLeftEdgeDown, edgeActions,
+                                 "readerLeftEdgeDown", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_RIGHT_UP, &CrossPointSettings::readerRightEdgeUp, edgeActions,
+                                 "readerRightEdgeUp", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_RIGHT_DOWN, &CrossPointSettings::readerRightEdgeDown, edgeActions,
+                                 "readerRightEdgeDown", StrId::STR_CAT_CONTROLS));
+  }
+
 #if FREEINK_CAP_HAPTIC
   emit(SettingInfo::Enum(StrId::STR_VIBRATION, &CrossPointSettings::vibration,
                          {StrId::STR_VIBRATION_TOUCH, StrId::STR_VIBRATION_TOUCH_PAGE, StrId::STR_STATE_OFF},
@@ -205,6 +281,35 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            StrId::STR_CAT_SYSTEM));
   emit(SettingInfo::Toggle(StrId::STR_LIBRARY_USE_METADATA, &CrossPointSettings::libraryUseMetadata,
                            "libraryUseMetadata", StrId::STR_CAT_SYSTEM));
+  static constexpr StrId LIBRARY_LAYOUTS[] = {StrId::STR_LIBRARY_COMPACT, StrId::STR_LIBRARY_EXPANDED};
+  emit(SettingInfo::StaticEnum(StrId::STR_LIBRARY_LIST_VIEW, &CrossPointSettings::libraryListExpanded, LIBRARY_LAYOUTS,
+                               "libraryListExpanded", StrId::STR_LIBRARY));
+  static constexpr StrId RECENT_VIEWS[] = {StrId::STR_LIST_VIEW, StrId::STR_GRID_VIEW};
+  emit(SettingInfo::StaticEnum(StrId::STR_RECENT_BOOKS_VIEW, &CrossPointSettings::recentBooksView, RECENT_VIEWS,
+                               "recentBooksView", StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_TITLE_COVER_GRID, &CrossPointSettings::libraryTitleCoverGrid,
+                           "libraryTitleCoverGrid", StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_FIRST_ON_HOME, &CrossPointSettings::libraryFirstOnHome,
+                           "libraryFirstOnHome", StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_SHOW_SERIES, &CrossPointSettings::libraryShowSeries, "libraryShowSeries",
+                           StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_SHOW_GENRE, &CrossPointSettings::libraryShowGenre, "libraryShowGenre",
+                           StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_HIDE_FINISHED, &CrossPointSettings::libraryHideFinishedBooks,
+                           "libraryHideFinishedBooks", StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_SHOW_EPUB, &CrossPointSettings::libraryShowEpub, "libraryShowEpub",
+                           StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_SHOW_XTC, &CrossPointSettings::libraryShowXtc, "libraryShowXtc",
+                           StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_SHOW_TXT, &CrossPointSettings::libraryShowTxt, "libraryShowTxt",
+                           StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_LIBRARY_SHOW_MARKDOWN, &CrossPointSettings::libraryShowMarkdown,
+                           "libraryShowMarkdown", StrId::STR_LIBRARY));
+  emit(SettingInfo::Toggle(StrId::STR_HIDE_FILE_EXTENSION, &CrossPointSettings::hideFileExtension, "hideFileExtension",
+                           StrId::STR_LIBRARY));
+  static constexpr StrId BROWSER_LAYOUTS[] = {StrId::STR_FILE_BROWSER_ONE_LINE, StrId::STR_FILE_BROWSER_TWO_LINES};
+  emit(SettingInfo::StaticEnum(StrId::STR_FILE_BROWSER_DISPLAY, &CrossPointSettings::fileBrowserDisplay,
+                               BROWSER_LAYOUTS, "fileBrowserDisplay", StrId::STR_LIBRARY));
   emit(SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &CrossPointSettings::removeReadBooksFromRecents,
                            "removeReadBooksFromRecents", StrId::STR_CAT_SYSTEM));
   emit(SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,

@@ -1,0 +1,22 @@
+diff --git a/libs/hardware/SDCardManager/include/SDCardManager.h b/libs/hardware/SDCardManager/include/SDCardManager.h
+--- a/libs/hardware/SDCardManager/include/SDCardManager.h
++++ b/libs/hardware/SDCardManager/include/SDCardManager.h
+@@ -51,6 +51,18 @@
+            vol().clusterCount(), vol().bytesPerCluster()};
+     return out.type && out.deviceSectors && out.clusterCount && out.clusterBytes;
+   }
++#if FREEINK_DEVICE_X4PRO
++  // Caller serializes storage access and verifies its snapshot.
++  bool syncReadExFatMetadataSector(uint32_t sector, uint8_t* out) {
++    return initialized && vol().syncReadExFatMetadataSector(sector, out);
++  }
++  bool syncReadExFatFatSector(uint32_t offset, uint8_t* out) {
++    return initialized && vol().syncReadExFatFatSector(offset, out);
++  }
++  bool syncReadExFatBitmapSector(uint32_t offset, uint8_t* out) {
++    return initialized && vol().syncReadExFatBitmapSector(offset, out);
++  }
++#endif
+   // Returns the total card capacity in bytes. Cached at begin(); 0 if not mounted.
+   uint64_t sdTotalBytes() const;
+   // Returns used space in bytes, cached with a 20-second TTL (freeClusterCount

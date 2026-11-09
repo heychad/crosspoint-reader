@@ -37,7 +37,7 @@ void HomeCoverCache::prepare() {
   }
 }
 
-bool HomeCoverCache::paint(fui::Rect rect, size_t index, const std::string& path) {
+bool HomeCoverCache::paint(fui::Rect rect, size_t index, const char* path) {
   if (index >= cachedCovers.size()) return false;
   auto& cached = cachedCovers[index];
   uint8_t* const cacheData = coverCache.get();
@@ -48,7 +48,7 @@ bool HomeCoverCache::paint(fui::Rect rect, size_t index, const std::string& path
   }
   cached.valid = false;
   bool drawn = false;
-  if (!path.empty() && Storage.openFileForRead("HOME", path, coverFile)) {
+  if (path && path[0] != '\0' && Storage.openFileForRead("HOME", path, coverFile)) {
     if (coverBitmap.parseHeaders() == BmpReaderError::Ok && coverBitmap.getWidth() > 0 && coverBitmap.getHeight() > 0) {
       // The art nudges a few px right of center; the spine below hugs its
       // left edge either way.

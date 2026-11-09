@@ -50,3 +50,41 @@ TEST(HomeButtonInput, RecognizesConfiguredGestures) {
   EXPECT_EQ(input.update(10100, true, false, false, false, A::Home, A::CreateClipping, A::Ignore), A::CreateClipping);
   EXPECT_EQ(input.update(11000, false, true, false, false, A::Home, A::Ignore, A::CreateClipping), A::CreateClipping);
 }
+
+TEST(HomeButtonInput, NewReaderActionsKeepStableIdsAndGestures) {
+  static_assert(static_cast<unsigned>(HomeButtonAction::QuickLock) == 13);
+  static_assert(static_cast<unsigned>(HomeButtonAction::FileBrowser) == 14);
+  static_assert(static_cast<unsigned>(HomeButtonAction::Library) == 15);
+  static_assert(static_cast<unsigned>(HomeButtonAction::SavedItems) == 16);
+  static_assert(static_cast<unsigned>(HomeButtonAction::FileTransfer) == 17);
+  static_assert(static_cast<unsigned>(HomeButtonAction::ReadingStatistics) == 18);
+  HomeButtonInput input;
+  using A = HomeButtonAction;
+  EXPECT_EQ(input.update(0, true, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
+  EXPECT_EQ(input.update(100, false, false, false, true, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
+  EXPECT_EQ(input.update(150, true, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::SavedItems);
+  EXPECT_EQ(input.update(1000, false, true, false, false, A::Library, A::SavedItems, A::FileTransfer), A::FileTransfer);
+  EXPECT_EQ(input.update(2000, true, false, false, false, A::ReadingStatistics, A::Ignore, A::FileBrowser),
+            A::ReadingStatistics);
+}
+
+TEST(HomeButtonInput, DiscardsHeldContactUntilItsReleaseThenAcceptsNewTap) {
+  HomeButtonInput input;
+  using A = HomeButtonAction;
+  input.discardContact(true);
+  EXPECT_EQ(input.update(100, false, true, false, false, A::Library, A::Ignore, A::FileTransfer, true), A::Ignore);
+  EXPECT_EQ(input.update(200, true, false, false, false, A::Library, A::Ignore, A::FileTransfer, false), A::Ignore);
+  EXPECT_EQ(input.update(300, false, false, false, true, A::Library, A::Ignore, A::FileTransfer, true), A::Ignore);
+  EXPECT_EQ(input.update(400, true, false, false, false, A::Library, A::Ignore, A::FileTransfer, false), A::Library);
+}
+
+TEST(HomeButtonInput, DiscardClearsPendingTapAndAllowsFreshDoubleTap) {
+  HomeButtonInput input;
+  using A = HomeButtonAction;
+  EXPECT_EQ(input.update(0, true, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
+  input.discardContact(false);
+  EXPECT_EQ(input.update(500, false, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
+  EXPECT_EQ(input.update(600, true, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
+  EXPECT_EQ(input.update(650, false, false, false, true, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
+  EXPECT_EQ(input.update(700, true, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::SavedItems);
+}

@@ -17,16 +17,20 @@ namespace fui = freeink::ui;
 void MappedInputManager::update(const bool deferHomeButtonAction) const {
   remoteInput.reset();
   gpio.update();
+  sideContactGuard.update(gpio.isPressed(HalGPIO::BTN_UP), gpio.isPressed(HalGPIO::BTN_DOWN),
+                          gpio.wasReleased(HalGPIO::BTN_UP), gpio.wasReleased(HalGPIO::BTN_DOWN));
   const bool pagePressed =
       SETTINGS.vibration == CrossPointSettings::VIBRATION_TOUCH_PAGE && gpio.wasCapacitivePagePressed();
   HalHaptics::feedback(SETTINGS.vibration != CrossPointSettings::VIBRATION_OFF, pagePressed, SETTINGS.hapticIntensity);
   homeAction = HomeButtonAction::Ignore;
+  homeGesture = HomeButtonInput::Gesture::None;
   if (gpio.hasHomeKey()) {
-    homeAction = homeButtonInput.update(millis(), gpio.wasHomeKeyTapped(), gpio.wasHomeKeyLongPressed(),
-                                        wasSwipe() != SwipeDir::None, gpio.wasHomeKeyPressed(),
-                                        static_cast<HomeButtonAction>(SETTINGS.homeButtonTapAction),
-                                        static_cast<HomeButtonAction>(SETTINGS.homeButtonDoubleTapAction),
-                                        static_cast<HomeButtonAction>(SETTINGS.homeButtonLongPressAction));
+    homeAction = homeButtonInput.update(
+        millis(), gpio.wasHomeKeyTapped(), gpio.wasHomeKeyLongPressed(), wasSwipe() != SwipeDir::None,
+        gpio.wasHomeKeyPressed(), static_cast<HomeButtonAction>(SETTINGS.homeButtonTapAction),
+        static_cast<HomeButtonAction>(SETTINGS.homeButtonDoubleTapAction),
+        static_cast<HomeButtonAction>(SETTINGS.homeButtonLongPressAction), gpio.isHomeKeyDown());
+    homeGesture = homeButtonInput.gesture();
     if (gpio.wasHomeKeyLongPressed() && homeAction != HomeButtonAction::Ignore) {
       HalHaptics::longPress(SETTINGS.vibration != CrossPointSettings::VIBRATION_OFF, SETTINGS.hapticIntensity);
     } else if (homeAction != HomeButtonAction::Ignore) {
@@ -43,6 +47,9 @@ void MappedInputManager::update(const bool deferHomeButtonAction) const {
       case CrossPointSettings::PWR_SYNC:
         homeAction = HomeButtonAction::Sync;
         break;
+      case CrossPointSettings::PWR_QUICK_ACTIONS:
+        homeAction = HomeButtonAction::QuickActions;
+        break;
       case CrossPointSettings::PWR_READER_MENU:
         homeAction = HomeButtonAction::ReaderMenu;
         break;
@@ -55,9 +62,12 @@ void MappedInputManager::update(const bool deferHomeButtonAction) const {
     // still be visible now so the transfer can cancel and unwind promptly.
     if (homeAction != HomeButtonAction::Ignore && deferredHomeAction == HomeButtonAction::Ignore) {
       deferredHomeAction = homeAction;
+      deferredHomeGesture = homeGesture;
     }
   } else if (deferredHomeAction != HomeButtonAction::Ignore) {
     homeAction = deferredHomeAction;
+    homeGesture = deferredHomeGesture;
+    deferredHomeGesture = HomeButtonInput::Gesture::None;
     deferredHomeAction = HomeButtonAction::Ignore;
   }
   for (uint8_t value = 0; value <= static_cast<uint8_t>(Button::ScreenDown); ++value) {
@@ -107,57 +117,44 @@ MappedInputManager::Button MappedInputManager::mapScreenDirection(const Button b
 
 bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
   const auto sideLayout = SETTINGS.sideButtonLayout;
+  const auto readPhysical = [&](uint8_t index) {
+    if (index == HalGPIO::BTN_UP && sideContactGuard.blocks(true)) return false;
+    if (index == HalGPIO::BTN_DOWN && sideContactGuard.blocks(false)) return false;
+    return (gpio.*fn)(index);
+  };
 
   switch (button) {
     case Button::Back:
       // Logical Back maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonBack);
+      return readPhysical(SETTINGS.frontButtonBack);
     case Button::Confirm:
       // Logical Confirm maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonConfirm);
+      return readPhysical(SETTINGS.frontButtonConfirm);
     case Button::Left:
       // Logical Left maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonLeft);
+      return readPhysical(SETTINGS.frontButtonLeft);
     case Button::Right:
       // Logical Right maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonRight);
+      return readPhysical(SETTINGS.frontButtonRight);
     case Button::Up:
       // Side buttons remain fixed for Up/Down.
-      return (gpio.*fn)(HalGPIO::BTN_UP);
+      return readPhysical(HalGPIO::BTN_UP);
     case Button::Down:
       // Side buttons remain fixed for Up/Down.
-      return (gpio.*fn)(HalGPIO::BTN_DOWN);
+      return readPhysical(HalGPIO::BTN_DOWN);
     case Button::Power:
       // Power button bypasses remapping.
-      return (gpio.*fn)(HalGPIO::BTN_POWER);
+      return readPhysical(HalGPIO::BTN_POWER);
     case Button::PageBack:
-      // Reader page navigation uses side buttons and can be swapped via settings.
-      switch (sideLayout) {
-        case CrossPointSettings::PREV_NEXT:
-          return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP);
-        case CrossPointSettings::NEXT_PREV:
-          return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN);
-        case CrossPointSettings::PREV_PREV:
-          return (gpio.*fn)(HalGPIO::BTN_UP) || (gpio.*fn)(HalGPIO::BTN_DOWN);
-        case CrossPointSettings::NEXT_NEXT:
-        case CrossPointSettings::SIDE_BUTTONS_DISABLED:
-        default:
-          return false;
-      }
-    case Button::PageForward:
-      // Reader page navigation uses side buttons and can be swapped via settings.
-      switch (sideLayout) {
-        case CrossPointSettings::PREV_NEXT:
-          return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN);
-        case CrossPointSettings::NEXT_PREV:
-          return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP);
-        case CrossPointSettings::NEXT_NEXT:
-          return (gpio.*fn)(HalGPIO::BTN_UP) || (gpio.*fn)(HalGPIO::BTN_DOWN);
-        case CrossPointSettings::PREV_PREV:
-        case CrossPointSettings::SIDE_BUTTONS_DISABLED:
-        default:
-          return false;
-      }
+    case Button::PageForward: {
+      static_assert(CrossPointSettings::PREV_NEXT == 0 && CrossPointSettings::NEXT_PREV == 1 &&
+                    CrossPointSettings::SIDE_BUTTONS_DISABLED == 2 && CrossPointSettings::NEXT_NEXT == 3 &&
+                    CrossPointSettings::PREV_PREV == 4);
+      const auto wanted = button == Button::PageBack ? SidePageDirection::Previous : SidePageDirection::Next;
+      const bool reversed = isNavDirectionSwapped();
+      return (sidePageDirection(true, sideLayout, reversed) == wanted && readPhysical(HalGPIO::BTN_UP)) ||
+             (sidePageDirection(false, sideLayout, reversed) == wanted && readPhysical(HalGPIO::BTN_DOWN));
+    }
     case Button::NavNext:
       // Logical "next item" navigation: side Down + front Right, with the control axis flipped in
       // INVERTED / LANDSCAPE_CCW under the live orientation policy, matching the rotated hint labels.
@@ -183,6 +180,53 @@ constexpr unsigned long TOUCH_HELD_OVERRIDE_WINDOW_MS = 250;
 }  // namespace
 
 bool MappedInputManager::hasTouch() const { return gpio.hasTouch(); }
+
+bool MappedInputManager::touchContactsDown() const {
+  const auto snapshot = gpio.getTouchSnapshot();
+  return snapshot.count != 0 || snapshot.reportedCount != 0;
+}
+
+bool MappedInputManager::supportsMultiTouch() const { return gpio.supportsMultiTouch(); }
+
+MappedInputManager::TouchSnapshot MappedInputManager::getTouchSnapshot() const {
+  const auto source = gpio.getTouchSnapshot();
+  TouchSnapshot result;
+  result.count = std::min<uint8_t>(source.count, result.contacts.size());
+  result.reportedCount = source.reportedCount;
+  result.idsStable = source.idsStable;
+  for (uint8_t i = 0; i < result.count; ++i) {
+    auto& point = result.contacts[i];
+    point.id = source.contacts[i].id;
+    point.valid = source.contacts[i].valid;
+    renderer.tapToLogical(source.contacts[i].x, source.contacts[i].y, point.x, point.y);
+  }
+  return result;
+}
+
+bool MappedInputManager::wasCompletedMultiTouchSwipe(CompletedSwipe& swipe) const {
+  float sx = 0, sy = 0, ex = 0, ey = 0;
+  swipe = {};
+  if (!gpio.wasMultiTouchSwipe(swipe.contactCount, sx, sy, ex, ey, swipe.durationMs)) return false;
+  renderer.tapToLogical(sx, sy, swipe.startX, swipe.startY);
+  renderer.tapToLogical(ex, ey, swipe.endX, swipe.endY);
+  return true;
+}
+
+bool MappedInputManager::wasCompletedMultiTouchRotation(CompletedTransform& rotation) const {
+  float x = 0, y = 0;
+  rotation = {};
+  if (!gpio.wasMultiTouchRotation(rotation.value, x, y, rotation.durationMs)) return false;
+  renderer.tapToLogical(x, y, rotation.centerX, rotation.centerY);
+  return true;
+}
+
+bool MappedInputManager::wasCompletedMultiTouchPinch(CompletedTransform& pinch) const {
+  float x = 0, y = 0;
+  pinch = {};
+  if (!gpio.wasMultiTouchPinch(pinch.value, x, y, pinch.durationMs)) return false;
+  renderer.tapToLogical(x, y, pinch.centerX, pinch.centerY);
+  return true;
+}
 
 void MappedInputManager::rememberTouchHeldTime() const {
   touchHeldOverrideValid = true;
@@ -410,6 +454,13 @@ bool MappedInputManager::wasReleased(const Button button) const {
   if (button == Button::Confirm && wasPowerConfirmClick()) return true;
 #endif
   return mapButton(button, &HalGPIO::wasReleased);
+}
+
+void MappedInputManager::consumeSideButtonUntilReleased(Button button) const {
+  const bool up = button == Button::Up && (gpio.isPressed(HalGPIO::BTN_UP) || gpio.wasReleased(HalGPIO::BTN_UP));
+  const bool down =
+      button == Button::Down && (gpio.isPressed(HalGPIO::BTN_DOWN) || gpio.wasReleased(HalGPIO::BTN_DOWN));
+  sideContactGuard.consume(up, down);
 }
 
 bool MappedInputManager::wasLongPressed(const Button button, const unsigned long thresholdMs) const {

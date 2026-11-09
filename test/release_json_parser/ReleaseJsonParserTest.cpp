@@ -650,3 +650,51 @@ TEST(ReleaseJsonParser, ChunkedRealisticEveryBoundary) {
     EXPECT_EQ(p.getFirmwareSize(), 9999u) << "split=" << split;
   }
 }
+
+TEST(ReleaseJsonParserSafety, OversizedTagIsRejectedInsteadOfTruncated) {
+  ReleaseJsonParser parser;
+  const std::string json = "{\"tag_name\":\"" + std::string(32, '9') + "\"}";
+  parser.feed(json.c_str(), json.size());
+  EXPECT_FALSE(parser.foundTag());
+}
+
+TEST(ReleaseJsonParserSafety, EmptyTargetCannotMatchNamelessAsset) {
+  ReleaseJsonParser parser;
+  parser.setFirmwareAssetName("");
+  const std::string json = R"({"assets":[{"browser_download_url":"https://example.invalid/a","size":1}]})";
+  parser.feed(json.c_str(), json.size());
+  EXPECT_FALSE(parser.foundFirmware());
+}
+
+TEST(ReleaseJsonParserSafety, OversizedAssetNameCannotMatchTruncatedTarget) {
+  ReleaseJsonParser parser;
+  const std::string target(47, 'x');
+  parser.setFirmwareAssetName(target.c_str());
+  const std::string json =
+      "{\"assets\":[{\"name\":\"" + target + "y\",\"browser_download_url\":\"https://example.invalid/a\"}]}";
+  parser.feed(json.c_str(), json.size());
+  EXPECT_FALSE(parser.foundFirmware());
+}
+
+TEST(ReleaseJsonParserSafety, RejectsTagWithEmbeddedNul) {
+  ReleaseJsonParser parser;
+  const std::string json = R"({"tag_name":"2.0.0-chad.4\u0000garbage"})";
+  parser.feed(json.c_str(), json.size());
+  EXPECT_FALSE(parser.foundTag());
+}
+
+TEST(ReleaseJsonParserSafety, RejectsAssetNameWithEmbeddedNul) {
+  ReleaseJsonParser parser;
+  parser.setFirmwareAssetName("firmware.bin");
+  const std::string json =
+      R"({"assets":[{"name":"firmware.bin\u0000garbage","browser_download_url":"https://example.invalid/a"}]})";
+  parser.feed(json.c_str(), json.size());
+  EXPECT_FALSE(parser.foundFirmware());
+}
+
+TEST(ReleaseJsonParserSafety, DuplicateTagInvalidatesRelease) {
+  ReleaseJsonParser parser;
+  const std::string json = R"({"tag_name":"2.0.0-chad.3","tag_name":"2.0.0-chad.4"})";
+  parser.feed(json.c_str(), json.size());
+  EXPECT_FALSE(parser.foundTag());
+}

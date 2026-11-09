@@ -285,3 +285,14 @@ TEST(LibraryPath, RootDoesNotGainASecondSeparator) {
 TEST(LibraryPath, NestedFolderGetsOneSeparator) {
   EXPECT_EQ(library::joinLibraryPath("/Books", "book.epub"), "/Books/book.epub");
 }
+
+TEST(LibraryFold, ReusesOutputBufferAcrossMetadataFields) {
+  std::string output;
+  output.reserve(600);
+  const size_t capacity = output.capacity();
+  for (const std::string text : {"Épopée / Fantasy", "Science Fiction", "", "THE long Series"}) {
+    library::foldInto(text, output);
+    EXPECT_EQ(output, fold(text));
+    EXPECT_EQ(output.capacity(), capacity);
+  }
+}

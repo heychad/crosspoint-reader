@@ -32,6 +32,8 @@ class Activity {
   virtual void onExit();
   // Last chance to queue activity-owned state before sleep events are drained.
   virtual void prepareForSleep() {}
+  // Invoked with the render lock held; a stacked activity is notified only on lock.
+  virtual void onInputLockChanged(bool) {}
   virtual void loop() {}
 
   virtual void render(RenderLock&&) {}

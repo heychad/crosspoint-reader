@@ -27,6 +27,14 @@ inline int failRename = -1;
 inline int failAlloc = -1;
 inline bool failDirectorySeek = false;
 inline std::string failClosePath;
+inline std::string failOpenPath;
+inline std::string failLookupPath;
+inline bool monitorHealthy = true;
+inline bool latchMonitorOnReadFailure = false;
+inline std::string latchMonitorLookupPath;
+inline std::string latchMonitorOpenPath;
+inline unsigned lookupCalls = 0;
+inline unsigned emptyCloseCalls = 0;
 inline std::string failWritePath;
 inline unsigned parses = 0;
 inline unsigned reads = 0;
@@ -58,6 +66,14 @@ inline void reset() {
   failAlloc = -1;
   failDirectorySeek = false;
   failClosePath.clear();
+  failOpenPath.clear();
+  failLookupPath.clear();
+  monitorHealthy = true;
+  latchMonitorOnReadFailure = false;
+  latchMonitorLookupPath.clear();
+  latchMonitorOpenPath.clear();
+  lookupCalls = 0;
+  emptyCloseCalls = 0;
   failWritePath.clear();
   parses = 0;
   reads = 0;
@@ -105,6 +121,7 @@ class HalFile {
   explicit operator bool() const { return bool(node); }
   bool isOpen() const { return bool(node); }
   bool close() {
+    if (!node) ++fake::emptyCloseCalls;
     const bool failed = !fake::failClosePath.empty() && path == fake::failClosePath;
     if (failed) {
       fake::failClosePath.clear();
@@ -167,7 +184,10 @@ class HalFile {
   int read(void* out, size_t size) {
     fake::reads++;
     if (size == 0) return 0;
-    if (!node || fake::fail(fake::failRead)) return -1;
+    if (!node || fake::fail(fake::failRead)) {
+      if (fake::latchMonitorOnReadFailure) fake::monitorHealthy = false;
+      return -1;
+    }
     size = std::min(size, node->bytes.size() - std::min(pos, node->bytes.size()));
     std::memcpy(out, node->bytes.data() + std::min(pos, node->bytes.size()), size);
     pos += size;
@@ -196,12 +216,23 @@ class HalFile {
 
 class HalStorage {
  public:
+  enum class PathStatus { Missing, Present, Failed };
   static HalStorage& getInstance() {
     static HalStorage storage;
     return storage;
   }
 
   bool exists(const char* path) const { return fake::files.count(path) != 0; }
+  bool monitoredStorageHealthy() const { return fake::monitorHealthy; }
+  PathStatus lookupPath(const char* path) const {
+    ++fake::lookupCalls;
+    if (fake::latchMonitorLookupPath == path) {
+      fake::monitorHealthy = false;
+      return PathStatus::Failed;
+    }
+    if (fake::failLookupPath == path) return PathStatus::Failed;
+    return exists(path) ? PathStatus::Present : PathStatus::Missing;
+  }
   bool mkdir(const char* path) {
     if (!exists(path)) fake::add(path, "");
     fake::files[path]->directory = true;
@@ -209,10 +240,12 @@ class HalStorage {
   }
   HalFile open(const char* path) {
     HalFile file;
+    if (fake::failOpenPath == path) return file;
     const auto found = fake::files.find(path);
     if (found != fake::files.end()) {
       file.node = found->second;
       file.path = path;
+      if (fake::latchMonitorOpenPath == path) fake::monitorHealthy = false;
     }
     return file;
   }

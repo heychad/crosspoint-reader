@@ -23,13 +23,22 @@
 #include <limits>
 #include <string>
 
+// PNGdec's zlib compatibility header exports this private macro.
+#ifdef local
+#undef local
+#endif
+
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "ReadingStatsSleep.h"
+#include "RecentBooksStore.h"
 #include "activities/reader/ReaderUtils.h"
+#include "activities/reader/ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
 #include "images/MoonIcon.h"
+#include "util/BookProgress.h"
 
 namespace {
 // Metalio: B/W sleep images use the full 0xF7 waveform instead of HALF (two
@@ -737,6 +746,10 @@ void SleepActivity::onEnter() {
   }
 
   switch (SETTINGS.sleepScreen) {
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::READING_STATS_SLEEP):
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::READING_SUMMARY_SLEEP):
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_SUMMARY_SLEEP):
+      return renderReadingStatsSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
       return renderBlankSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
@@ -752,6 +765,71 @@ void SleepActivity::onEnter() {
     default:
       return renderDefaultSleepScreen();
   }
+}
+
+void SleepActivity::renderReadingStatsSleepScreen() const {
+  const std::string& path = APP_STATE.openEpubPath;
+  if (!SETTINGS.trackReadingStats || path.empty() ||
+      Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Present)
+    return renderDefaultSleepScreen();
+  std::string cache;
+  if (FsHelpers::hasReflowableBookExtension(path))
+    cache = Epub::cachePathForFilePath(path, "/.crosspoint");
+  else if (FsHelpers::hasXtcExtension(path))
+    cache = Xtc(path, "/.crosspoint").getCachePath();
+  else
+    return renderDefaultSleepScreen();
+  auto data = makeUniqueNoThrow<sleepstats::Data>();
+  if (!data) return renderDefaultSleepScreen();
+  bool enabled = false;
+  bool found = false;
+  data->book = readingstats::loadBook(cache, path, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
+  if (!enabled || !found || !data->book.writable) return renderDefaultSleepScreen();
+  const bool coverSummary = SETTINGS.sleepScreen == CrossPointSettings::COVER_SUMMARY_SLEEP;
+  const bool summary = coverSummary || SETTINGS.sleepScreen == CrossPointSettings::READING_SUMMARY_SLEEP;
+  if (!summary) {
+    data->hasClock = getCurrentLocalReadingStatsDateTime(data->now);
+    if (!data->hasClock && Storage.lookupPath("/.crosspoint/global_stats.bin") == HalStorage::PathStatus::Present) {
+      data->device = GlobalReadingStats::loadReadOnly();
+      data->hasDevice = data->device.writable;
+    }
+  }
+  // TXT/Markdown cache validation can delete stale caches even when an EPUB
+  // metadata load requests no rebuild. Leave progress unknown on sleep.
+  if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasXtcExtension(path)) data->progress = loadBookProgress(path);
+  const auto slash = path.find_last_of('/');
+  const char* title = path.c_str() + (slash == std::string::npos ? 0 : slash + 1);
+  const RecentBook* matchingBook = nullptr;
+  for (const auto& recent : RECENT_BOOKS.getBooks()) {
+    if (recent.path == path) {
+      matchingBook = &recent;
+      if (!recent.title.empty()) title = recent.title.c_str();
+      break;
+    }
+  }
+  bool drawn = false;
+  if (coverSummary && matchingBook && !matchingBook->coverBmpPath.empty()) {
+    constexpr int heights[] = {300, 226};
+    for (const int height : heights) {
+      const std::string coverPath = UITheme::getCoverThumbPath(matchingBook->coverBmpPath, height);
+      HalFile file;
+      if (!Storage.openFileForRead("SLP", coverPath, file)) continue;
+      auto cover = makeUniqueNoThrow<Bitmap>(file);
+      if (cover && cover->parseHeaders() == BmpReaderError::Ok && cover->getWidth() > 0 && cover->getWidth() <= 512 &&
+          cover->getHeight() > 0 && cover->getHeight() <= 512 && cover->getBpp() <= 2 && cover->getRowBytes() > 0 &&
+          cover->getRowBytes() <= 256)
+        drawn = sleepstats::drawCoverSummary(renderer, title, *data, *cover);
+      cover.reset();
+      if (!file.close()) drawn = false;
+      if (drawn) break;
+    }
+  }
+  if (!drawn)
+    drawn = summary ? sleepstats::drawSummary(renderer, title, *data) : sleepstats::draw(renderer, title, *data);
+  if (!drawn) return renderDefaultSleepScreen();
+  if (SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::INVERTED_BLACK_AND_WHITE)
+    renderer.invertScreen();
+  renderer.displayBuffer(kSleepClean);
 }
 
 bool SleepActivity::renderCustomSleepBmp(const std::string& path) const {

@@ -65,11 +65,10 @@ chmod +x .githooks/pre-commit
 With an existing compilation setup, run the selected profile directly:
 
 ```sh
-pio run -e default
+pio run -e x4pro
 ```
 
-`pio run` also selects the C3 X3/X4 profile. Select an existing board environment
-in `platformio.ini` for other devices; see [device profiles](./touch-and-ui.md#building-and-testing-on-other-devices).
+This fork builds and tests the Xteink X4 Pro only; CI uses the same profile.
 Keep the installed tools, packages, and build caches. The setup commands below
 apply only to a new environment or an identified missing or incompatible
 dependency; they are not steps to repeat before each build.
@@ -93,33 +92,22 @@ On Windows, create the environment with `py -3.13 -m venv .venv` and activate
 Use this core in the IDE too; installing the IDE alone does not verify its core
 version. CI also lists the Python dependencies needed for a fresh platform setup.
 
-Profiles with `custom_sdkconfig`, including `default` and `sticky`, build a
-nested core environment. Pin that core too before the first build, as CI does:
-
-```sh
-python -m pip install uv
-pio pkg install -e default
-uv pip install --python ~/.platformio/penv/bin/python 'pioarduino==6.1.19'
-```
-
-Replace `default` with the selected profile. The nested Python path above uses
-the default Linux/macOS PlatformIO directory; on Windows use
-`~/.platformio/penv/Scripts/python.exe`, or the configured core directory.
-Keep both core pins aligned with CI when updating the toolchain. After setup,
+Keep the installed core aligned with CI when updating the toolchain. After setup,
 use the [normal build command](#build).
 
-## Flash
+## Install a test build
 
-```sh
-pio run --target upload
-```
+Back up settings and reading progress and keep known-good X4 Pro firmware for
+recovery. Copy the reviewed binary to the SD card and use **Settings → System →
+SD Card Firmware Update**. A successful build does not establish device behavior;
+validate changes on the reader.
 
 ## First checks before opening a PR
 
 ```sh
 ./bin/clang-format-fix
-pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
-pio run
+pio check -e x4pro --fail-on-defect medium --fail-on-defect high
+pio run -e x4pro
 ```
 
 Development builds apply the Git version only to sources that use

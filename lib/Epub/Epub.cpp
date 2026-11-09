@@ -25,8 +25,12 @@
 #include "Epub/parsers/TocNavParser.h"
 #include "Epub/parsers/TocNcxParser.h"
 
+std::string Epub::cachePathForFilePath(const std::string& filepath, const std::string& cacheDir) {
+  return cacheDir + "/epub_" + std::to_string(std::hash<std::string>{}(filepath));
+}
+
 Epub::Epub(std::string filepath, const std::string& cacheDir) : filepath(std::move(filepath)) {
-  cachePath = cacheDir + "/epub_" + std::to_string(std::hash<std::string>{}(this->filepath));
+  cachePath = cachePathForFilePath(this->filepath, cacheDir);
 }
 
 bool Epub::findContentOpfFile(std::string* contentOpfFile, ZipFile* sharedZip) const {
@@ -66,7 +70,8 @@ bool Epub::findContentOpfFile(std::string* contentOpfFile, ZipFile* sharedZip) c
 }
 
 bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const bool writeSpineEntries,
-                           const bool metadataOnly, ZipFile* sharedZip) {
+                           const bool metadataOnly, ZipFile* sharedZip, std::string* series, std::string* genre,
+                           std::optional<float>* seriesIndex) {
   std::string contentOpfFilePath;
   if (!findContentOpfFile(&contentOpfFilePath, sharedZip)) {
     LOG_ERR("EBP", "Could not find content.opf in zip");
@@ -104,6 +109,9 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
   bookMetadata.title = utf8ComposeNfc(opfParser.title);
   bookMetadata.author = utf8ComposeNfc(opfParser.author);
   bookMetadata.language = opfParser.language;
+  if (series) *series = utf8ComposeNfc(opfParser.series);
+  if (genre) *genre = utf8ComposeNfc(opfParser.subject);
+  if (seriesIndex) *seriesIndex = opfParser.seriesIndex;
 
   if (metadataOnly) {
     LOG_DBG("EBP", "Successfully parsed package metadata");
@@ -651,36 +659,48 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   return true;
 }
 
-bool Epub::loadMetadata(std::string& title, std::string& author) {
+bool Epub::loadMetadata(std::string& title, std::string& author, std::string* series, std::string* genre,
+                        std::optional<float>* seriesIndex) {
   title.clear();
   author.clear();
+  if (series) series->clear();
+  if (genre) genre->clear();
+  if (seriesIndex) seriesIndex->reset();
 
   if (Txt::isTxtOrMd(filepath)) {
     title = utf8ComposeNfc(FsHelpers::getFileNameWithoutExtension(filepath));
     return true;
   }
 
-  auto metadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath);
-  if (metadataCache && metadataCache->load()) {
-    title = metadataCache->coreMetadata.title;
-    author = metadataCache->coreMetadata.author;
-    return true;
-  }
-  if (!metadataCache) {
-    LOG_ERR("EBP", "Could not allocate metadata cache reader");
-  }
-  metadataCache.reset();
+  const auto loadCached = [&]() {
+    auto metadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath);
+    if (metadataCache && metadataCache->load()) {
+      title = metadataCache->coreMetadata.title;
+      author = metadataCache->coreMetadata.author;
+      return true;
+    }
+    if (!metadataCache) {
+      LOG_ERR("EBP", "Could not allocate %u-byte metadata cache reader",
+              static_cast<unsigned>(sizeof(BookMetadataCache)));
+    }
+    return false;
+  };
+  // Rich fields come from the package. Preserve basic cached metadata when
+  // source metadata is unavailable, including protected-book variants.
+  const bool extended = series || genre || seriesIndex;
+  if (!extended && loadCached()) return true;
 
   ZipFile zip(filepath);
   if (!zip.open()) {
     LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
-    return false;
+    return extended && loadCached();
   }
 
   BookMetadataCache::BookMetadata metadata;
-  const bool loaded = parseContentOpf(metadata, /*writeSpineEntries=*/false, /*metadataOnly=*/true, &zip);
+  const bool loaded =
+      parseContentOpf(metadata, /*writeSpineEntries=*/false, /*metadataOnly=*/true, &zip, series, genre, seriesIndex);
   zip.close();
-  if (!loaded) return false;
+  if (!loaded) return extended && loadCached();
 
   title = std::move(metadata.title);
   author = std::move(metadata.author);
@@ -965,6 +985,7 @@ bool Epub::generateThumbBmpFromSource(int height) {
     setupCacheDir();
     return generateThumbBmpForCover(height, companionCover);
   }
+  if (!decryptor && !openProtection()) return false;
   // Parser input and metadata outlive parsing but exceed the small task stack budget.
   auto metadata = makeUniqueNoThrow<BookMetadataCache::BookMetadata>();
   auto zip = makeUniqueNoThrow<ZipFile>(filepath);
@@ -978,8 +999,6 @@ bool Epub::generateThumbBmpFromSource(int height) {
   }
   if (!parseContentOpf(*metadata, /*writeSpineEntries=*/false, /*metadataOnly=*/false, zip.get())) return false;
   zip.reset();
-  // The cover of a protected book is encrypted like everything else.
-  if (!decryptor && !openProtection()) return false;
   setupCacheDir();
   return generateThumbBmpForCover(height, metadata->coverItemHref);
 }

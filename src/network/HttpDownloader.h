@@ -8,9 +8,9 @@
 #include <vector>
 
 /**
- * HTTP client utility for fetching content and downloading files. Built on
- * esp_http_client: https is verified against the CA bundle, plain http is
- * used for local servers (transport is chosen from the URL scheme).
+ * HTTP client utility for fetching content and downloading files. The current
+ * wolfSSL client skips peer verification; plain HTTP is used for local servers.
+ * Do not use this transport as proof of a firmware update's authenticity.
  */
 class HttpDownloader {
  public:

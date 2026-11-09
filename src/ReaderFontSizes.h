@@ -60,3 +60,7 @@ uint8_t snapToNearestPointSize(const uint8_t* sizes, size_t count, uint8_t pt);
 inline uint8_t snapToNearestPointSize(const std::vector<uint8_t>& sizes, const uint8_t pt) {
   return sizes.empty() ? pt : snapToNearestPointSize(sizes.data(), sizes.size(), pt);
 }
+
+// One clamped adjacent installed size; no temporary vector on a gesture path.
+bool adjacentReaderFontPointSize(const SdCardFontRegistry* registry, const char* sdFamilyName, uint8_t current,
+                                 bool larger, uint8_t& result);

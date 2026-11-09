@@ -1,0 +1,30 @@
+diff --git a/src/ExFatLib/ExFatPartition.h b/src/ExFatLib/ExFatPartition.h
+--- a/src/ExFatLib/ExFatPartition.h
++++ b/src/ExFatLib/ExFatPartition.h
+@@ -92,6 +92,26 @@
+   uint32_t fatLength() const { return m_fatLength; }
+   /** \return the FAT start sector number. */
+   Sector_t fatStartSector() const { return m_fatStartSector; }
++  // Single-sector reads avoid evicting and syncing another cached sector.
++  bool syncReadMetadataSector(Sector_t sector, uint8_t* out) {
++    return m_fatType && out && m_blockDev && sector < m_blockDev->sectorCount() &&
++           m_dataCache.cacheSafeRead(sector, out);
++  }
++  bool syncReadFatSector(uint32_t offset, uint8_t* out) {
++    const uint64_t sector = uint64_t(m_fatStartSector) + offset;
++    return m_fatType && out && m_blockDev && offset < m_fatLength && sector < m_blockDev->sectorCount() &&
++           m_dataCache.cacheSafeRead(static_cast<Sector_t>(sector), out);
++  }
++  bool syncReadBitmapSector(uint32_t offset, uint8_t* out) {
++    const uint64_t sector = uint64_t(m_clusterHeapStartSector) + offset;
++    const uint64_t count = (uint64_t(m_clusterCount) + 4095) / 4096;
++    if (!m_fatType || !out || !m_blockDev || offset >= count || sector >= m_blockDev->sectorCount()) return false;
++#if USE_EXFAT_BITMAP_CACHE
++    return m_bitmapCache.cacheSafeRead(static_cast<Sector_t>(sector), out);
++#else
++    return m_dataCache.cacheSafeRead(static_cast<Sector_t>(sector), out);
++#endif
++  }
+   /** \return Type FAT_TYPE_EXFAT for exFAT partition or zero for error. */
+   uint8_t fatType() const { return m_fatType; }
+   /** \return free cluster count or -1 if an error occurs. */

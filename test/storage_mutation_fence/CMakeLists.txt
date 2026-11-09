@@ -1,0 +1,4 @@
+add_executable(StorageMutationFenceTest StorageMutationFenceTest.cpp)
+target_include_directories(StorageMutationFenceTest PRIVATE ${REPO_ROOT}/lib/hal)
+target_link_libraries(StorageMutationFenceTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(StorageMutationFenceTest)

@@ -1,0 +1,24 @@
+FetchContent_GetProperties(ArduinoJson)
+add_executable(BookReaderSettingsTest
+  BookReaderSettingsTest.cpp
+  ${REPO_ROOT}/src/personalization/BookReaderSettings.cpp
+  ${REPO_ROOT}/src/personalization/CrossInkBookSettings.cpp
+  ${REPO_ROOT}/src/activities/reader/BookReaderPreferences.cpp
+  ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
+  ${REPO_ROOT}/src/activities/reader/ReadingStatsStore.cpp
+  ${REPO_ROOT}/src/activities/reader/BookTracking.cpp
+  ${REPO_ROOT}/src/activities/reader/BookReadingStats.cpp
+  ${REPO_ROOT}/src/activities/reader/StatsSafeReplace.cpp
+  ${REPO_ROOT}/src/activities/reader/ReadingStatsUtils.cpp
+)
+target_include_directories(BookReaderSettingsTest PRIVATE
+  stubs
+  ../book_reading_stats_atomic/stubs
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/src/activities/reader
+  ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/Epub
+  ${arduinojson_SOURCE_DIR}/src
+)
+target_link_libraries(BookReaderSettingsTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(BookReaderSettingsTest)

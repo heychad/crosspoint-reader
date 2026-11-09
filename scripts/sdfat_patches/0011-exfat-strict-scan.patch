@@ -1,0 +1,59 @@
+--- a/src/ExFatLib/ExFatFile.cpp
++++ b/src/ExFatLib/ExFatFile.cpp
+@@ -275,2 +275,51 @@
+ //------------------------------------------------------------------------------
++// Validate bounded, complete exFAT entry sets before a checked lookup.
++// Ordinary opens do not call this. Unknown active entry types fail closed.
++bool ExFatFile::validateStrictDirectory() {
++  static const uint32_t MAX_ENTRIES = 4096;
++  uint8_t entry[FS_DIR_SIZE];
++  uint32_t entries = 0;
++  if (!isDir() || !seekSet(0)) goto fail;
++  while (true) {
++    const int size = read(entry, sizeof(entry));
++    if (size == 0) break;
++    if (size != FS_DIR_SIZE || ++entries > MAX_ENTRIES) goto fail;
++    const uint8_t type = entry[0];
++    if (type == EXFAT_TYPE_END_DIR) break;
++    if (!(type & EXFAT_TYPE_USED)) continue;
++    if (type == EXFAT_TYPE_BITMAP || type == EXFAT_TYPE_UPCASE || type == EXFAT_TYPE_LABEL) continue;
++    if (type != EXFAT_TYPE_FILE) goto fail;
++    const uint8_t count = entry[1];
++    const uint16_t expected = getLe16(entry + 2);
++    if (count < 2 || count > 32 || entries + count > MAX_ENTRIES) goto fail;
++    uint16_t checksum = 0;
++    for (unsigned j = 0; j < FS_DIR_SIZE; ++j) {
++      if (j == 2 || j == 3) continue;
++      checksum = static_cast<uint16_t>((static_cast<uint32_t>(checksum) << 15 | checksum >> 1) + entry[j]);
++    }
++    uint8_t names = 0;
++    for (uint8_t i = 0; i < count; ++i) {
++      if (read(entry, sizeof(entry)) != FS_DIR_SIZE) goto fail;
++      ++entries;
++      if (i == 0) {
++        if (entry[0] != EXFAT_TYPE_STREAM || entry[3] == 0) goto fail;
++        names = (entry[3] + 14) / 15;
++        if (static_cast<unsigned>(names) + 1 > count) goto fail;
++      } else if (i <= names) {
++        if (entry[0] != EXFAT_TYPE_NAME) goto fail;
++      } else if ((entry[0] & 0XE0) != 0XE0) {
++        goto fail;
++      }
++      for (unsigned j = 0; j < FS_DIR_SIZE; ++j)
++        checksum = static_cast<uint16_t>((static_cast<uint32_t>(checksum) << 15 | checksum >> 1) + entry[j]);
++    }
++    if (checksum != expected) goto fail;
++  }
++  if (!seekSet(0)) goto fail;
++  return true;
++fail:
++  m_error |= READ_ERROR;
++  return false;
++}
++//------------------------------------------------------------------------------
+ bool ExFatFile::openPrivate(ExFatFile* dir, ExName_t* fname, oflag_t oflag) {
+@@ -293,3 +342,4 @@
+   }
++  if (fname && dir->m_strictLookup && !dir->validateStrictDirectory()) goto fail;
+
+   switch (oflag & O_ACCMODE) {

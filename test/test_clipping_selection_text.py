@@ -55,6 +55,7 @@ harness = r"""
 #define LOG_DBG(module, ...) (void)std::snprintf(nullptr, 0, __VA_ARGS__)
 #include "clippings/ClippingText.h"
 #include "ClippingStore.h"
+#include "personalization/ReaderPageLayout.h"
 #include <Epub/ReaderRenderSpec.h>
 namespace BidiUtils { enum class BidiBaseDir : int8_t { AUTO = -1, LTR = 0, RTL = 1 }; }
 struct EpdFontFamily { enum Style { REGULAR, UNDERLINE = 4 }; };
@@ -227,6 +228,10 @@ struct ClipSelectionActivity {
 struct EpubReaderActivity {
   Renderer& renderer;
   explicit EpubReaderActivity(Renderer& renderer) : renderer(renderer) {}
+  int topBarHeight = 0;
+  ReaderPageLayout readerPageLayout() const {
+    return makeReaderPageLayout(480, 800, 0, 0, 0, 0, SETTINGS.screenMargin, topBarHeight, 0);
+  }
   struct Section { int currentPage = 0, pageCount = 1; } sectionData;
   Section* section = &sectionData;
   int currentSpineIndex = 0, buildViewportWidth = 480, buildViewportHeight = 800;
@@ -362,6 +367,9 @@ int main() {
     assert(activity.renderer.fills[0].width == width);
     assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == 0);
     assert(reader.clippingAtPoint(*activity.pages[0], width, 8) == -1);
+    reader.topBarHeight = 30;
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == -1);
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 38) == 0);
   }
   for (const auto& logical : {std::vector<std::string>{"אחד", "alpha", "beta", "שני"},
                               std::vector<std::string>{"واحد", "alpha", "beta", "اثنان"}}) {

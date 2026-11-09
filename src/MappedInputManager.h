@@ -2,8 +2,11 @@
 
 #include <HalGPIO.h>
 
+#include <array>
+
 #include "util/HomeButtonInput.h"
 #include "util/RemoteButtonInput.h"
+#include "util/SideButtonPolicy.h"
 
 class GfxRenderer;
 namespace freeink {
@@ -58,8 +61,39 @@ class MappedInputManager {
   // One-shot threshold event while the button is down; consumes its release.
   bool wasLongPressed(Button button, unsigned long thresholdMs) const;
   bool consumeSuppressedRelease() const;
+  void consumeSideButtonUntilReleased(Button button) const;
   bool isPressed(Button button) const;
   bool hasTouch() const;
+  struct TouchContact {
+    int x = 0;
+    int y = 0;
+    uint8_t id = 0;
+    bool valid = false;
+  };
+  struct TouchSnapshot {
+    std::array<TouchContact, HalGPIO::TouchSnapshot::MAX_CONTACTS> contacts{};
+    uint8_t count = 0;
+    uint8_t reportedCount = 0;
+    bool idsStable = false;
+  };
+  struct CompletedSwipe {
+    int startX = 0, startY = 0, endX = 0, endY = 0;
+    unsigned long durationMs = 0;
+    uint8_t contactCount = 0;
+  };
+  struct CompletedTransform {
+    float value = 0;
+    int centerX = 0, centerY = 0;
+    unsigned long durationMs = 0;
+  };
+  bool supportsMultiTouch() const;
+  bool touchContactsDown() const;
+  bool completedSingleSwipe(int& sx, int& sy, int& ex, int& ey) const { return decodeSwipe(sx, sy, ex, ey); }
+  TouchSnapshot getTouchSnapshot() const;
+  bool wasCompletedMultiTouchSwipe(CompletedSwipe& swipe) const;
+  bool wasCompletedMultiTouchRotation(CompletedTransform& rotation) const;
+  bool wasCompletedMultiTouchPinch(CompletedTransform& pinch) const;
+  void suppressTouchContact() const { gpio.suppressTouchContact(); }
   bool wasScreenTapped(int& x, int& y) const;
   // Immediate press edge for drag handles, without the row-selection dwell.
   bool wasScreenTouchPressed(int& x, int& y) const;
@@ -99,9 +133,13 @@ class MappedInputManager {
   bool wasHomeGesture() const;
   // Configured one-frame action, independent of the gesture that triggered it.
   HomeButtonAction homeButtonAction() const { return homeAction; }
+  HomeButtonInput::Gesture homeButtonGesture() const { return homeGesture; }
   void resetHomeButtonInput() const {
-    homeButtonInput.reset();
+    homeButtonInput.discardContact(gpio.isHomeKeyDown());
+    homeAction = HomeButtonAction::Ignore;
     deferredHomeAction = HomeButtonAction::Ignore;
+    deferredHomeGesture = HomeButtonInput::Gesture::None;
+    homeGesture = HomeButtonInput::Gesture::None;
   }
   bool wasMenuGesture() const;
   // Bottom-edge up-swipe as the reader-menu gesture (SHOW_READER_MENU's Swipe
@@ -151,8 +189,11 @@ class MappedInputManager {
   void rememberTouchHeldTime() const;
   void suppressNextRelease(Button button) const;
 
+  mutable SideButtonContactGuard sideContactGuard;
   mutable RemoteButtonInput remoteInput;
   mutable HomeButtonInput homeButtonInput;
+  mutable HomeButtonInput::Gesture homeGesture = HomeButtonInput::Gesture::None;
+  mutable HomeButtonInput::Gesture deferredHomeGesture = HomeButtonInput::Gesture::None;
   mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;
   mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
   mutable bool touchHeldOverrideValid = false;

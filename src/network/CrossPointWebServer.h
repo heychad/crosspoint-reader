@@ -10,6 +10,10 @@
 #include <string>
 #include <vector>
 
+namespace wirecheck {
+struct DirectoryEntry;
+}
+
 // Structure to hold file information
 struct FileInfo {
   String name;
@@ -73,6 +77,11 @@ class CrossPointWebServer {
 
   // Get the port number
   uint16_t getPort() const { return port; }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  // Explicitly opt in before begin(); this prototype is unauthenticated.
+  void enableExperimentalSyncUpload() { experimentalSyncUploadEnabled = true; }
+#endif
 
  private:
   std::unique_ptr<WebServer> server = nullptr;
@@ -85,6 +94,40 @@ class CrossPointWebServer {
   bool udpActive = false;
   std::function<bool()> uploadCancelCheck;
   bool dropUploadIfCancelled() const;
+
+  struct InventoryWebState;
+  std::unique_ptr<InventoryWebState> inventory;
+  void handleInventoryStart();
+  void handleInventoryDirectory();
+  void handleInventoryFinish();
+  void expireInventory();
+  bool inventoryActive() const;
+  bool inventoryEmit(const wirecheck::DirectoryEntry& entry);
+
+  struct SyncStageUpload;
+  std::unique_ptr<SyncStageUpload> syncStage;
+  bool syncStageSeen = false;
+  unsigned long syncStageLastActivity = 0;
+  void handleSyncIdentity() const;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD) && \
+    CROSSPOINT_EXPERIMENTAL_SYNC_UPLOAD
+  struct SyncRawState;
+  std::unique_ptr<SyncRawState> syncRaw;
+  bool experimentalSyncUploadEnabled = false;
+  void startSyncRaw();
+  void stopSyncRaw();
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_STAGE_HASH) && CROSSPOINT_EXPERIMENTAL_STAGE_HASH
+  struct SyncHashState;
+  std::unique_ptr<SyncHashState> syncHash;
+  void handleSyncStageHash();
+  void handleSyncStageHashCancel();
+  void stepSyncStageHash();
+#endif
+  void handleSyncStageData();
+  void handleSyncStagePost();
+  void expireSyncStage();
+  void clearSyncStageRequest();
 
   // WebSocket upload state
   void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);

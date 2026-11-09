@@ -1,0 +1,19 @@
+diff --git a/src/FsLib/FsVolume.h b/src/FsLib/FsVolume.h
+--- a/src/FsLib/FsVolume.h
++++ b/src/FsLib/FsVolume.h
+@@ -147,6 +147,15 @@
+            : m_xVol ? m_xVol->fatStartSector()
+                     : 0;
+   }
++  bool syncReadExFatMetadataSector(Sector_t sector, uint8_t* out) {
++    return m_xVol && m_xVol->syncReadMetadataSector(sector, out);
++  }
++  bool syncReadExFatFatSector(uint32_t offset, uint8_t* out) {
++    return m_xVol && m_xVol->syncReadFatSector(offset, out);
++  }
++  bool syncReadExFatBitmapSector(uint32_t offset, uint8_t* out) {
++    return m_xVol && m_xVol->syncReadBitmapSector(offset, out);
++  }
+   //----------------------------------------------------------------------------
+   /** \return Partition type, FAT_TYPE_EXFAT, FAT_TYPE_FAT32,
+    *          FAT_TYPE_FAT16, or zero for error.

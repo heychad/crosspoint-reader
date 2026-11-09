@@ -362,8 +362,13 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
     return nullptr;
   }
 
-  uint16_t count;
-  serialization::readPod(file, count);
+  uint16_t count = 0;
+  if (!serialization::tryReadPod(file, count)) return nullptr;
+  const size_t position = file.position(), size = file.size();
+  if (position > size || count > size - position) {
+    LOG_ERR("PGE", "Deserialization failed: invalid element count");
+    return nullptr;
+  }
 
   // Reserve up front so a page load costs one allocation for the element vector
   // instead of a grow-copy-free cycle every doubling. `count` is untrusted (it
@@ -376,8 +381,8 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   page->elements.reserve(std::min(count, RESERVE_CAP));
 
   for (uint16_t i = 0; i < count; i++) {
-    uint8_t tag;
-    serialization::readPod(file, tag);
+    uint8_t tag = 0;
+    if (!serialization::tryReadPod(file, tag)) return nullptr;
 
     if (tag == TAG_PageLine) {
       auto pl = PageLine::deserialize(file);
@@ -416,8 +421,8 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   }
 
   // Deserialize footnotes
-  uint16_t fnCount;
-  serialization::readPod(file, fnCount);
+  uint16_t fnCount = 0;
+  if (!serialization::tryReadPod(file, fnCount)) return nullptr;
   if (fnCount > MAX_FOOTNOTES_PER_PAGE) {
     LOG_ERR("PGE", "Invalid footnote count %u", fnCount);
     return nullptr;
@@ -434,8 +439,8 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
     entry.href[sizeof(entry.href) - 1] = '\0';
   }
 
-  uint16_t linkCount;
-  serialization::readPod(file, linkCount);
+  uint16_t linkCount = 0;
+  if (!serialization::tryReadPod(file, linkCount)) return nullptr;
   if (linkCount > MAX_LINKS_PER_PAGE) {
     LOG_ERR("PGE", "Invalid link count %u", linkCount);
     return nullptr;
@@ -448,10 +453,9 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
       return nullptr;
     }
     link.href[sizeof(link.href) - 1] = '\0';
-    serialization::readPod(file, link.x);
-    serialization::readPod(file, link.y);
-    serialization::readPod(file, link.width);
-    serialization::readPod(file, link.height);
+    if (!serialization::tryReadPod(file, link.x) || !serialization::tryReadPod(file, link.y) ||
+        !serialization::tryReadPod(file, link.width) || !serialization::tryReadPod(file, link.height))
+      return nullptr;
     if (link.href[0] == '\0' || link.width <= 0 || link.height <= 0) {
       LOG_ERR("PGE", "Invalid link geometry %u", i);
       return nullptr;

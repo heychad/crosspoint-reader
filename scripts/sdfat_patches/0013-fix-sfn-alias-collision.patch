@@ -1,0 +1,18 @@
+--- a/src/FatLib/FatFileLFN.cpp
++++ b/src/FatLib/FatFileLFN.cpp
+@@ -221,13 +221,14 @@
+   uint8_t pos = fname->seqPos;
+   const DirFat_t* dir;
+   uint16_t hex = 0;
++  const uint16_t seed = static_cast<uint16_t>(millis());
+ 
+   DBG_HALT_IF(!(fname->flags & FNAME_FLAG_LOST_CHARS));
+   DBG_HALT_IF(fname->sfn[pos] != '~' && fname->sfn[pos + 1] != '1');
+ 
+   for (uint8_t seq = FIRST_HASH_SEQ; seq < 100; seq++) {
+     DBG_WARN_IF(seq > FIRST_HASH_SEQ);
+-    hex += millis();
++    hex = static_cast<uint16_t>(seed + seq);
+     if (pos > 3) {
+       // Make space in name for ~HHHH.
+       pos = 3;

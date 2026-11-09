@@ -156,9 +156,9 @@ void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListI
   formatFileName(entry, self->rowNameBuf, sizeof(self->rowNameBuf));
   item.label = self->rowNameBuf;
   formatFileExtension(entry, self->rowExtBuf, sizeof(self->rowExtBuf));
-  if (self->rowExtBuf[0] != '\0') {
-    item.value = self->rowExtBuf;
-  }
+  item.value = self->rowExtBuf[0] != '\0' && (self->mode != Mode::Books || !SETTINGS.hideFileExtension)
+                   ? self->rowExtBuf
+                   : nullptr;
   item.icon = listIconFor(UITheme::getFileIcon(entry));
   item.actionValue = static_cast<int16_t>(index);
 }
@@ -652,7 +652,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   props.valueInset = 8;  // air between the extension and the row edge
   // Names use up to two small-font lines; shared list layout sizes each row.
   fui::TextStyle label = screen.theme().smallText;
-  label.maxLines = 2;
+  label.maxLines = mode == Mode::Books && SETTINGS.fileBrowserDisplay == 0 ? 1 : 2;
   props.labelText = label;
 
   // The trailing value here is just the short extension: skip the balanced

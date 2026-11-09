@@ -6,6 +6,7 @@
 #include <Xtc.h>
 
 #include "ClippingStore.h"
+#include "activities/reader/ReadingStatsStore.h"
 
 bool isBookCacheDirectoryName(const char* name) {
   if (!name) {
@@ -23,9 +24,11 @@ bool isBookCacheDirectoryName(const char* name) {
 
 void clearBookCache(const std::string& path) {
   if (FsHelpers::hasReflowableBookExtension(path)) {
-    Epub(path, "/.crosspoint").clearCache();
+    const Epub book(path, "/.crosspoint");
+    if (!readingstats::clearCache(book.getCachePath())) LOG_ERR("BookCache", "Cache invalidation failed");
   } else if (FsHelpers::hasXtcExtension(path)) {
-    Xtc(path, "/.crosspoint").clearCache();
+    const Xtc book(path, "/.crosspoint");
+    if (!readingstats::clearCache(book.getCachePath())) LOG_ERR("BookCache", "Cache invalidation failed");
   } else {
     return;
   }

@@ -1,0 +1,17 @@
+--- a/src/FsLib/FsFile.h
++++ b/src/FsLib/FsFile.h
+@@ -116,2 +116,14 @@
+   operator bool() const { return isOpen(); }
++  /** Enable checked lookup for this directory handle. */
++  bool enableStrictLookup() {
++    if (m_fFile) {
++      m_fFile->setStrictLookup(true);
++      return true;
++    }
++    if (m_xFile) {
++      m_xFile->setStrictLookup(true);
++      return true;
++    }
++    return false;
++  }
+   /**
