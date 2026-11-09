@@ -1,4 +1,6 @@
 #include "SettingsSnapshotCopy.h"
+#include "SettingsJsonEnvelope.h"
+#include "SettingsJsonAllocator.h"
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>
@@ -6,8 +8,6 @@
 
 #include <algorithm>
 #include <cstring>
-
-#include "SettingsJsonEnvelope.h"
 
 namespace settingsrecovery {
 namespace {
@@ -52,11 +52,14 @@ bool copyLocked(void* raw) {
     c.result = CopyResult::Refused;
     return true;
   }
-  JsonDocument doc;
-  const auto error = deserializeJson(doc, static_cast<const char*>(bytes.get()), static_cast<size_t>(size));
-  if (error || doc.overflowed() || !doc.is<JsonObjectConst>()) {
-    c.result = error == DeserializationError::NoMemory || doc.overflowed() ? CopyResult::Failed : CopyResult::Refused;
-    return true;
+  {
+    SettingsJsonAllocator allocator;
+    JsonDocument doc(&allocator);
+    const auto error = deserializeJson(doc, static_cast<const char*>(bytes.get()), static_cast<size_t>(size));
+    if (error || doc.overflowed() || !doc.is<JsonObjectConst>()) {
+      c.result = error == DeserializationError::NoMemory || doc.overflowed() ? CopyResult::Failed : CopyResult::Refused;
+      return true;
+    }
   }
   HalFile destination = Storage.openChecked(c.destination, O_WRONLY | O_CREAT | O_EXCL);
   if (!destination) return true;
@@ -70,8 +73,7 @@ bool copyLocked(void* raw) {
   char chunk[64];
   for (size_t offset = 0; same && offset < size;) {
     const size_t amount = std::min(sizeof(chunk), static_cast<size_t>(size) - offset);
-    same =
-        check.read(chunk, amount) == static_cast<int>(amount) && std::memcmp(chunk, bytes.get() + offset, amount) == 0;
+    same = check.read(chunk, amount) == static_cast<int>(amount) && std::memcmp(chunk, bytes.get() + offset, amount) == 0;
     offset += amount;
   }
   const bool checkClosed = check.close();

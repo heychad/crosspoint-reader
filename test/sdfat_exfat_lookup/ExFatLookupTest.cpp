@@ -21,20 +21,14 @@ struct Disk : FsBlockDeviceInterface {
   bool syncDevice() override { return true; }
   bool readSector(Sector_t sector, uint8_t* target) override {
     assert(sector < sectorCount());
-    if (reads++ == failAt) {
-      injected = true;
-      return false;
-    }
+    if (reads++ == failAt) { injected = true; return false; }
     const auto found = sectors.find(sector);
-    if (found == sectors.end())
-      memset(target, 0, 512);
-    else
-      memcpy(target, found->second.data(), 512);
+    if (found == sectors.end()) memset(target, 0, 512);
+    else memcpy(target, found->second.data(), 512);
     return true;
   }
   bool readSectors(Sector_t sector, uint8_t* target, size_t count) override {
-    for (size_t i = 0; i < count; ++i)
-      if (!readSector(sector + i, target + 512 * i)) return false;
+    for (size_t i = 0; i < count; ++i) if (!readSector(sector + i, target + 512 * i)) return false;
     return true;
   }
   bool writeSector(Sector_t sector, const uint8_t* source) override {
@@ -43,8 +37,7 @@ struct Disk : FsBlockDeviceInterface {
     return true;
   }
   bool writeSectors(Sector_t sector, const uint8_t* source, size_t count) override {
-    for (size_t i = 0; i < count; ++i)
-      if (!writeSector(sector + i, source + 512 * i)) return false;
+    for (size_t i = 0; i < count; ++i) if (!writeSector(sector + i, source + 512 * i)) return false;
     return true;
   }
 };
@@ -123,13 +116,10 @@ int main() {
     return 2;
   }
 
-  struct Damage {
-    uint32_t index;
-    unsigned byte;
-    uint8_t mask;
-  };
-  for (const auto& damaged : {Damage{firstIndex, 2, 1}, Damage{firstIndex + 1, 0, 1}, Damage{firstIndex + 2, 2, 1},
-                              Damage{firstIndex, 1, 1}, Damage{firstIndex, 0, 0x20}, Damage{firstIndex, 1, 0x20}}) {
+  struct Damage { uint32_t index; unsigned byte; uint8_t mask; };
+  for (const auto& damaged : {Damage{firstIndex, 2, 1}, Damage{firstIndex + 1, 0, 1},
+                               Damage{firstIndex + 2, 2, 1}, Damage{firstIndex, 1, 1},
+                               Damage{firstIndex, 0, 0x20}, Damage{firstIndex, 1, 0x20}}) {
     ExFatFile parentRoot;
     assert(parentRoot.openRoot(&volume));
     ExFatFile parent;

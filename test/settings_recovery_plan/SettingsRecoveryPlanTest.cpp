@@ -1,8 +1,9 @@
-#include <HalStorage.h>
-#include <Memory.h>
 #include <SettingsRecoveryPlan.h>
 #include <SettingsRecoveryProbe.h>
 #include <SettingsSnapshotCopy.h>
+#include <SettingsJsonAllocator.h>
+#include <HalStorage.h>
+#include <Memory.h>
 #include <gtest/gtest.h>
 
 using settingsrecovery::Candidate;
@@ -16,17 +17,13 @@ TEST(SettingsRecoveryPlan, DistinguishesCleanStartPrimaryAndSoleBackup) {
 }
 
 TEST(SettingsRecoveryPlan, PreservesAmbiguousOrUnreadableArtifacts) {
-  constexpr Candidate states[] = {Candidate::Missing, Candidate::JsonObject, Candidate::Invalid,
-                                  Candidate::Unavailable};
+  constexpr Candidate states[] = {Candidate::Missing, Candidate::JsonObject, Candidate::Invalid, Candidate::Unavailable};
   for (auto primary : states) {
     for (auto backup : states) {
       for (auto temporary : states) {
-        const bool clean =
-            primary == Candidate::Missing && backup == Candidate::Missing && temporary == Candidate::Missing;
-        const bool primaryOnly =
-            primary == Candidate::JsonObject && backup == Candidate::Missing && temporary == Candidate::Missing;
-        const bool backupOnly =
-            primary == Candidate::Missing && backup == Candidate::JsonObject && temporary == Candidate::Missing;
+        const bool clean = primary == Candidate::Missing && backup == Candidate::Missing && temporary == Candidate::Missing;
+        const bool primaryOnly = primary == Candidate::JsonObject && backup == Candidate::Missing && temporary == Candidate::Missing;
+        const bool backupOnly = primary == Candidate::Missing && backup == Candidate::JsonObject && temporary == Candidate::Missing;
         if (!clean && !primaryOnly && !backupOnly) EXPECT_EQ(plan(primary, backup, temporary), Plan::NeedsReview);
       }
     }
@@ -153,7 +150,7 @@ TEST(SettingsRecoveryProbe, RequiresWholeJsonObjectWithOnlyTrailingWhitespace) {
   constexpr auto backup = "/.crosspoint/settings.snapshot";
   const std::pair<std::string, bool> examples[] = {
       {"{\"x\":\"}\\\"{\"} \r\n\t", true}, {"{}garbage", false}, {"{}{}", false},
-      {std::string("{}\0", 3), false},     {"{\"x\":", false},   {"[]", false}};
+      {std::string("{}\0", 3), false}, {"{\"x\":", false}, {"[]", false}};
   for (const auto& [content, expectedValid] : examples) {
     storage.reset();
     HalFile file;
@@ -187,4 +184,40 @@ TEST(SettingsSnapshotCopy, CheckedHandleFailuresDoNotOverwriteSource) {
     EXPECT_TRUE(file.close());
     EXPECT_EQ(storage.exists(backup), failureAt == 2);
   }
+}
+
+TEST(SettingsJsonAllocator, RefusesGrowthBeyondBudgetAndPreservesOriginalAllocation) {
+  settingsrecovery::SettingsJsonAllocator allocator;
+  auto* first = static_cast<char*>(allocator.allocate(100));
+  ASSERT_NE(first, nullptr);
+  first[0] = 'x';
+  const auto used = allocator.bytesInUse();
+  EXPECT_EQ(allocator.reallocate(first, settingsrecovery::SettingsJsonAllocator::LIMIT), nullptr);
+  EXPECT_EQ(first[0], 'x');
+  EXPECT_EQ(allocator.bytesInUse(), used);
+  auto* grown = static_cast<char*>(allocator.reallocate(first, 200));
+  ASSERT_NE(grown, nullptr);
+  EXPECT_EQ(grown[0], 'x');
+  EXPECT_LE(allocator.peakBytes(), settingsrecovery::SettingsJsonAllocator::LIMIT);
+  allocator.deallocate(grown);
+  EXPECT_EQ(allocator.bytesInUse(), 0u);
+}
+
+TEST(SettingsRecoveryProbe, ExcessiveJsonTreeReturnsUnavailableWithoutWriting) {
+  auto& storage = HalStorage::getInstance();
+  storage.reset();
+  constexpr auto primary = "/.crosspoint/settings.json";
+  // Build a syntactically valid object with many scalar entries.
+  std::string entries = "{\"entries\":[";
+  for (int i = 0; i < 9000; ++i) entries += i ? ",0" : "0";
+  entries += "]}";
+  ASSERT_LT(entries.size(), 32768u);
+  HalFile file;
+  ASSERT_TRUE(storage.openFileForWrite("TEST", primary, file));
+  ASSERT_EQ(file.write(entries.data(), entries.size()), entries.size());
+  ASSERT_TRUE(file.close());
+  EXPECT_EQ(settingsrecovery::probe(primary, "/missing.bak", "/missing.tmp").primary, Candidate::Unavailable);
+  EXPECT_EQ(settingsrecovery::copySnapshot(primary, "/.crosspoint/settings.snapshot"),
+            settingsrecovery::CopyResult::Failed);
+  EXPECT_FALSE(storage.exists("/.crosspoint/settings.snapshot"));
 }

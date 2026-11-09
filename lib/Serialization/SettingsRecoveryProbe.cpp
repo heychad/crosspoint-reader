@@ -1,10 +1,10 @@
 #include "SettingsRecoveryProbe.h"
+#include "SettingsJsonEnvelope.h"
+#include "SettingsJsonAllocator.h"
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>
 #include <Memory.h>
-
-#include "SettingsJsonEnvelope.h"
 
 namespace settingsrecovery {
 namespace {
@@ -31,7 +31,8 @@ Candidate inspect(const char* path) {
   if (!read || !closed) return Candidate::Unavailable;
   buffer[size] = '\0';
   if (!completeObjectEnvelope(buffer.get(), static_cast<size_t>(size))) return Candidate::Invalid;
-  JsonDocument doc;
+  SettingsJsonAllocator allocator;
+  JsonDocument doc(&allocator);
   const auto error = deserializeJson(doc, static_cast<const char*>(buffer.get()), static_cast<size_t>(size));
   if (error == DeserializationError::NoMemory || doc.overflowed()) return Candidate::Unavailable;
   return !error && doc.is<JsonObjectConst>() ? Candidate::JsonObject : Candidate::Invalid;

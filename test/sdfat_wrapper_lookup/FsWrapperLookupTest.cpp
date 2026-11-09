@@ -19,15 +19,12 @@ struct Disk : FsBlockDeviceInterface {
   bool readSector(Sector_t sector, uint8_t* target) override {
     assert(sector < sectorCount());
     const auto found = sectors.find(sector);
-    if (found == sectors.end())
-      memset(target, 0, 512);
-    else
-      memcpy(target, found->second.data(), 512);
+    if (found == sectors.end()) memset(target, 0, 512);
+    else memcpy(target, found->second.data(), 512);
     return true;
   }
   bool readSectors(Sector_t sector, uint8_t* target, size_t count) override {
-    for (size_t i = 0; i < count; ++i)
-      if (!readSector(sector + i, target + 512 * i)) return false;
+    for (size_t i = 0; i < count; ++i) if (!readSector(sector + i, target + 512 * i)) return false;
     return true;
   }
   bool writeSector(Sector_t sector, const uint8_t* source) override {
@@ -36,8 +33,7 @@ struct Disk : FsBlockDeviceInterface {
     return true;
   }
   bool writeSectors(Sector_t sector, const uint8_t* source, size_t count) override {
-    for (size_t i = 0; i < count; ++i)
-      if (!writeSector(sector + i, source + 512 * i)) return false;
+    for (size_t i = 0; i < count; ++i) if (!writeSector(sector + i, source + 512 * i)) return false;
     return true;
   }
 };
@@ -72,23 +68,23 @@ int exercise(bool exfat) {
   FsVolume reread;
   if (!reread.begin(&disk, false)) return 8;
   FsBaseFile ordinaryRoot, ordinaryDir, ordinaryFile;
-  if (!ordinaryRoot.openRoot(&reread) || !ordinaryDir.open(&ordinaryRoot, "books", O_RDONLY) || !ordinaryRoot.close())
-    return 9;
+  if (!ordinaryRoot.openRoot(&reread) || !ordinaryDir.open(&ordinaryRoot, "books", O_RDONLY) ||
+      !ordinaryRoot.close()) return 9;
   const bool ordinary = ordinaryFile.open(&ordinaryDir, second.c_str(), O_RDONLY);
   if (ordinaryFile && !ordinaryFile.close()) return 10;
   if (!ordinaryDir.close()) return 11;
 
   FsBaseFile checkedRoot, checkedDir, checkedFile;
   if (!checkedRoot.openRoot(&reread) || !checkedRoot.enableStrictLookup() ||
-      !checkedDir.open(&checkedRoot, "books", O_RDONLY) || !checkedRoot.close() || !checkedDir.enableStrictLookup())
-    return 12;
+      !checkedDir.open(&checkedRoot, "books", O_RDONLY) || !checkedRoot.close() ||
+      !checkedDir.enableStrictLookup()) return 12;
   const bool found = checkedFile.open(&checkedDir, second.c_str(), O_RDONLY);
   const bool error = checkedDir.getError() != 0;
   if (checkedFile && !checkedFile.close()) return 13;
   if (!checkedDir.close()) return 14;
   if (!ordinary || found || !error) {
-    fprintf(stderr, "%s wrapper mismatch ordinary=%d checked=%d error=%d\n", exfat ? "exFAT" : "FAT", ordinary, found,
-            error);
+    fprintf(stderr, "%s wrapper mismatch ordinary=%d checked=%d error=%d\n", exfat ? "exFAT" : "FAT", ordinary,
+            found, error);
     return 15;
   }
   printf("%s FsBaseFile scoped lookup passed\n", exfat ? "exFAT" : "FAT");
