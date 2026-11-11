@@ -253,6 +253,7 @@ if(EXISTS "${REPO_ROOT}/.pio/libdeps/x4pro/SdFat/src/FatLib/FatFileLFN.cpp")
   add_test(NAME StatsSafeReplaceReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_stats_safe_replace_real.py)
   add_test(NAME StatsSafeReplaceRealGlobal COMMAND ${CMAKE_COMMAND} -E env STATS_TEST_PAYLOAD=159
            ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_stats_safe_replace_real.py)
+  add_test(NAME StatsAutomaticBackupPruneReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/auto_stats_backup/test_prune_real.py)
   add_test(NAME StatsDeviceRestoreReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/stats_restore_real/test_device_restore.py)
   add_test(NAME StatsCompletionJournalReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_completion_journal_real.py)
   add_test(NAME StatsCompletionMoveRealStores COMMAND ${CMAKE_COMMAND} -E env SDFAT_REAL_MOVE_STORES=1 ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_completion_journal_real.py)
