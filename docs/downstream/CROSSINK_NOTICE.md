@@ -10,11 +10,17 @@ including `src/util/ReaderStatusBarConfig.h` and
 `9914146eeae7b46b300f475a16c32426fc02ec1f`. Adaptations in this fork are marked
 at the affected source. Additional ports must retain their applicable notices.
 
+The daily-duration codec and storage strategy follow
+`src/activities/reader/DailyReadingStats.*` at tagged RC
+`b8feaec4d10ecb484ed80e326f01f2a3ea949331`. The fork preserves the wire format
+and uses its checked HAL storage contracts.
+
 CrossInk's repository license at that revision is:
 
 MIT License
 
 Copyright (c) 2025 Dave Allie
+Copyright (c) 2025 CrossPoint Reader organization
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

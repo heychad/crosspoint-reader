@@ -17,15 +17,17 @@ The two monthly slots are 264 bytes each. Older daily records are 13 bytes.
 - [x] Check a known wire-format checksum, every truncated monthly record, each
   single-byte corruption, legacy records, and slot-selection failures.
 
-The codec has no storage calls, heap allocations, or runtime hooks. The caller
-must validate the calendar anchor and supply the month's length. It needs one
-264-byte encoding buffer and a 252-byte decoded month; the runtime owner and
-storage-lock boundaries remain to be implemented.
+The codec has no storage calls or heap allocations. The store validates the
+calendar anchor and month length, then runs each complete operation under
+`Storage.withStorageLock`. One checked, short-lived allocation holds both month
+copies, the 264-byte buffer, and transaction state; its size is capped at 832
+bytes at compile time. This avoids putting that scratch on a reader task stack.
+It does not add a task or resident cache.
 
 ## Remaining
 
-- [ ] Add checked storage reads and writes, preserving the last valid slot and
-  original legacy files.
+- [x] Add checked storage reads and writes, preserving the last valid slot and
+  original legacy files. Host fault checks pass; cumulative storage review remains.
 - [ ] Collect dated reading intervals through the existing timer, including
   pauses, the minimum-session threshold, and midnight boundaries.
 - [ ] Checkpoint and retry accepted counters without counting them twice.
@@ -33,5 +35,33 @@ storage-lock boundaries remain to be implemented.
   from known zero-reading days. Existing total time cannot be backfilled.
 - [ ] Complete storage/recovery review and device testing.
 
-No new counters are recorded by the current firmware, and existing statistics
-files remain unchanged. This is an implementation checkpoint, not completed C4.
+C4 remains in progress.
+
+## Storage checkpoint
+
+Reads never create files. They merge the requested day's valid legacy primary,
+backup, and temporary counters by maximum, leaving every original intact. Writes
+merge all legacy days in the month before publishing an absolute counter.
+Seconds and uploaded acknowledgments cannot decrease. Repeating the same value
+after an uncertain sync or close does not add it again. The alternate slot is
+closed and decoded again before a save reports success.
+
+The store checks independent small-file clusters before overwriting an existing
+slot, including its relationship to preserved legacy files. I/O failures and
+unknown newer formats block writes. A damaged known-version slot can fall back
+to a valid sibling. A torn first bootstrap with no valid copy remains unavailable
+and keeps its evidence for recovery; it is not silently reinitialized. This
+limitation must be addressed or accepted at the storage release review.
+
+Thirteen focused host checks pass, including all 264 incomplete update lengths,
+uncertain sync/close retries, legacy preservation, aliasing, leap days, allocation
+and lock failures, and first-bootstrap failure. The fake filesystem models these
+API failures; actual FAT chains and device power-loss behavior remain unverified.
+
+The store is not yet connected to the reading timer, so the current firmware
+still does not record daily counters. Today and 7-day summaries remain pending.
+
+Checkpoint validation: the 13 focused checks passed in 0.60 seconds and the
+default X4 Pro build passed in 74.26 seconds. The unconnected store's private
+scratch type is not available in the linked image for a debugger size query;
+the compile-time 832-byte limit is the current allocation bound.

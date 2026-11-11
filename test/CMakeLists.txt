@@ -303,3 +303,4 @@ add_test(NAME ReaderLivePreview COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SO
 add_test(NAME ReaderPreviewLayout COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_text_settings_layout.py)
 add_test(NAME CarouselRenderBounds COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_carousel_render.py)
 add_test(NAME DailyReadingStatsCodec COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/daily_reading_stats/test_codec.py)
+add_subdirectory(daily_reading_stats)
