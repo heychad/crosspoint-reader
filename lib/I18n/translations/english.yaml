@@ -995,3 +995,5 @@ STR_TAPS_AND_GESTURES: "Taps and gestures"
 STR_PAGE_TURN_LONG_PRESS: "Page turn long press"
 
 STR_POWER_DOUBLE_CLICK: "Double click"
+
+STR_DISABLE_PAGE_TURN_GESTURES: "Disable page-turn gestures"

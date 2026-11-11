@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "NetworkModeSelectionActivity.h"
@@ -37,6 +38,7 @@ class CrossPointWebServerActivity final : public Activity {
   // Set when re-entered after the heap-defrag reboot: skip mode selection, go
   // straight to Join Network, and don't reboot again.
   bool startInJoinNetwork = false;
+  std::optional<NetworkMode> initialMode;
 
   // Web server - owned by this activity
   std::unique_ptr<CrossPointWebServer> webServer;
@@ -69,8 +71,11 @@ class CrossPointWebServerActivity final : public Activity {
 
  public:
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                       bool startInJoinNetwork = false)
-      : Activity("CrossPointWebServer", renderer, mappedInput), startInJoinNetwork(startInJoinNetwork) {}
+                                       bool startInJoinNetwork = false,
+                                       std::optional<NetworkMode> initialMode = std::nullopt)
+      : Activity("CrossPointWebServer", renderer, mappedInput),
+        startInJoinNetwork(startInJoinNetwork),
+        initialMode(initialMode) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

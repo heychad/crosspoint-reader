@@ -37,6 +37,12 @@ bool ReaderActivity::supportsReaderShortcut(Action action) const {
     case Action::NextPage:
     case Action::Screenshot:
       return true;
+    case Action::TogglePageGestures:
+      return mappedInput.hasTouch();
+    case Action::JoinNetwork:
+    case Action::CreateHotspot:
+    case Action::CalibreWireless:
+      return true;
     case Action::ToggleTouch:
       return mappedInput.hasTouch();
     case Action::ToggleHomeButton:

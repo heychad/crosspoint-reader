@@ -16,7 +16,7 @@ struct LegacySideMapping {
 };
 
 inline bool readLegacySideAction(uint8_t value, bool chord, Action& result) {
-  static constexpr std::array<LegacySideMapping, 36> single = {{LegacySideMapping{0, Action::Disabled},
+  static constexpr std::array<LegacySideMapping, 40> single = {{LegacySideMapping{0, Action::Disabled},
                                                                 {1, Action::Sleep},
                                                                 {2, Action::NextPage},
                                                                 {3, Action::Refresh},
@@ -45,6 +45,10 @@ inline bool readLegacySideAction(uint8_t value, bool chord, Action& result) {
                                                                 {12, Action::CycleAutoTurn},
                                                                 {37, Action::Home},
                                                                 {39, Action::RotateHalfTurn},
+                                                                {18, Action::CalibreWireless},
+                                                                {19, Action::JoinNetwork},
+                                                                {20, Action::CreateHotspot},
+                                                                {40, Action::TogglePageGestures},
                                                                 {64, Action::PreviousChapter},
                                                                 {65, Action::NextChapter},
                                                                 {66, Action::LargerText},
@@ -52,7 +56,7 @@ inline bool readLegacySideAction(uint8_t value, bool chord, Action& result) {
                                                                 {68, Action::RotateBackward},
                                                                 {69, Action::Rotate},
                                                                 {70, Action::RotateHalfTurn}}};
-  static constexpr std::array<LegacySideMapping, 28> chords = {{LegacySideMapping{0, Action::Screenshot},
+  static constexpr std::array<LegacySideMapping, 32> chords = {{LegacySideMapping{0, Action::Screenshot},
                                                                 {1, Action::QuickLock},
                                                                 {4, Action::Disabled},
                                                                 {5, Action::Sleep},
@@ -79,7 +83,11 @@ inline bool readLegacySideAction(uint8_t value, bool chord, Action& result) {
                                                                 {14, Action::CycleAutoTurn},
                                                                 {33, Action::Home},
                                                                 {34, Action::SelectChapter},
-                                                                {35, Action::RotateHalfTurn}}};
+                                                                {35, Action::RotateHalfTurn},
+                                                                {17, Action::CalibreWireless},
+                                                                {18, Action::JoinNetwork},
+                                                                {19, Action::CreateHotspot},
+                                                                {36, Action::TogglePageGestures}}};
   const auto find = [&](const auto& mappings) {
     for (const auto& mapping : mappings) {
       if (mapping.legacy == value) {

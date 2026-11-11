@@ -15,6 +15,11 @@ using readershortcuts::Action;
 
 bool ReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger trigger) {
   switch (action) {
+    case Action::TogglePageGestures:
+    case Action::JoinNetwork:
+    case Action::CreateHotspot:
+    case Action::CalibreWireless:
+      return activityManager.dispatchShortcut(action, trigger);
     case Action::Default:
       return false;
     case Action::Refresh:

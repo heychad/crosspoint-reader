@@ -21,6 +21,7 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 enum class SavedItemKind : uint8_t;
+enum class NetworkMode;
 
 enum class HomeMenuItem {
   NONE,
@@ -143,6 +144,7 @@ class ActivityManager {
 
   // goTo... functions are convenient wrapper for replaceActivity()
   void goToFileTransfer();
+  void goToFileTransferMode(NetworkMode mode);
   void goToJoinNetwork();  // File Transfer straight into Join Network (post heap-defrag reboot)
   void goToUsbDrive();
   // openSection jumps straight into one group (End = the section list).

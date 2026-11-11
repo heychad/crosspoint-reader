@@ -930,3 +930,27 @@ TEST(CrossInkControlImport, ImportsPageTurnGesturesAndLegacyPreviousFallback) {
   EXPECT_EQ(current["previousPageGesture"].as<int>(), 3);
   EXPECT_EQ(current["other"].as<int>(), 7);
 }
+
+TEST(ReaderShortcuts, RcNetworkAndGestureActionsUseTheirOwnLegacyIds) {
+  using A = readershortcuts::Action;
+  for (const auto& entry : {std::pair{18, A::CalibreWireless}, std::pair{19, A::JoinNetwork},
+                            std::pair{20, A::CreateHotspot}, std::pair{40, A::TogglePageGestures}}) {
+    A mapped = A::Default;
+    ASSERT_TRUE(readershortcuts::readLegacySideAction(entry.first, false, mapped));
+    EXPECT_EQ(mapped, entry.second);
+  }
+  for (const auto& entry : {std::pair{17, A::CalibreWireless}, std::pair{18, A::JoinNetwork},
+                            std::pair{19, A::CreateHotspot}, std::pair{36, A::TogglePageGestures}}) {
+    A mapped = A::Default;
+    ASSERT_TRUE(readershortcuts::readLegacySideAction(entry.first, true, mapped));
+    EXPECT_EQ(mapped, entry.second);
+  }
+  JsonDocument legacy, current;
+  legacy["disablePageTurnGestures"] = 1;
+  EXPECT_TRUE(crossinkimport::stageGestureControls(legacy.as<JsonVariantConst>(), current, false));
+  EXPECT_EQ(current["disablePageTurnGestures"].as<int>(), 1);
+  legacy["disablePageTurnGestures"] = 0;
+  EXPECT_FALSE(crossinkimport::stageGestureControls(legacy.as<JsonVariantConst>(), current, false));
+  EXPECT_TRUE(crossinkimport::stageGestureControls(legacy.as<JsonVariantConst>(), current, true));
+  EXPECT_EQ(current["disablePageTurnGestures"].as<int>(), 0);
+}

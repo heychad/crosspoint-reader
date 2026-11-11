@@ -93,7 +93,7 @@ struct TouchPageTurn {
 inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,
                                          const bool rtlBook = false, const bool reserveReaderMenuTap = true) {
   TouchPageTurn result{false, false, 0};
-  if (!SETTINGS.touchReaderControls || !input.hasTouch()) {
+  if (!SETTINGS.touchReaderControls || SETTINGS.disablePageTurnGestures || !input.hasTouch()) {
     return result;
   }
 

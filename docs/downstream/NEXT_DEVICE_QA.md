@@ -263,3 +263,13 @@ Home, Rotate 180° preserves the current content position, and toggling the Home
 button off can be reversed through Settings. Existing bindings must retain
 their actions after restart. Auto-turn and Focus actions reuse their existing
 behavior; their broader feature parity remains in the Later scope.
+
+## Independent gestures and network shortcuts
+
+- Set distinct previous/next tap or swipe modes. Turn on Disable page-turn
+  gestures. Page taps/swipes should stop while the menu, links, selection, and
+  configured two-finger actions remain available. Reenable and confirm the
+  original modes return; restart and confirm the enabled/disabled state persists.
+- Map Join Network, Create Hotspot, and Calibre Wireless in turn. Each should
+  enter its existing flow directly. Exit and reopen the book at the same
+  position. General File Transfer should still show its mode picker.

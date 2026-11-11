@@ -12,7 +12,7 @@ inline bool readLegacyHomeAction(uint8_t raw, HomeButtonAction& action) {
     uint8_t raw;
     HomeButtonAction action;
   };
-  static constexpr std::array<Mapping, 32> mappings = {{{0, HomeButtonAction::Ignore},
+  static constexpr std::array<Mapping, 36> mappings = {{{0, HomeButtonAction::Ignore},
                                                         {2, HomeButtonAction::NextPage},
                                                         {3, HomeButtonAction::Refresh},
                                                         {4, HomeButtonAction::CycleFontFamily},
@@ -43,7 +43,11 @@ inline bool readLegacyHomeAction(uint8_t raw, HomeButtonAction& action) {
                                                         {26, HomeButtonAction::ToggleHomeButton},
                                                         {36, HomeButtonAction::HomeReader},
                                                         {37, HomeButtonAction::Home},
-                                                        {39, HomeButtonAction::RotateHalfTurn}}};
+                                                        {39, HomeButtonAction::RotateHalfTurn},
+                                                        {18, HomeButtonAction::CalibreWireless},
+                                                        {19, HomeButtonAction::JoinNetwork},
+                                                        {20, HomeButtonAction::CreateHotspot},
+                                                        {40, HomeButtonAction::TogglePageGestures}}};
   if (raw == 33) {
     action = HomeButtonAction::Library;
     return true;

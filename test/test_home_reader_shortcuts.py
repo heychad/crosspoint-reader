@@ -36,7 +36,11 @@ int main(){
                          Mapping{12,H::CycleAutoTurn,Action::CycleAutoTurn},
                          Mapping{26,H::ToggleHomeButton,Action::ToggleHomeButton},
                          Mapping{36,H::HomeReader,Action::HomeReader},
-                         Mapping{39,H::RotateHalfTurn,Action::RotateHalfTurn}}){
+                         Mapping{39,H::RotateHalfTurn,Action::RotateHalfTurn},
+                         Mapping{40,H::TogglePageGestures,Action::TogglePageGestures},
+                         Mapping{18,H::CalibreWireless,Action::CalibreWireless},
+                         Mapping{19,H::JoinNetwork,Action::JoinNetwork},
+                         Mapping{20,H::CreateHotspot,Action::CreateHotspot}}){
    assert(readershortcuts::readLegacyHomeAction(entry.legacy,imported) && imported==entry.home);
    assert(homereadershortcuts::actionFor(imported)==entry.action);
  }

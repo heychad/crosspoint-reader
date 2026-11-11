@@ -286,3 +286,6 @@ add_test(NAME WirelessInventoryHttp COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURREN
 add_test(NAME WirelessStageHttp COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/sync_staging/test_http.py ${arduinojson_SOURCE_DIR}/src)
 
 add_test(NAME ChapterShortcut COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_chapter_shortcut.py)
+
+add_test(NAME ReaderGlobalShortcuts COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_global_shortcuts.py)
+add_test(NAME PageGestureToggle COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_gesture_toggle.py)

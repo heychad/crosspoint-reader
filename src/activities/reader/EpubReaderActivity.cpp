@@ -1017,6 +1017,10 @@ void EpubReaderActivity::loop() {
     case HomeButtonAction::ToggleTilt:
     case HomeButtonAction::Sleep:
     case HomeButtonAction::ToggleCompletion:
+    case HomeButtonAction::TogglePageGestures:
+    case HomeButtonAction::JoinNetwork:
+    case HomeButtonAction::CreateHotspot:
+    case HomeButtonAction::CalibreWireless:
     case HomeButtonAction::HomeReader:
     case HomeButtonAction::RotateHalfTurn:
     case HomeButtonAction::CycleAutoTurn:

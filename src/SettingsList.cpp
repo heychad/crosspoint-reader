@@ -166,7 +166,7 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
           {StrId::STR_DISABLED, StrId::STR_SHORTCUT_BRIGHTER, StrId::STR_SHORTCUT_DIMMER, StrId::STR_SHORTCUT_WARMER,
            StrId::STR_SHORTCUT_COOLER, StrId::STR_SHORTCUT_NEXT_CHAPTER, StrId::STR_SHORTCUT_PREV_CHAPTER,
            StrId::STR_SHORTCUT_LARGER_TEXT, StrId::STR_SHORTCUT_SMALLER_TEXT, StrId::STR_HOME_SHORTCUT,
-           StrId::STR_HOME_READER_SHORTCUT, StrId::STR_SELECT_CHAPTER},
+           StrId::STR_HOME_READER_SHORTCUT, StrId::STR_SELECT_CHAPTER, StrId::STR_DISABLE_PAGE_TURN_GESTURES},
           [i] { return SETTINGS.twoFingerActions[i]; },
           [i](uint8_t value) {
             SETTINGS.setTwoFingerAction(i, value);
@@ -240,6 +240,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   if (BoardConfig::hasTouch()) {
     emit(SettingInfo::Toggle(StrId::STR_TOUCH_READER_CONTROLS, &CrossPointSettings::touchReaderControls,
                              "touchReaderControls", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::Toggle(StrId::STR_DISABLE_PAGE_TURN_GESTURES, &CrossPointSettings::disablePageTurnGestures,
+                             "disablePageTurnGestures", StrId::STR_CAT_CONTROLS));
     emit(SettingInfo::Enum(StrId::STR_NEXT_PAGE_GESTURE, &CrossPointSettings::pageTurnGesture,
                            {StrId::STR_TAP_AND_SWIPE, StrId::STR_TAP_ONLY, StrId::STR_SWIPE_ONLY,
                             StrId::STR_INVERTED_TAP, StrId::STR_DISABLED},
