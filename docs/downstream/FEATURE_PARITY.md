@@ -204,3 +204,13 @@ No device has been updated with this batch; physical validation remains open.
 
 This batch passed all 1,784 host tests and the X4 Pro firmware build
 (143.98 seconds). Release review and hardware validation remain pending.
+
+## Quick Actions trigger audit
+
+The power double-click action introduced by the upstream update now participates
+in the existing single-trigger rule. Assigning Quick Actions there clears the
+previous trigger; assigning it elsewhere restores power double-click to its
+normal frontlight action. Ordinary double-click actions do not claim ownership.
+
+The trigger fix passed 24 targeted checks and the X4 Pro build (77.76 seconds).
+Hardware and release review remain pending.

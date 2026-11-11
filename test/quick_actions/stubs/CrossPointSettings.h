@@ -10,11 +10,12 @@ struct CrossPointSettings {
     ++saves;
     return !failSave;
   }
-  enum { IGNORE = 0, PWR_QUICK_ACTIONS = 10, LP_MENU_DISABLED = 1, LP_MENU_QUICK_ACTIONS = 7 };
+  enum { IGNORE = 0, PWR_QUICK_ACTIONS = 10, PWR_FRONTLIGHT = 11, LP_MENU_DISABLED = 1, LP_MENU_QUICK_ACTIONS = 7 };
   uint8_t readerUpTap = 0, readerUpHold = 0, readerDownTap = 0, readerDownHold = 0, readerSideChord = 0;
   uint8_t readerLeftEdgeUp = 0, readerLeftEdgeDown = 0, readerRightEdgeUp = 0, readerRightEdgeDown = 0;
   uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
   uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
   uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
+  uint8_t doublePwrBtn = PWR_FRONTLIGHT;
   uint8_t shortPwrBtn = IGNORE, longPressMenuFunction = LP_MENU_DISABLED;
 };

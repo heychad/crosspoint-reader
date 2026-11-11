@@ -76,3 +76,13 @@ Priorities from the current source comparison:
   chapter shortcuts with the selected feature inventory.
 - Keep later-scope fonts, dictionary additions, and nearby sync out of the next
   release batch unless the human changes scope.
+
+## Per-book settings format audit
+
+CrossInk development `1990a78f2` writes per-book reader-settings version 13.
+This fork's decoder currently accepts versions 1–10. Versions 11–13 add image
+grayscale, character spacing, and publisher-font fields after the override mask;
+the SD font mask bit also moves from 18 to 19 in version 11. Before expanding
+migration, compare the actual writer and reader, preserve unsupported fields in
+the preview, and test each version's size and override-mask boundaries. Do not
+interpret a new-format file as version 10 or overwrite its source.
