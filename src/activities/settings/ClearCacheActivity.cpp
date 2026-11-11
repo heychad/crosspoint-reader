@@ -6,6 +6,7 @@
 #include <Logging.h>
 
 #include "MappedInputManager.h"
+#include "activities/ActivityManager.h"
 #include "activities/reader/ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -14,6 +15,13 @@
 void ClearCacheActivity::onEnter() {
   Activity::onEnter();
 
+  if (!bookPath.empty()) {
+    // Replacement has already destroyed the reader and its open metadata files.
+    state = CLEARING;
+    bookClearPending = true;
+    requestUpdate();
+    return;
+  }
   state = WARNING;
   const char* options[] = {tr(STR_CANCEL), tr(STR_CLEAR_BUTTON)};
   confirmPopup.showMessage(tr(STR_CLEAR_READING_CACHE), tr(STR_CLEAR_CACHE_WARNING_2), options, 2, 0, [this](int idx) {
@@ -129,13 +137,42 @@ void ClearCacheActivity::clearCache() {
   requestUpdate();
 }
 
+void ClearCacheActivity::clearBookCache() {
+  requestUpdateAndWait();
+  if (readingstats::clearReaderCache(cachePath)) {
+    activityManager.goToReader(bookPath);
+    return;
+  }
+  state = WARNING;
+  const char* options[] = {tr(STR_BACK), tr(STR_RETRY)};
+  confirmPopup.showMessage(tr(STR_CLEAR_CACHE_FAILED), tr(STR_EPUB_CLEAR_CACHE_BODY), options, 2, 0, [this](int index) {
+    if (index == 1) {
+      state = CLEARING;
+      bookClearPending = true;
+    } else {
+      state = FAILED;
+      activityManager.goToReader(bookPath);
+    }
+    requestUpdate();
+  });
+  requestUpdate();
+}
+
 void ClearCacheActivity::loop() {
+  if (bookClearPending) {
+    bookClearPending = false;
+    clearBookCache();
+    return;
+  }
   if (state == WARNING) {
     confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); });
     // The selection callback can change state through beginClear().
     // cppcheck-suppress knownConditionTrueFalse
     if (!confirmPopup.isActive() && state == WARNING) {
-      goBack();
+      if (!bookPath.empty())
+        activityManager.goToReader(bookPath);
+      else
+        goBack();
     }
     return;
   }

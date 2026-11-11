@@ -14,6 +14,9 @@ BookReadingStats loadBook(const std::string& cachePath, const std::string& bookP
 bool preserveCache(const std::string& cachePath);
 // Clear rebuildable data even when statistics cannot be migrated.
 bool clearCache(const std::string& cachePath);
+// Clear known rebuildable EPUB caches without removing reader-owned state.
+// Call only after the reader and its metadata/cache file owners are destroyed.
+bool clearReaderCache(const std::string& cachePath);
 class BookMove {
  public:
   BookMove(const std::string& oldCache, const std::string& newCache, const std::string& oldBookPath);

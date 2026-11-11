@@ -3,6 +3,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <ZipFile.h>
+#include <strings.h>
 
 #include <array>
 #include <cstring>
@@ -200,6 +201,80 @@ readingstats::BookMove::~BookMove() {
   if (moved && !Storage.rename(destination.c_str(), source.c_str())) {
     LOG_ERR("STATS", "Could not roll back stats move; original cache retains the recovery copy");
   }
+}
+
+bool readingstats::clearReaderCache(const std::string& cachePath) {
+  struct Context {
+    const std::string& path;
+  } context{cachePath};
+  const auto clear = [](void* raw) {
+    const auto& path = static_cast<Context*>(raw)->path;
+    const auto status = Storage.lookupPath(path.c_str());
+    if (status == HalStorage::PathStatus::Missing) return true;
+    if (status == HalStorage::PathStatus::Failed) return false;
+    auto directory = Storage.open(path.c_str());
+    if (!directory || !directory.isDirectory()) return false;
+    bool ok = true;
+    char name[128];
+    for (auto entry = directory.openNextFile(); entry; entry = directory.openNextFile()) {
+      const size_t length = entry.getName(name, sizeof(name));
+      const bool folder = entry.isDirectory();
+      if (!entry.close()) {
+        ok = false;
+        break;
+      }
+      if (length >= sizeof(name) - 1) continue;
+      if (length == 0) {
+        ok = false;
+        continue;
+      }
+      bool generated = false;
+      if (folder) {
+        generated = strcasecmp(name, "sections") == 0 || strcasecmp(name, "html") == 0;
+      } else {
+        static constexpr const char* files[] = {"book.bin",
+                                                "spine.bin.tmp",
+                                                "toc.bin.tmp",
+                                                "css_rules.cache",
+                                                "css_rules.cache.tmp",
+                                                "css_rules.cache.bak",
+                                                ".tmp.css",
+                                                ".cover.jpg",
+                                                ".cover.png",
+                                                ".cover.gif",
+                                                "cover.bmp",
+                                                "cover_original.bmp",
+                                                "cover_original_crop.bmp",
+                                                "cover_legacy_v2.bmp",
+                                                "cover_legacy_v2_crop.bmp"};
+        for (const auto* file : files) generated |= strcasecmp(name, file) == 0;
+        const size_t prefix = strncasecmp(name, "thumb_", 6) == 0 ? 6 : strncasecmp(name, "img_", 4) == 0 ? 4 : 0;
+        if (prefix && length > prefix) {
+          size_t at = prefix;
+          while (at < length && name[at] >= '0' && name[at] <= '9') ++at;
+          bool numeric = at > prefix;
+          if (prefix == 4) {
+            numeric = numeric && name[at] == '_';
+            if (numeric) {
+              const auto first = ++at;
+              while (at < length && name[at] >= '0' && name[at] <= '9') ++at;
+              numeric = at > first;
+            }
+          }
+          if (numeric && at < length)
+            generated |= strcasecmp(name + at, ".bmp") == 0 ||
+                         (prefix == 4 && (strcasecmp(name + at, ".png") == 0 || strcasecmp(name + at, ".jpg") == 0 ||
+                                          strcasecmp(name + at, ".jpeg") == 0 || strcasecmp(name + at, ".gif") == 0));
+        }
+      }
+      if (generated) {
+        const auto target = path + "/" + name;
+        ok = (folder ? Storage.removeDir(target.c_str()) : Storage.remove(target.c_str())) && ok;
+      }
+    }
+    return directory.close() && ok;
+  };
+  return Storage.withStorageLock(clear, &context);
 }
 
 bool readingstats::clearCache(const std::string& cachePath) {

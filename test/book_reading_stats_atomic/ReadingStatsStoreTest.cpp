@@ -3,6 +3,7 @@
 #include <ReadingStatsStore.h>
 #include <ZipFile.h>
 #include <gtest/gtest.h>
+
 #include <cstring>
 
 namespace {
@@ -208,6 +209,47 @@ TEST_F(ReadingStatsStoreTest, ClearCachePreservesReaderPreferencesAndRecoveryFil
     EXPECT_TRUE(Storage.exists((std::string(CACHE) + name).c_str()));
   }
   EXPECT_FALSE(Storage.exists((std::string(CACHE) + "/book.bin").c_str()));
+}
+
+TEST_F(ReadingStatsStoreTest, ReaderCacheClearPreservesPositionAnnotationsAndUnknownFiles) {
+  const std::vector<std::string> generated = {"book.bin",       "css_rules.cache", "css_rules.cache.bak",
+                                              "sections/0.bin", "html/0.html",     "cover_original_crop.bmp",
+                                              "THUMB_400.BMP",  "img_0_1.PNG"};
+  const std::vector<std::string> kept = {
+      "progress.bin",        "progress.bin.tmp",  "bookmarks.bin",      "links.bin", "stats_v99.bin",
+      "reader_settings.bin", "reader_prefs.json", "reading_stats_off",  "notes.txt", "thumb_notes.bmp",
+      "thumb_4.jpg",         "img_0_notes.png",   std::string(140, 'x')};
+  for (const auto& names : {generated, kept})
+    for (const auto& name : names) {
+      HalFile file;
+      ASSERT_TRUE(Storage.openFileForWrite("TEST", std::string(CACHE) + "/" + name, file));
+      ASSERT_EQ(file.write(uint8_t{42}), 1U);
+      ASSERT_TRUE(file.close());
+    }
+  ASSERT_TRUE(readingstats::clearReaderCache(CACHE));
+  for (const auto& name : generated) EXPECT_FALSE(Storage.exists((std::string(CACHE) + "/" + name).c_str()));
+  for (const auto& name : kept) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForRead("TEST", std::string(CACHE) + "/" + name, file));
+    uint8_t value = 0;
+    EXPECT_EQ(file.read(&value, 1), 1);
+    EXPECT_EQ(value, 42);
+    EXPECT_TRUE(file.close());
+  }
+}
+
+TEST_F(ReadingStatsStoreTest, ReaderCacheClearReportsFailureAndCanRetry) {
+  HalFile file;
+  const auto cover = std::string(CACHE) + "/cover.bmp";
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", cover, file));
+  ASSERT_TRUE(file.close());
+  Storage.failNextRemove(cover);
+  EXPECT_FALSE(readingstats::clearReaderCache(CACHE));
+  EXPECT_TRUE(Storage.exists(cover.c_str()));
+  EXPECT_TRUE(readingstats::clearReaderCache(CACHE));
+  EXPECT_FALSE(Storage.exists(cover.c_str()));
+  Storage.failReadsFor(CACHE);
+  EXPECT_FALSE(readingstats::clearReaderCache(CACHE));
 }
 
 TEST_F(ReadingStatsStoreTest, FinishedBookMoveRollsBackStatsOrCommitsThem) {

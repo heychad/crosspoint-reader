@@ -10,11 +10,15 @@ release ceremony with checked development batches and cumulative device tests.
    likely to duplicate upstream, and before preparing a release.
 2. Group related work around a shared reader, input, library, or statistics path.
    Aim for a useful set of behaviors per device test, not one setting per build.
-3. During implementation, run the checks that can expose the changed behavior.
+3. Before changing file deletion or replacement, identify every live owner of
+   those files and the existing close/exit path. Reuse that path before adding
+   storage work. For reader caches, a released section is not enough: EPUB
+   metadata holds file handles until the reader is destroyed.
+4. During implementation, run the checks that can expose the changed behavior.
    Add tests for a meaningful regression or risky contract, not source wording.
-4. Checkpoint and push reviewed work on the authorized personal branch. A WIP
+5. Checkpoint and push reviewed work on the authorized personal branch. A WIP
    commit may identify disabled or incomplete work; it is not a release claim.
-5. Prepare a cumulative device candidate with the full suite, intended X4 Pro
+6. Prepare a cumulative device candidate with the full suite, intended X4 Pro
    build, risk-based review, and a short smoke test. Let device feedback guide
    the next batch.
 
@@ -62,6 +66,11 @@ Path overlap is a triage signal, not proof of conflict or missing functionality.
 Review selected changes; never automatically merge CrossInk wholesale.
 
 ## Measure the loop
+
+Record each completed batch's focused-test, full-suite, and build durations
+from tool logs. Reuse a passing result until its inputs change; documentation
+and test-only edits do not require rebuilding unchanged firmware. Report
+rework separately so faster compilation does not hide avoidable design work.
 
 At each device milestone record elapsed implementation, verification, review,
 and blocked time from available logs, plus completed user-visible behaviors.

@@ -12,7 +12,7 @@ selected first-release scope, not every option in the upstream font engine.
 | Reading statistics and finished/unfinished | Built; completion remains behind its experimental flag. |
 | Per-book tracking and statistics deletion | Connected in this batch through the shared reader statistics flow; deletion remains behind the statistics-restore flag. |
 | Status bars, controls, render mode, reset book settings | Built. |
-| Cache deletion | Existing EPUB action. Its confirmation and reader-state preservation still need comparison with the RC flow. |
+| Cache deletion | Confirmed reset now preserves progress, annotations, and settings. Known generated caches rebuild at the saved position; failure offers Retry. See [cache reset](EPUB_CACHE_RESET.md). |
 | Reading-pace reset | Remaining. Reuse statistics persistence and preserve unrelated counters. |
 | Per-book dictionary selection | Remaining. Check the existing per-book settings contract before adding storage. |
 | Indexing-method control | Remaining. Map its behavior against the fork's renderer before adding another setting. |

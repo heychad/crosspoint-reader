@@ -57,6 +57,7 @@
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/settings/ClearCacheActivity.h"
 #include "activities/settings/EnumSelectionActivity.h"
 #include "activities/settings/HomeButtonSettingsActivity.h"
 #include "activities/settings/ReaderBarsSettingsActivity.h"
@@ -1409,6 +1410,36 @@ void EpubReaderActivity::openChapterSelection(bool returnToMenu) {
   });
 }
 
+void EpubReaderActivity::confirmCacheReset() {
+  if (!epub) return;
+  const bool inLink = footnoteDepth > 0;
+  auto prompt =
+      makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_DELETE_CACHE),
+                                              inLink ? tr(STR_CACHE_RETURN_FROM_LINK) : tr(STR_EPUB_CLEAR_CACHE_BODY),
+                                              tr(STR_CANCEL), inLink ? tr(STR_OK_BUTTON) : tr(STR_DELETE));
+  if (!prompt) {
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(prompt), [this, inLink](const ActivityResult& result) {
+    if (inLink) {
+      requestUpdate();
+      return;
+    }
+    if (result.isCancelled) {
+      openReaderMenu();
+      return;
+    }
+    auto clear = makeUniqueNoThrow<ClearCacheActivity>(renderer, mappedInput, bookPath, epub->getCachePath());
+    if (!clear) {
+      requestUpdate();
+      return;
+    }
+    // Replacement runs reader exit hooks and destroys every open cache owner first.
+    activityManager.replaceActivity(std::move(clear));
+  });
+}
+
 void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     loadCachedBookmarks();
@@ -1650,24 +1681,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       onGoHome();
       return;
     }
-    case EpubReaderMenuActivity::MenuAction::DELETE_CACHE: {
-      {
-        RenderLock lock;
-        if (epub && section) {
-          uint16_t backupSpine = currentSpineIndex;
-          uint16_t backupPage = section->currentPage;
-          uint16_t backupPageCount = section->pageCount;
-          section.reset();
-          if (!readingstats::clearCache(epub->getCachePath())) LOG_ERR("ERS", "Cache invalidation failed");
-          epub->setupCacheDir();
-          if (!saveProgress(backupSpine, backupPage, backupPageCount)) {
-            LOG_ERR("ERS", "Failed to save progress before cache clear");
-          }
-        }
-      }
-      onGoHome();
-      return;
-    }
+    case EpubReaderMenuActivity::MenuAction::DELETE_CACHE:
+      confirmCacheReset();
+      break;
     case EpubReaderMenuActivity::MenuAction::SCREENSHOT: {
       {
         RenderLock lock;

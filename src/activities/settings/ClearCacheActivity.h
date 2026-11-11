@@ -10,6 +10,10 @@ class ClearCacheActivity final : public Activity {
   explicit ClearCacheActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("ClearCache", renderer, mappedInput) {}
 
+  ClearCacheActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
+                     std::string cachePath)
+      : Activity("ClearCache", renderer, mappedInput), bookPath(std::move(bookPath)), cachePath(std::move(cachePath)) {}
+
   void onEnter() override;
   void onExit() override;
   void loop() override;
@@ -20,6 +24,10 @@ class ClearCacheActivity final : public Activity {
   enum State { WARNING, CLEARING, SUCCESS, FAILED };
 
   State state = WARNING;
+  std::string bookPath;
+  std::string cachePath;
+  bool bookClearPending = false;
+  void clearBookCache();
 
   void goBack() { finish(); }
 
