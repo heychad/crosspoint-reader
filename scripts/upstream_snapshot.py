@@ -37,16 +37,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fetch', action='store_true',
                         help='fetch both upstreams without merging or updating submodules')
-    parser.add_argument('--crosspoint', default='upstream/develop')
-    parser.add_argument('--crossink', default='crossink/development')
-    parser.add_argument('--crossink-base', default='b8feaec4d',
-                        help='last inspected CrossInk baseline; defaults to v2.0.0-rc')
+    parser.add_argument('--crosspoint', default='refs/tags/2.0.0')
+    parser.add_argument('--crossink', default='refs/tags/v2.0.0-rc')
+    parser.add_argument('--crossink-base', default='refs/tags/v1.6.1',
+                        help='released CrossInk baseline; defaults to v1.6.1')
+    parser.add_argument('--allow-development-ref', action='store_true',
+                        help='explicitly inspect a non-release ref; does not authorize integration')
     parser.add_argument('--json', action='store_true', help='emit machine-readable output')
     args = parser.parse_args()
     if args.fetch:
         for remote in ('upstream', 'crossink'):
             subprocess.run(['git', 'fetch', '--no-recurse-submodules', remote],
                            cwd=ROOT, check=True)
+    if not args.allow_development_ref:
+        for field in ('crosspoint', 'crossink', 'crossink_base'):
+            ref = getattr(args, field)
+            tag = ref if ref.startswith('refs/tags/') else 'refs/tags/' + ref
+            if subprocess.run(['git', 'show-ref', '--verify', '--quiet', tag], cwd=ROOT).returncode != 0:
+                raise ValueError('Release-tag comparison required: ' + ref + '; use --allow-development-ref only for an explicit audit')
+            setattr(args, field, tag)
     head = revision('HEAD')
     cp = revision(args.crosspoint)
     ci = revision(args.crossink)
@@ -65,6 +74,7 @@ def main():
         'head': head,
         'crosspoint': {'ref': args.crosspoint, 'tip': cp, 'common_base': common,
                        'unmerged_commits': commits(head, cp),
+                       'fork_commits_beyond_tag': commits(cp, head),
                        'overlap_paths': sorted(local_paths & cp_paths)},
         'crossink': {'ref': args.crossink, 'tip': ci, 'baseline': ci_base,
                      'commits_since_baseline': commits(ci_base, ci),
@@ -76,8 +86,9 @@ def main():
     else:
         print('Upstream snapshot (' + ('fresh fetch' if args.fetch else 'local refs; freshness unknown') + ')')
         print('Branch: ' + report['branch'] + ' @ ' + head[:12])
-        print(f'CrossPoint {cp[:12]}: {report["crosspoint"]["unmerged_commits"]} unmerged commits')
-        print(f'CrossInk {ci[:12]}: {report["crossink"]["commits_since_baseline"]} commits since {ci_base[:12]}')
+        print(f'CrossPoint {args.crosspoint} ({cp[:12]}): {report["crosspoint"]["unmerged_commits"]} unmerged commits')
+        print(f'Fork commits beyond that tag: {report["crosspoint"]["fork_commits_beyond_tag"]} (includes local features and prior integration)')
+        print(f'CrossInk {args.crossink} ({ci[:12]}): {report["crossink"]["commits_since_baseline"]} commits since {ci_base[:12]}')
         for name in ('crosspoint', 'crossink'):
             overlap = report[name]['overlap_paths']
             print(f'{name} overlapping paths ({len(overlap)}):')
