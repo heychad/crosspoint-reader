@@ -188,8 +188,16 @@ BookRestoreResult replaceBookStats(const std::string& cachePath, const std::stri
     const bool fromBackup = input.source == ReplacementSource::Backup;
     const std::string source = fromBackup ? std::string(BOOKS) + "/" + leaf + "/" + input.filename : "";
     const auto oldBackupStatus = Storage.lookupPath(oldBackup.c_str());
-    if (Storage.lookupPath(primary.c_str()) != HalStorage::PathStatus::Present ||
-        oldBackupStatus == HalStorage::PathStatus::Failed)
+    const auto primaryStatus = Storage.lookupPath(primary.c_str());
+    if (!fromBackup && primaryStatus == HalStorage::PathStatus::Missing && !input.expectedCurrent &&
+        !input.expectedCurrentSize) {
+      bool enabled = false, found = false, known = false;
+      const auto prior = readingstats::loadBook(input.cachePath, input.bookPath, enabled, &found,
+                                                BookReadingStats::LoadMode::TransactionalEdit, &known);
+      if (known && !found && prior.writable) input.result = BookRestoreResult::Restored;
+      return true;
+    }
+    if (primaryStatus != HalStorage::PathStatus::Present || oldBackupStatus == HalStorage::PathStatus::Failed)
       return true;
     const BookReadingStats current = BookReadingStats::load(directory, BookReadingStats::LoadMode::TransactionalEdit);
     BookReadingStats replacement;

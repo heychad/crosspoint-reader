@@ -24,6 +24,12 @@ XTC is not eligible for the existing EPUB move-to-`/read` automation. If that
 policy is enabled, Mark finished is hidden outside `/read`; marking unfinished
 remains available. The action checks the state and policy again when selected.
 
+With `CROSSPOINT_EXPERIMENTAL_STATS_RESTORE` enabled, Delete book statistics
+confirms the reset and preserves a backup. It clears the book's counters and
+finished status while keeping its reading position and bookmarks. The reader
+coordinates its live session before resetting and reloads it afterward. Normal
+failures offer Retry; uncertain writes stop tracking and offer a return to Home.
+
 Percentage navigation reuses the existing picker. It rounds the one-based page
 position and clamps it to the book's pages: 100% selects the final bitmap, not
 the end-of-book screen. Cancel returns to the menu without changing position.
@@ -44,10 +50,10 @@ through its ordinary action retains the existing next-open setting behavior.
 
 Statistics and Quick Actions use existing reader handlers. Controls uses the
 existing settings activity. No progress format, bitmap renderer, book-cache
-format, worker, or framebuffer changes. The menu has fixed storage for eleven
-items. The completion-enabled X4 Pro ELF reports a 1,968-byte menu object,
-including 660 bytes of row storage. In this build, the statistics screen is
-1,944 bytes, and the reader's statistics object is 456 bytes. The title string
+format, worker, or framebuffer changes. The menu has fixed storage for twelve
+items. The reset-enabled X4 Pro ELF reports a 2,036-byte menu object,
+including 720 bytes of row storage. In this build, the statistics screen is
+2,440 bytes, and the reader's statistics object is 456 bytes. The title string
 and shared UI allocations are additional. New child activities use checked
 allocation. An allocation failure preserves
 the reader and returns to the menu when possible.
@@ -57,22 +63,21 @@ The cache scan uses a 64-byte filename buffer and the existing HAL file handles.
 
 ## Remaining parity
 
-Statistics deletion is not yet included. It needs the fork's existing guarded
-save and recovery paths. The [reset backend](BOOK_STATS_RESET.md) is implemented;
-reader-session coordination and the confirmation flow remain. Nearby transfer remains
-excluded by Chad's scope. This stage does not complete B7 or establish device
-readiness.
+The selected XTC menu actions are implemented, with completion and statistics
+reset behind their existing experimental flags. [Reset details](BOOK_STATS_RESET.md)
+cover the save and recovery policy. Nearby transfer remains excluded by Chad's
+scope. Cumulative review and device validation remain; this does not complete B7.
 
 ## Verification
 
-The full host run passed all 1,793 tests. Both XTC checks passed again after
-adding the uppercase filename case. The completion-enabled
-X4 Pro build passed in 104.48 seconds (112,972 bytes static RAM; 5,667,878 bytes
+The full host run passed all 1,806 tests. The reset-enabled
+X4 Pro build passed in 243.45 seconds (112,972 bytes static RAM; 5,681,122 bytes
 flash). It uses a local profile extending `env:x4pro` and preserves its flags,
 adding `CROSSPOINT_EXPERIMENTAL_COMPLETION=1` and
-`CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT=1`; deferred automation is not enabled.
-The final default X4 Pro build passed in 66.17 seconds (113,060 bytes static
-RAM; 5,637,662 bytes flash).
+`CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT=1`, and
+`CROSSPOINT_EXPERIMENTAL_STATS_RESTORE=1`; deferred automation is not enabled.
+The final default X4 Pro build passed in 69.10 seconds (113,060 bytes static
+RAM; 5,638,090 bytes flash).
 Tests cover menus with and without chapters/touch,
 Confirm and touch entry, cancellation, percentage bounds, shared-action
 dispatch, allocation failures, one-shot tracking toggles in both directions,
@@ -94,6 +99,11 @@ the book. Verify the page, chapter navigation, and controls return path. Toggle
 tracking off, return to reading for a minute, turn it on, and read for another
 minute. Verify that only the enabled interval adds reading time and that the
 book stays at the same passage.
+
+For statistics reset, cancel once and confirm that counters remain. Then
+confirm the reset: the book counters and finished status should clear, while
+position and bookmarks remain. Read again and verify that only new reading
+time is added to the book; historical device time remains.
 
 In a completion-enabled candidate, mark an XTC book finished and unfinished,
 then reopen it to verify the state. With move-to-`/read` enabled, verify that

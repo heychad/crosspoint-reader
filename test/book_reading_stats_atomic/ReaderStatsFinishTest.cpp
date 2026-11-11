@@ -5,6 +5,132 @@
 #include <ReadingStatsStore.h>
 #include <gtest/gtest.h>
 
+namespace {
+const std::string RESET_BOOK = "/Books/reset.xtc";
+const std::string RESET_CACHE = "/.crosspoint/xtc_" + std::to_string(std::hash<std::string>{}(RESET_BOOK));
+void createResetBook() {
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", RESET_BOOK, file));
+  ASSERT_TRUE(file.close());
+}
+}  // namespace
+
+TEST(ReaderStatsReset, FlushesThenResumesWithoutRestoringOldBookCounters) {
+  Storage.reset();
+  createResetBook();
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_EQ(stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300), statsbackup::BookRestoreResult::Restored);
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE)).totalReadingSeconds, 0U);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 85000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE)).totalReadingSeconds, 20U);
+  EXPECT_EQ(GlobalReadingStats::load().totalReadingSeconds, 85U);
+}
+
+TEST(ReaderStatsReset, FreshBookWithNoSavedHistoryIsAlreadyReset) {
+  Storage.reset();
+  createResetBook();
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300);
+  ASSERT_EQ(stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300), statsbackup::BookRestoreResult::Restored);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE)).totalReadingSeconds, 65U);
+}
+
+TEST(ReaderStatsReset, ResumingDoesNotRestoreClearedCompletion) {
+  Storage.reset();
+  createResetBook();
+  BookReadingStats previous;
+  previous.isCompleted = true;
+  previous.totalReadingSeconds = 100;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(RESET_CACHE), previous));
+  GlobalReadingStats global;
+  global.completedBooks = 1;
+  global.totalReadingSeconds = 100;
+  ASSERT_TRUE(global.save());
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300, true);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_EQ(stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300, true),
+            statsbackup::BookRestoreResult::Restored);
+  bool completed = true;
+  ASSERT_TRUE(stats.completionStatus(completed));
+  EXPECT_FALSE(completed);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 85000;
+  ASSERT_TRUE(stats.finish());
+  const auto current = BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE));
+  EXPECT_FALSE(current.isCompleted);
+  EXPECT_EQ(current.totalReadingSeconds, 20U);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().completedBooks, 0U);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 185U);
+}
+
+TEST(ReaderStatsReset, FailedFlushLeavesSessionAvailableForRetry) {
+  Storage.reset();
+  createResetBook();
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  Storage.failNextRenameFrom("/.crosspoint/global_stats.bin.tmp");
+  EXPECT_EQ(stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300), statsbackup::BookRestoreResult::Unavailable);
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE)).totalReadingSeconds, 65U);
+}
+
+TEST(ReaderStatsReset, UncertainResetStopsOldSessionFromOverwritingRecoveryFiles) {
+  Storage.reset();
+  createResetBook();
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_TRUE(stats.finish());
+  const auto primary = readingstats::bookDirectory(RESET_CACHE) + "/stats_v5.bin";
+  Storage.failNextRenameFrom(primary + ".tmp");
+  EXPECT_EQ(stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300),
+            statsbackup::BookRestoreResult::RecoveryRequired);
+  EXPECT_TRUE(stats.unavailableAtStart());
+  EXPECT_FALSE(StatsSessionLease::anyActive());
+  BookReadingStats book;
+  GlobalReadingStats global;
+  bool saved = false;
+  EXPECT_FALSE(stats.snapshot(book, global, saved));
+  EXPECT_TRUE(stats.finish());
+  EXPECT_TRUE(Storage.exists((primary + ".tmp").c_str()));
+}
+
+TEST(ReaderStatsReset, KeepsDisabledTrackingDisabled) {
+  Storage.reset();
+  createResetBook();
+  BookReadingStats previous;
+  previous.totalReadingSeconds = 100;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(RESET_CACHE), previous));
+  ASSERT_TRUE(booktracking::setEnabled(RESET_CACHE, RESET_BOOK, false));
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300);
+  ASSERT_EQ(stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300), statsbackup::BookRestoreResult::Restored);
+  EXPECT_EQ(booktracking::state(RESET_CACHE, RESET_BOOK), booktracking::State::Disabled);
+  EXPECT_FALSE(StatsSessionLease::anyActive());
+  BookReadingStats book;
+  GlobalReadingStats global;
+  bool saved = false;
+  EXPECT_FALSE(stats.snapshot(book, global, saved));
+}
+
 TEST(ReaderStatsTracking, ToggleOffAndOnCountsOnlyEnabledIntervals) {
   Storage.reset();
   testMillis = 0;

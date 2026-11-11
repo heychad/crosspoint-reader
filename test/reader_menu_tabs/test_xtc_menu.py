@@ -29,6 +29,8 @@ reader_methods = "\n".join(method(reader, signature) for signature in (
 reader_methods += "\n#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)\n" + "\n".join(
     method(reader, signature) for signature in (
         "bool XtcReaderActivity::completionActionAvailable(", "void XtcReaderActivity::toggleCompletion()")) + "\n#endif\n"
+reader_methods += "\n#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)\n" + method(
+    reader, "void XtcReaderActivity::confirmStatisticsReset(") + "\n#endif\n"
 actions = re.search(r'enum class MenuAction\s*\{(.*?)\};', header, re.S).group(1)
 ids = sorted(set(re.findall(r"STR_[A-Z0-9_]+", menu_methods + reader_methods)))
 code = r'''
@@ -46,6 +48,8 @@ code = r'''
 #include "personalization/ReaderShortcuts.h"
 #define LOG_ERR(...) ((void)0)
 enum class StrId {__IDS__};
+struct Language{StrId get(StrId value){return value;}}I18N;
+namespace statsbackup {enum class BookRestoreResult{Restored,Unavailable,Busy,BackupFailed,WriteUncertain,RecoveryRequired};}
 #define tr(key) StrId::key
 struct MenuResult {int action=-1;};struct PercentResult{int percent;};struct PageResult{uint32_t page;};
 struct ActivityResult {bool isCancelled=false;std::variant<std::monostate,MenuResult,PercentResult,PageResult>data;};
@@ -55,9 +59,9 @@ struct Input {enum class Button{Back,Confirm};bool back=false,confirm=false;bool
 using MappedInputManager=Input;
 namespace ReaderUtils {bool touch=false;bool isTouchMenuGesture(int&,Input&){return touch;}}
 namespace haptic_feedback {int events=0;void touchAction(){++events;}}
-struct {uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;int saves=0;void saveToFile(){++saves;}}SETTINGS;
+struct {uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;unsigned char trackReadingStats=1,readingIdleTimeThresholdUnits=30;int saves=0;void saveToFile(){++saves;}}SETTINGS;
 struct XtcReaderMenuActivity {
- static constexpr int kind=1,MAX_ITEMS=11;
+ static constexpr int kind=1,MAX_ITEMS=12;
  enum class MenuAction {__ACTIONS__};struct MenuItem{MenuAction action;StrId label;};
  std::array<MenuItem,MAX_ITEMS>items{};size_t count=0;bool finished=false;int updates=0;
  struct {int selected=0;}nav;Input mappedInput;struct {void clearTapFlash(){}}app;
@@ -69,7 +73,7 @@ struct XtcReaderMenuActivity {
  void cancel();bool handleHomeGesture();bool handleButtons();void activateIndex(int);
 };
 ''' + menu_methods + r'''
-struct FakeXtc {bool clearOk=true;int clears=0;bool clearImageCache(){++clears;return clearOk;}uint32_t pages=100;bool chapters=true;uint32_t getPageCount(){return pages;}
+struct FakeXtc {std::string cache="cache";const std::string&getCachePath(){return cache;}bool clearOk=true;int clears=0;bool clearImageCache(){++clears;return clearOk;}uint32_t pages=100;bool chapters=true;uint32_t getPageCount(){return pages;}
  bool hasChapters(){return chapters;}std::vector<int>getChapters(){return chapters?std::vector<int>{0}:std::vector<int>{};}
  std::string getTitle(){return "Book";}};
 struct XtcReaderChapterSelectionActivity {static constexpr int kind=2;template<class...T>XtcReaderChapterSelectionActivity(T&&...){}};
@@ -83,7 +87,13 @@ template<class T,class...A>std::unique_ptr<T>makeUniqueNoThrow(A&&...args){
 }
 struct XtcReaderActivity {
  std::atomic<bool>pageRendered{true};std::string bookPath="/Books/book.xtc";
- struct Stats{bool known=true,done=false;bool completionStatus(bool& value)const{value=done;return known;}}readingStats;
+ enum class StatisticsResetPrompt{Confirm,Retry,Recovery};
+ void confirmStatisticsReset(StatisticsResetPrompt mode=StatisticsResetPrompt::Confirm);
+ std::atomic<bool>pendingStatsLoadWarning{false};
+ struct Stats{int resets=0;bool unavailableAtStart(){return false;}
+ statsbackup::BookRestoreResult next=statsbackup::BookRestoreResult::Restored;
+ statsbackup::BookRestoreResult resetBookStatistics(const std::string&,const std::string&,bool,uint16_t,bool){++resets;return next;}
+ bool known=true,done=false;bool completionStatus(bool& value)const{value=done;return known;}}readingStats;
  int completionEdits=0;bool completionTarget=false;
  bool completionActionAvailable(bool&)const;void toggleCompletion();
  void handleCompletionAttempt(bool recovery,bool desired){assert(!recovery);++completionEdits;completionTarget=desired;}
@@ -103,9 +113,12 @@ struct XtcReaderActivity {
 ''' + reader_methods + r'''
 int main(){
  using M=XtcReaderMenuActivity;using A=M::MenuAction;
- int r=0;Input in;
+ int r=0;Input in;int extraReset=0;
+#ifdef CROSSPOINT_EXPERIMENTAL_STATS_RESTORE
+ extraReset=1;
+#endif
  for(bool chapters:{false,true})for(bool touch:{false,true}){
-  M menu(r,in,"Book",chapters,touch);assert(menu.count==8+int(chapters)+int(touch));
+  M menu(r,in,"Book",chapters,touch);assert(menu.count==8+extraReset+int(chapters)+int(touch));
   bool hasChapter=false;for(size_t i=0;i<menu.count;++i)hasChapter|=menu.items[i].action==A::Chapters;
   assert(hasChapter==chapters);menu.activateIndex(-1);menu.activateIndex(menu.count);assert(!menu.finished);
   if(touch){menu.activateIndex(menu.count-1);assert(!menu.finished&&menu.updates==1);}
@@ -149,7 +162,7 @@ int main(){
   assert(xtcPageForPercent(-1,pages)==0&&xtcPageForPercent(INT_MAX,pages)==pages-1);
  }
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
- M completionMenu(r,in,"Book",true,true,true,false);assert(completionMenu.count==11);
+ M completionMenu(r,in,"Book",true,true,true,false);assert(completionMenu.count==11+extraReset);
  bool found=false;for(size_t i=0;i<completionMenu.count;++i)if(completionMenu.items[i].action==A::Completion){
   found=true;assert(completionMenu.items[i].label==StrId::STR_MARK_FINISHED);}
  assert(found);
@@ -165,6 +178,23 @@ int main(){
  reader.bookPath="/read/book.xtc";reader.toggleCompletion();assert(reader.completionEdits==3);
  reader.pageRendered=false;reader.toggleCompletion();assert(reader.completionEdits==3);
 #endif
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+ const auto savedResetPage=reader.currentPage;
+ reader.pageRendered=true;reader.openReaderMenu();reader.complete({false,MenuResult{int(A::ResetStatistics)}});
+ assert(reader.lastKind==5&&reader.readingStats.resets==0);
+ reader.complete({true,{}});assert(reader.lastKind==1&&reader.readingStats.resets==0);
+ reader.complete({false,MenuResult{int(A::ResetStatistics)}});reader.complete({false,{}});
+ assert(reader.readingStats.resets==1);
+ reader.readingStats.next=statsbackup::BookRestoreResult::Unavailable;
+ reader.confirmStatisticsReset();reader.complete({false,{}});assert(reader.readingStats.resets==2&&reader.lastKind==5);
+ reader.readingStats.next=statsbackup::BookRestoreResult::Restored;reader.complete({false,{}});
+ assert(reader.readingStats.resets==3);
+ reader.readingStats.next=statsbackup::BookRestoreResult::RecoveryRequired;
+ reader.confirmStatisticsReset();reader.complete({false,{}});assert(reader.readingStats.resets==4);
+ int homes=reader.home;reader.complete({false,{}});assert(reader.home==homes+1&&reader.readingStats.resets==4);
+ failKind=5;int resets=reader.readingStats.resets;reader.confirmStatisticsReset();assert(reader.readingStats.resets==resets);
+ assert(reader.currentPage==savedResetPage);
+#endif
  assert(xtcPageForPercent(100,0)==0&&xtcPageForPercent(50,100)==49);
 }
 '''
@@ -172,7 +202,7 @@ code = code.replace("__IDS__", ",".join(ids)).replace("__ACTIONS__", actions)
 with tempfile.TemporaryDirectory() as directory:
     directory=Path(directory)
     (directory/"test.cpp").write_text(code)
-    for flags in ([], ["-DCROSSPOINT_EXPERIMENTAL_COMPLETION"]):
+    for flags in ([], ["-DCROSSPOINT_EXPERIMENTAL_COMPLETION", "-DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE"]):
         subprocess.run(["c++","-std=c++20",*flags,"-I",str(root/"src"),str(directory/"test.cpp"),"-o",str(directory/"test")],check=True)
         subprocess.run([str(directory/"test")],check=True)
 print("XTC menu, cancel paths, allocation failures, and percentage bounds passed")

@@ -266,6 +266,47 @@ bool ReaderStats::refreshTracking(const std::string& cachePath, const std::strin
   return active;
 }
 
+statsbackup::BookRestoreResult ReaderStats::resetBookStatistics(const std::string& cachePath,
+                                                                const std::string& bookPath, bool globalTracking,
+                                                                uint16_t requestedIdleSeconds, bool enableCompletion) {
+  using Result = statsbackup::BookRestoreResult;
+  if (completionRecoveryPending || (!directory.empty() && directory != readingstats::bookDirectory(cachePath)) ||
+      !finish())
+    return Result::Unavailable;
+  struct Request {
+    const std::string& cache;
+    const std::string& path;
+    Result result = Result::Unavailable;
+  } request{cachePath, bookPath};
+  const auto reset = [](void* raw) {
+    auto& input = *static_cast<Request*>(raw);
+    input.result = statsbackup::resetBookStatistics(input.cache, input.path);
+    return input.result == Result::Restored;
+  };
+  const auto outcome = lease.withExclusiveSuspension(reset, &request);
+  if (outcome == StatsSessionLease::SuspensionResult::NotHeld) reset(&request);
+  if (outcome == StatsSessionLease::SuspensionResult::Busy) return Result::Busy;
+  if (outcome == StatsSessionLease::SuspensionResult::RecoveryRequired || request.result == Result::WriteUncertain ||
+      request.result == Result::RecoveryRequired) {
+    active = false;
+    completionAvailable = false;
+    startUnavailable = true;
+    session = {};
+    lease.release();
+    return Result::RecoveryRequired;
+  }
+  if (request.result != Result::Restored) return request.result;
+  active = false;
+  completionAvailable = false;
+  session = {};
+  if (!lease.release()) {
+    startUnavailable = true;
+    return Result::Unavailable;
+  }
+  begin(cachePath, bookPath, globalTracking, requestedIdleSeconds, enableCompletion);
+  return Result::Restored;
+}
+
 bool ReaderStats::finish() {
   if (!active) return true;
   pause();

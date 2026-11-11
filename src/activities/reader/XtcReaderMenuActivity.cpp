@@ -12,6 +12,9 @@ size_t XtcReaderMenuActivity::buildItems(std::array<MenuItem, MAX_ITEMS>& items,
   items[count++] = {MenuAction::Percent, StrId::STR_GO_TO_PERCENT};
   items[count++] = {MenuAction::Statistics, StrId::STR_READING_STATISTICS};
   items[count++] = {MenuAction::Tracking, StrId::STR_TRACK_READING_STATS};
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+  items[count++] = {MenuAction::ResetStatistics, StrId::STR_BOOK_STATS_RESET};
+#endif
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
   if (completionKnown)
     items[count++] = {MenuAction::Completion, completed ? StrId::STR_MARK_UNFINISHED : StrId::STR_MARK_FINISHED};

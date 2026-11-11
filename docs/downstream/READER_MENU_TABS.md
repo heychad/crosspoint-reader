@@ -38,7 +38,8 @@ instead of truncated. The panes do not add a live book-text preview.
 
 Other RC drawer features remain unfinished. The separate [XTC menu](XTC_READER_MENU.md)
 now includes navigation, live tracking, completion-gated finished status, and
-state-preserving image-cache reset; statistics deletion remains unfinished.
+state-preserving image-cache reset. Statistics deletion is available behind
+the statistics-restore flag, with session coordination and backup.
 Later-scope dictionary/font-engine
 features are not added.
 
