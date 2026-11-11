@@ -51,7 +51,7 @@ namespace ReaderUtils {bool touch=false;bool isTouchMenuGesture(int&,Input&){ret
 namespace haptic_feedback {int events=0;void touchAction(){++events;}}
 struct {uint8_t touchReaderControls=1;int saves=0;void saveToFile(){++saves;}}SETTINGS;
 struct XtcReaderMenuActivity {
- static constexpr int kind=1,MAX_ITEMS=8;
+ static constexpr int kind=1,MAX_ITEMS=9;
  enum class MenuAction {__ACTIONS__};struct MenuItem{MenuAction action;StrId label;};
  std::array<MenuItem,MAX_ITEMS>items{};size_t count=0;bool finished=false;int updates=0;
  struct {int selected=0;}nav;Input mappedInput;struct {void clearTapFlash(){}}app;
@@ -76,11 +76,12 @@ template<class T,class...A>std::unique_ptr<T>makeUniqueNoThrow(A&&...args){
 }
 struct XtcReaderActivity {
  std::shared_ptr<FakeXtc>xtc=std::make_shared<FakeXtc>();uint32_t currentPage=23;
- int renderer=0,lastKind=0,updates=0,quick=0,home=0;Input mappedInput;
+ int renderer=0,lastKind=0,updates=0,quick=0,home=0,trackingRequests=0;Input mappedInput;
  readershortcuts::Action last=readershortcuts::Action::Default;
  std::function<void(const ActivityResult&)>callback;
  void requestUpdate(){++updates;}int getProgressPercent(){return 24;}
  bool handleReaderShortcut(readershortcuts::Action a){last=a;return true;}
+ void openReadingStatistics(bool toggle){assert(toggle);last=readershortcuts::Action::ReadingStatistics; ++trackingRequests;}
  void openQuickActions(){++quick;}void onGoHome(){++home;}
  template<class T,class F>void startActivityForResult(std::unique_ptr<T>,F f){lastKind=T::kind;callback=std::move(f);}
  void complete(ActivityResult result){auto done=callback;done(result);}
@@ -91,7 +92,7 @@ int main(){
  using M=XtcReaderMenuActivity;using A=M::MenuAction;
  int r=0;Input in;
  for(bool chapters:{false,true})for(bool touch:{false,true}){
-  M menu(r,in,"Book",chapters,touch);assert(menu.count==6+int(chapters)+int(touch));
+  M menu(r,in,"Book",chapters,touch);assert(menu.count==7+int(chapters)+int(touch));
   bool hasChapter=false;for(size_t i=0;i<menu.count;++i)hasChapter|=menu.items[i].action==A::Chapters;
   assert(hasChapter==chapters);menu.activateIndex(-1);menu.activateIndex(menu.count);assert(!menu.finished);
   if(touch){menu.activateIndex(menu.count-1);assert(!menu.finished&&menu.updates==1);}
@@ -111,6 +112,7 @@ int main(){
  reader.complete({false,MenuResult{int(A::Chapters)}});reader.complete({false,PageResult{17}});assert(reader.currentPage==17);
  reader.openReaderMenu();reader.complete({false,MenuResult{int(A::Statistics)}});
  assert(reader.last==readershortcuts::Action::ReadingStatistics);
+ reader.complete({false,MenuResult{int(A::Tracking)}});assert(reader.trackingRequests==1);
  reader.complete({false,MenuResult{int(A::QuickActions)}});assert(reader.quick==1);
  reader.complete({false,MenuResult{int(A::Library)}});assert(reader.last==readershortcuts::Action::Library);
  reader.complete({false,MenuResult{int(A::Home)}});assert(reader.home==1);

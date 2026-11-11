@@ -557,7 +557,27 @@ void ReadingStatsActivity::activateIndex(int index) {
   requestUpdate();
 }
 
+bool ReadingStatsActivity::applyRequestedTrackingToggle() {
+  if (!pendingTrackingToggle || trackingStatus == TrackingStatus::Checking) return false;
+  RenderLock lock(*this);
+  pendingTrackingToggle = false;
+  tab = Tab::Book;
+  for (size_t i = 0; i < sizeof(BOOK_ROWS) / sizeof(BOOK_ROWS[0]); ++i) {
+    if (BOOK_ROWS[i] == Row::Tracking) {
+      moveRingTo(static_cast<int>(i) + 1);
+      break;
+    }
+  }
+  if (trackingStatus == TrackingStatus::On)
+    trackingStatus = TrackingStatus::SavingOff;
+  else if (trackingStatus == TrackingStatus::Off)
+    trackingStatus = TrackingStatus::SavingOn;
+  requestUpdate();
+  return true;
+}
+
 void ReadingStatsActivity::loop() {
+  if (applyRequestedTrackingToggle()) return;
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
   if (resetPending) {
     requestUpdateAndWait();

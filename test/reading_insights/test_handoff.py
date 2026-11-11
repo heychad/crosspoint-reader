@@ -5,9 +5,10 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/activities/reader/ReaderGestureInput.cpp").read_text()
-start = source.index("    case Action::ReadingStatistics: {") + len("    case Action::ReadingStatistics: {")
-end = source.index("    case Action::ToggleNight:", start)
-body = source[start:end].rsplit("    }", 1)[0]
+start = source.index("void ReaderActivity::openReadingStatistics(bool toggleTracking) {")
+start = source.index("{", start) + 1
+end = source.index("\nbool ReaderActivity::handleReaderShortcut", start)
+body = source[start:end].rsplit("}", 1)[0]
 code = r'''
 #include <atomic>
 #include <cassert>
@@ -30,6 +31,7 @@ BookReadingStats loadBook(const std::string&cache,const std::string&book,bool&tr
 }
 }
 struct ReadingStatsActivity {
+ bool toggleRequested=false;void requestTrackingToggle(){toggleRequested=bookContext;}
  bool bookContext=false,saved=true,tracking=true;int progress=-1;void* liveStats=nullptr;
  ReadingStatsActivity(GfxRenderer&,Input&){}
  ReadingStatsActivity(GfxRenderer&,Input&,std::string title,const BookReadingStats&,const GlobalReadingStats&,int p,bool t,bool s,const std::string& cache,const std::string& book,void* live)
@@ -54,20 +56,20 @@ struct Reader {
  void startActivityForResult(std::unique_ptr<ReadingStatsActivity>screen,std::function<void(const ActivityResult&)>){
  assert(locks==0);shown=std::move(screen);
  }
- bool open(){
+ void open(bool toggleTracking=false){
 ''' + body + r'''
  }
 };
 int main(){
  Reader reader;reader.readingStats.saved=false;
- assert(reader.open()&&reader.shown&&reader.readingStats.calls==1);
+ reader.open();assert(reader.shown&&reader.readingStats.calls==1&&!reader.shown->toggleRequested);
  assert(reader.shown->bookContext&&!reader.shown->saved&&reader.shown->tracking&&reader.shown->progress==3888&&reader.shown->liveStats==&reader.readingStats);
  Reader disabled;disabled.readingStats.active=false;
- assert(disabled.open()&&disabled.shown&&!disabled.shown->tracking&&!disabled.shown->liveStats);
+ disabled.open(true);assert(disabled.shown&&!disabled.shown->tracking&&!disabled.shown->liveStats&&disabled.shown->toggleRequested);
  Reader loading;loading.pageRendered=false;
- assert(loading.open()&&loading.shown&&!loading.shown->bookContext&&loading.readingStats.pauses==1);
+ loading.open(true);assert(loading.shown&&!loading.shown->bookContext&&loading.readingStats.pauses==1&&!loading.shown->toggleRequested);
  Reader failed;allocationFails=true;
- assert(failed.open()&&!failed.shown&&failed.updates==1&&failed.readingStats.calls==1);
+ failed.open(true);assert(!failed.shown&&failed.updates==1&&failed.readingStats.calls==1);
  assert(locks==0);
 }
 '''

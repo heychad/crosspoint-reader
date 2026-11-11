@@ -31,6 +31,7 @@ class ReaderActivity : public Activity {
   virtual bool handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None);
   virtual bool supportsReaderShortcut(readershortcuts::Action action) const;
   void openQuickActions();
+  void openReadingStatistics(bool toggleTracking = false);
   bool handlePendingQuickAction();
   bool handleHomeReaderShortcut();
   std::atomic<readershortcuts::Action> pendingQuickAction{readershortcuts::Action::Default};

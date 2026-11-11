@@ -10,6 +10,7 @@ size_t XtcReaderMenuActivity::buildItems(std::array<MenuItem, MAX_ITEMS>& items,
   if (hasChapters) items[count++] = {MenuAction::Chapters, StrId::STR_SELECT_CHAPTER};
   items[count++] = {MenuAction::Percent, StrId::STR_GO_TO_PERCENT};
   items[count++] = {MenuAction::Statistics, StrId::STR_READING_STATISTICS};
+  items[count++] = {MenuAction::Tracking, StrId::STR_TRACK_READING_STATS};
   items[count++] = {MenuAction::QuickActions, StrId::STR_QUICK_ACTIONS};
   items[count++] = {MenuAction::Controls, StrId::STR_CAT_CONTROLS};
   items[count++] = {MenuAction::Library, StrId::STR_LIBRARY};

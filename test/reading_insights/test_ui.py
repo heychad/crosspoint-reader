@@ -647,6 +647,29 @@ int main(){
  assert(backupCalls==priorBackupCalls+1 && value(book,ReadingStatsActivity::Row::BackupBook)=="STR_STATS_BACKUP_SAVED");
  book.saved=false;book.activateIndex(bookBackupRow);assert(value(book,ReadingStatsActivity::Row::BackupBook)=="STR_STATS_BACKUP_UNAVAILABLE");book.saved=true;
 
+ // A reader-menu request waits for the marker read and toggles exactly once.
+ const int writesBeforeRequest=trackingWrites;
+ trackingWriteOk=true;trackingFixture=booktracking::State::Disabled;
+ ReadingStatsActivity requested(renderer,input,"B",stats,localFixture,100,true,true,"cache","book",nullptr);
+ requested.requestTrackingToggle();requested.onEnter();
+ requested.loop();assert(trackingWrites==writesBeforeRequest && requested.pendingTrackingToggle);
+ requested.loop();assert(!requested.pendingTrackingToggle && trackingWrites==writesBeforeRequest);
+ assert(requested.rowAt(requested.ringPos()-1)==ReadingStatsActivity::Row::Tracking);
+ requested.loop();assert(trackingWrites==writesBeforeRequest+1 && trackingFixture==booktracking::State::Enabled);
+ requested.loop();assert(trackingWrites==writesBeforeRequest+1);
+ requested.requestTrackingToggle();requested.loop();requested.loop();
+ assert(trackingWrites==writesBeforeRequest+2 && trackingFixture==booktracking::State::Disabled);
+ trackingWriteOk=false;requested.requestTrackingToggle();requested.loop();requested.loop();
+ assert(trackingWrites==writesBeforeRequest+3 && trackingFixture==booktracking::State::Disabled);
+ assert(value(requested,ReadingStatsActivity::Row::Tracking)=="STR_STATS_TRACKING_CHECK_AGAIN");
+ requested.loop();assert(trackingWrites==writesBeforeRequest+3);
+ trackingFixture=booktracking::State::Unknown;
+ ReadingStatsActivity unknown(renderer,input,"B",stats,localFixture,100,true,true,"cache","book",nullptr);
+ unknown.requestTrackingToggle();unknown.onEnter();unknown.loop();unknown.loop();
+ assert(!unknown.pendingTrackingToggle && trackingWrites==writesBeforeRequest+3);
+ assert(value(unknown,ReadingStatsActivity::Row::Tracking)=="STR_STATS_TRACKING_CHECK_AGAIN");
+ device.requestTrackingToggle();assert(!device.pendingTrackingToggle);
+ trackingFixture=booktracking::State::Disabled;trackingWrites=0;trackingWriteOk=true;
  int trackingRow=-1;for(int i=0;i<book.listCount();++i)if(book.rowAt(i)==ReadingStatsActivity::Row::Tracking)trackingRow=i;
  assert(trackingRow>=0);book.activateIndex(trackingRow);assert(trackingWrites==0);book.loop();
  assert(trackingWrites==1 && value(book,ReadingStatsActivity::Row::Tracking)=="STR_STATS_TRACKING_NEXT_ON");

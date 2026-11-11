@@ -96,6 +96,9 @@ void XtcReaderActivity::openReaderMenu() {
       case M::Statistics:
         handleReaderShortcut(readershortcuts::Action::ReadingStatistics);
         break;
+      case M::Tracking:
+        openReadingStatistics(true);
+        break;
       case M::QuickActions:
         openQuickActions();
         break;

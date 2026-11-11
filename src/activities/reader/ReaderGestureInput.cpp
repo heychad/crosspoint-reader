@@ -13,6 +13,37 @@
 
 using readershortcuts::Action;
 
+void ReaderActivity::openReadingStatistics(bool toggleTracking) {
+  std::unique_ptr<ReadingStatsActivity> screen;
+  {
+    RenderLock lock(*this);
+    if (pageRendered.load(std::memory_order_acquire)) {
+      bool tracking = true;
+      bool saved = true;
+      BookReadingStats book;
+      GlobalReadingStats global;
+      const bool liveStats = readingStats.snapshot(book, global, saved);
+      if (!liveStats) {
+        book = readingstats::loadBook(getBookCachePath(), bookPath, tracking);
+        global = GlobalReadingStats::load();
+      }
+      screen = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput, getBookTitle(), book, global,
+                                                       getProgressBasisPoints(), tracking, saved, getBookCachePath(),
+                                                       bookPath, liveStats ? &readingStats : nullptr);
+    } else {
+      readingStats.pause();
+      screen = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput);
+    }
+  }
+  if (!screen) {
+    LOG_ERR("READER", "OOM: reading statistics");
+    requestUpdate();
+    return;
+  }
+  if (toggleTracking) screen->requestTrackingToggle();
+  startActivityForResult(std::move(screen), [this](const ActivityResult&) { requestUpdate(); });
+}
+
 bool ReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger trigger) {
   switch (action) {
     case Action::SleepOnly:
@@ -72,36 +103,9 @@ bool ReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger trigge
       activityManager.goToSavedItems();
       requestUpdate();
       return true;
-    case Action::ReadingStatistics: {
-      std::unique_ptr<ReadingStatsActivity> screen;
-      {
-        RenderLock lock(*this);
-        if (pageRendered.load(std::memory_order_acquire)) {
-          bool tracking = true;
-          bool saved = true;
-          BookReadingStats book;
-          GlobalReadingStats global;
-          const bool liveStats = readingStats.snapshot(book, global, saved);
-          if (!liveStats) {
-            book = readingstats::loadBook(getBookCachePath(), bookPath, tracking);
-            global = GlobalReadingStats::load();
-          }
-          screen = makeUniqueNoThrow<ReadingStatsActivity>(
-              renderer, mappedInput, getBookTitle(), book, global, getProgressBasisPoints(), tracking, saved,
-              getBookCachePath(), bookPath, liveStats ? &readingStats : nullptr);
-        } else {
-          readingStats.pause();
-          screen = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput);
-        }
-      }
-      if (!screen) {
-        LOG_ERR("READER", "OOM: reading statistics");
-        requestUpdate();
-        return true;
-      }
-      startActivityForResult(std::move(screen), [this](const ActivityResult&) { requestUpdate(); });
+    case Action::ReadingStatistics:
+      openReadingStatistics();
       return true;
-    }
     case Action::ToggleNight: {
       {
         RenderLock lock(*this);

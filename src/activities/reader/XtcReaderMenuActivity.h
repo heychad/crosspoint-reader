@@ -7,12 +7,12 @@
 
 class XtcReaderMenuActivity final : public UiListActivity {
  public:
-  enum class MenuAction { Chapters, Percent, Statistics, QuickActions, Controls, Library, Home, Touch };
+  enum class MenuAction { Chapters, Percent, Statistics, QuickActions, Controls, Library, Home, Touch, Tracking };
   struct MenuItem {
     MenuAction action;
     StrId label;
   };
-  static constexpr size_t MAX_ITEMS = 8;
+  static constexpr size_t MAX_ITEMS = 9;
   static size_t buildItems(std::array<MenuItem, MAX_ITEMS>& items, bool hasChapters, bool hasTouch);
   XtcReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& input, std::string title, bool hasChapters,
                         bool hasTouch);

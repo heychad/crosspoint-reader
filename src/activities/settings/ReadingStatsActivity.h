@@ -19,6 +19,7 @@ class ReadingStatsActivity final : public UiTabListActivity {
   void onExit() override;
   void prepareForSleep() override;
   void loop() override;
+  void requestTrackingToggle() { pendingTrackingToggle = hasBook; }
 
  private:
   enum class Tab : uint8_t { Book, Device, AllDevices };
@@ -135,6 +136,8 @@ class ReadingStatsActivity final : public UiTabListActivity {
   std::string trackingBookPath;
   enum class TrackingStatus : uint8_t { Checking, On, Off, SavingOn, SavingOff, Failed };
   TrackingStatus trackingStatus = TrackingStatus::Checking;
+  bool pendingTrackingToggle = false;
+  bool applyRequestedTrackingToggle();
   enum class BackupStatus : uint8_t { None, Saving, Saved, Failed, Unavailable };
   BackupStatus backupStatus = BackupStatus::None;
   BackupStatus bookBackupStatus = BackupStatus::None;
