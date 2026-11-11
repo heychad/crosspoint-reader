@@ -1020,3 +1020,33 @@ TEST(ReaderShortcuts, RcNetworkAndGestureActionsUseTheirOwnLegacyIds) {
   EXPECT_TRUE(crossinkimport::stageGestureControls(legacy.as<JsonVariantConst>(), current, true));
   EXPECT_EQ(current["disablePageTurnGestures"].as<int>(), 0);
 }
+
+TEST(ReaderPageLayout, IndependentAxesRespectOrientedInsetsAndBars) {
+  for (const auto dimensions : {std::array{480, 800}, std::array{800, 480}}) {
+    for (const auto insets : {std::array{0, 0, 0, 0}, std::array{8, 12, 16, 20}, std::array{16, 20, 8, 12}}) {
+      for (int horizontal : {5, 17, 150})
+        for (int vertical : {5, 23, 150}) {
+          const auto layout = makeReaderPageLayout(dimensions[0], dimensions[1], insets[0], insets[1], insets[2],
+                                                   insets[3], horizontal, vertical, 30, 24);
+          EXPECT_EQ(layout.left, insets[3] + horizontal);
+          EXPECT_EQ(layout.right, insets[1] + horizontal);
+          EXPECT_EQ(layout.top, insets[0] + std::max(vertical, 30));
+          EXPECT_EQ(layout.bottom, insets[2] + std::max(vertical, 24));
+          EXPECT_EQ(layout.width, std::max(1, dimensions[0] - layout.left - layout.right));
+          EXPECT_EQ(layout.height, std::max(1, dimensions[1] - layout.top - layout.bottom));
+        }
+    }
+  }
+}
+TEST(ReaderPageLayout, SingleMarginCompatibilityMatchesBothAxes) {
+  for (int margin : {5, 10, 40}) {
+    const auto old = makeReaderPageLayout(480, 800, 8, 12, 16, 20, margin, 30, 24);
+    const auto pair = makeReaderPageLayout(480, 800, 8, 12, 16, 20, margin, margin, 30, 24);
+    EXPECT_EQ(old.top, pair.top);
+    EXPECT_EQ(old.right, pair.right);
+    EXPECT_EQ(old.bottom, pair.bottom);
+    EXPECT_EQ(old.left, pair.left);
+    EXPECT_EQ(old.width, pair.width);
+    EXPECT_EQ(old.height, pair.height);
+  }
+}

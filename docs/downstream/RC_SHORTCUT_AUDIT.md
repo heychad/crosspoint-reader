@@ -59,3 +59,16 @@ passed all 1,781 tests before this bounded ownership-table change.
 The catalog audit is complete for the selected X4 Pro scope. Cumulative release
 review, enabling unfinished experimental features, and device validation remain.
 The audit must be revisited when selecting a different CrossInk tag.
+
+## Native-control reconciliation
+
+The current `SettingsList.cpp` exposes the native Power, side, chord, and Home
+controls. `ReaderGestureInput.cpp` dispatches shared reader actions;
+`EpubReaderShortcuts.cpp` adds the format-specific actions and availability
+gates. Together with the completed catalog audit, this establishes A2's selected
+X4 Pro implementation. Migration gaps remain G3 work, and absent controls from
+other boards are not X4 Pro gaps. No hardware acceptance is inferred.
+
+A fresh scoped run passed 137 shortcut, ownership, preference, and menu checks
+in 1.26 seconds. The original A2 table entry was stale after the later mapping
+work; it is now marked Built. No input code was changed by this reconciliation.

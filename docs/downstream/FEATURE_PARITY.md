@@ -25,10 +25,10 @@ inventory below records an earlier stage and is not the current status.
 | Choice | Current state |
 | --- | --- |
 | A1 Custom top and bottom bars | Built, including full-width filled progress bars and book/section time-left. Test2 bars were checked on the reader; later changes need device checks. |
-| A2 Button remapping and shortcuts | Reader bindings, optional orientation-aware side shortcuts, and additional Home-button actions built, including previous page, screenshot, night mode, reader touch, tilt, and sleep; full CrossInk mapping parity remains. |
+| A2 Button remapping and shortcuts | Built for the selected X4 Pro inputs: side tap/hold and orientation handling, Power tap/hold, Power+Up, Up+Down, and Home tap/hold/double-tap. The [RC catalog audit](RC_SHORTCUT_AUDIT.md) covers mappings and ownership. Actions retain their hardware, format, and experimental-feature gates. Device acceptance remains. |
 | A3 Touch gestures and Quick Lock | Built; hardware and interaction checks remain. |
 | A4 Five-slot Quick Actions | Built; the reader menu and toolbar More panel now provide direct access as well as shortcut triggers. Hardware checks remain. |
-| A5 Per-book reading layout | Native overrides built; compatible CrossInk binary values can load when native preferences are absent. Unsupported fields and Safe Mode need further migration work. |
+| A5 Per-book reading layout | Native overrides built. The viewport helper now accepts independent horizontal/vertical margins while preserving old single-margin callers; settings, menu, preview, and preference wiring remain. Compatible binary imports exist; unsupported fields and Safe Mode migration remain under G3. |
 | A9 Extra actions and legacy mappings | Built for the selected X4 Pro scope. The tagged RC catalog audit covers power, side, chord, Home, Quick Actions slots, and gesture mappings. Includes Home/Reader, chapter selection, rotation, network entry, and distinct power sleep/wake modes. Invoked experimental features keep their own gates; cumulative review and device checks remain. |
 | B1 Format and finished-book filters | Built; completion data that cannot be read stays visible. |
 | B2 Compact rows and filenames | Built. |
@@ -200,7 +200,7 @@ Home, Rotate 180°, Select Chapter, and Cycle Auto Turn.
 
 The subsequent batch adds the independent page-gesture toggle and direct
 network-mode entry points described below. Guide dots remain in the Later
-scope; Nearby stays skipped. The overall A2, A9, and G3 audit remains open.
+scope; Nearby stays skipped. This earlier checkpoint left A2, A9, and G3 open; the later [RC catalog audit](RC_SHORTCUT_AUDIT.md) closes selected X4 Pro mapping coverage. G3 remains open.
 
 The mapping follow-up passed 41 focused input, navigation, and migration checks
 and the X4 Pro firmware build (120.34 seconds). It has not been tested on the

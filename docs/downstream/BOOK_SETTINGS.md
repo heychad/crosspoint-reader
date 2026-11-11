@@ -126,3 +126,21 @@ No additional settings field, allocation, or persistent format was introduced.
 The existing native override and reset paths handle the imported profile.
 Device verification remains pending: open a book with a legacy Balanced or Light
 profile, confirm the selected profile, reset it to global, and check the passage.
+
+## Independent margin port
+
+The pinned CrossInk RC has separate horizontal and vertical margins, including
+values outside this fork's old 5–40-pixel common-margin control. The viewport
+primitive now accepts both axes and reserves top/bottom bars against the
+vertical margin. The existing one-margin signature delegates with equal axes,
+so current callers retain their layout. It adds no stored state or allocation.
+
+A5 remains partial until the settings, per-book ownership, menu/preview, and
+legacy import use the new axes. Do not mark that work complete based on the
+helper alone. Tests cover portrait/landscape dimensions, oriented insets,
+unequal margins up to 150 pixels, bar reservations, and single-margin
+compatibility. The focused layout/shortcut/menu run passed 29 checks in 0.60 s.
+
+The default X4 Pro build passed after this viewport-core change in 110.18
+seconds. The new axis overload is not yet called with separate saved values;
+this checkpoint does not expose new margin controls on the device.
