@@ -93,9 +93,12 @@ for example, bounded temporary storage and a fallback when allocation fails.
 For a straightforward fix, ask whether the new behavior and its state ownership
 match their intent; do not invent a tradeoff. A generic understanding/ownership
 question does not complete handoff. Prescribe no confirmation phrase. Recognize
-explicit acceptance already given for this logical change; record it once and
-reopen only after a material design change. Continuation or commit approval alone
-does not establish understanding and ownership.
+explicit acceptance already given for this logical change, including standing
+delegation of routine design and maintenance decisions for the current task.
+Record its scope once; do not repeat per-feature acceptance questions within
+that scope. Reopen only for a material decision outside the delegation.
+Continuation or commit approval alone does not establish understanding and
+ownership.
 
 Give applicable hardware steps with expected results and likely failure signs,
 including orientations, resources, and caches when affected. Hardware testing is

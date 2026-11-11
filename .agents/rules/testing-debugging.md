@@ -20,8 +20,9 @@ is an environment issue, not a completed firmware build.
 
 ### Code Quality
 
-Use `./bin/clang-format-fix -g` on every host, including formatter diagnostics;
-never invoke or probe raw `clang-format`. Run `pio check` when relevant.
+Use `./bin/clang-format-fix -g` for staged and unstaged changes on every host;
+the commit hook uses `--staged` and leaves unrelated paths alone. Use the wrapper
+for formatter diagnostics; never invoke or probe raw `clang-format`. Run `pio check` when relevant.
 
 ### Testing and Verification Workflow
 
@@ -80,3 +81,22 @@ Use `LOG_DBG` for measurements, `LOG_LEVEL=2` for debug logging, and
 use `uxTaskGetStackHighWaterMark()`; heap diagnostics follow `HalMemory`, not
 a combined free-byte reading. The enhanced monitor plots PSRAM separately when
 those log values are supplied.
+
+### Development batch cadence
+
+- Work on one coherent feature batch. During implementation, use focused checks
+  for the behavior changed; do not run release handoff after each edit.
+- Freeze the batch before the full host suite and X4 Pro build. Run these once
+  together. If a test fixture fails, rerun its affected tests after the fix; a
+  fixture-only edit does not invalidate a successful firmware build.
+- Rebuild only when firmware source, build inputs, or dependencies changed
+  after the last successful build. A Page update, prose change, or test-only
+  correction is not a rebuild trigger.
+- Carry forward passing evidence with its revision and tested configuration.
+  Default-profile results do not validate experimental flags.
+- Before the next feature batch, make an authorized WIP checkpoint and update
+  the progress Page at the milestone. Do not turn every edit into a new status
+  report or hardware test.
+- Use independent release reviews at the existing release/handoff boundary,
+  not for routine WIP commits. Preserve reading-state and storage checks when
+  their behavior changes.
