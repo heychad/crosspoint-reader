@@ -62,3 +62,25 @@ TEST(QuickBindings, EveryPhysicalBindingParticipatesInSingleTriggerOwnership) {
     EXPECT_EQ(s.*field, QUICK);
   }
 }
+
+TEST(QuickBindings, PowerDoubleClickCanTakeAndRelinquishOwnership) {
+  CrossPointSettings s;
+  s.readerSideChord = QUICK;
+  const auto before = bindingValues(s);
+  s.doublePwrBtn = CrossPointSettings::PWR_QUICK_ACTIONS;
+  EXPECT_TRUE(normalizeChangedBindings(s, before));
+  EXPECT_EQ(s.readerSideChord, 0);
+  EXPECT_EQ(s.doublePwrBtn, CrossPointSettings::PWR_QUICK_ACTIONS);
+  s.homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::QuickActions);
+  EXPECT_TRUE(normalizeBindings(s, &CrossPointSettings::homeButtonTapAction));
+  EXPECT_EQ(s.doublePwrBtn, CrossPointSettings::PWR_FRONTLIGHT);
+  EXPECT_EQ(s.homeButtonTapAction, static_cast<uint8_t>(HomeButtonAction::QuickActions));
+}
+
+TEST(QuickBindings, OrdinaryPowerDoubleClickActionDoesNotClaimQuickActions) {
+  CrossPointSettings s;
+  s.readerSideChord = QUICK;
+  EXPECT_FALSE(normalizeBindings(s));
+  EXPECT_EQ(s.readerSideChord, QUICK);
+  EXPECT_EQ(s.doublePwrBtn, CrossPointSettings::PWR_FRONTLIGHT);
+}
