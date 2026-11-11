@@ -64,7 +64,6 @@ class EpubReaderActivity final : public ReaderActivity {
   void initializeCompletionPrompt();
   void observeCompletionPosition();
   bool showQueuedCompletionPrompt();
-  void handleCompletionAttempt(bool recovery, bool completed = true);
 #endif
   int currentSpineIndex = 0;
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)

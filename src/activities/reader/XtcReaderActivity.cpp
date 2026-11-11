@@ -19,6 +19,7 @@
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ReadFolder.h"
 
 bool XtcReaderActivity::loadBook() {
   auto loadedXtc = makeUniqueNoThrow<Xtc>(bookPath, "/.crosspoint");
@@ -74,9 +75,14 @@ void XtcReaderActivity::openPercentSelection() {
 
 void XtcReaderActivity::openReaderMenu() {
   if (!xtc) return;
+  bool completed = false;
+  bool completionKnown = false;
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+  completionKnown = completionActionAvailable(completed);
+#endif
   auto menu = makeUniqueNoThrow<XtcReaderMenuActivity>(renderer, mappedInput, xtc->getTitle(),
                                                        xtc->hasChapters() && !xtc->getChapters().empty(),
-                                                       mappedInput.hasTouch());
+                                                       mappedInput.hasTouch(), completionKnown, completed);
   if (!menu) {
     LOG_ERR("XTR", "OOM: reader menu");
     requestUpdate();
@@ -98,6 +104,11 @@ void XtcReaderActivity::openReaderMenu() {
         break;
       case M::Tracking:
         openReadingStatistics(true);
+        break;
+      case M::Completion:
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+        toggleCompletion();
+#endif
         break;
       case M::QuickActions:
         openQuickActions();
@@ -124,13 +135,40 @@ void XtcReaderActivity::openReaderMenu() {
   });
 }
 
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+bool XtcReaderActivity::completionActionAvailable(bool& completed) const {
+  RenderLock lock;
+  return pageRendered.load(std::memory_order_acquire) && readingStats.completionStatus(completed) &&
+         (completed || !SETTINGS.moveFinishedToReadFolder || isInReadFolder(bookPath));
+}
+
+void XtcReaderActivity::toggleCompletion() {
+  bool completed = false;
+  if (completionActionAvailable(completed)) handleCompletionAttempt(false, !completed);
+}
+#endif
+
 bool XtcReaderActivity::supportsReaderShortcut(readershortcuts::Action action) const {
   if (action == readershortcuts::Action::Menu) return true;
+  if (action == readershortcuts::Action::ToggleCompletion) {
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+    bool completed = false;
+    return completionActionAvailable(completed);
+#else
+    return false;
+#endif
+  }
   if (action == readershortcuts::Action::SelectChapter) return xtc && xtc->hasChapters() && !xtc->getChapters().empty();
   return ReaderActivity::supportsReaderShortcut(action);
 }
 
 bool XtcReaderActivity::handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger) {
+  if (action == readershortcuts::Action::ToggleCompletion) {
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+    toggleCompletion();
+#endif
+    return true;
+  }
   if (action == readershortcuts::Action::Menu) {
     openReaderMenu();
     return true;

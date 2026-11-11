@@ -6,6 +6,9 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / 'src/activities/reader/EpubCompletion.cpp').read_text()
 source = source[source.index('void EpubReaderActivity::initializeCompletionPrompt()'):source.rindex('#endif')]
+shared = (root / 'src/activities/reader/ReaderCompletion.cpp').read_text()
+shared = shared[shared.index('void ReaderActivity::handleCompletionAttempt('):shared.rindex('#endif')]
+source += shared.replace('ReaderActivity::', 'EpubReaderActivity::')
 reader = (root / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 page_turn = reader[reader.index('bool EpubReaderActivity::pageTurn('):reader.index('bool EpubReaderActivity::skipPages(')]
 code = r'''

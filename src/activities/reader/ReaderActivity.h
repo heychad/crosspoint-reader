@@ -51,6 +51,7 @@ class ReaderActivity : public Activity {
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
   ReaderStats::CompletionResult setBookCompleted(bool completed);
   ReaderStats::CompletionResult recoverBookCompletion();
+  void handleCompletionAttempt(bool recovery, bool completed = true);
 #endif
   std::atomic<bool> pendingStatsLoadWarning{false};
   std::atomic<bool> pendingStatsSaveWarning{false};

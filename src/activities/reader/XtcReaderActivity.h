@@ -22,6 +22,10 @@ class XtcReaderActivity final : public ReaderActivity {
   void openChapterSelection(bool returnToMenu = false);
   void openReaderMenu();
   void openPercentSelection();
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+  bool completionActionAvailable(bool& completed) const;
+  void toggleCompletion();
+#endif
   void renderStatusBarOverlay(GfxRenderer& renderer, StatusBarOverlayPosition position) const;
   StatusBarInfo getStatusBarInfo() const;
   void saveProgress() const;

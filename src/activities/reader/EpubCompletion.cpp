@@ -89,25 +89,4 @@ bool EpubReaderActivity::showQueuedCompletionPrompt() {
   return true;
 }
 
-void EpubReaderActivity::handleCompletionAttempt(bool recovery, bool completed) {
-  const auto result = recovery ? recoverBookCompletion() : setBookCompleted(completed);
-  if (result == ReaderStats::CompletionResult::Applied || result == ReaderStats::CompletionResult::Unchanged) {
-    requestUpdate();
-    return;
-  }
-  auto retry = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPLETION_RETRY_TITLE),
-                                                       tr(STR_COMPLETION_RETRY_BODY), tr(STR_CANCEL), tr(STR_RETRY));
-  if (!retry) {
-    LOG_ERR("ERS", "Could not allocate completion retry");
-    requestUpdate();
-    return;
-  }
-  const bool needsRecovery = recovery || result == ReaderStats::CompletionResult::RecoveryRequired;
-  startActivityForResult(std::move(retry), [this, needsRecovery, completed](const ActivityResult& choice) {
-    if (choice.isCancelled)
-      requestUpdate();
-    else
-      handleCompletionAttempt(needsRecovery, completed);
-  });
-}
 #endif

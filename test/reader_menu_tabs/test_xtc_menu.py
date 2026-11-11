@@ -26,10 +26,15 @@ menu_methods = "\n".join(method(menu, signature) for signature in (
 reader_methods = "\n".join(method(reader, signature) for signature in (
     "void XtcReaderActivity::openChapterSelection(", "void XtcReaderActivity::openPercentSelection()",
     "void XtcReaderActivity::openReaderMenu()", "bool XtcReaderActivity::handleFormatInput()"))
+reader_methods += "\n#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)\n" + "\n".join(
+    method(reader, signature) for signature in (
+        "bool XtcReaderActivity::completionActionAvailable(", "void XtcReaderActivity::toggleCompletion()")) + "\n#endif\n"
 actions = re.search(r'enum class MenuAction\s*\{(.*?)\};', header, re.S).group(1)
 ids = sorted(set(re.findall(r'StrId::(STR_[A-Z0-9_]+)', menu_methods)))
 code = r'''
 #include <array>
+#include <atomic>
+#include "util/ReadFolder.h"
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -49,15 +54,15 @@ struct Input {enum class Button{Back,Confirm};bool back=false,confirm=false;bool
 using MappedInputManager=Input;
 namespace ReaderUtils {bool touch=false;bool isTouchMenuGesture(int&,Input&){return touch;}}
 namespace haptic_feedback {int events=0;void touchAction(){++events;}}
-struct {uint8_t touchReaderControls=1;int saves=0;void saveToFile(){++saves;}}SETTINGS;
+struct {uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;int saves=0;void saveToFile(){++saves;}}SETTINGS;
 struct XtcReaderMenuActivity {
- static constexpr int kind=1,MAX_ITEMS=9;
+ static constexpr int kind=1,MAX_ITEMS=10;
  enum class MenuAction {__ACTIONS__};struct MenuItem{MenuAction action;StrId label;};
  std::array<MenuItem,MAX_ITEMS>items{};size_t count=0;bool finished=false;int updates=0;
  struct {int selected=0;}nav;Input mappedInput;struct {void clearTapFlash(){}}app;
  ActivityResult result;
- XtcReaderMenuActivity(int&,Input&,std::string,bool chapters,bool touch){count=buildItems(items,chapters,touch);}
- static size_t buildItems(std::array<MenuItem,MAX_ITEMS>&,bool,bool);
+ XtcReaderMenuActivity(int&,Input&,std::string,bool chapters,bool touch,bool known=false,bool done=false){count=buildItems(items,chapters,touch,known,done);}
+ static size_t buildItems(std::array<MenuItem,MAX_ITEMS>&,bool,bool,bool=false,bool=false);
  void setResult(ActivityResult r){result=r;}void setResult(MenuResult r){result.data=r;}
  void finish(){finished=true;}void requestUpdate(){++updates;}
  void cancel();bool handleHomeGesture();bool handleButtons();void activateIndex(int);
@@ -75,6 +80,11 @@ template<class T,class...A>std::unique_ptr<T>makeUniqueNoThrow(A&&...args){
  if(failKind==T::kind)return nullptr;return std::make_unique<T>(std::forward<A>(args)...);
 }
 struct XtcReaderActivity {
+ std::atomic<bool>pageRendered{true};std::string bookPath="/Books/book.xtc";
+ struct Stats{bool known=true,done=false;bool completionStatus(bool& value)const{value=done;return known;}}readingStats;
+ int completionEdits=0;bool completionTarget=false;
+ bool completionActionAvailable(bool&)const;void toggleCompletion();
+ void handleCompletionAttempt(bool recovery,bool desired){assert(!recovery);++completionEdits;completionTarget=desired;}
  std::shared_ptr<FakeXtc>xtc=std::make_shared<FakeXtc>();uint32_t currentPage=23;
  int renderer=0,lastKind=0,updates=0,quick=0,home=0,trackingRequests=0;Input mappedInput;
  readershortcuts::Action last=readershortcuts::Action::Default;
@@ -125,6 +135,23 @@ int main(){
   for(int p=0;p<=100;++p){auto page=xtcPageForPercent(p,pages);assert(page<pages&&page>=previous);previous=page;}
   assert(xtcPageForPercent(-1,pages)==0&&xtcPageForPercent(INT_MAX,pages)==pages-1);
  }
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+ M completionMenu(r,in,"Book",true,true,true,false);assert(completionMenu.count==10);
+ bool found=false;for(size_t i=0;i<completionMenu.count;++i)if(completionMenu.items[i].action==A::Completion){
+  found=true;assert(completionMenu.items[i].label==StrId::STR_MARK_FINISHED);}
+ assert(found);
+ M finishedMenu(r,in,"Book",true,true,true,true);
+ for(size_t i=0;i<finishedMenu.count;++i)if(finishedMenu.items[i].action==A::Completion)
+  assert(finishedMenu.items[i].label==StrId::STR_MARK_UNFINISHED);
+ reader.openReaderMenu();reader.complete({false,MenuResult{int(A::Completion)}});
+ assert(reader.completionEdits==1&&reader.completionTarget);
+ reader.readingStats.done=true;reader.toggleCompletion();assert(reader.completionEdits==2&&!reader.completionTarget);
+ reader.readingStats.known=false;reader.toggleCompletion();assert(reader.completionEdits==2);
+ reader.readingStats.known=true;reader.readingStats.done=false;SETTINGS.moveFinishedToReadFolder=true;
+ reader.toggleCompletion();assert(reader.completionEdits==2);
+ reader.bookPath="/read/book.xtc";reader.toggleCompletion();assert(reader.completionEdits==3);
+ reader.pageRendered=false;reader.toggleCompletion();assert(reader.completionEdits==3);
+#endif
  assert(xtcPageForPercent(100,0)==0&&xtcPageForPercent(50,100)==49);
 }
 '''
@@ -132,6 +159,7 @@ code = code.replace("__IDS__", ",".join(ids)).replace("__ACTIONS__", actions)
 with tempfile.TemporaryDirectory() as directory:
     directory=Path(directory)
     (directory/"test.cpp").write_text(code)
-    subprocess.run(["c++","-std=c++20","-I",str(root/"src"),str(directory/"test.cpp"),"-o",str(directory/"test")],check=True)
-    subprocess.run([str(directory/"test")],check=True)
+    for flags in ([], ["-DCROSSPOINT_EXPERIMENTAL_COMPLETION"]):
+        subprocess.run(["c++","-std=c++20",*flags,"-I",str(root/"src"),str(directory/"test.cpp"),"-o",str(directory/"test")],check=True)
+        subprocess.run([str(directory/"test")],check=True)
 print("XTC menu, cancel paths, allocation failures, and percentage bounds passed")

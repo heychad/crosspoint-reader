@@ -1,9 +1,13 @@
 #include "ReaderActivity.h"
 
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+#include <I18n.h>
+#include <Memory.h>
+
 #include "CrossPointSettings.h"
 #include "ReadingStatsUtils.h"
 #include "RecentBooksStore.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "util/ReadFolder.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
 #include <FsHelpers.h>
@@ -32,5 +36,26 @@ ReaderStats::CompletionResult ReaderActivity::setBookCompleted(bool completed) {
 ReaderStats::CompletionResult ReaderActivity::recoverBookCompletion() {
   RenderLock lock;
   return readingStats.recoverCompletionStats(getBookCachePath(), bookPath, removeRecent);
+}
+void ReaderActivity::handleCompletionAttempt(bool recovery, bool completed) {
+  const auto result = recovery ? recoverBookCompletion() : setBookCompleted(completed);
+  if (result == ReaderStats::CompletionResult::Applied || result == ReaderStats::CompletionResult::Unchanged) {
+    requestUpdate();
+    return;
+  }
+  auto retry = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPLETION_RETRY_TITLE),
+                                                       tr(STR_COMPLETION_RETRY_BODY), tr(STR_CANCEL), tr(STR_RETRY));
+  if (!retry) {
+    LOG_ERR("READER", "Could not allocate completion retry");
+    requestUpdate();
+    return;
+  }
+  const bool needsRecovery = recovery || result == ReaderStats::CompletionResult::RecoveryRequired;
+  startActivityForResult(std::move(retry), [this, needsRecovery, completed](const ActivityResult& choice) {
+    if (choice.isCancelled)
+      requestUpdate();
+    else
+      handleCompletionAttempt(needsRecovery, completed);
+  });
 }
 #endif

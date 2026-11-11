@@ -20,7 +20,7 @@ for index in range(opening, len(recents)):
 else:
     raise RuntimeError('Recents method not found')
 adapter = (root / 'src/activities/reader/ReaderCompletion.cpp').read_text()
-adapter = adapter[adapter.index('namespace {'):adapter.rindex('#endif')]
+adapter = adapter[adapter.index('namespace {'):adapter.index('void ReaderActivity::handleCompletionAttempt(')]
 code = r'''
 #include <algorithm>
 #include <atomic>

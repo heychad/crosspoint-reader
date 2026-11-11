@@ -5,12 +5,20 @@
 
 namespace fui = freeink::ui;
 
-size_t XtcReaderMenuActivity::buildItems(std::array<MenuItem, MAX_ITEMS>& items, bool hasChapters, bool hasTouch) {
+size_t XtcReaderMenuActivity::buildItems(std::array<MenuItem, MAX_ITEMS>& items, bool hasChapters, bool hasTouch,
+                                         bool completionKnown, bool completed) {
   size_t count = 0;
   if (hasChapters) items[count++] = {MenuAction::Chapters, StrId::STR_SELECT_CHAPTER};
   items[count++] = {MenuAction::Percent, StrId::STR_GO_TO_PERCENT};
   items[count++] = {MenuAction::Statistics, StrId::STR_READING_STATISTICS};
   items[count++] = {MenuAction::Tracking, StrId::STR_TRACK_READING_STATS};
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+  if (completionKnown)
+    items[count++] = {MenuAction::Completion, completed ? StrId::STR_MARK_UNFINISHED : StrId::STR_MARK_FINISHED};
+#else
+  (void)completionKnown;
+  (void)completed;
+#endif
   items[count++] = {MenuAction::QuickActions, StrId::STR_QUICK_ACTIONS};
   items[count++] = {MenuAction::Controls, StrId::STR_CAT_CONTROLS};
   items[count++] = {MenuAction::Library, StrId::STR_LIBRARY};
@@ -20,10 +28,10 @@ size_t XtcReaderMenuActivity::buildItems(std::array<MenuItem, MAX_ITEMS>& items,
 }
 
 XtcReaderMenuActivity::XtcReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& input, std::string title,
-                                             bool hasChapters, bool hasTouch)
+                                             bool hasChapters, bool hasTouch, bool completionKnown, bool completed)
     : UiListActivity("XtcReaderMenu", renderer, input),
       title(std::move(title)),
-      count(buildItems(items, hasChapters, hasTouch)) {}
+      count(buildItems(items, hasChapters, hasTouch, completionKnown, completed)) {}
 
 void XtcReaderMenuActivity::cancel() {
   ActivityResult result;
