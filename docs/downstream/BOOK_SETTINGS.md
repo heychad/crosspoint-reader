@@ -35,7 +35,7 @@ pending and this behavior still requires device validation.
 
 `scripts/preview_crossink_book_settings.py` inspects a local copy of a CrossInk
 record without writing settings. It reports directly comparable values as
-candidates and lists remaining settings for review. Versions 1–10 are decoded;
+candidates and lists remaining settings for review. Versions 1–13 are decoded;
 an optional local `--current` native preferences copy identifies conflicts.
 An existing native file takes precedence as a whole; the tool does not propose
 a patch or apply a migration.
@@ -55,3 +55,17 @@ The scope contains two 46-byte layout snapshots, a 32-bit mask, and its enabled 
 7. With a backup in hand, test a write failure or unsupported preference version. Saving should report failure after the next reader repaint, keep the existing file intact, and leave global defaults intact after exit. Sleep and exit log failures when a dialog cannot be retained.
 
 Software checks, review coverage, and firmware hashes are recorded with the candidate artifact. Hardware validation is pending.
+
+## CrossInk RC records
+
+Versions 11–13 add image grayscale, half-pixel character spacing, and publisher
+fonts. The decoder validates the version-specific byte count and override mask.
+The preview retains unsupported fields rather than treating them as older data.
+
+Image Display plus an explicit grayscale override maps to the matching native
+Display or Display (B&W) choice only when both fields are owned by the book.
+Whole-pixel character spacing within the native -2 to +2 range maps exactly;
+half-pixel values, wider spacing, fonts, and publisher-font choices remain
+unmapped. The original CrossInk file is never rewritten. Existing native book
+preferences still take precedence, and CrossInk Safe Mode still prevents a
+partial import.

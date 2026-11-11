@@ -19,6 +19,6 @@ int main() {
     }
     std::cout << result.nativeMask;
     for (const auto value : result.values) std::cout << ' ' << static_cast<unsigned>(value);
-    std::cout << '\n';
+    std::cout << ' ' << result.unmappedMask << ' ' << static_cast<unsigned>(result.extraFlags) << '\n';
   }
 }

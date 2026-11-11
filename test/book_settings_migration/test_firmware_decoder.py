@@ -12,12 +12,23 @@ FIELDS = ('fontSize', 'lineHeight', 'wordSpacing', 'characterSpacing', 'orientat
           'paragraphAlignment', 'extraParagraphSpacing', 'paragraphIndentSpaces', 'hyphenationEnabled',
           'embeddedStyle', 'textAntiAliasing', 'imageRendering', 'focusReadingEnabled', 'epubRenderMode')
 records = []
-for version in range(1, 11):
+for version in range(1, 14):
     data = test_preview.record(version)
     records.extend(data[:length] for length in range(len(data)))
     records.extend((data, data + b'\0'))
-for bit in range(19):
-    records.append(test_preview.record(10, mask=1 << bit))
+for version in range(10, 14):
+    for bit in range(19 if version == 10 else version + 9):
+        records.append(test_preview.record(version, mask=1 << bit))
+for version in (11, 12, 13):
+    records.append(test_preview.record(version, mask=1 << (version + 9)))
+    records.append(test_preview.record(version, flags=0))
+records.append(test_preview.record(13, publisher_fonts=3))
+for value in range(12):
+    records.append(test_preview.record(12, mask=1 << 20, character_spacing=value))
+for gray in range(3):
+    data = bytearray(test_preview.record(11, mask=(1 << 12) | (1 << 18), image_grayscale=gray))
+    data[17] = 0
+    records.append(bytes(data))
 for version in (3, 10):
     for spacing in (0, 1, 4, 255):
         data = bytearray(test_preview.record(version, mask=1 << 3))
@@ -42,7 +53,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(lines) == len(records)
     for index, (data, line) in enumerate(zip(records, lines)):
         try:
-            expected = module.decode(data)['preview']
+            report = module.decode(data)
+            expected = report['preview']
         except ValueError:
             assert line == 'invalid', index
             continue
@@ -50,4 +62,16 @@ with tempfile.TemporaryDirectory() as directory:
         actual = {name: values[position + 1] for position, name in enumerate(FIELDS)
                   if values[0] & (1 << position)}
         assert actual == expected, (index, actual, expected)
+        version = data[0]
+        fields = module.MASK_FIELDS
+        if version >= 11:
+            fields = fields[:18] + ('imageGrayscale', 'sdFontFamilyName')
+        if version >= 12:
+            fields += ('characterSpacing',)
+        if version >= 13:
+            fields += ('publisherFonts',)
+        expected_unmapped = sum(1 << i for i, name in enumerate(fields) if name in report['unmapped'])
+        assert values[16] == expected_unmapped, (index, values[16], expected_unmapped)
+        expected_flags = (2 if report['autoPageTurnSeconds'] else 0) if version == 1 else data[1] & ~1
+        assert values[17] == expected_flags, (index, values[17], expected_flags)
 print(f'Firmware decoder agrees on {len(records)} reference, truncation, flag, and mask cases')
