@@ -11,22 +11,7 @@
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
 bool CrossPointState::saveSpecializedToFile() const {
   std::lock_guard<std::mutex> lock(storeMutex);
-  JsonDocument document;
-  toJson(document);
-  struct Context {
-    const JsonDocument* document;
-  } context{&document};
-  const bool saved = Storage.withStorageLock(
-      [](void* raw) {
-        const auto& ctx = *static_cast<Context*>(raw);
-        if (Storage.lookupPath("/.crosspoint/state.json.tmp") != HalStorage::PathStatus::Missing ||
-            Storage.lookupPath("/.crosspoint/state.json.bak") != HalStorage::PathStatus::Missing ||
-            Storage.lookupPath("/.crosspoint/state.json.sleep-tmp") != HalStorage::PathStatus::Missing ||
-            Storage.lookupPath("/.crosspoint/state.json.sleep-bak") != HalStorage::PathStatus::Missing)
-          return false;
-        return PersistableStoreBase::writeDocToFile(getFilePath(), *ctx.document);
-      },
-      &context);
+  const bool saved = saveSleepPreferencesLocked();
   if (!saved) stateSaveNotice().recordFailure();
   return saved;
 }
@@ -88,12 +73,19 @@ bool CrossPointState::updateSleepFolderForPageOverlay(const std::string& path) {
 
 bool CrossPointState::recoverSleepStateForPageOverlay() {
   std::lock_guard<std::mutex> lock(storeMutex);
-  const bool recovered = movereference::recoverSleepPreferences([](const char* path) {
+  if (Storage.lookupPath("/.completion-journal") != HalStorage::PathStatus::Missing) {
+    stateSaveNotice().recordFailure();
+    return false;
+  }
+  // A failed write may leave no artifacts. The checked writer can retry it,
+  // but still refuses unresolved artifacts or an unreadable primary.
+  movereference::recoverSleepPreferences([](const char* path) {
     JsonDocument doc;
     return PersistableStoreBase::readDocFromFile(path, doc, 65536) && doc.is<JsonObject>();
   });
-  if (!recovered) stateSaveNotice().recordFailure();
-  return recovered;
+  const bool saved = saveSleepPreferencesLocked();
+  if (!saved) stateSaveNotice().recordFailure();
+  return saved;
 }
 
 bool CrossPointState::saveSleepPreferencesLocked() const {

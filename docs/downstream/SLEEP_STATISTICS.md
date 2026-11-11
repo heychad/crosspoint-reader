@@ -43,3 +43,45 @@ the X4 Pro behavior; an additional identical mode is unnecessary.
 The remaining Page Overlay work is separate: restore the reader page when the
 retained framebuffer no longer contains it, then validate the image-selection
 and state-save recovery paths. The existing prototype remains experimental.
+
+## Page Overlay state-save reliability
+
+With `CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY` enabled, ordinary application-state
+saves now use the same checked writer as favorite/folder edits. The old direct
+writer is no longer used by this configuration. It validates an existing
+primary, stages and verifies the new JSON, then promotes it while preserving
+the previous state. It refuses unresolved sleep/book-move artifacts, unreadable
+state, or uncertain I/O. The default configuration is unchanged.
+
+Home's Retry now attempts to save the current in-memory state after artifact
+recovery. It also works when a failure left no recovery files. An unresolved
+artifact or unreadable primary still blocks the save and keeps the warning.
+This does not automatically repair a corrupt primary or choose between
+conflicting book-move and sleep backups.
+
+The existing writer retains numbered history files and fails after its 10,000
+archive slots are occupied; this change does not delete that history. Saves
+serialize at most 65,536 JSON bytes into a checked buffer of at most 65,537
+bytes, alongside the existing JSON document. Previous-state validation uses
+the existing bounded reader and releases its document before serialization.
+No task, network activity, persistent RAM cache, or new storage format is added.
+This protects staged writes under the existing filesystem contract; physical
+power-loss testing and cumulative release review remain pending.
+
+The host checks cover the ordinary-save call path, corrupt-primary refusal,
+retry without artifacts, artifact fencing, every short-write boundary of a
+sample state, failed sync/close, and recovery followed by another save. The
+normal writer and recovery tests use storage doubles, not physical SD faults.
+
+E2 remains incomplete. Resume with reader-page reconstruction when a menu has
+replaced the retained framebuffer, then complete the remaining recovery and
+visual checks. Do not install this checkpoint as a reviewed release candidate.
+
+Checkpoint checks: all 17 targeted tests passed in 4.68 seconds. The final
+X4 Pro build with Page Overlay, completion/prompt, statistics restore, and daily
+statistics enabled passed in 68.78 seconds. Static RAM is 113,052 bytes and
+flash is 5,705,942 bytes for that profile. No firmware was installed.
+
+Chad requested a pause after the current bounded change to preserve weekly
+credits. Resume with the reconstruction work above; E2 stays unchecked and
+the implementation count stays at 19 of 28 selected major features.

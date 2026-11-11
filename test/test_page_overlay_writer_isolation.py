@@ -19,12 +19,38 @@ void put(const char* path,const char* text) {
  HalFile f; assert(Storage.openFileForWrite("TEST",path,f));
  assert(f.write(text,strlen(text))==strlen(text)); assert(f.close());
 }
+bool readText(const char* path,std::string& text) {
+ HalFile f;if(!Storage.openFileForRead("TEST",path,f))return false;
+ char buffer[80];const auto n=f.read(buffer,sizeof(buffer));
+ if(n<0||!f.close())return false;text.assign(buffer,static_cast<size_t>(n));return true;
+}
 bool validState(const char* path) {
  HalFile f; if (!Storage.openFileForRead("TEST",path,f)) return false;
  char buffer[80]{}; const auto n=f.read(buffer,sizeof(buffer)-1); f.close();
  return n>1 && buffer[0]=='{' && buffer[n-1]=='}';
 }
 int main() {
+ for(size_t cut=0;cut<sizeof(next)-1;++cut){
+  Storage.reset();put(primary,"{\"openEpubPath\":\"/old.epub\"}");
+  Storage.failNextWriteFor(sleepTemp,cut);
+  assert(!movereference::writeSleepPreferences(next,sizeof(next)-1));
+  std::string preserved;
+  assert(readText(primary,preserved));
+  assert(preserved=="{\"openEpubPath\":\"/old.epub\"}"&&Storage.exists(sleepTemp));
+  assert(movereference::recoverSleepPreferences(validState));
+  assert(movereference::writeSleepPreferences(next,sizeof(next)-1));
+  assert(readText(primary,preserved)&&preserved==next);
+ }
+ for(int failure=0;failure<2;++failure){
+  Storage.reset();put(primary,"{\"openEpubPath\":\"/old.epub\"}");
+  if(failure==0)Storage.failNextNewSyncFor(sleepTemp);else Storage.failNextNewCloseFor(sleepTemp);
+  assert(!movereference::writeSleepPreferences(next,sizeof(next)-1));
+  std::string preserved;
+  assert(readText(primary,preserved));
+  assert(preserved=="{\"openEpubPath\":\"/old.epub\"}");
+  assert(movereference::recoverSleepPreferences(validState));
+  assert(movereference::writeSleepPreferences(next,sizeof(next)-1));
+ }
  Storage.reset(); put(primary,"{\"openEpubPath\":\"/old.epub\"}"); put(moveTemp,"move");
  assert(!movereference::writeSleepPreferences(next,sizeof(next)-1));
  assert(Storage.exists(moveTemp) && !Storage.exists(sleepTemp));

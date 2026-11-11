@@ -17,10 +17,11 @@ program = r'''
 struct HalStorage { enum class PathStatus { Missing, Present, Failed }; };
 struct Notice { unsigned value=0; unsigned pending(){return value;} void recordFailure(){++value;} } notice;
 Notice& stateSaveNotice(){return notice;}
-namespace movereference { bool recoverSleepPreferences(bool (*)(const char*)){return true;} }
+namespace movereference { bool recoverSleepPreferences(bool (*)(const char*)){return false;} }
 struct MockStorage {
  std::map<std::string,std::string> files;
- bool lookupFailure=false;
+ bool lookupFailure=false, writeFailure=false;
+ int directWrites=0, checkedWrites=0;
  HalStorage::PathStatus lookupPath(const char* path) {
    if (lookupFailure) return HalStorage::PathStatus::Failed;
    return files.count(path) ? HalStorage::PathStatus::Present : HalStorage::PathStatus::Missing;
@@ -29,13 +30,17 @@ struct MockStorage {
 } Storage;
 struct PersistableStoreBase {
  static bool writeDocToFile(const char* path,const JsonDocument& doc) {
-   std::string result; serializeJson(doc,result); Storage.files[path]=result; return true;
+   ++Storage.directWrites;std::string result; serializeJson(doc,result); Storage.files[path]=result; return true;
  }
  static bool readDocFromFile(const char* path,JsonDocument& doc,size_t max) {
    auto it=Storage.files.find(path);
    return it!=Storage.files.end() && it->second.size()<=max && !deserializeJson(doc,it->second);
  }
- static bool writeStateSleepPreferences(const JsonDocument&) {return Storage.lookupFailure == false;}
+ static bool writeStateSleepPreferences(const JsonDocument& doc) {
+   ++Storage.checkedWrites;
+   if(Storage.lookupFailure||Storage.writeFailure)return false;
+   std::string text;serializeJson(doc,text);Storage.files["/.crosspoint/state.json"]=text;return true;
+ }
 };
 struct CrossPointState : PersistableStoreBase {
  mutable std::mutex storeMutex;
@@ -72,7 +77,23 @@ int main() {
  assert(s.loadSpecializedFromFile() && s.path=="/old.epub");
  Storage.files[primary]=R"({"openEpubPath":"/new.epub"})";
  assert(s.loadSpecializedFromFile() && s.path=="/new.epub");
- Storage.files.erase(backup); Storage.lookupFailure=true;
+ Storage.files.erase(backup);
+ Storage.files[primary]="damaged";assert(!s.saveSpecializedToFile());assert(Storage.files[primary]=="damaged");
+ Storage.files[primary]=R"({"openEpubPath":"/new.epub"})";
+ Storage.writeFailure=true;s.path="/retry.epub";
+ assert(!s.saveSpecializedToFile());assert(Storage.files[primary].find("/new.epub")!=std::string::npos);
+ assert(!s.recoverSleepStateForPageOverlay());
+ Storage.writeFailure=false;
+ Storage.files["/.completion-journal"]="move pending";const int writes=Storage.checkedWrites;
+ assert(!s.recoverSleepStateForPageOverlay()&&Storage.checkedWrites==writes);
+ assert(Storage.files[primary].find("/new.epub")!=std::string::npos);
+ Storage.files.erase("/.completion-journal");assert(s.recoverSleepStateForPageOverlay());
+ assert(Storage.files[primary].find("/retry.epub")!=std::string::npos);
+ Storage.files["/.crosspoint/state.json.sleep-tmp"]="partial";
+ assert(!s.recoverSleepStateForPageOverlay());
+ assert(Storage.files["/.crosspoint/state.json.sleep-tmp"]=="partial");
+ Storage.files.erase("/.crosspoint/state.json.sleep-tmp");
+ s.path="/new.epub";Storage.lookupFailure=true;
  assert(!s.saveSpecializedToFile());
  Storage.lookupFailure=false; assert(s.saveSpecializedToFile());
  assert(Storage.files[primary].find("/new.epub")!=std::string::npos);
@@ -86,6 +107,7 @@ int main() {
  assert(s.loadSpecializedFromFile() && s.path=="/sleep.epub");
  Storage.files[backup]=R"({"openEpubPath":"/move.epub"})";
  assert(!s.loadSpecializedFromFile());
+ assert(Storage.directWrites==0 && Storage.checkedWrites>0);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
