@@ -12,7 +12,7 @@ struct LegacyQuickBinding {
 };
 // The CrossInk trigger number identifies one of these persisted keys.
 inline bool uniqueLegacyQuickOwner(JsonVariantConst doc, uint8_t wanted) {
-  static constexpr std::array<LegacyQuickBinding, 13> bindings = {{{"shortPwrBtn", 27},
+  static constexpr std::array<LegacyQuickBinding, 15> bindings = {{{"shortPwrBtn", 27},
                                                                    {"longPwrBtn", 27},
                                                                    {"longPressBackAction", 22},
                                                                    {"longPressMenuAction", 22},
@@ -24,7 +24,9 @@ inline bool uniqueLegacyQuickOwner(JsonVariantConst doc, uint8_t wanted) {
                                                                    {"sideButtonUpShort", 27},
                                                                    {"sideButtonUpLong", 27},
                                                                    {"sideButtonDownShort", 27},
-                                                                   {"sideButtonDownLong", 27}}};
+                                                                   {"sideButtonDownLong", 27},
+                                                                   {"frontButtonLeftLong", 27},
+                                                                   {"frontButtonRightLong", 27}}};
   const auto selected = doc["quickActionsTrigger"];
   if (!selected.is<uint8_t>() || selected.as<uint8_t>() != wanted || wanted == 0 || wanted > bindings.size())
     return false;

@@ -11,7 +11,7 @@ Source revisions:
 - CrossPoint stable base: `42d58daaabcf469a2e5e1ba871714fb9dcf51d29` (2.0.0).
 - This candidate excludes CrossPoint development merge `6bea3810`; the original branch preserves it.
 - Original CrossInk reference: `9914146eeae7b46b300f475a16c32426fc02ec1f` (v1.6.1).
-- CrossInk RC reference: `b8feaec4d` (2.0.0-rc); follow-up audit through `1990a78f2`.
+- CrossInk RC reference: `b8feaec4d` (2.0.0-rc). The earlier development comparison at `1990a78f2` is historical, not an integration target.
 - FreeInk SDK: `5e94fe7480f019c89fbf691aef87523eb1b46704` (CrossPoint 2.0.0 stable pin).
 
 ## Selected first-release scope: current source snapshot
@@ -29,7 +29,7 @@ inventory below records an earlier stage and is not the current status.
 | A3 Touch gestures and Quick Lock | Built; hardware and interaction checks remain. |
 | A4 Five-slot Quick Actions | Built; the reader menu and toolbar More panel now provide direct access as well as shortcut triggers. Hardware checks remain. |
 | A5 Per-book reading layout | Native overrides built; compatible CrossInk binary values can load when native preferences are absent. Unsupported fields and Safe Mode need further migration work. |
-| A9 Extra actions and legacy mappings | Many actions built, including Saved Items, File Transfer, Home / Reader stack navigation, and an experimental finished-status toggle; the full legacy action mapping remains. Home / Reader needs device and transition checks. |
+| A9 Extra actions and legacy mappings | Built for the selected X4 Pro scope. The tagged RC catalog audit covers power, side, chord, Home, Quick Actions slots, and gesture mappings. Includes Home/Reader, chapter selection, rotation, network entry, and distinct power sleep/wake modes. Invoked experimental features keep their own gates; cumulative review and device checks remain. |
 | B1 Format and finished-book filters | Built; completion data that cannot be read stays visible. |
 | B2 Compact rows and filenames | Built. |
 | B3 Browse by genre and series | Built from EPUB metadata; hardware checks remain. |
@@ -171,8 +171,11 @@ Quick Actions ownership is preserved. Device checks remain pending.
 Sleep Only and Wake Only now import as distinct power actions. The short-press
 wake policy follows the active Power tap binding, while Default preserves the
 legacy setting. Wake Only consumes an awake tap; Sleep Only requests sleep.
-These modes stay out of side, edge, and Quick Actions pickers. The remaining
-catalog audit, cumulative review, and physical wake tests are still open.
+These modes stay out of side, edge, and Quick Actions pickers. The
+[RC shortcut catalog audit](RC_SHORTCUT_AUDIT.md) now covers the selected X4 Pro
+scope, including every byte value for the main mapping catalogs and all source
+Quick Actions owners. Cumulative review, unfinished experimental actions, and
+physical checks remain open.
 
 Select Chapter is available in the reader action catalog, Quick Actions, Home
 button mappings, and two-finger swipes. EPUB uses the existing chapter picker;
