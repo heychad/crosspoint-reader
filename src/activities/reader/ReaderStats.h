@@ -27,9 +27,9 @@ class ReaderStats {
   // A failed flush retains the live session for a later retry.
   bool refreshTracking(const std::string& cachePath, const std::string& bookPath, bool globalTracking,
                        uint16_t idleSeconds, bool enableCompletion = false);
-  statsbackup::BookRestoreResult resetBookStatistics(const std::string& cachePath, const std::string& bookPath,
-                                                     bool globalTracking, uint16_t idleSeconds,
-                                                     bool enableCompletion = false);
+  statsbackup::BookRestoreResult resetBookStatistics(
+      const std::string& cachePath, const std::string& bookPath, bool globalTracking, uint16_t idleSeconds,
+      bool enableCompletion = false, statsbackup::BookResetScope scope = statsbackup::BookResetScope::Statistics);
   bool snapshot(BookReadingStats& bookOut, GlobalReadingStats& globalOut, bool& saved, bool forceSave = false);
   enum class CompletionResult { Applied, Unchanged, NotTracking, Busy, SaveFailed, RecoveryRequired, Unavailable };
   using RemoveRecent = bool (*)(const std::string& bookPath, void* context);

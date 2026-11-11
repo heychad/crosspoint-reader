@@ -13,7 +13,7 @@ more = reader_source[reader_source.index("void EpubReaderActivity::buildMoreActi
 start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::READING_STATISTICS:")
 end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", start + 10)
 action = reader_source[start:end]
-for extra_action in ("TRACK_BOOK_STATS", "RESET_BOOK_STATS"):
+for extra_action in ("TRACK_BOOK_STATS", "RESET_BOOK_STATS", "RESET_READING_PACE"):
     extra_start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::" + extra_action + ":")
     extra_end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", extra_start + 10)
     action += reader_source[extra_start:extra_end]
@@ -68,6 +68,7 @@ namespace readershortcuts {enum class Action {ReadingStatistics,Library,QuickAct
 struct Manager {int calls=0; bool allocationSucceeds=true, pending=false;
  void goToSavedItems(){++calls;pending=allocationSucceeds;}
 } activityManager;
+namespace statsbackup {enum class BookResetScope{Statistics,ReadingPace};}
 class EpubReaderActivity {public:
  std::vector<int> currentPageFootnotes{1},cachedBookmarks{1};
  std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
@@ -77,7 +78,9 @@ class EpubReaderActivity {public:
  void handleCompletionAttempt(bool recovery,bool completed){assert(!recovery);attempted=true;target=completed;}
  int trackingRequests=0,resetRequests=0;
  void openReadingStatistics(bool toggle){assert(toggle);++trackingRequests;}
- void confirmStatisticsReset(){++resetRequests;}
+ enum class StatisticsResetPrompt{Confirm,Retry,Recovery};
+ statsbackup::BookResetScope resetScope=statsbackup::BookResetScope::Statistics;
+ void confirmStatisticsReset(StatisticsResetPrompt=StatisticsResetPrompt::Confirm, statsbackup::BookResetScope scope=statsbackup::BookResetScope::Statistics){++resetRequests;resetScope=scope;}
  void requestUpdate(){++repaints;}
  bool handleReaderShortcut(readershortcuts::Action action){opened=action==readershortcuts::Action::ReadingStatistics;libraryOpened=action==readershortcuts::Action::Library;quickOpened=action==readershortcuts::Action::QuickActions;return true;}
  void buildMoreActions();
@@ -93,7 +96,7 @@ int main(){
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
  Menu::buildMenuItems(rows,true,true,true,true,false);
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
- assert(rows.size()==33);
+ assert(rows.size()==34);
 #else
  assert(rows.size()==32);
 #endif
@@ -142,6 +145,7 @@ int main(){
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::TRACK_BOOK_STATS;})==1);
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::RESET_BOOK_STATS;})==1);
+ assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::RESET_READING_PACE;})==1);
 #endif
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::READER_BARS;})==1);
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::HOME_BUTTON;})==1);
@@ -161,6 +165,13 @@ int main(){
 #else
  assert(reader.resetRequests==0);
  assert(std::none_of(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::RESET_BOOK_STATS;}));
+#endif
+ reader.dispatch(MA::RESET_READING_PACE);
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+ assert(reader.resetRequests==2 && reader.resetScope==statsbackup::BookResetScope::ReadingPace);
+#else
+ assert(reader.resetRequests==0);
+ assert(std::none_of(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::RESET_READING_PACE;}));
 #endif
  assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TRACK_BOOK_STATS;})==1);
  reader.dispatch(MA::LIBRARY);assert(reader.libraryOpened && reader.repaints==1);

@@ -268,7 +268,8 @@ bool ReaderStats::refreshTracking(const std::string& cachePath, const std::strin
 
 statsbackup::BookRestoreResult ReaderStats::resetBookStatistics(const std::string& cachePath,
                                                                 const std::string& bookPath, bool globalTracking,
-                                                                uint16_t requestedIdleSeconds, bool enableCompletion) {
+                                                                uint16_t requestedIdleSeconds, bool enableCompletion,
+                                                                statsbackup::BookResetScope scope) {
   using Result = statsbackup::BookRestoreResult;
   if (completionRecoveryPending || (!directory.empty() && directory != readingstats::bookDirectory(cachePath)) ||
       !finish())
@@ -276,11 +277,12 @@ statsbackup::BookRestoreResult ReaderStats::resetBookStatistics(const std::strin
   struct Request {
     const std::string& cache;
     const std::string& path;
+    statsbackup::BookResetScope scope;
     Result result = Result::Unavailable;
-  } request{cachePath, bookPath};
+  } request{cachePath, bookPath, scope};
   const auto reset = [](void* raw) {
     auto& input = *static_cast<Request*>(raw);
-    input.result = statsbackup::resetBookStatistics(input.cache, input.path);
+    input.result = statsbackup::resetBookStatistics(input.cache, input.path, nullptr, 0, input.scope);
     return input.result == Result::Restored;
   };
   const auto outcome = lease.withExclusiveSuspension(reset, &request);

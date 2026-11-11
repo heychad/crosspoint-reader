@@ -49,7 +49,7 @@ code = r'''
 #define LOG_ERR(...) ((void)0)
 enum class StrId {__IDS__};
 struct Language{StrId get(StrId value){return value;}}I18N;
-namespace statsbackup {enum class BookRestoreResult{Restored,Unavailable,Busy,BackupFailed,WriteUncertain,RecoveryRequired};}
+namespace statsbackup {enum class BookResetScope{Statistics,ReadingPace};enum class BookRestoreResult{Restored,Unavailable,Busy,BackupFailed,WriteUncertain,RecoveryRequired};}
 #define tr(key) StrId::key
 struct MenuResult {int action=-1;};struct PercentResult{int percent;};struct PageResult{uint32_t page;};
 struct ActivityResult {bool isCancelled=false;std::variant<std::monostate,MenuResult,PercentResult,PageResult>data;};
@@ -88,11 +88,11 @@ template<class T,class...A>std::unique_ptr<T>makeUniqueNoThrow(A&&...args){
 struct XtcReaderActivity {
  std::atomic<bool>pageRendered{true};std::string bookPath="/Books/book.xtc";
  enum class StatisticsResetPrompt{Confirm,Retry,Recovery};
- void confirmStatisticsReset(StatisticsResetPrompt mode=StatisticsResetPrompt::Confirm);
+ void confirmStatisticsReset(StatisticsResetPrompt mode=StatisticsResetPrompt::Confirm, statsbackup::BookResetScope scope=statsbackup::BookResetScope::Statistics);
  std::atomic<bool>pendingStatsLoadWarning{false};
- struct Stats{int resets=0;bool unavailableAtStart(){return false;}
+ struct Stats{statsbackup::BookResetScope lastScope=statsbackup::BookResetScope::Statistics;int resets=0;bool unavailableAtStart(){return false;}
  statsbackup::BookRestoreResult next=statsbackup::BookRestoreResult::Restored;
- statsbackup::BookRestoreResult resetBookStatistics(const std::string&,const std::string&,bool,uint16_t,bool){++resets;return next;}
+ statsbackup::BookRestoreResult resetBookStatistics(const std::string&,const std::string&,bool,uint16_t,bool,statsbackup::BookResetScope scope){++resets;lastScope=scope;return next;}
  bool known=true,done=false;bool completionStatus(bool& value)const{value=done;return known;}}readingStats;
  int completionEdits=0;bool completionTarget=false;
  bool completionActionAvailable(bool&)const;void toggleCompletion();
@@ -194,6 +194,12 @@ int main(){
  reader.confirmStatisticsReset();reader.complete({false,{}});assert(reader.readingStats.resets==4);
  int homes=reader.home;reader.complete({false,{}});assert(reader.home==homes+1&&reader.readingStats.resets==4);
  failKind=5;int resets=reader.readingStats.resets;reader.confirmStatisticsReset();assert(reader.readingStats.resets==resets);
+ failKind=0;
+ reader.readingStats.next=statsbackup::BookRestoreResult::Unavailable;
+ reader.confirmStatisticsReset(XtcReaderActivity::StatisticsResetPrompt::Confirm,statsbackup::BookResetScope::ReadingPace);
+ reader.complete({false,{}});assert(reader.readingStats.lastScope==statsbackup::BookResetScope::ReadingPace);
+ reader.readingStats.next=statsbackup::BookRestoreResult::Restored;
+ reader.complete({false,{}});assert(reader.readingStats.lastScope==statsbackup::BookResetScope::ReadingPace);
  assert(reader.currentPage==savedResetPage);
 #endif
  assert(xtcPageForPercent(100,0)==0&&xtcPageForPercent(50,100)==49);

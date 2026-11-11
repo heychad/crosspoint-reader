@@ -1586,6 +1586,11 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       confirmStatisticsReset();
 #endif
       break;
+    case EpubReaderMenuActivity::MenuAction::RESET_READING_PACE:
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+      confirmStatisticsReset(StatisticsResetPrompt::Confirm, statsbackup::BookResetScope::ReadingPace);
+#endif
+      break;
     case EpubReaderMenuActivity::MenuAction::CONTROLS: {
       if (auto screen = makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, SettingsSection::Controls)) {
         startActivityForResult(std::move(screen), [this](const ActivityResult&) { openReaderMenu(); });

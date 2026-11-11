@@ -489,3 +489,67 @@ TEST(ReaderStatsFinish, TimeLeftSaturatesAndCompletedBooksHaveNoEstimate) {
   finished.begin(cache, "/Books/test.epub", true, 300);
   EXPECT_EQ(finished.bookTimeLeft(5000), 0U);
 }
+
+TEST(ReaderStatsReset, PaceResetResumesLearningWithoutLosingHistory) {
+  Storage.reset();
+  createResetBook();
+  BookReadingStats previous;
+  previous.avgSecondsPerForwardPage = 12;
+  previous.paceSampleCount = 5;
+  previous.totalReadingSeconds = 500;
+  previous.totalPagesTurned = 10;
+  previous.isCompleted = true;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(RESET_CACHE), previous));
+  GlobalReadingStats global;
+  global.totalReadingSeconds = 500;
+  global.totalPagesTurned = 10;
+  global.completedBooks = 1;
+  ASSERT_TRUE(global.save());
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300, true);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 20000;
+  ASSERT_EQ(
+      stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300, true, statsbackup::BookResetScope::ReadingPace),
+      statsbackup::BookRestoreResult::Restored);
+  auto reset = BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE));
+  EXPECT_EQ(reset.avgSecondsPerForwardPage, 0U);
+  EXPECT_EQ(reset.paceSampleCount, 0U);
+  EXPECT_EQ(reset.totalReadingSeconds, 520U);
+  EXPECT_EQ(reset.totalPagesTurned, 10U);
+  EXPECT_TRUE(reset.isCompleted);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 50000;
+  stats.noteTurn(true, true);
+  stats.onRender(ReadingStatsFrame::Page);
+  ASSERT_TRUE(stats.finish());
+  reset = BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE));
+  EXPECT_EQ(reset.avgSecondsPerForwardPage, 30U);
+  EXPECT_EQ(reset.paceSampleCount, 1U);
+  EXPECT_EQ(reset.totalReadingSeconds, 550U);
+  EXPECT_EQ(reset.totalPagesTurned, 11U);
+  EXPECT_TRUE(reset.isCompleted);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().completedBooks, 1U);
+}
+
+TEST(ReaderStatsReset, PaceResetRetainsDisabledTracking) {
+  Storage.reset();
+  createResetBook();
+  BookReadingStats previous;
+  previous.totalReadingSeconds = 500;
+  previous.avgSecondsPerForwardPage = 12;
+  previous.paceSampleCount = 5;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(RESET_CACHE), previous));
+  ASSERT_TRUE(booktracking::setEnabled(RESET_CACHE, RESET_BOOK, false));
+  ReaderStats stats;
+  stats.begin(RESET_CACHE, RESET_BOOK, true, 300);
+  ASSERT_EQ(
+      stats.resetBookStatistics(RESET_CACHE, RESET_BOOK, true, 300, false, statsbackup::BookResetScope::ReadingPace),
+      statsbackup::BookRestoreResult::Restored);
+  const auto reset = BookReadingStats::load(readingstats::bookDirectory(RESET_CACHE));
+  EXPECT_EQ(reset.totalReadingSeconds, 500U);
+  EXPECT_EQ(reset.paceSampleCount, 0U);
+  EXPECT_EQ(booktracking::state(RESET_CACHE, RESET_BOOK), booktracking::State::Disabled);
+  EXPECT_FALSE(StatsSessionLease::anyActive());
+}

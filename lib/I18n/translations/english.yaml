@@ -998,3 +998,6 @@ STR_DISABLE_PAGE_TURN_GESTURES: "Disable page-turn gestures"
 
 STR_MENU_STYLE_TABBED: "Tabbed"
 STR_READER_LOCATION: "Location"
+
+STR_READING_PACE_RESET: "Reset reading pace"
+STR_READING_PACE_RESET_BODY: "Relearn this book's reading pace? Reading history, dates, and finished status stay. A backup will be kept."

@@ -45,6 +45,13 @@ or recorded explicitly; it cannot be relabeled green. Use the existing build
 cache. Preserve reading-state tests when writes, paths, formats, or migration
 change. Keep default and experimental build evidence distinct.
 
+For reader-menu changes, run `StatsReaderMenu`, `ReaderTabbedMenu`,
+`ReaderInlineTextMenu`, and `XtcReaderMenu` together before the full suite.
+Both the older menu fixture and the newer tabbed fixture exercise the same
+production menu; testing only the newer one can defer a row-count failure until
+the full run. Use the existing CTest build with
+`ctest --test-dir <host-build> -R 'StatsReaderMenu|ReaderTabbedMenu|ReaderInlineTextMenu|XtcReaderMenu' --output-on-failure`.
+
 Review depth is defined in
 [firmware-handoff](../../.agents/skills/firmware-handoff/SKILL.md). Four reviews
 are for broad integrations, not every small feature. Standing design acceptance

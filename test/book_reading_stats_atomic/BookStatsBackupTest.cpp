@@ -402,3 +402,61 @@ TEST_F(BookStatsBackupTest, FailedTargetClosePreservesFileAndPreventsOverwrite) 
   EXPECT_TRUE(statsbackup::createBookBackup(CACHE, fixture()));
   EXPECT_EQ(names().size(), 2U);
 }
+
+TEST_F(BookStatsBackupTest, PaceResetPreservesHistoryCompletionAndDeviceTotals) {
+  auto prior = fixture();
+  prior.totalPagesTurned = 57;
+  prior.isCompleted = true;
+  prior.finishedDate = {2024, 3, 5};
+  prior.finishedDateManual = true;
+  prior.avgSecondsPerForwardPage = 18;
+  prior.paceSampleCount = 9;
+  prior.estimatedTimeLeftSeconds = 1800;
+  prior.timeOfDaySeconds.fill(20);
+  prior.dayOfWeekSeconds.fill(30);
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(CACHE), prior));
+  GlobalReadingStats device;
+  device.completedBooks = 7;
+  device.totalReadingSeconds = 123456;
+  device.totalPagesTurned = 432;
+  ASSERT_TRUE(device.save());
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> deviceBefore{}, deviceAfter{};
+  ASSERT_TRUE(device.encode(deviceBefore));
+  ASSERT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH, nullptr, 0, statsbackup::BookResetScope::ReadingPace),
+            statsbackup::BookRestoreResult::Restored);
+  auto expected = prior;
+  expected.avgSecondsPerForwardPage = 0;
+  expected.paceSampleCount = 0;
+  expected.estimatedTimeLeftSeconds = 0;
+  std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE> expectedBytes{}, actualBytes{}, priorBytes{};
+  ASSERT_TRUE(expected.encode(expectedBytes.data(), expectedBytes.size()));
+  ASSERT_TRUE(
+      BookReadingStats::load(readingstats::bookDirectory(CACHE)).encode(actualBytes.data(), actualBytes.size()));
+  EXPECT_EQ(actualBytes, expectedBytes);
+  ASSERT_TRUE(GlobalReadingStats::loadReadOnly().encode(deviceAfter));
+  EXPECT_EQ(deviceAfter, deviceBefore);
+  ASSERT_EQ(names().size(), 1U);
+  BookReadingStats backup;
+  ASSERT_TRUE(statsbackup::readBookBackup(CACHE, names().front(), backup));
+  ASSERT_TRUE(backup.encode(actualBytes.data(), actualBytes.size()));
+  ASSERT_TRUE(prior.encode(priorBytes.data(), priorBytes.size()));
+  EXPECT_EQ(actualBytes, priorBytes);
+  ASSERT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH, nullptr, 0, statsbackup::BookResetScope::ReadingPace),
+            statsbackup::BookRestoreResult::Restored);
+  EXPECT_EQ(names().size(), 1U);
+}
+
+TEST_F(BookStatsBackupTest, PaceResetFailureRetainsPreviousSnapshot) {
+  auto prior = fixture();
+  prior.avgSecondsPerForwardPage = 18;
+  prior.paceSampleCount = 9;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(CACHE), prior));
+  Storage.failNextRenameFrom(readingstats::bookDirectory(CACHE) + "/stats_v5.bin.tmp");
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH, nullptr, 0, statsbackup::BookResetScope::ReadingPace),
+            statsbackup::BookRestoreResult::WriteUncertain);
+  ASSERT_EQ(names().size(), 1U);
+  BookReadingStats backup;
+  ASSERT_TRUE(statsbackup::readBookBackup(CACHE, names().front(), backup));
+  EXPECT_EQ(backup.avgSecondsPerForwardPage, 18U);
+  EXPECT_EQ(backup.totalReadingSeconds, prior.totalReadingSeconds);
+}

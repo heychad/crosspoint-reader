@@ -151,7 +151,7 @@ bool statsbackup::readBookBackup(const std::string& cachePath, const std::string
 
 namespace {
 using statsbackup::BookRestoreResult;
-enum class ReplacementSource { Backup, Empty };
+enum class ReplacementSource { Backup, Empty, Pace };
 
 BookRestoreResult replaceBookStats(const std::string& cachePath, const std::string& bookPath,
                                    const std::string& filename, ReplacementSource source,
@@ -203,9 +203,15 @@ BookRestoreResult replaceBookStats(const std::string& cachePath, const std::stri
     BookReadingStats replacement;
     Bytes currentBytes{}, replacementBytes{};
     if (!current.writable || !current.encode(currentBytes.data(), currentBytes.size()) ||
-        (fromBackup && !statsbackup::readBookBackup(input.cachePath, input.filename, replacement)) ||
-        !replacement.encode(replacementBytes.data(), replacementBytes.size()))
+        (fromBackup && !statsbackup::readBookBackup(input.cachePath, input.filename, replacement)))
       return true;
+    if (input.source == ReplacementSource::Pace) {
+      replacement = current;
+      replacement.avgSecondsPerForwardPage = 0;
+      replacement.paceSampleCount = 0;
+      replacement.estimatedTimeLeftSeconds = 0;
+    }
+    if (!replacement.encode(replacementBytes.data(), replacementBytes.size())) return true;
     if ((input.expectedCurrent && (input.expectedCurrentSize != currentBytes.size() ||
                                    memcmp(input.expectedCurrent, currentBytes.data(), currentBytes.size()) != 0)) ||
         (!input.expectedCurrent && input.expectedCurrentSize) ||
@@ -271,7 +277,7 @@ statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string&
 statsbackup::BookRestoreResult statsbackup::resetBookStatistics(const std::string& cachePath,
                                                                 const std::string& bookPath,
                                                                 const uint8_t* expectedCurrent,
-                                                                size_t expectedCurrentSize) {
-  return replaceBookStats(cachePath, bookPath, {}, ReplacementSource::Empty, expectedCurrent, expectedCurrentSize,
-                          nullptr, 0);
+                                                                size_t expectedCurrentSize, BookResetScope scope) {
+  const auto source = scope == BookResetScope::ReadingPace ? ReplacementSource::Pace : ReplacementSource::Empty;
+  return replaceBookStats(cachePath, bookPath, {}, source, expectedCurrent, expectedCurrentSize, nullptr, 0);
 }

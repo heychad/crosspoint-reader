@@ -33,7 +33,8 @@ class ReaderActivity : public Activity {
   virtual void openReaderMenu() { requestUpdate(); }
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
   enum class StatisticsResetPrompt { Confirm, Retry, Recovery };
-  void confirmStatisticsReset(StatisticsResetPrompt prompt = StatisticsResetPrompt::Confirm);
+  void confirmStatisticsReset(StatisticsResetPrompt prompt = StatisticsResetPrompt::Confirm,
+                              statsbackup::BookResetScope scope = statsbackup::BookResetScope::Statistics);
 #endif
   void openQuickActions();
   void openReadingStatistics(bool toggleTracking = false);
