@@ -2,6 +2,33 @@
 
 Checked November 11, 2026.
 
+## Release channels
+
+Chad selected stable releases and tagged release candidates on November 11,
+2026. Do not track or automatically import either project's moving development
+branch. Stable CrossPoint is the supported firmware base. CrossInk supplies
+selected features from stable or RC tags, never a wholesale tree merge.
+
+Current pins verified through GitHub Releases:
+
+- CrossPoint stable: `2.0.0`, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
+- CrossInk stable reference: `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`.
+- CrossInk RC reference: `v2.0.0-rc`, `b8feaec4d10ecb484ed80e326f01f2a3ea949331`.
+- CrossPoint `2.0.0rc` is older than stable `2.0.0`; it is not an upgrade target.
+
+Review new releases at integration milestones. Pin the selected tag and SDK,
+review its changes, and test on a development branch. Promote an RC only after
+our relevant checks and device smoke test; installing on the reader remains a
+separate handoff. An unreleased fix needs a specific defect and explicit scope
+decision, not a general invitation to follow development.
+
+The existing branch already contains 45 CrossPoint development commits merged
+at `6bea3810`, plus selected work compared with CrossInk development. This policy
+does not erase that history or establish a release-only baseline retroactively.
+Before the next supported release, reconcile that delta against the chosen
+release tag and preserve the custom work in the process. Do not reset or rewrite
+the current branch to hide the discrepancy.
+
 ## Repositories and baseline
 
 - Personal fork: https://github.com/heychad/crosspoint-reader
@@ -10,9 +37,9 @@ Checked November 11, 2026.
 - Pushed feature checkpoint: `codex/x4pro-completion-integration`, `9c98e395`.
 - Current upstream integration branch: `codex/x4pro-upstream-20261111`.
 - Stable baseline: CrossPoint 2.0.0, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
-- Current upstream development tip: `0333cbbe4`, 45 commits beyond the stable baseline.
+- Previously integrated upstream development tip: `0333cbbe4`, 45 commits beyond the stable baseline.
 - Original CrossInk reference: v1.6.1, `9914146ee`.
-- New comparison required: CrossInk v2.0.0-rc, `b8feaec4d`, and development tip `1990a78f2`.
+- Active CrossInk feature comparison: v2.0.0-rc, `b8feaec4d`. Historical development audit: `1990a78f2`.
 
 These are dated observations, not moving version pins. Refresh before integration.
 
@@ -39,8 +66,8 @@ Keep the known device-tested revision available for rollback.
 ## Ongoing maintenance
 
 - Check both CrossPoint and CrossInk at each integration milestone and before a
-  firmware release. Compare stable releases, release candidates and subsequent
-  fixes; record the exact commits reviewed.
+  firmware release. Compare stable releases and tagged release candidates; record
+  the exact commits reviewed.
 - For each CrossInk change, check whether CrossPoint already includes it, whether
   our port still needs it, and whether it belongs to the agreed Now or Later
   scope. Fixes to already-ported features take priority over new features.
@@ -65,8 +92,8 @@ fetched successfully. Do not substitute another SDK revision without review.
 
 ## CrossInk follow-up audit
 
-Compare `v2.0.0-rc` (`b8feaec4d`) and development `1990a78f2` after the
-CrossPoint update. Do not assume the old v1.6.1 parity inventory covers them.
+Compare stable `v1.6.1` with `v2.0.0-rc` (`b8feaec4d`). The previous
+development audit at `1990a78f2` remains provenance, not an ongoing target. Do not assume the old v1.6.1 parity inventory covers them.
 
 Priorities from the current source comparison:
 

@@ -6,8 +6,8 @@ release ceremony with checked development batches and cumulative device tests.
 
 ## Work loop
 
-1. Compare upstream only at an integration milestone, before starting a port
-   likely to duplicate upstream, or before preparing a release.
+1. Compare stable and tagged RC releases at integration milestones, before a port
+   likely to duplicate upstream, and before preparing a release.
 2. Group related work around a shared reader, input, library, or statistics path.
    Aim for a useful set of behaviors per device test, not one setting per build.
 3. During implementation, run the checks that can expose the changed behavior.
@@ -56,6 +56,8 @@ just to make the diff look tidy. Keep SDK patches explicit and reproducible.
 Use `python3 scripts/upstream_snapshot.py` for a local comparison, or add
 `--fetch` at an upstream checkpoint. It reports exact tips, unmerged CrossPoint
 commits, CrossInk changes since the selected baseline, and overlapping paths.
+The defaults are pinned release tags, not development branches. Update pins
+after reviewing a new release. Non-release refs require an explicit audit flag.
 Path overlap is a triage signal, not proof of conflict or missing functionality.
 Review selected changes; never automatically merge CrossInk wholesale.
 

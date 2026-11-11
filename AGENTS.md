@@ -87,8 +87,9 @@ Do not request repeated commit/push approval when the human has already
 explicitly authorized recurring checkpoints for the current task. Keep release,
 merge-to-supported-branch and physical-device authorization separate.
 
-Compare both upstream CrossPoint and CrossInk at integration milestones. Prefer
-an upstream implementation over a duplicate port. Follow the dated comparison
+Compare stable and tagged release-candidate versions of CrossPoint and
+CrossInk at integration milestones. Do not follow moving development branches.
+Prefer an upstream implementation over a duplicate port. Follow the dated comparison
 in `docs/downstream/UPSTREAM_STRATEGY.md`.
 
 [Development process](docs/downstream/DEVELOPMENT_PROCESS.md) defines batch size,
