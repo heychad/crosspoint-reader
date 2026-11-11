@@ -19,7 +19,9 @@ class XtcReaderActivity final : public ReaderActivity {
   };
 
   void renderPage();
-  void openChapterSelection();
+  void openChapterSelection(bool returnToMenu = false);
+  void openReaderMenu();
+  void openPercentSelection();
   void renderStatusBarOverlay(GfxRenderer& renderer, StatusBarOverlayPosition position) const;
   StatusBarInfo getStatusBarInfo() const;
   void saveProgress() const;

@@ -72,8 +72,10 @@ with tempfile.TemporaryDirectory() as directory:
 print('Chapter picker: direct/menu cancellation, selected anchor, and allocation failure preserve state')
 
 xtc_source = (ROOT / 'src/activities/reader/XtcReaderActivity.cpp').read_text()
-xtc_start = xtc_source.index('void XtcReaderActivity::openChapterSelection()')
-xtc_end = xtc_source.index('bool XtcReaderActivity::handleFormatInput()', xtc_start)
+xtc_start = xtc_source.index('void XtcReaderActivity::openChapterSelection(')
+xtc_end = xtc_source.index('void XtcReaderActivity::openPercentSelection()', xtc_start)
+xtc_shortcuts = xtc_source.index('bool XtcReaderActivity::supportsReaderShortcut(')
+xtc_shortcuts_end = xtc_source.index('bool XtcReaderActivity::handleFormatInput()', xtc_shortcuts)
 xtc_program = r'''
 #include <cassert>
 #include <functional>
@@ -104,17 +106,18 @@ struct ReaderActivity {
 };
 struct XtcReaderActivity : ReaderActivity {
   std::shared_ptr<Xtc> xtc=std::make_shared<Xtc>();
-  int renderer=0,mappedInput=0,updates=0;
+  int renderer=0,mappedInput=0,updates=0,menus=0;
   unsigned currentPage=39;
   std::function<void(const ActivityResult&)> callback;
   void requestUpdate(){++updates;}
   void startActivityForResult(std::unique_ptr<XtcReaderChapterSelectionActivity> picker,
                              std::function<void(const ActivityResult&)> next){assert(picker);callback=std::move(next);}
-  void openChapterSelection();
+  void openChapterSelection(bool returnToMenu=false);
+  void openReaderMenu(){++menus;}
   bool supportsReaderShortcut(readershortcuts::Action)const;
   bool handleReaderShortcut(readershortcuts::Action,QuickLockTrigger);
 };
-''' + xtc_source[xtc_start:xtc_end] + r'''
+''' + xtc_source[xtc_start:xtc_end] + xtc_source[xtc_shortcuts:xtc_shortcuts_end] + r'''
 int main(){
  using A=readershortcuts::Action;
  XtcReaderActivity r;
@@ -129,6 +132,9 @@ int main(){
  assert(r.supportsReaderShortcut(A::Home) && r.handleReaderShortcut(A::Home,QuickLockTrigger::None));
  r.xtc=std::make_shared<Xtc>();failAllocation=true;
  r.openChapterSelection();assert(!r.callback && r.currentPage==90);
+ r.openChapterSelection(true);assert(!r.callback && r.currentPage==90 && r.menus==1);
+ failAllocation=false;r.openChapterSelection(true);
+ r.callback({true,PageResult{4}});assert(r.currentPage==90 && r.menus==2);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

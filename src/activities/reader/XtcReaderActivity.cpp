@@ -9,10 +9,14 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "EpubReaderPercentSelectionActivity.h"
 #include "ProgressFile.h"
 #include "ReaderActivity.h"
 #include "ReaderUtils.h"
 #include "XtcReaderChapterSelectionActivity.h"
+#include "XtcReaderMenuActivity.h"
+#include "XtcReaderNavigation.h"
+#include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -32,28 +36,102 @@ bool XtcReaderActivity::loadBook() {
   return true;
 }
 
-void XtcReaderActivity::openChapterSelection() {
+void XtcReaderActivity::openChapterSelection(bool returnToMenu) {
   if (xtc && xtc->hasChapters() && !xtc->getChapters().empty()) {
     auto picker = makeUniqueNoThrow<XtcReaderChapterSelectionActivity>(renderer, mappedInput, xtc, currentPage);
     if (!picker) {
       LOG_ERR("XTR", "OOM: chapter picker");
+      if (returnToMenu) openReaderMenu();
       return;
     }
-    startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+    startActivityForResult(std::move(picker), [this, returnToMenu](const ActivityResult& result) {
       if (!result.isCancelled) {
         currentPage = std::get<PageResult>(result.data).page;
         requestUpdate();
-      }
+      } else if (returnToMenu)
+        openReaderMenu();
     });
   }
 }
 
+void XtcReaderActivity::openPercentSelection() {
+  auto picker = makeUniqueNoThrow<EpubReaderPercentSelectionActivity>(renderer, mappedInput, getProgressPercent());
+  if (!picker) {
+    LOG_ERR("XTR", "OOM: percent picker");
+    openReaderMenu();
+    return;
+  }
+  startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+    const auto* percent = std::get_if<PercentResult>(&result.data);
+    if (!result.isCancelled && percent && xtc) {
+      RenderLock lock;
+      currentPage = xtcPageForPercent(percent->percent, xtc->getPageCount());
+      requestUpdate();
+    } else
+      openReaderMenu();
+  });
+}
+
+void XtcReaderActivity::openReaderMenu() {
+  if (!xtc) return;
+  auto menu = makeUniqueNoThrow<XtcReaderMenuActivity>(renderer, mappedInput, xtc->getTitle(),
+                                                       xtc->hasChapters() && !xtc->getChapters().empty(),
+                                                       mappedInput.hasTouch());
+  if (!menu) {
+    LOG_ERR("XTR", "OOM: reader menu");
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(menu), [this](const ActivityResult& result) {
+    const auto* choice = std::get_if<MenuResult>(&result.data);
+    if (result.isCancelled || !choice) return;
+    using M = XtcReaderMenuActivity::MenuAction;
+    switch (static_cast<M>(choice->action)) {
+      case M::Chapters:
+        openChapterSelection(true);
+        break;
+      case M::Percent:
+        openPercentSelection();
+        break;
+      case M::Statistics:
+        handleReaderShortcut(readershortcuts::Action::ReadingStatistics);
+        break;
+      case M::QuickActions:
+        openQuickActions();
+        break;
+      case M::Controls: {
+        auto settings = makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, SettingsSection::Controls);
+        if (!settings) {
+          LOG_ERR("XTR", "OOM: controls");
+          openReaderMenu();
+          break;
+        }
+        startActivityForResult(std::move(settings), [this](const ActivityResult&) { openReaderMenu(); });
+        break;
+      }
+      case M::Library:
+        handleReaderShortcut(readershortcuts::Action::Library);
+        break;
+      case M::Home:
+        onGoHome();
+        break;
+      case M::Touch:
+        break;
+    }
+  });
+}
+
 bool XtcReaderActivity::supportsReaderShortcut(readershortcuts::Action action) const {
+  if (action == readershortcuts::Action::Menu) return true;
   if (action == readershortcuts::Action::SelectChapter) return xtc && xtc->hasChapters() && !xtc->getChapters().empty();
   return ReaderActivity::supportsReaderShortcut(action);
 }
 
 bool XtcReaderActivity::handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger) {
+  if (action == readershortcuts::Action::Menu) {
+    openReaderMenu();
+    return true;
+  }
   if (action == readershortcuts::Action::SelectChapter) {
     openChapterSelection();
     return true;
@@ -66,11 +144,11 @@ bool XtcReaderActivity::handleFormatInput() {
     return false;
   }
 
-  // Enter chapter selection activity on Confirm release or touch menu gesture
+  // Open the menu on Confirm release or the reader's touch menu gesture.
   const bool touchMenu = ReaderUtils::isTouchMenuGesture(renderer, mappedInput);
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || touchMenu) {
-    if (touchMenu && xtc->hasChapters() && !xtc->getChapters().empty()) haptic_feedback::touchAction();
-    openChapterSelection();
+    if (touchMenu) haptic_feedback::touchAction();
+    openReaderMenu();
     return true;
   }
   return false;

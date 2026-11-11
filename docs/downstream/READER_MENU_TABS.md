@@ -36,8 +36,10 @@ open, the pane closes and consumes that input frame; reopening refreshes the
 list. Names that cannot fit the existing saved font-name field are disabled
 instead of truncated. The panes do not add a live book-text preview.
 
-Other RC drawer features and XTC menu parity remain unfinished. Later-scope
-dictionary/font-engine features are not added.
+Other RC drawer features remain unfinished. The separate [XTC menu](XTC_READER_MENU.md)
+now includes navigation and shared-action entry points; its tracking,
+completion, and reset controls remain unfinished. Later-scope dictionary/font-engine
+features are not added.
 
 Root rows reuse fixed storage for at most 44 actions with a 44-byte index array.
 The final X4 Pro ELF reports a 4,748-byte menu object, including the 40-byte
