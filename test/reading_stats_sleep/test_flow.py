@@ -34,13 +34,17 @@ struct DateTime{ReadingStatsDate date;};using ReadingStatsDateTime=DateTime;
 int compareReadingStatsDate(const ReadingStatsDate& a,const ReadingStatsDate& b){return a.day-b.day;}
 uint16_t readingSpanDaysElapsed(const ReadingStatsDate& a,const ReadingStatsDate& b){return static_cast<uint16_t>(b.day-a.day);}
 struct BookReadingStats {enum class LoadMode {ReadOnly};bool writable=true;uint32_t totalReadingSeconds=99,totalPagesTurned=10;uint16_t sessionCount=2;bool isCompleted=false;ReadingStatsDate startDate{2026,11,8},finishedDate{};uint32_t remainingReadingSeconds(int)const{return 50;}};
-struct GlobalReadingStats {bool writable=true;uint32_t totalReadingSeconds=200,completedBooks=3;uint16_t currentReadingStreak(const ReadingStatsDate*)const{return 5;}static GlobalReadingStats loadReadOnly(){return {};}};
+struct GlobalStatsAggregate;
+struct GlobalReadingStats {static GlobalStatsAggregate loadAggregated(const GlobalReadingStats&);bool writable=true;uint32_t totalReadingSeconds=200,completedBooks=3;uint16_t currentReadingStreak(const ReadingStatsDate*)const{return 5;}static GlobalReadingStats loadReadOnly(){return {};}};
+struct GlobalStatsAggregate {GlobalReadingStats stats;uint32_t sources=0;bool complete=true;};
+uint32_t aggregateSources=1;bool aggregateComplete=true;int aggregateCalls=0;
+GlobalStatsAggregate GlobalReadingStats::loadAggregated(const GlobalReadingStats& stats){++aggregateCalls;return {stats,aggregateSources,aggregateComplete};}
 namespace sleepstats {
- struct Data {BookReadingStats book; GlobalReadingStats device; DateTime now; bool hasClock=false,hasDevice=false;int progress=-1;};
+ struct Data {BookReadingStats book; GlobalReadingStats device;GlobalStatsAggregate allDevices; DateTime now; bool hasClock=false,hasDevice=false,hasAllDevices=false;int progress=-1;};
  struct DashboardData {int progress=-1;uint32_t readingSeconds=0,remainingSeconds=0,sessions=0,pages=0,globalSeconds=0,completedBooks=0,dailyAverageSeconds=0;ReadingStatsDate startDate;uint16_t currentStreak=0;bool hasStats=false,hasGlobal=false,hasDailyAverage=false,hasStreak=false;};
- bool drawResult=true; std::string title; int progress=0;bool usedSummary=false,usedCover=false;
+ bool sawAllDevices=false; bool drawResult=true; std::string title; int progress=0;bool usedSummary=false,usedCover=false;
  bool usedMinimal=false;uint32_t seconds=0;
- template<class Renderer> bool draw(Renderer&,const char* text,const Data& data){usedCover=false;usedSummary=false;title=text;progress=data.progress;return drawResult;}
+ template<class Renderer> bool draw(Renderer&,const char* text,const Data& data){sawAllDevices=data.hasAllDevices;usedCover=false;usedSummary=false;title=text;progress=data.progress;return drawResult;}
  template<class Renderer> bool drawSummary(Renderer&,const char* text,const Data& data){usedCover=false;usedSummary=true;title=text;progress=data.progress;return drawResult;}
  template<class Renderer> bool drawCoverSummary(Renderer&,const char* text,const Data& data,const Bitmap&){usedCover=true;usedSummary=false;title=text;progress=data.progress;return coverDrawResult;}
  template<class Renderer> bool drawMinimalBook(Renderer&,const char* text,int value,uint32_t time,const Bitmap* cover){usedMinimal=true;usedCover=cover!=nullptr;title=text;progress=value;seconds=time;return drawResult;}
@@ -69,6 +73,10 @@ struct SleepActivity {mutable int defaults=0;void renderDefaultSleepScreen()cons
 ''' + method + r'''
 int main(){
  SleepActivity a;
+ aggregateSources=2;a.renderReadingStatsSleepScreen();if(!sleepstats::sawAllDevices||aggregateCalls!=1)return 101;
+ aggregateSources=1;aggregateComplete=false;a.renderReadingStatsSleepScreen();if(!sleepstats::sawAllDevices)return 102;
+ aggregateComplete=true;aggregateCalls=0;reads=0;progressReads=0;renderer.displayed=0;
+
  SETTINGS.trackReadingStats=false;a.renderReadingStatsSleepScreen();if(a.defaults!=1||reads) return 1;
  SETTINGS.trackReadingStats=true;Storage.result=HalStorage::PathStatus::Failed;a.renderReadingStatsSleepScreen();if(a.defaults!=2||reads) return 2;
  Storage.result=HalStorage::PathStatus::Present;bookType=false;a.renderReadingStatsSleepScreen();if(a.defaults!=3||reads) return 3;

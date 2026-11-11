@@ -115,11 +115,15 @@ void bars(const GfxRenderer& renderer, int x, int y, int width, int height, cons
 }
 
 void globalCard(const GfxRenderer& renderer, int x, int y, int width, int height, const char* title,
-                const GlobalReadingStats& stats, bool available) {
-  const int headingHeight = renderer.getLineHeight(UI_10_FONT_ID) + 10;
+                const GlobalReadingStats& stats, bool available, bool partial = false) {
+  const int headingHeight =
+      renderer.getLineHeight(UI_10_FONT_ID) + 10 + (partial ? renderer.getLineHeight(SMALL_FONT_ID) + 4 : 0);
   const int third = width / 3;
   renderer.drawRect(x, y, width, height);
   textInBox(renderer, UI_10_FONT_ID, x + 8, y + 5, width - 16, title, true, EpdFontFamily::BOLD);
+  if (partial)
+    textInBox(renderer, SMALL_FONT_ID, x + 8, y + renderer.getLineHeight(UI_10_FONT_ID) + 7, width - 16,
+              tr(STR_STATS_PARTIAL), true);
   char value[32];
   if (available)
     snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(stats.totalSessions));
@@ -149,7 +153,9 @@ bool draw(GfxRenderer& renderer, const char* title, const Data& data) {
   const int headingHeight = line + 12;
   const int bookHeight = line + 10 + (data.hasClock ? 3 : 2) * (line + small + 10);
   const int remaining = safe.height - margin * 2 - headingHeight - bookHeight - 12;
-  if (width < 220 || line <= 0 || small <= 0 || remaining < 7 * (small + 2) + line + 12) return false;
+  const bool showAllDevices = !data.hasClock && data.hasAllDevices;
+  const int minimum = showAllDevices ? 2 * (2 * line + 2 * small + 18) + 8 : 7 * (small + 2) + line + 12;
+  if (width < 220 || line <= 0 || small <= 0 || remaining < minimum) return false;
   renderer.clearScreen();
   const int x = safe.x + margin;
   int y = safe.y + margin;
@@ -168,7 +174,11 @@ bool draw(GfxRenderer& renderer, const char* title, const Data& data) {
     bars(renderer, x + half + 8, y, width - half - 8, remaining, tr(STR_STATS_WEEKDAYS),
          data.book.dayOfWeekSeconds.data(), days, 7);
   } else {
-    globalCard(renderer, x, y, width, remaining, tr(STR_STATS_DEVICE), data.device, data.hasDevice);
+    const int deviceHeight = showAllDevices ? (remaining - 8) / 2 : remaining;
+    globalCard(renderer, x, y, width, deviceHeight, tr(STR_STATS_DEVICE), data.device, data.hasDevice);
+    if (showAllDevices)
+      globalCard(renderer, x, y + deviceHeight + 8, width, remaining - deviceHeight - 8, tr(STR_STATS_ALL_DEVICES),
+                 data.allDevices.stats, data.allDevices.sources > 0, !data.allDevices.complete);
   }
   return true;
 }

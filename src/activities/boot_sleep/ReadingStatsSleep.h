@@ -10,10 +10,12 @@ namespace sleepstats {
 struct Data {
   BookReadingStats book;
   GlobalReadingStats device;
+  GlobalStatsAggregate allDevices;
   ReadingStatsDateTime now;
   int progress = -1;  // Whole-book percent, or -1 when unavailable.
   bool hasClock = false;
   bool hasDevice = false;
+  bool hasAllDevices = false;
 };
 
 // Draws a complete monochrome frame, or returns false when the display is too small.
