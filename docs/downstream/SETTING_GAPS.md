@@ -22,7 +22,7 @@ A missing key is a discovery lead, not proof of a missing feature: renamed setti
 | `hideClock` | Pending semantic comparison |
 | `hideFileExtension` | Separate library import maps the compatible toggle. |
 | `homeButtonDoubleTapAction` | Pending semantic comparison |
-| `homeButtonInReaderEnabled` | Pending semantic comparison |
+| `homeButtonInReaderEnabled` | Controls import maps the enable state while protecting an existing Home Quick Actions owner. |
 | `homeButtonLongPressAction` | Pending semantic comparison |
 | `homeButtonTapAction` | Pending semantic comparison |
 | `indexingMethod` | Pending semantic comparison |
@@ -62,3 +62,12 @@ A missing key is a discovery lead, not proof of a missing feature: renamed setti
 | `twoFingerSwipeRight` | Implemented in gesture checkpoint; device checks pending |
 | `twoFingerSwipeUp` | Implemented in gesture checkpoint; device checks pending |
 | `uiScale` | Separate preferences import maps small and large scale values; device verification pending. |
+
+## RC preference mappings added November 11
+
+- `characterSpacing`: import only whole-pixel values representable by the native control; skip fractional values.
+- `imageGrayscale`: combine with `imageRendering` to choose grayscale or black-and-white display. Placeholder and suppressed images retain their modes.
+- `frontlightBrightness`, `frontlightWarmth`, and `frontlightOn`: import within the native value ranges.
+
+These use the existing explicit import, snapshot, and recovery flow. The
+historical list above is not a current feature-completion checklist.

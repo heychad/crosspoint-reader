@@ -1077,3 +1077,100 @@ TEST_F(BookSettings, RcPerBookSettingsImportExactFieldsAndPreserveSource) {
   ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
   EXPECT_EQ(after, source);
 }
+
+TEST_F(BookSettings, CrossInkPreferencesMapWholePixelCharacterSpacing) {
+  for (unsigned raw = 0; raw <= 11; ++raw) {
+    JsonDocument source, current;
+    source["characterSpacing"] = raw;
+    current.to<JsonObject>();
+    const bool exact = raw >= 1 && raw <= 9 && raw % 2 == 1;
+    EXPECT_EQ(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false), exact);
+    if (exact)
+      EXPECT_EQ(current["characterSpacing"].as<unsigned>(), (raw - 1) / 2);
+    else
+      EXPECT_TRUE(current["characterSpacing"].isUnbound());
+  }
+}
+
+TEST_F(BookSettings, CrossInkPreferencesCombineImageDisplayAndGrayscale) {
+  for (unsigned mode = 0; mode <= 2; ++mode) {
+    for (unsigned gray = 0; gray <= 1; ++gray) {
+      JsonDocument source, current;
+      source["imageRendering"] = mode;
+      source["imageGrayscale"] = gray;
+      current.to<JsonObject>();
+      ASSERT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
+      EXPECT_EQ(current["imageRendering"].as<unsigned>(), mode == 0 && gray == 0 ? 3 : mode);
+      EXPECT_TRUE(current["imageGrayscale"].isUnbound());
+    }
+  }
+}
+
+TEST_F(BookSettings, CrossInkPreferencesPreserveCurrentAndRejectInvalidMappedValues) {
+  JsonDocument source, current;
+  ASSERT_FALSE(deserializeJson(
+      source,
+      R"({"characterSpacing":9,"imageRendering":0,"imageGrayscale":0,"frontlightBrightness":80,"frontlightWarmth":40,"frontlightOn":1})"));
+  ASSERT_FALSE(deserializeJson(
+      current,
+      R"({"characterSpacing":2,"imageRendering":1,"frontlightBrightness":50,"frontlightWarmth":20,"frontlightOn":0})"));
+  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
+  EXPECT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
+  EXPECT_EQ(current["characterSpacing"].as<int>(), 4);
+  EXPECT_EQ(current["imageRendering"].as<int>(), 3);
+  EXPECT_EQ(current["frontlightBrightness"].as<int>(), 80);
+  EXPECT_EQ(current["frontlightWarmth"].as<int>(), 40);
+  EXPECT_EQ(current["frontlightOn"].as<int>(), 1);
+  source.clear();
+  current.clear();
+  current.to<JsonObject>();
+  ASSERT_FALSE(deserializeJson(
+      source,
+      R"({"imageRendering":0,"imageGrayscale":2,"frontlightBrightness":101,"frontlightWarmth":-1,"frontlightOn":2,"characterSpacing":-1})"));
+  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
+  EXPECT_EQ(current.size(), 0U);
+}
+
+TEST_F(BookSettings, CrossInkControlsImportHomeEnableWithoutRemovingQuickOwner) {
+  JsonDocument source, current;
+  source["homeButtonInReaderEnabled"] = 0;
+  current.to<JsonObject>();
+  ASSERT_TRUE(crossinkimport::stageControls(source.as<JsonVariantConst>(), current, false, false));
+  EXPECT_EQ(current["homeButtonInReaderEnabled"].as<int>(), 0);
+  source["homeButtonInReaderEnabled"] = 1;
+  EXPECT_FALSE(crossinkimport::stageControls(source.as<JsonVariantConst>(), current, false, false));
+  EXPECT_TRUE(crossinkimport::stageControls(source.as<JsonVariantConst>(), current, true, false));
+  EXPECT_EQ(current["homeButtonInReaderEnabled"].as<int>(), 1);
+  current["homeButtonTapAction"] = static_cast<uint8_t>(HomeButtonAction::QuickActions);
+  source["homeButtonInReaderEnabled"] = 0;
+  EXPECT_FALSE(crossinkimport::stageControls(source.as<JsonVariantConst>(), current, true, true));
+  EXPECT_EQ(current["homeButtonInReaderEnabled"].as<int>(), 1);
+}
+
+TEST_F(BookSettings, CrossInkPreferencesPublishNewMappingsAndPreserveSource) {
+  constexpr char primary[] = "/.crosspoint/settings.json";
+  const std::string original = R"({"pluginsEnabled":1,"frontlightBrightness":50})";
+  const std::string legacy =
+      R"({"characterSpacing":9,"imageRendering":0,"imageGrayscale":0,"frontlightBrightness":85,"frontlightWarmth":35,"frontlightOn":1,"pluginsEnabled":0})";
+  put(primary, original);
+  put(crossinkimport::SOURCE_PATH, legacy);
+  JsonDocument proposed;
+  ASSERT_FALSE(deserializeJson(proposed, original));
+  char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+  ASSERT_EQ(crossinkimport::publishPreferences(proposed, original.data(), original.size(), snapshot),
+            crossinkimport::ApplyResult::Published);
+  std::string saved, backup, source;
+  ASSERT_TRUE(Storage.readFileToString("TEST", primary, 32768, saved));
+  ASSERT_TRUE(Storage.readFileToString("TEST", snapshot, 32768, backup));
+  ASSERT_TRUE(Storage.readFileToString("TEST", crossinkimport::SOURCE_PATH, 32768, source));
+  JsonDocument persisted;
+  ASSERT_FALSE(deserializeJson(persisted, saved));
+  EXPECT_EQ(persisted["characterSpacing"].as<int>(), 4);
+  EXPECT_EQ(persisted["imageRendering"].as<int>(), 3);
+  EXPECT_EQ(persisted["frontlightBrightness"].as<int>(), 85);
+  EXPECT_EQ(persisted["frontlightWarmth"].as<int>(), 35);
+  EXPECT_EQ(persisted["frontlightOn"].as<int>(), 1);
+  EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
+  EXPECT_EQ(backup, original);
+  EXPECT_EQ(source, legacy);
+}

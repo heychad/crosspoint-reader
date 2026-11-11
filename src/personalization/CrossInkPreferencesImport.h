@@ -25,11 +25,13 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
       {"hyphenationEnabled", 0, 1},
       {"extraParagraphSpacing", 0, 1},
       {"textAntiAliasing", 0, 1},
-      {"imageRendering", 0, 2},
       {"orientation", 0, 3},
       {"sleepScreenCoverMode", 0, 1},
       {"sleepScreenCoverFilter", 0, 2},
       {"quickResumeSleepScreen", 0, 1},
+      {"frontlightBrightness", 0, 100},
+      {"frontlightWarmth", 0, 100},
+      {"frontlightOn", 0, 1},
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
       {"autoBackupStats", 0, 1},
 #endif
@@ -44,6 +46,31 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     if (current.is<uint8_t>() && current.as<uint8_t>() == value.as<uint8_t>()) continue;
     proposed[field.key] = value.as<uint8_t>();
     changed = true;
+  }
+  const auto stageMapped = [&](const char* key, uint8_t value) {
+    const auto current = proposed[key];
+    if ((!replaceExisting && !current.isUnbound()) || (current.is<uint8_t>() && current.as<uint8_t>() == value)) return;
+    proposed[key] = value;
+    changed = true;
+  };
+  const auto characterSpacing = legacy["characterSpacing"];
+  if (characterSpacing.is<uint8_t>()) {
+    const uint8_t raw = characterSpacing.as<uint8_t>();
+    // RC uses half-pixel steps around 5; this fork stores whole pixels around 2.
+    if (raw >= 1 && raw <= 9 && raw % 2 == 1) stageMapped("characterSpacing", (raw - 1) / 2);
+  }
+  const auto images = legacy["imageRendering"];
+  if (images.is<uint8_t>() && images.as<uint8_t>() <= 2) {
+    const uint8_t mode = images.as<uint8_t>();
+    const auto grayscale = legacy["imageGrayscale"];
+    if (mode != 0) {
+      stageMapped("imageRendering", mode);
+    } else if (grayscale.isUnbound()) {
+      // Older CrossInk settings predate the separate grayscale toggle.
+      stageMapped("imageRendering", 0);
+    } else if (grayscale.is<uint8_t>() && grayscale.as<uint8_t>() <= 1) {
+      stageMapped("imageRendering", grayscale.as<uint8_t>() ? 0 : 3);
+    }
   }
   // CrossInk's stored Blank and Cover Custom values differ from this fork.
   // Minimal Stats shares Minimal on X4 Pro.
