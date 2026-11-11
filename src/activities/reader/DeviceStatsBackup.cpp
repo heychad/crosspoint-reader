@@ -1,7 +1,12 @@
 #include "DeviceStatsBackup.h"
 
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+#include "DeviceStatsRetention.h"
+#endif
+
 #include <Arduino.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <Memory.h>
 
 #include <algorithm>
@@ -141,6 +146,7 @@ statsbackup::AutomaticBackupResult statsbackup::createAutomaticDeviceBackup(cons
   struct Context {
     const ReadingStatsDate& date;
     AutomaticBackupResult result = AutomaticBackupResult::Unavailable;
+    char filename[64]{};
   } context{date};
   const auto backup = [](void* raw) {
     auto& input = *static_cast<Context*>(raw);
@@ -157,7 +163,7 @@ statsbackup::AutomaticBackupResult statsbackup::createAutomaticDeviceBackup(cons
     if (directory == HalStorage::PathStatus::Failed ||
         (directory == HalStorage::PathStatus::Missing && !Storage.mkdir(DIRECTORY)))
       return true;
-    char filename[64];
+    auto& filename = input.filename;
     snprintf(filename, sizeof(filename), "stats_cp_%04u%02u%02u_%c_%016llx.bin", static_cast<unsigned>(input.date.year),
              static_cast<unsigned>(input.date.month), static_cast<unsigned>(input.date.day), undated ? 'U' : 'A',
              static_cast<unsigned long long>(hashBytes(*bytes)));
@@ -180,7 +186,16 @@ statsbackup::AutomaticBackupResult statsbackup::createAutomaticDeviceBackup(cons
       input.result = AutomaticBackupResult::Saved;
     return true;
   };
-  return Storage.withStorageLock(backup, &context) ? context.result : AutomaticBackupResult::Unavailable;
+  if (!Storage.withStorageLock(backup, &context)) return AutomaticBackupResult::Unavailable;
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+  if (context.result != AutomaticBackupResult::Unavailable) {
+    const auto retention = pruneAutomaticDeviceBackups(context.filename);
+    if (retention.removed || retention.deferred)
+      LOG_INF("STATS", "Automatic retention removed %u snapshots%s", static_cast<unsigned>(retention.removed),
+              retention.deferred ? "; remaining cleanup deferred" : "");
+  }
+#endif
+  return context.result;
 }
 
 statsbackup::BackupIntegrity statsbackup::inspectDeviceBackup(const std::string& filename, GlobalReadingStats& output) {
