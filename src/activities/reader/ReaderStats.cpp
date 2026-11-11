@@ -7,6 +7,7 @@
 
 #include <algorithm>
 
+#include "BookTracking.h"
 #include "CompletionEdit.h"
 #include "CompletionTransaction.h"
 #include "ReadingStatsStore.h"
@@ -247,6 +248,22 @@ uint32_t ReaderStats::sectionTimeLeft(int currentPage, int totalPages) const {
   if (preview.paceSampleCount == 0 || preview.avgSecondsPerForwardPage == 0) return 0;
   const uint64_t seconds = static_cast<uint64_t>(totalPages - currentPage) * preview.avgSecondsPerForwardPage;
   return static_cast<uint32_t>(std::min<uint64_t>(seconds, UINT32_MAX));
+}
+
+bool ReaderStats::refreshTracking(const std::string& cachePath, const std::string& bookPath, bool globalTracking,
+                                  uint16_t requestedIdleSeconds, bool enableCompletion) {
+  if (completionRecoveryPending || (!directory.empty() && directory != readingstats::bookDirectory(cachePath)))
+    return false;
+  const auto state = booktracking::state(cachePath, bookPath);
+  if (state == booktracking::State::Unknown) return false;
+  const bool requested = globalTracking && state == booktracking::State::Enabled;
+  if (requested == active) return true;
+  if (!finish()) return false;
+  active = false;
+  session = {};
+  if (!requested) return true;
+  begin(cachePath, bookPath, globalTracking, requestedIdleSeconds, enableCompletion);
+  return active;
 }
 
 bool ReaderStats::finish() {

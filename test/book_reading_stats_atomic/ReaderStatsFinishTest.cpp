@@ -1,8 +1,89 @@
 #include <Arduino.h>
+#include <BookTracking.h>
 #include <HalStorage.h>
 #include <ReaderStats.h>
 #include <ReadingStatsStore.h>
 #include <gtest/gtest.h>
+
+TEST(ReaderStatsTracking, ToggleOffAndOnCountsOnlyEnabledIntervals) {
+  Storage.reset();
+  testMillis = 0;
+  ReaderStats stats;
+  const std::string cache = "/.crosspoint/xtc_123", path = "/Books/test.xtc";
+  stats.begin(cache, path, true, 300);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_TRUE(booktracking::setEnabled(cache, path, false));
+  ASSERT_TRUE(stats.refreshTracking(cache, path, true, 300));
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 130000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 65U);
+  ASSERT_TRUE(booktracking::setEnabled(cache, path, true));
+  ASSERT_TRUE(stats.refreshTracking(cache, path, true, 300));
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 150000;
+  ASSERT_TRUE(stats.refreshTracking(cache, path, true, 300));
+  testMillis = 195000;
+  ASSERT_TRUE(stats.finish());
+  const auto saved = BookReadingStats::load(readingstats::bookDirectory(cache));
+  EXPECT_EQ(saved.totalReadingSeconds, 130U);
+  EXPECT_EQ(saved.sessionCount, 2U);
+  EXPECT_EQ(GlobalReadingStats::load().totalReadingSeconds, 130U);
+}
+
+TEST(ReaderStatsTracking, FailedFlushKeepsTimeForRetry) {
+  for (const bool failBook : {true, false}) {
+    Storage.reset();
+    testMillis = 0;
+    ReaderStats stats;
+    const std::string cache = "/.crosspoint/xtc_123", path = "/Books/test.xtc";
+    stats.begin(cache, path, true, 300);
+    stats.onRender(ReadingStatsFrame::Page);
+    testMillis = 65000;
+    ASSERT_TRUE(booktracking::setEnabled(cache, path, false));
+    Storage.failNextRenameFrom(failBook ? readingstats::bookDirectory(cache) + "/stats_v5.bin.tmp"
+                                        : "/.crosspoint/global_stats.bin.tmp");
+    EXPECT_FALSE(stats.refreshTracking(cache, path, true, 300));
+    ASSERT_TRUE(stats.refreshTracking(cache, path, true, 300));
+    EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 65U);
+    EXPECT_EQ(GlobalReadingStats::load().totalReadingSeconds, 65U);
+  }
+}
+
+TEST(ReaderStatsTracking, UnknownStateAndMismatchedCachePreserveLiveSession) {
+  Storage.reset();
+  testMillis = 0;
+  ReaderStats stats;
+  const std::string cache = "/.crosspoint/xtc_123", path = "/Books/test.xtc";
+  stats.begin(cache, path, true, 300);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 30000;
+  EXPECT_FALSE(stats.refreshTracking("/.crosspoint/xtc_other", path, true, 300));
+  Storage.failReadsFor(readingstats::bookDirectory(cache) + "/reading_stats_off");
+  EXPECT_FALSE(stats.refreshTracking(cache, path, true, 300));
+  testMillis = 65000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 65U);
+}
+
+TEST(ReaderStatsTracking, GlobalTrackingOffPreventsPerBookEnable) {
+  Storage.reset();
+  testMillis = 0;
+  ReaderStats stats;
+  const std::string cache = "/.crosspoint/xtc_123", path = "/Books/test.xtc";
+  stats.begin(cache, path, false, 300);
+  ASSERT_TRUE(stats.refreshTracking(cache, path, false, 300));
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 0U);
+  ASSERT_TRUE(stats.refreshTracking(cache, path, true, 300));
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 130000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 65U);
+}
 
 TEST(ReaderStatsFinish, ReportsSaveFailureAndRetriesWithoutDuplicatingTime) {
   for (const bool failBook : {true, false}) {

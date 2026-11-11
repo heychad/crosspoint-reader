@@ -41,7 +41,21 @@ void ReaderActivity::openReadingStatistics(bool toggleTracking) {
     return;
   }
   if (toggleTracking) screen->requestTrackingToggle();
-  startActivityForResult(std::move(screen), [this](const ActivityResult&) { requestUpdate(); });
+  startActivityForResult(std::move(screen), [this, toggleTracking](const ActivityResult&) {
+    if (toggleTracking && pageRendered.load(std::memory_order_acquire)) {
+      RenderLock lock(*this);
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+      constexpr bool completionEnabled = true;
+#else
+      constexpr bool completionEnabled = false;
+#endif
+      if (!readingStats.refreshTracking(getBookCachePath(), bookPath, SETTINGS.trackReadingStats != 0,
+                                        static_cast<uint16_t>(SETTINGS.readingIdleTimeThresholdUnits) * 10U,
+                                        completionEnabled))
+        pendingStatsSaveWarning.store(true);
+    }
+    requestUpdate();
+  });
 }
 
 bool ReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger trigger) {

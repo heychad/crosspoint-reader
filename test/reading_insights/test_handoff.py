@@ -17,6 +17,7 @@ code = r'''
 #include <string>
 #include <utility>
 int locks=0;
+struct {unsigned char trackReadingStats=1,readingIdleTimeThresholdUnits=30;} SETTINGS;
 bool allocationFails=false;
 struct RenderLock {template<typename T>explicit RenderLock(T&){++locks;}~RenderLock(){--locks;}};
 #define LOG_ERR(...) ((void)0)
@@ -42,9 +43,11 @@ template<typename T,typename...Args>std::unique_ptr<T>makeUniqueNoThrow(Args&&..
 }
 struct Reader {
  GfxRenderer renderer;Input mappedInput;std::string bookPath="book";
- std::atomic<bool>pageRendered{true};
+ std::atomic<bool>pageRendered{true},pendingStatsSaveWarning{false};
+ std::function<void(const ActivityResult&)>callback;
  struct Stats {
-  bool saved=true, active=true;int calls=0, pauses=0;
+  bool saved=true, active=true,refreshOk=true;int calls=0, pauses=0,refreshes=0;
+  bool refreshTracking(const std::string&c,const std::string&p,bool enabled,uint16_t idle,bool completion){assert(locks>0&&c=="cache"&&p=="book"&&enabled&&idle==300&&!completion);++refreshes;return refreshOk;}
   bool snapshot(BookReadingStats&,GlobalReadingStats&,bool& out){assert(locks>0);++calls;out=saved;return active;}
   void pause(){assert(locks>0);++pauses;}
  } readingStats;
@@ -53,8 +56,8 @@ struct Reader {
  std::string getBookTitle(){assert(locks>0&&pageRendered.load());return "Title";}
  int getProgressBasisPoints(){assert(locks>0&&pageRendered.load());return 3888;}
  void requestUpdate(){++updates;}
- void startActivityForResult(std::unique_ptr<ReadingStatsActivity>screen,std::function<void(const ActivityResult&)>){
- assert(locks==0);shown=std::move(screen);
+ void startActivityForResult(std::unique_ptr<ReadingStatsActivity>screen,std::function<void(const ActivityResult&)>cb){
+ assert(locks==0);shown=std::move(screen);callback=cb;
  }
  void open(bool toggleTracking=false){
 ''' + body + r'''
@@ -64,10 +67,13 @@ int main(){
  Reader reader;reader.readingStats.saved=false;
  reader.open();assert(reader.shown&&reader.readingStats.calls==1&&!reader.shown->toggleRequested);
  assert(reader.shown->bookContext&&!reader.shown->saved&&reader.shown->tracking&&reader.shown->progress==3888&&reader.shown->liveStats==&reader.readingStats);
+ reader.callback({});assert(reader.readingStats.refreshes==0);
  Reader disabled;disabled.readingStats.active=false;
  disabled.open(true);assert(disabled.shown&&!disabled.shown->tracking&&!disabled.shown->liveStats&&disabled.shown->toggleRequested);
+ disabled.readingStats.refreshOk=false;disabled.callback({});assert(disabled.readingStats.refreshes==1&&disabled.pendingStatsSaveWarning.load());
  Reader loading;loading.pageRendered=false;
  loading.open(true);assert(loading.shown&&!loading.shown->bookContext&&loading.readingStats.pauses==1&&!loading.shown->toggleRequested);
+ loading.callback({});assert(loading.readingStats.refreshes==0);
  Reader failed;allocationFails=true;
  failed.open(true);assert(!failed.shown&&failed.updates==1&&failed.readingStats.calls==1);
  assert(locks==0);

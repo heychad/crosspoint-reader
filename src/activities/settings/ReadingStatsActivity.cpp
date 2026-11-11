@@ -363,8 +363,10 @@ void ReadingStatsActivity::formatRow(Row row, fui::ListItem& item) {
       case Row::Tracking:
         label = StrId::STR_STATS_TRACKING;
         snprintf(value, sizeof(value), "%s",
-                 trackingStatus == TrackingStatus::On         ? tr(STR_STATS_TRACKING_NEXT_ON)
-                 : trackingStatus == TrackingStatus::Off      ? tr(STR_STATS_TRACKING_NEXT_OFF)
+                 trackingStatus == TrackingStatus::On
+                     ? (trackingAppliesOnReturn ? tr(STR_ENABLED) : tr(STR_STATS_TRACKING_NEXT_ON))
+                 : trackingStatus == TrackingStatus::Off
+                     ? (trackingAppliesOnReturn ? tr(STR_DISABLED) : tr(STR_STATS_TRACKING_NEXT_OFF))
                  : trackingStatus == TrackingStatus::Failed   ? tr(STR_STATS_TRACKING_CHECK_AGAIN)
                  : trackingStatus == TrackingStatus::Checking ? tr(STR_STATS_TRACKING_CHECKING)
                                                               : tr(STR_STATS_BACKUP_SAVING));

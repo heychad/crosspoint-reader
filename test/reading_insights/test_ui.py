@@ -656,9 +656,11 @@ int main(){
  requested.loop();assert(!requested.pendingTrackingToggle && trackingWrites==writesBeforeRequest);
  assert(requested.rowAt(requested.ringPos()-1)==ReadingStatsActivity::Row::Tracking);
  requested.loop();assert(trackingWrites==writesBeforeRequest+1 && trackingFixture==booktracking::State::Enabled);
+ assert(value(requested,ReadingStatsActivity::Row::Tracking)=="STR_ENABLED");
  requested.loop();assert(trackingWrites==writesBeforeRequest+1);
  requested.requestTrackingToggle();requested.loop();requested.loop();
  assert(trackingWrites==writesBeforeRequest+2 && trackingFixture==booktracking::State::Disabled);
+ assert(value(requested,ReadingStatsActivity::Row::Tracking)=="STR_DISABLED");
  trackingWriteOk=false;requested.requestTrackingToggle();requested.loop();requested.loop();
  assert(trackingWrites==writesBeforeRequest+3 && trackingFixture==booktracking::State::Disabled);
  assert(value(requested,ReadingStatsActivity::Row::Tracking)=="STR_STATS_TRACKING_CHECK_AGAIN");
