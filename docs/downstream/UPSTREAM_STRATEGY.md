@@ -9,6 +9,13 @@ Chad selected stable releases and tagged release candidates on November 11,
 branch. Stable CrossPoint is the supported firmware base. CrossInk supplies
 selected features from stable or RC tags, never a wholesale tree merge.
 
+Stable is the default, not a requirement to lag behind useful fixes. Review
+tagged RCs for relevant fixes and selected features, but do not adopt every RC
+automatically. Keep the current pins through a coherent development batch.
+At its integration checkpoint, compare new releases once and decide whether
+their benefits justify an update. An RC tag identifies a review candidate;
+it does not establish device readiness.
+
 Current pins verified through GitHub Releases:
 
 - CrossPoint stable: `2.0.0`, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
@@ -22,12 +29,11 @@ our relevant checks and device smoke test; installing on the reader remains a
 separate handoff. An unreleased fix needs a specific defect and explicit scope
 decision, not a general invitation to follow development.
 
-The existing branch already contains 45 CrossPoint development commits merged
-at `6bea3810`, plus selected work compared with CrossInk development. This policy
-does not erase that history or establish a release-only baseline retroactively.
-The new working branch excludes that development series and replays our later
-work. Passing build and test coverage is recorded in RELEASE_BASELINE.md. Do not reset or rewrite
-the current branch to hide the discrepancy.
+The preserved development-based branch contains 45 CrossPoint development
+commits merged at `6bea3810`, plus selected work compared with CrossInk
+development. The current release-baseline branch excludes that development
+series and replays our later work. Passing build and test coverage is recorded
+in RELEASE_BASELINE.md. Keep the preserved branch as historical evidence.
 
 ## Repositories and baseline
 
@@ -50,8 +56,8 @@ Keep CrossPoint as the upstream code base. Import selected CrossInk behavior in
 small commits; do not merge the whole CrossInk tree. Preserve the X4 Pro-only
 release target while retaining upstream source layout where practical.
 
-The 45-commit CrossPoint update was merged at `6bea3810`. Do not repeat that
-completed integration before every feature batch.
+The historical 45-commit development merge is not the current baseline or a
+pending integration task. Evaluate future updates against the pinned release.
 
 At the next integration milestone, run:
 
