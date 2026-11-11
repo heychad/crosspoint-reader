@@ -31,6 +31,17 @@ int main(){
  static_assert(static_cast<int>(H::CycleFontFamily)==26 && static_cast<int>(H::SelectChapter)==27);
  static_assert(static_cast<int>(Action::HomeReader)==42 && static_cast<int>(Action::SelectChapter)==43);
  H imported=H::Ignore;assert(readershortcuts::readLegacyHomeAction(38,imported) && imported==H::SelectChapter);
+ struct Mapping {int legacy;H home;Action action;};
+ for(const auto& entry : {Mapping{6,H::ToggleFocus,Action::ToggleFocus},
+                         Mapping{12,H::CycleAutoTurn,Action::CycleAutoTurn},
+                         Mapping{26,H::ToggleHomeButton,Action::ToggleHomeButton},
+                         Mapping{36,H::HomeReader,Action::HomeReader},
+                         Mapping{39,H::RotateHalfTurn,Action::RotateHalfTurn}}){
+   assert(readershortcuts::readLegacyHomeAction(entry.legacy,imported) && imported==entry.home);
+   assert(homereadershortcuts::actionFor(imported)==entry.action);
+ }
+ assert(readershortcuts::readLegacyHomeAction(37,imported) && imported==H::Home);
+
  assert(homereadershortcuts::actionFor(H::Home)==Action::Default);
  assert(homereadershortcuts::actionFor(H::QuickActions)==Action::Default);
  assert(homereadershortcuts::actionFor(H::FileBrowser)==Action::FileBrowser);

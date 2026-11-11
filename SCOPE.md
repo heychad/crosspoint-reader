@@ -1,3 +1,21 @@
+# Scope of Chad's X4 Pro fork
+
+This fork targets the Xteink X4 Pro only. Chad's selected feature plan in
+`docs/downstream/FEATURE_PARITY.md` governs development, including the selected
+CrossInk themes, statistics, controls, and library sync. Its Now, Later, and
+Skip choices override the inherited upstream product restrictions below.
+
+Keep CrossPoint's reader and plugin capabilities and preserve existing reading
+state. Retain the upstream source layout where practical to simplify updates;
+other board profiles are compatibility reference, not supported build or
+hardware-test targets. New work still needs bounded memory use, clear storage
+ownership, and a concrete reading benefit.
+
+The following is retained as upstream context rather than a separate approval
+gate for the selected downstream features.
+
+---
+
 # Project Vision & Scope: CrossPoint Reader
 
 The goal of CrossPoint Reader is to create an efficient, open-source reading experience for ESP32-based e-reader devices. Xteink hardware (X3, X4) is where the project started and remains a primary target, but CrossPoint is explicitly broadening to support the wider ecosystem of small ESP32 e-ink readers. We believe a dedicated e-reader should do one thing exceptionally well: **facilitate focused reading.**

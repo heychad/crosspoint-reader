@@ -1,5 +1,10 @@
 ## Platform and Hardware Constraints
 
+This downstream fork supports only the X4 Pro. Use its pinned SDK profile and
+actual S3/internal-RAM/PSRAM limits for implementation and validation. The C3
+notes below explain inherited source constraints; they do not require extra
+board builds or make C3 the resource ceiling for X4 Pro features.
+
 ### Hardware Specs
 
 * MCUs: ESP32-C3 (X3/X4, single-core RISC-V @ 160MHz), ESP32-S3
