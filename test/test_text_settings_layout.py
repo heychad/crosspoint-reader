@@ -105,14 +105,15 @@ constexpr const char* STR_TEXT_SETTINGS = "Text Settings";
 constexpr const char* STR_PREVIEW = """ + english.split("STR_PREVIEW: ", 1)[1].splitlines()[0] + r""";
 constexpr int UI_10_FONT_ID = 0, TOUCH_TAB_BAR_HEIGHT = 50, ACTION_TAB = 1, ACTION_ROW = 2;
 namespace textsettings {
-  struct PreviewLayout {};
+  struct PreviewLayout { std::vector<int> lines; int key = 0; };
 """ + preview_caption + r"""
 }
 struct UiTabListActivity {
   struct { bool touch = false; bool hasTouch() const { return touch; } } mappedInput;
   int tabPillMaxPad = 0, selected = 0;
-  int tabCount() const { return 4; }
-  const char* tabLabel(int index) const {
+  virtual fui::TabBarLayout tabBarLayout() const { return fui::TabBarLayout::EqualWidth; }
+  virtual int tabCount() const { return 4; }
+  virtual const char* tabLabel(int index) const {
     static const char* labels[] = {"Font", "Size", "Layout", "Style"};
     return labels[index];
   }
@@ -406,6 +407,54 @@ int main() {
   checkSharedPartialRows();
 }
 """
+menu = (ROOT / "src/activities/reader/EpubReaderMenuActivity.cpp").read_text()
+start = menu.index("void EpubReaderMenuActivity::buildScreen(")
+end = menu.index("  if (pane != Pane::Root)", start)
+menu_build = menu[start:end] + "}\n"
+menu_footer = method(menu, "void EpubReaderMenuActivity::drawFooter()")
+menu_footer = menu_footer.replace("UiListActivity::drawFooter();", "++footers;")
+menu_harness = r"""
+constexpr const char* STR_CHAPTER_PREFIX="Chapter ";
+constexpr const char* STR_PAGES_SEPARATOR=" ";
+constexpr const char* STR_BOOK_PREFIX="Book ";
+constexpr const char* STR_BOOK_PREVIEW="Book preview";
+struct EpubReaderMenuActivity:UiTabListActivity {
+ enum class Tab{Font,Layout,More,Location,Settings};Tab tab=Tab::Font;
+ bool tabbed=true;int currentPage=1,totalPages=100,bookProgressPercent=1,footers=0;
+ GfxRenderer renderer;Rect previewBounds;std::string previewText="Current book text";
+ textsettings::PreviewLayout previewLayout;
+ int tabCount()const override{return 5;}int activeTab()const override{return static_cast<int>(tab);}
+ const char*tabLabel(int i)const override{static const char*labels[]={"Font","Layout","More","Location","Settings"};return labels[i];}
+ void buildScreen(UiScreen&);void drawFooter();
+};
+""" + menu_build + menu_footer + r"""
+void checkReaderMenuPreview(){
+ const auto profile=BoardConfig::XTEINK_X4_PRO;BoardConfig::ACTIVE=profile;
+ for(auto orientation:{GfxRenderer::Portrait,GfxRenderer::PortraitInverted,GfxRenderer::LandscapeClockwise,GfxRenderer::LandscapeCounterClockwise})
+ for(auto metrics:{LyraMetrics::values,RoundedRaffMetrics::values})
+ for(auto tab:{EpubReaderMenuActivity::Tab::Font,EpubReaderMenuActivity::Tab::Layout,EpubReaderMenuActivity::Tab::More}){
+  metrics.buttonHintsHeight=0;UITheme::getInstance().metrics=metrics;EpubReaderMenuActivity menu;
+  menu.tab=tab;menu.mappedInput.touch=true;menu.renderer.orientation=orientation;
+  menu.renderer.panelWidth=profile.displayWidth;menu.renderer.panelHeight=profile.displayHeight;
+  Target target;fui::DeviceContext device;device.width=menu.renderer.getScreenWidth();device.height=menu.renderer.getScreenHeight();device.hasTouch=true;
+  int top,right,bottom,left;menu.renderer.getOrientedViewableTRBL(&top,&right,&bottom,&left);
+  device.safeArea={static_cast<int16_t>(top),static_cast<int16_t>(right),static_cast<int16_t>(bottom),static_cast<int16_t>(left)};
+  fui::InputSnapshot input;fui::InteractionBuffer<32>interactions;fui::Frame<32>frame(target,device,input,interactions);
+  const auto theme=uiThemeTokens(target);UiScreen screen(frame,theme);menu.previewLayout.lines.push_back(1);menu.buildScreen(screen);
+  const auto content=screen.contentRect();
+  if(tab==EpubReaderMenuActivity::Tab::More){assert(menu.previewBounds.height==0&&menu.previewLayout.lines.empty());}
+  else{
+   const auto bounds=menu.previewBounds;assert(bounds.height>0&&bounds.x>=left&&bounds.x+bounds.width<=device.width-right);
+   assert(bounds.y>=top&&bounds.y+bounds.height<=content.y);
+   assert(content.height>=2*theme.rowHeight);
+   menu.drawFooter();assert(menu.renderer.captionText=="Book preview");
+   assert((menu.renderer.clip==std::array<int,4>{0,0,2000,2000}));
+  }
+ }
+}
+"""
+harness = harness.replace("int main() {", menu_harness + "\nint main() {\n  checkReaderMenuPreview();")
+
 with tempfile.TemporaryDirectory() as directory:
     cpp = Path(directory) / "layout.cpp"
     executable = Path(directory) / "layout"

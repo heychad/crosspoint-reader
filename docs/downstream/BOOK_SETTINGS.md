@@ -104,7 +104,7 @@ The dictionary picker object is 1,228 bytes before its discovered entries and
 path strings; each `DictionaryEntry` is 48 bytes before string storage. It uses
 the existing registry's directory scan and holds that list only while open.
 Rows borrow those owned names, so repainting does not allocate a new list.
-The EPUB menu object is 5,116 bytes. Device heap headroom still needs measurement.
+The EPUB menu object is 5,204 bytes. Device heap headroom still needs measurement.
 
 Dictionary checkpoint validation: 75 focused settings tests, the picker and
 reader handoff test, and the four menu preflight checks passed. After correcting

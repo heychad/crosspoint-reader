@@ -457,10 +457,16 @@ void EpubReaderActivity::openReaderMenu() {
   }
 #endif
 
+  std::string previewText;
+  if (SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TABBED) {
+    RenderLock lock;
+    if (section) previewText = section->getTextFromSectionFile(textsettings::MAX_PREVIEW_TEXT_BYTES, true);
+  }
   auto menuActivity = makeUniqueNoThrow<EpubReaderMenuActivity>(
       renderer, mappedInput, epub->getTitle(), position.displayPage(), position.totalPages, bookProgressPercent,
       SETTINGS.orientation, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), CLIPPINGS.hasClippings(),
-      selectedMenuAction, completionKnown, completed, isInReadFolder(bookPath), [this] { applyReaderTextSettings(); });
+      selectedMenuAction, completionKnown, completed, isInReadFolder(bookPath), [this] { applyReaderTextSettings(); },
+      std::move(previewText));
   if (!menuActivity) {
     LOG_ERR("ERS", "Could not allocate reader menu");
     requestUpdate();

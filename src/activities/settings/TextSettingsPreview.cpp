@@ -28,42 +28,52 @@ CssTextAlign toCssAlign(uint8_t align) {
   return static_cast<CssTextAlign>(align);
 }
 
-// Lay the sample text out through the reader engine into layout.lines
-void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, int textWidth) {
-  layout.lines.clear();
+uint32_t textHash(const char* text) {
+  uint32_t hash = 2166136261U;
+  for (; *text; ++text) hash = (hash ^ static_cast<uint8_t>(*text)) * 16777619U;
+  return hash;
+}
 
+// Keep a bounded set of lines; the source excerpt is bounded by its caller.
+void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, int textWidth, const char* text) {
+  layout.lines.clear();
+  layout.lines.reserve(MAX_PREVIEW_LINES);
   BlockStyle style;
   style.alignment = toCssAlign(SETTINGS.paragraphAlignment);
-  style.textAlignDefined = true;  // honor the user's choice; RTL auto-detected from text
-
-  ParsedText parsed(SETTINGS.hyphenationEnabled != 0, SETTINGS.focusReadingEnabled != 0, style,
-                    SETTINGS.paragraphIndentSpaces);
-
-  // Feed one space-separated word at a time; addWord handles NFC/CJK/RTL/focus splitting
-  const char* text = I18N.get(StrId::STR_FONT_PREVIEW_TEXT);
-  std::string word;
-  for (const char* p = text;; p++) {
-    if (*p == ' ' || *p == '\0') {
-      if (!word.empty()) {
-        parsed.addWord(word, EpdFontFamily::REGULAR);
-        word.clear();
+  style.textAlignDefined = true;
+  const char* paragraph = text;
+  while (*paragraph && layout.lines.size() < MAX_PREVIEW_LINES) {
+    ParsedText parsed(SETTINGS.hyphenationEnabled != 0, SETTINGS.focusReadingEnabled != 0, style,
+                      SETTINGS.paragraphIndentSpaces);
+    const char* end = paragraph;
+    while (*end && *end != '\n') ++end;
+    std::string word;
+    for (const char* p = paragraph;; ++p) {
+      if (p == end || *p == ' ') {
+        if (!word.empty()) {
+          parsed.addWord(word, EpdFontFamily::REGULAR);
+          word.clear();
+        }
+        if (p == end) break;
+      } else {
+        word.push_back(*p);
       }
-      if (*p == '\0') break;
-    } else {
-      word.push_back(*p);
     }
+    parsed.layoutAndExtractLines(
+        renderer, fontId, static_cast<uint16_t>(textWidth),
+        [&layout](std::unique_ptr<TextBlock> line, uint32_t) {
+          if (layout.lines.size() < MAX_PREVIEW_LINES) layout.lines.push_back(std::move(line));
+        },
+        true, SETTINGS.getCharacterSpacing(), SETTINGS.wordSpacing);
+    if (*end && layout.lines.size() < MAX_PREVIEW_LINES) layout.lines.push_back(nullptr);
+    paragraph = *end ? end + 1 : end;
   }
-
-  parsed.layoutAndExtractLines(
-      renderer, fontId, static_cast<uint16_t>(textWidth),
-      [&layout](std::unique_ptr<TextBlock> line, uint32_t) { layout.lines.push_back(std::move(line)); }, true,
-      SETTINGS.getCharacterSpacing(), SETTINGS.wordSpacing);
 }
 
 }  // namespace
 
 void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, Rect bounds,
-                   const char* caption) {
+                   const char* caption, const char* sourceText) {
   const int top = bounds.y;
   const int height = bounds.height;
   const int left = bounds.x + previewPadding;
@@ -96,7 +106,10 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // key means an identical prewarm call. This relies on nothing else evicting the SD
   // glyph cache while this activity is up — true today: the only evictor is
   // FontCacheManager::PrewarmScope, used solely by the reader/dictionary activities.
-  const PreviewKey key{.fontId = fontId,
+  const char* text = sourceText && *sourceText ? sourceText : I18N.get(StrId::STR_FONT_PREVIEW_TEXT);
+  const PreviewKey key{.textHash = textHash(text),
+                       .fontHash = textHash(SETTINGS.sdFontFamilyName),
+                       .fontId = fontId,
                        .fontPointSize = SETTINGS.fontPointSize,
                        .screenMargin = SETTINGS.screenMargin,
                        .textWidth = textWidth,
@@ -110,17 +123,22 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
   if (key != layout.key) {
     if (auto* fcm = renderer.getFontCacheManager()) {
-      fcm->prewarmCache(fontId, I18N.get(StrId::STR_FONT_PREVIEW_TEXT), SETTINGS.focusReadingEnabled ? 0x03 : 0x01);
+      fcm->prewarmCache(fontId, text, SETTINGS.focusReadingEnabled ? 0x03 : 0x01);
     }
-    relayout(layout, renderer, fontId, textWidth);
+    relayout(layout, renderer, fontId, textWidth, text);
     layout.key = key;
   }
 
-  // Draw the sample twice so the paragraph gap is visible
+  // Repeat only the fallback sample; book excerpts keep their actual paragraph breaks.
   int y = top + previewPadding;
   const int textBottomLimit = top + height - labelReserved;
-  for (int paragraph = 0; paragraph < 2; paragraph++) {
+  const int repeats = sourceText && *sourceText ? 1 : 2;
+  for (int paragraph = 0; paragraph < repeats; paragraph++) {
     for (const auto& line : layout.lines) {
+      if (!line) {
+        y += paragraphGap;
+        continue;
+      }
       if (y + lineH > textBottomLimit) return;
       line->render(renderer, fontId, textLeft, y);
       y += lineAdvance;

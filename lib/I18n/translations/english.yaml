@@ -1012,3 +1012,5 @@ STR_BOOK_DICTIONARY_GLOBAL: "Use global dictionary"
 STR_INDEXING_METHOD: "Chapter indexing"
 STR_INDEXING_INCREMENTAL: "Incremental"
 STR_INDEXING_FULL_SECTION: "Full chapter"
+
+STR_BOOK_PREVIEW: "Book preview"

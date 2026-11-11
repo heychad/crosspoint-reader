@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "activities/UiTabListActivity.h"
+#include "activities/settings/TextSettingsPreview.h"
 #include "components/OptionPopup.h"
 
 class CrossPointSettings;
@@ -88,7 +89,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
                                   const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
                                   bool hasClippings, MenuAction& selectedAction, bool completionKnown = false,
                                   bool completed = false, bool alreadyInReadFolder = false,
-                                  std::function<void()> textSettingsChanged = {});
+                                  std::function<void()> textSettingsChanged = {}, std::string previewText = {});
 
   void onEnter() override;
   void onExit() override;
@@ -139,6 +140,10 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   bool handleButtons() override;
   // Header via GUI.drawHeader inside the safe area for the battery indicator.
   void drawChrome() override;
+  void drawFooter() override;
+  std::string previewText;
+  textsettings::PreviewLayout previewLayout;
+  Rect previewBounds;
 
   void closeCancelled();
   bool handleInlineTextSetting(MenuAction action);

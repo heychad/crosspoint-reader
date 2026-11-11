@@ -299,3 +299,5 @@ add_test(NAME EpubReaderCache COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOUR
 add_test(NAME EpubBookmarkClear COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_bookmark_clear.py)
 add_test(NAME BookDictionaryPicker COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_book_dictionary.py)
 add_test(NAME ReaderIndexingPolicy COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_indexing.py)
+add_test(NAME ReaderLivePreview COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_live_preview.py)
+add_test(NAME ReaderPreviewLayout COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_text_settings_layout.py)

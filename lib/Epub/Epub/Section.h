@@ -1,6 +1,7 @@
 #pragma once
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -131,7 +132,8 @@ class Section {
   // the on-disk file (finalized section, or a partial the rebuild hasn't caught up to).
   std::unique_ptr<Page> loadPage(int page);
 
-  std::string getTextFromSectionFile();
+  std::string getTextFromSectionFile(size_t maxBytes = std::numeric_limits<size_t>::max(),
+                                     bool preserveParagraphs = false);
 
   // Resolve an anchor from the in-progress build first, then the on-disk anchor map
   // (covers finalized sections and partials from a previous session).

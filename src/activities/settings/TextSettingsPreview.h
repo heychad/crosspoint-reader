@@ -11,8 +11,13 @@ class TextBlock;
 
 namespace textsettings {
 
+inline constexpr size_t MAX_PREVIEW_TEXT_BYTES = 1024;
+inline constexpr size_t MAX_PREVIEW_LINES = 24;
+
 // Settings + geometry that determine the laid-out lines; used to invalidate the cache.
 struct PreviewKey {
+  uint32_t textHash = 0;
+  uint32_t fontHash = 0;
   int fontId = -1;
   int fontPointSize = -1;
   int screenMargin = -1;
@@ -40,6 +45,6 @@ struct PreviewLayout {
 // Draws the sample-text pane via the reader engine, reusing layout across redraws.
 // The caption is borrowed for this draw; only the sample layout is cached.
 void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previewPadding, int labelGap, Rect bounds,
-                   const char* caption);
+                   const char* caption, const char* sourceText = nullptr);
 
 }  // namespace textsettings

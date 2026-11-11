@@ -308,7 +308,7 @@ void TextSettingsActivity::drawChrome() {
   const int clipBottom = std::min(previewBounds.y + previewBounds.height, savedY + savedHeight);
   renderer.setClipRect(clipLeft, clipTop, std::max(0, clipRight - clipLeft), std::max(0, clipBottom - clipTop));
   textsettings::renderPreview(renderer, previewLayout_, metrics_.previewPadding, metrics_.verticalSpacing,
-                              previewBounds, labelBuf);
+                              previewBounds, labelBuf, nullptr);
   renderer.setClipRect(savedX, savedY, savedWidth, savedHeight);
 }
 

@@ -1025,7 +1025,7 @@ std::unique_ptr<Page> Section::loadPage(const int page) {
   return loadPageAt(page);
 }
 
-std::string Section::getTextFromSectionFile() {
+std::string Section::getTextFromSectionFile(size_t maxBytes, bool preserveParagraphs) {
   std::string fullText;
   auto p = loadPage(currentPage);
   if (p) {
@@ -1035,8 +1035,11 @@ std::string Section::getTextFromSectionFile() {
         if (line.getBlock()) {
           const auto& block = *line.getBlock();
           for (uint16_t i = 0; i < block.wordCount(); i++) {
-            if (!fullText.empty()) fullText += " ";
-            fullText += block.wordText(i);
+            const size_t separator = fullText.empty() ? 0 : 1;
+            const size_t length = block.wordTextLen(i);
+            if (length > maxBytes - fullText.size() || separator > maxBytes - fullText.size() - length) return fullText;
+            if (separator) fullText += preserveParagraphs && block.wordStartsParagraph(i) ? '\n' : ' ';
+            fullText.append(block.wordText(i), length);
           }
         }
       }

@@ -16,7 +16,7 @@ selected first-release scope, not every option in the upstream font engine.
 | Reading-pace reset | Built behind the statistics-reset flag. Clears learned seconds per page and the legacy estimate, with an exact backup. Reading history, dates, and completion stay intact. |
 | Per-book dictionary selection | Built through the existing book-preference scope. Explicit dictionary/None and Use global remain distinct. See [book settings](BOOK_SETTINGS.md). |
 | Indexing-method control | Built. Incremental retains fast first-page display; Full chapter completes uncached/partial chapters before display. Layout and cache formats are unchanged. |
-| Live text preview in typography/layout panes | Remaining. Preserve position and bound preview memory. |
+| Live text preview in typography/layout panes | Built using a bounded current-page excerpt and the existing reader text renderer. Font and Layout tabs and their font panes update live; other tabs keep their list space. |
 | Stable/publisher page navigation | Later: A8. |
 | Automatic page-turn additions | Later: A7; existing fork controls remain available. |
 | Focus/guide-dot additions | Later: A6; existing Focus control remains available. |
@@ -24,8 +24,8 @@ selected first-release scope, not every option in the upstream font engine.
 | Publisher-font and full TTF-engine controls | Later: E6. |
 | Nearby position/book transfer | Skipped: D5. |
 
-B7 remains partial until the remaining first-release controls, preview,
-cumulative review, and device checks are complete. A menu entry alone does not
+The selected B7 controls and live text preview are implemented. Cumulative
+review and device checks are still required. A menu entry alone does not
 establish working behavior or visual parity.
 
 Reading-pace reset uses the existing backed-up statistics replacement and retry

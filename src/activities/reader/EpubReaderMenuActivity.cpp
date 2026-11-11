@@ -73,13 +73,17 @@ const TextControl* textControl(MA action) {
 }
 }  // namespace
 
-EpubReaderMenuActivity::EpubReaderMenuActivity(
-    GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title, const int currentPage,
-    const int totalPages, const int bookProgressPercent, const uint8_t currentOrientation, const bool hasFootnotes,
-    const bool hasBookmarks, const bool hasClippings, MenuAction& selectedAction, const bool completionKnown,
-    const bool completed, const bool alreadyInReadFolder, std::function<void()> textSettingsChanged)
+EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                               const std::string& title, const int currentPage, const int totalPages,
+                                               const int bookProgressPercent, const uint8_t currentOrientation,
+                                               const bool hasFootnotes, const bool hasBookmarks,
+                                               const bool hasClippings, MenuAction& selectedAction,
+                                               const bool completionKnown, const bool completed,
+                                               const bool alreadyInReadFolder,
+                                               std::function<void()> textSettingsChanged, std::string previewText)
     : UiTabListActivity("EpubReaderMenu", renderer, mappedInput),
       tabbed(SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TABBED),
+      previewText(std::move(previewText)),
       textSettingsChanged(std::move(textSettingsChanged)),
       selectedAction(selectedAction),
       title(title),
@@ -611,6 +615,21 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine.c_str(), screen.theme().smallText);
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
+  previewBounds = Rect{};
+  if (tabbed && (tab == Tab::Font || tab == Tab::Layout)) {
+    const auto remaining = screen.contentRect();
+    const int reserveRows = 2 * screen.theme().rowHeight;
+    const int height = std::min(remaining.height * metrics.previewHeightPercent / 100,
+                                std::max(0, remaining.height - reserveRows - metrics.verticalSpacing));
+    if (height > 0) {
+      const auto area = screen.takeTop(static_cast<int16_t>(height), static_cast<int16_t>(metrics.verticalSpacing));
+      previewBounds = Rect{area.x, area.y, area.width, area.height};
+    }
+  } else {
+    previewLayout.lines.clear();
+    previewLayout.key = {};
+  }
+
   if (pane != Pane::Root) {
     fui::ListProps props;
     props.rowProvider = provideFontRow;
@@ -675,6 +694,23 @@ void EpubReaderMenuActivity::drawChrome() {
                         : pane == Pane::FontSize ? tr(STR_FONT_SIZE)
                                                  : title.c_str();
   GUI.drawHeader(renderer, UITheme::getInstance().getHeaderRect(renderer, true, false), caption);
+}
+
+void EpubReaderMenuActivity::drawFooter() {
+  if (previewBounds.width > 0 && previewBounds.height > 0) {
+    const auto [x, y, width, height] = renderer.getClipRect();
+    const int left = std::max(x, previewBounds.x);
+    const int top = std::max(y, previewBounds.y);
+    const int right = std::min(x + width, previewBounds.x + previewBounds.width);
+    const int bottom = std::min(y + height, previewBounds.y + previewBounds.height);
+    renderer.setClipRect(left, top, std::max(0, right - left), std::max(0, bottom - top));
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    textsettings::renderPreview(renderer, previewLayout, metrics.previewPadding, metrics.verticalSpacing, previewBounds,
+                                previewText.empty() ? tr(STR_PREVIEW) : tr(STR_BOOK_PREVIEW),
+                                previewText.empty() ? nullptr : previewText.c_str());
+    renderer.setClipRect(x, y, width, height);
+  }
+  UiListActivity::drawFooter();
 }
 
 void EpubReaderMenuActivity::render(RenderLock&& lock) {
