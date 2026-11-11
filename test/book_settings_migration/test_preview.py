@@ -9,7 +9,7 @@ preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
 
 
-def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0):
+def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0, indexing_method=2):
     if mask is None:
         mask = (1 << (19 if version < 11 else version + 9)) - 1
     if version == 1:
@@ -24,7 +24,7 @@ def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, 
         data.append(1)  # obsolete dark mode
     data.extend([2, 1, 0, 1, 0, 1])  # image, spacing, indent, focus, guide, render
     if version >= 4:
-        data.append(2)
+        data.append(indexing_method)
     data.extend(b'Font\0' + bytes(59))
     if version >= 5:
         data.extend(b'Dict\0' + bytes(59))

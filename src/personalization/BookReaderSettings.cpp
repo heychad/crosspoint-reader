@@ -43,6 +43,7 @@ ReaderPreferences ReaderPreferences::capture(const CrossPointSettings& settings)
   static_assert(sizeof(result.dictionary) == sizeof(settings.dictionaryName));
   memcpy(result.dictionary, settings.dictionaryName, sizeof(result.dictionary));
   result.dictionary[sizeof(result.dictionary) - 1] = '\0';
+  result.indexingMethod = settings.indexingMethod;
   return result;
 }
 
@@ -51,6 +52,7 @@ void ReaderPreferences::apply(CrossPointSettings& settings, uint32_t mask) const
     if (mask & (1U << i)) settings.*FIELDS[i].member = values[i];
   if (mask & FONT_BIT) memcpy(settings.sdFontFamilyName, font, sizeof(font));
   if (mask & DICTIONARY_BIT) memcpy(settings.dictionaryName, dictionary, sizeof(dictionary));
+  if (mask & INDEXING_BIT) settings.indexingMethod = indexingMethod;
 }
 
 uint32_t ReaderPreferences::difference(const ReaderPreferences& other) const {
@@ -59,6 +61,7 @@ uint32_t ReaderPreferences::difference(const ReaderPreferences& other) const {
     if (values[i] != other.values[i]) mask |= 1U << i;
   if (strcmp(font, other.font) != 0) mask |= FONT_BIT;
   if (strcmp(dictionary, other.dictionary) != 0) mask |= DICTIONARY_BIT;
+  if (indexingMethod != other.indexingMethod) mask |= INDEXING_BIT;
   return mask;
 }
 
@@ -67,6 +70,8 @@ void ReaderPreferences::write(JsonObject object, uint32_t mask) const {
     object.remove(FIELDS[i].key);
     if (mask & (1U << i)) object[FIELDS[i].key] = values[i];
   }
+  object.remove("indexingMethod");
+  if (mask & INDEXING_BIT) object["indexingMethod"] = indexingMethod;
   object.remove("sdFontFamilyName");
   if (mask & FONT_BIT) object["sdFontFamilyName"] = font;
   if (mask & DICTIONARY_BIT)
@@ -91,6 +96,12 @@ bool ReaderPreferences::read(JsonObjectConst object, uint32_t& mask) {
     if (!name.is<const char*>() || strlen(name.as<const char*>()) >= sizeof(font)) return false;
     strcpy(font, name.as<const char*>());
     mask |= FONT_BIT;
+  }
+  const auto indexing = object["indexingMethod"];
+  if (!indexing.isNull()) {
+    if (!indexing.is<uint8_t>() || indexing.as<uint8_t>() >= CrossPointSettings::INDEXING_METHOD_COUNT) return false;
+    indexingMethod = indexing.as<uint8_t>();
+    mask |= INDEXING_BIT;
   }
   const auto selectedDictionary = object["dictionaryName"];
   if (!selectedDictionary.isNull()) {

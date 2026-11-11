@@ -23,6 +23,8 @@ for version in (11, 12, 13):
     records.append(test_preview.record(version, mask=1 << (version + 9)))
     records.append(test_preview.record(version, flags=0))
 records.append(test_preview.record(13, publisher_fonts=3))
+for method in (0, 1, 2, 255):
+    records.append(test_preview.record(10, mask=1 << 17, indexing_method=method))
 for value in range(12):
     records.append(test_preview.record(12, mask=1 << 20, character_spacing=value))
 for gray in range(3):
@@ -61,6 +63,8 @@ with tempfile.TemporaryDirectory() as directory:
         values = [int(value) for value in line.split()]
         actual = {name: values[position + 1] for position, name in enumerate(FIELDS)
                   if values[0] & (1 << position)}
+        if values[0] & (1 << 17):
+            actual['indexingMethod'] = values[18]
         assert actual == expected, (index, actual, expected)
         version = data[0]
         fields = module.MASK_FIELDS

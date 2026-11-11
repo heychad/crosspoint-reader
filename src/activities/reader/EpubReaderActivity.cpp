@@ -1536,6 +1536,26 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     case EpubReaderMenuActivity::MenuAction::RESET_BOOK_SETTINGS:
       resetBookReaderSettings();
       break;
+    case EpubReaderMenuActivity::MenuAction::INDEXING_METHOD: {
+      static constexpr StrId choices[] = {StrId::STR_INDEXING_INCREMENTAL, StrId::STR_INDEXING_FULL_SECTION};
+      auto picker = makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, StrId::STR_INDEXING_METHOD, choices,
+                                                             SETTINGS.indexingMethod);
+      if (!picker) {
+        openReaderMenu();
+        break;
+      }
+      startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+        const auto* selected = std::get_if<MenuResult>(&result.data);
+        if (!result.isCancelled && selected && selected->action >= 0 &&
+            selected->action < CrossPointSettings::INDEXING_METHOD_COUNT) {
+          RenderLock lock;
+          SETTINGS.indexingMethod = static_cast<uint8_t>(selected->action);
+          saveBookReaderSettings();
+        }
+        openReaderMenu();
+      });
+      break;
+    }
     case EpubReaderMenuActivity::MenuAction::RENDER_MODE: {
       static constexpr StrId choices[] = {StrId::STR_RENDER_DEFAULT, StrId::STR_RENDER_BALANCED,
                                           StrId::STR_RENDER_LIGHT};
@@ -2197,6 +2217,7 @@ void EpubReaderActivity::renderBook() {
   buildViewportHeight = viewportHeight;
 
   const ReaderRenderSpec renderSpec = effectiveRenderSpec(viewportWidth, viewportHeight, currentSpineIndex);
+  const bool fullSectionIndexing = SETTINGS.indexingMethod == CrossPointSettings::INDEXING_FULL_SECTION;
 
   if (!section) {
     const auto filepath = epub->getSpineItem(currentSpineIndex).href;
@@ -2223,7 +2244,7 @@ void EpubReaderActivity::renderBook() {
         LOG_DBG("ERS", "Cache not found, building...");
       }
 
-      const bool needsFullBuild = pendingPercentJump;
+      const bool needsFullBuild = fullSectionIndexing || pendingPercentJump;
       if (needsFullBuild) {
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
@@ -2370,18 +2391,20 @@ void EpubReaderActivity::renderBook() {
     }
   }
 
-  // The two loops below build on until the page to show exists.
-  if ((section->isPartial() || section->isBuilding()) && section->currentPage >= static_cast<int>(section->pageCount) &&
+  // Full-section mode finishes the chapter here; incremental mode stops at the requested page.
+  if ((section->isPartial() || section->isBuilding()) &&
+      (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount)) &&
       !makeRoomForChapterBuild()) {
     section.reset();
     showBuildError(tr(STR_BT_BUILD_REFUSED));
     return;
   }
-  if (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
+  if (section->isPartial() && (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount))) {
     GUI.drawPopup(renderer, tr(STR_INDEXING));
     pagesUntilFullRefresh = 1;
   }
-  while (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
+  while (section->isPartial() &&
+         (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount))) {
     if (!section->isBuilding() && !section->startBuild(renderSpec)) {
       LOG_ERR("ERS", "Failed to start partial extension build");
       if (tryRenderRecovery()) return;
@@ -2389,7 +2412,8 @@ void EpubReaderActivity::renderBook() {
       showBuildError();
       return;
     }
-    while (!section->isBuildComplete() && section->currentPage >= static_cast<int>(section->pageCount)) {
+    while (!section->isBuildComplete() &&
+           (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount))) {
       if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
         LOG_ERR("ERS", "Failed during incremental section build");
         if (tryRenderRecovery()) return;
@@ -2400,7 +2424,8 @@ void EpubReaderActivity::renderBook() {
     }
   }
   if (section->isBuilding()) {
-    while (!section->isBuildComplete() && section->currentPage >= static_cast<int>(section->pageCount)) {
+    while (!section->isBuildComplete() &&
+           (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount))) {
       if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
         LOG_ERR("ERS", "Failed during incremental section build");
         if (tryRenderRecovery()) return;
@@ -3896,6 +3921,9 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
                                          StrId::STR_RENDER_LIGHT};
       return I18N.get(labels[static_cast<uint8_t>(normalizeEpubRenderMode(SETTINGS.epubRenderMode))]);
     }
+    case MA::INDEXING_METHOD:
+      return SETTINGS.indexingMethod == CrossPointSettings::INDEXING_FULL_SECTION ? tr(STR_INDEXING_FULL_SECTION)
+                                                                                  : tr(STR_INDEXING_INCREMENTAL);
     case MA::ROTATE_SCREEN:
       return I18N.get(kOrient[SETTINGS.orientation % CrossPointSettings::ORIENTATION_COUNT]);
     case MA::AUTO_PAGE_TURN:

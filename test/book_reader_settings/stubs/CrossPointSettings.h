@@ -18,6 +18,8 @@ class CrossPointSettings {
   uint8_t textAntiAliasing = 1;
   uint8_t imageRendering = 0;
   uint8_t epubRenderMode = 0;
+  enum INDEXING_METHOD { INDEXING_INCREMENTAL = 0, INDEXING_FULL_SECTION, INDEXING_METHOD_COUNT };
+  uint8_t indexingMethod = INDEXING_INCREMENTAL;
   uint8_t focusReadingEnabled = 0;
   uint8_t guideReadingEnabled = 0;
   char sdFontFamilyName[32]{};

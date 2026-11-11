@@ -50,7 +50,9 @@ bool readLegacyLocked(void* raw) {
   static_assert(ReaderPreferences::FIELD_COUNT == 15);
   // Font resolution can snap an unsupported size during open. Until the
   // original font is migrated too, leave the size with the legacy record.
+  static_assert(ReaderPreferences::INDEXING_BIT == (1U << 17));
   context.settings.mask = preview.nativeMask & ~1U;
+  context.settings.preferences.indexingMethod = preview.indexingMethod;
   for (size_t i = 0; i < ReaderPreferences::FIELD_COUNT; ++i)
     context.settings.preferences.values[i] = preview.values[i];
   context.result = LegacyLoad::Loaded;

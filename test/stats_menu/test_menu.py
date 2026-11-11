@@ -98,9 +98,9 @@ int main(){
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
  Menu::buildMenuItems(rows,true,true,true,true,false);
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
- assert(rows.size()==36);
+ assert(rows.size()==37);
 #else
- assert(rows.size()==34);
+ assert(rows.size()==35);
 #endif
  assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION && item.labelId==StrId::STR_MARK_FINISHED;})==1);
  Menu::buildMenuItems(rows,true,true,true,false,false);

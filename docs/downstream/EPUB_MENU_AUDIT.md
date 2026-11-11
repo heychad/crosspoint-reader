@@ -15,7 +15,7 @@ selected first-release scope, not every option in the upstream font engine.
 | Cache deletion | Confirmed reset now preserves progress, annotations, and settings. Known generated caches rebuild at the saved position; failure offers Retry. See [cache reset](EPUB_CACHE_RESET.md). |
 | Reading-pace reset | Built behind the statistics-reset flag. Clears learned seconds per page and the legacy estimate, with an exact backup. Reading history, dates, and completion stay intact. |
 | Per-book dictionary selection | Built through the existing book-preference scope. Explicit dictionary/None and Use global remain distinct. See [book settings](BOOK_SETTINGS.md). |
-| Indexing-method control | Remaining. Map its behavior against the fork's renderer before adding another setting. |
+| Indexing-method control | Built. Incremental retains fast first-page display; Full chapter completes uncached/partial chapters before display. Layout and cache formats are unchanged. |
 | Live text preview in typography/layout panes | Remaining. Preserve position and bound preview memory. |
 | Stable/publisher page navigation | Later: A8. |
 | Automatic page-turn additions | Later: A7; existing fork controls remain available. |

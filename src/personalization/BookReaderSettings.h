@@ -11,10 +11,12 @@ struct ReaderPreferences {
   static constexpr size_t FIELD_COUNT = 15;
   static constexpr uint32_t FONT_BIT = 1U << FIELD_COUNT;
   static constexpr uint32_t DICTIONARY_BIT = FONT_BIT << 1U;
-  static constexpr uint32_t ALL_FIELDS = (DICTIONARY_BIT << 1U) - 1U;
+  static constexpr uint32_t INDEXING_BIT = DICTIONARY_BIT << 1U;
+  static constexpr uint32_t ALL_FIELDS = (INDEXING_BIT << 1U) - 1U;
   std::array<uint8_t, FIELD_COUNT> values{};
   char font[32]{};
   char dictionary[32]{};
+  uint8_t indexingMethod = 0;
 
   static ReaderPreferences capture(const CrossPointSettings& settings);
   void apply(CrossPointSettings& settings, uint32_t mask = ALL_FIELDS) const;

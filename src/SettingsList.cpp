@@ -148,6 +148,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Enum(StrId::STR_EPUB_RENDER_MODE, &CrossPointSettings::epubRenderMode,
                          {StrId::STR_RENDER_DEFAULT, StrId::STR_RENDER_BALANCED, StrId::STR_RENDER_LIGHT},
                          "epubRenderMode", StrId::STR_CAT_READER));
+  emit(SettingInfo::Enum(StrId::STR_INDEXING_METHOD, &CrossPointSettings::indexingMethod,
+                         {StrId::STR_INDEXING_INCREMENTAL, StrId::STR_INDEXING_FULL_SECTION}, "indexingMethod",
+                         StrId::STR_CAT_READER));
   emit(SettingInfo::Enum(StrId::STR_READER_MENU_STYLE, &CrossPointSettings::readerMenuStyle,
                          {StrId::STR_MENU_STYLE_LIST, StrId::STR_MENU_STYLE_TOOLBAR, StrId::STR_MENU_STYLE_TABBED},
                          "readerMenuStyle", StrId::STR_CAT_READER));

@@ -1316,3 +1316,49 @@ TEST_F(BookSettings, AmbiguousLegacyDictionaryRootsRemainUntouched) {
   ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 128, bytes));
   EXPECT_EQ(bytes, "/.dictionaries/English/en");
 }
+
+TEST(ReaderPreferenceScope, IndexingChoiceStaysWithBookAndRestoresGlobal) {
+  CrossPointSettings settings;
+  BookReaderSettingsScope scope;
+  scope.begin(settings, {});
+  settings.indexingMethod = CrossPointSettings::INDEXING_FULL_SECTION;
+  const auto book = scope.capture(settings);
+  EXPECT_NE(book.mask & ReaderPreferences::INDEXING_BIT, 0U);
+  JsonDocument global;
+  scope.writeGlobal(global.to<JsonObject>());
+  EXPECT_EQ(global["indexingMethod"].as<unsigned>(), 0U);
+  scope.end(settings);
+  EXPECT_EQ(settings.indexingMethod, CrossPointSettings::INDEXING_INCREMENTAL);
+  scope.begin(settings, book);
+  EXPECT_EQ(settings.indexingMethod, CrossPointSettings::INDEXING_FULL_SECTION);
+  scope.reset(settings);
+  EXPECT_EQ(settings.indexingMethod, CrossPointSettings::INDEXING_INCREMENTAL);
+}
+
+TEST_F(BookSettings, LegacyIndexingChoiceMapsWithoutChangingOriginal) {
+  auto original = crossInkV10();
+  original[23] = 1;
+  original[original.size() - 4] = 0;
+  original[original.size() - 2] = 2;  // Override bit 17.
+  const auto legacy = std::string(CACHE) + "/reader_settings.bin";
+  put(legacy, original);
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, ReaderPreferences::INDEXING_BIT);
+  EXPECT_EQ(settings.preferences.indexingMethod, 1U);
+  ASSERT_TRUE(store.save(settings));
+  std::string after;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
+  EXPECT_EQ(after, original);
+}
+
+TEST(ReaderPreferences, InvalidIndexingModesAreRejected) {
+  for (const char* json : {"{\"indexingMethod\":2}", "{\"indexingMethod\":-1}", "{\"indexingMethod\":\"full\"}"}) {
+    JsonDocument doc;
+    ASSERT_FALSE(deserializeJson(doc, json));
+    ReaderPreferences prefs;
+    uint32_t mask = 0;
+    EXPECT_FALSE(prefs.read(doc.as<JsonObjectConst>(), mask));
+  }
+}

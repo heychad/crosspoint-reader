@@ -162,6 +162,7 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
     case MenuAction::SYNC:
     case MenuAction::DELETE_CACHE:
     case MenuAction::READING_STATISTICS:
+    case MenuAction::INDEXING_METHOD:
     case MenuAction::BOOK_DICTIONARY:
     case MenuAction::TRACK_BOOK_STATS:
     case MenuAction::RESET_BOOK_STATS:
@@ -274,6 +275,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::READING_STATISTICS, StrId::STR_READING_STATISTICS});
   items.push_back({MenuAction::TRACK_BOOK_STATS, StrId::STR_TRACK_READING_STATS});
   items.push_back({MenuAction::BOOK_DICTIONARY, StrId::STR_DICTIONARY});
+  items.push_back({MenuAction::INDEXING_METHOD, StrId::STR_INDEXING_METHOD});
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
   items.push_back({MenuAction::RESET_BOOK_STATS, StrId::STR_BOOK_STATS_RESET});
   items.push_back({MenuAction::RESET_READING_PACE, StrId::STR_READING_PACE_RESET});
@@ -636,6 +638,10 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       static constexpr StrId labels[] = {StrId::STR_RENDER_DEFAULT, StrId::STR_RENDER_BALANCED,
                                          StrId::STR_RENDER_LIGHT};
       menuRowItems[i].value = I18N.get(labels[static_cast<uint8_t>(normalizeEpubRenderMode(SETTINGS.epubRenderMode))]);
+    } else if (action == MenuAction::INDEXING_METHOD) {
+      menuRowItems[i].value = SETTINGS.indexingMethod == CrossPointSettings::INDEXING_FULL_SECTION
+                                  ? tr(STR_INDEXING_FULL_SECTION)
+                                  : tr(STR_INDEXING_INCREMENTAL);
     } else if (action == MenuAction::NIGHT_MODE) {
       GUI.setCheckboxRow(menuRowItems[i], SETTINGS.screenInverted);
     } else if (action == MenuAction::BLUETOOTH) {

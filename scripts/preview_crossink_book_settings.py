@@ -28,6 +28,7 @@ COMPATIBLE = {
     'imageRendering': ('imageRendering', 0, 2),
     'extraParagraphSpacing': ('extraParagraphSpacing', 0, 1),
     'focusReadingEnabled': ('focusReadingEnabled', 0, 1),
+    'indexingMethod': ('indexingMethod', 0, 1),
 }
 LINE_HEIGHTS = (100, 110, 120, 130, 145, 160, 175)
 

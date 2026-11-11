@@ -163,6 +163,11 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     set(result, 3, (characterSpacing - 1) / 2);
     result.unmappedMask &= ~(1UL << 20);
   }
+  if ((mask & (1UL << 17)) && old[17] <= 1) {
+    result.indexingMethod = old[17];
+    result.nativeMask |= 1UL << 17;
+    result.unmappedMask &= ~(1UL << 17);
+  }
   map(13, 7, 1);
   map(15, 13, 1);
   result.extraFlags = flags & ~1;

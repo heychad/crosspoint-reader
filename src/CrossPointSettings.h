@@ -474,6 +474,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
   uint8_t epubRenderMode = static_cast<uint8_t>(EpubRenderMode::Default);
+  enum INDEXING_METHOD { INDEXING_INCREMENTAL = 0, INDEXING_FULL_SECTION, INDEXING_METHOD_COUNT };
+  uint8_t indexingMethod = INDEXING_INCREMENTAL;
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)
   uint8_t tiltPageTurn = TILT_OFF;
   // Master reader-touch toggle on boards with a touch controller.

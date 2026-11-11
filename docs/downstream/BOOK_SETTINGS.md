@@ -2,7 +2,7 @@
 
 This stage adds CrossInk-style per-book overrides for the reflowable reader in the personal CrossPoint fork. EPUB, TXT, and Markdown share this reader. Global Settings still sets the defaults for other books.
 
-Changing the font family, font size, line spacing, word spacing, character spacing, margin, alignment, paragraph spacing or indentation, hyphenation, embedded styles, antialiasing, image handling, EPUB rendering mode, orientation, or focus reading while a book is open creates an override for that book. Reset book to global defaults is available in the list menu and More panel. Reset retains the current content position while rebuilding the layout.
+Changing the font family, font size, line spacing, word spacing, character spacing, margin, alignment, paragraph spacing or indentation, hyphenation, embedded styles, antialiasing, image handling, EPUB rendering mode, orientation, focus reading, or chapter indexing while a book is open creates an override for that book. Reset book to global defaults is available in the list menu and More panel. Reset retains the current content position while rebuilding the layout.
 
 Only fields that the reader changes become overrides. Existing overrides stay pinned if a later global default happens to equal their value. Setting an override back to the current global default removes it. Dictionary choice has explicit ownership: selecting a dictionary or None pins
 that choice even if it matches today's global value. Use global dictionary
@@ -46,7 +46,7 @@ a patch or apply a migration.
 
 ## Resource budget
 
-Each preference snapshot is 79 bytes; the scope is 168 bytes, including its two snapshots, masks, and flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
+Each preference snapshot is 80 bytes; the scope is 168 bytes, including its two snapshots, masks, and flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
 
 ## Hardware checks
 
@@ -104,7 +104,7 @@ The dictionary picker object is 1,228 bytes before its discovered entries and
 path strings; each `DictionaryEntry` is 48 bytes before string storage. It uses
 the existing registry's directory scan and holds that list only while open.
 Rows borrow those owned names, so repainting does not allocate a new list.
-The EPUB menu object is 5,056 bytes. Device heap headroom still needs measurement.
+The EPUB menu object is 5,116 bytes. Device heap headroom still needs measurement.
 
 Dictionary checkpoint validation: 75 focused settings tests, the picker and
 reader handoff test, and the four menu preflight checks passed. After correcting

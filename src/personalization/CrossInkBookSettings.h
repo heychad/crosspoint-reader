@@ -10,6 +10,7 @@ struct BookSettingsPreview {
   uint32_t nativeMask = 0;
   uint32_t unmappedMask = 0;
   uint8_t values[15]{};
+  uint8_t indexingMethod = 0;
   uint8_t version = 0;
   uint8_t extraFlags = 0;
 };
