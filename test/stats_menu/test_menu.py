@@ -25,8 +25,9 @@ completion_action = reader_source[completion_start:completion_end]
 quick_start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::QUICK_ACTIONS:")
 quick_end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", quick_start + 10)
 quick_action = reader_source[quick_start:quick_end]
-ids = sorted(set(re.findall(r"StrId::(STR_[A-Z_]+)", menu)))
-actions = sorted(set(re.findall(r"MenuAction::([A-Z_]+)", menu)))
+control_data = menu_source[menu_source.index("namespace {"):menu_source.index("}  // namespace") + len("}  // namespace")]
+ids = sorted(set(re.findall(r"StrId::(STR_[A-Z0-9_]+)", menu + control_data)))
+actions = re.search(r'enum class MenuAction\s*\{(.*?)\};', header, re.S).group(1)
 capacity = int(re.search(r"MAX_MENU_ITEMS\s*=\s*(\d+)", header).group(1))
 code = r'''
 #include <algorithm>
@@ -34,7 +35,14 @@ code = r'''
 #include <vector>
 #include "util/ReadFolder.h"
 enum class StrId { ''' + ",".join(ids) + r''' };
-struct CrossPointSettings {enum {SLIDE_SWITCH_NIGHT_MODE=1};};
+struct CrossPointSettings {
+ enum {SLIDE_SWITCH_NIGHT_MODE=1,SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=40,SCREEN_MARGIN_STEP=5,
+ WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
+ uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
+ screenMargin=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
+ paragraphIndentSpaces=0,embeddedStyle=0,imageRendering=0;
+};
+constexpr StrId LINE_SPACING_IDS[7]{};
 struct BoardConfig {static bool hasHomeKey(){return true;}};
 struct Settings {char dictionaryName[2]={'x',0};struct {char peerAddr[2]={'x',0};} ble;bool moveFinishedToReadFolder=false;} SETTINGS;
 struct RenderLock {};
@@ -46,12 +54,12 @@ namespace pluginevents {enum class Event{ANY,COUNT};bool anySubscriber(Event){re
 struct {bool hasCredentials()const{return true;}} KOREADER_STORE;
 struct {bool hasClippings()const{return true;}} CLIPPINGS;
 class EpubReaderMenuActivity {public:
- enum class MenuAction {''' + ",".join(actions) + r'''};
+ enum class MenuAction {''' + actions + r'''};
  struct MenuItem {MenuAction action;StrId labelId;};
  static constexpr int MAX_MENU_ITEMS=''' + str(capacity) + r''';
  static void buildMenuItems(std::vector<MenuItem>&,bool,bool,bool,bool=false,bool=false,bool=false,bool=false);
 };
-''' + menu + r'''
+''' + control_data + "\n" + menu + r'''
 namespace readershortcuts {enum class Action {ReadingStatistics,Library,QuickActions};}
 struct Manager {int calls=0; bool allocationSucceeds=true, pending=false;
  void goToSavedItems(){++calls;pending=allocationSucceeds;}
@@ -77,7 +85,7 @@ int main(){
  assert(rows.size()<=Menu::MAX_MENU_ITEMS);
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
  Menu::buildMenuItems(rows,true,true,true,true,false);
- assert(rows.size()==Menu::MAX_MENU_ITEMS-3);
+ assert(rows.size()==31);
  assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION && item.labelId==StrId::STR_MARK_FINISHED;})==1);
  Menu::buildMenuItems(rows,true,true,true,false,false);
  assert(std::none_of(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION;}));

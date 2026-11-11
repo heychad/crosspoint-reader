@@ -2,11 +2,14 @@
 #include <Epub.h>
 #include <I18n.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
+
+class CrossPointSettings;
 
 class EpubReaderMenuActivity final : public UiTabListActivity {
  public:
@@ -45,7 +48,19 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
     TOGGLE_COMPLETION,
     FONT_SIZE,
     LAYOUT_SETTINGS,
-    STYLE_SETTINGS
+    STYLE_SETTINGS,
+    LINE_SPACING,
+    WORD_SPACING,
+    CHARACTER_SPACING,
+    TEXT_AA,
+    FOCUS_READING,
+    SCREEN_MARGIN,
+    ALIGNMENT,
+    HYPHENATION,
+    PARAGRAPH_SPACING,
+    PARAGRAPH_INDENT,
+    EMBEDDED_STYLE,
+    IMAGES
   };
 
   enum class Tab : uint8_t { Font, Layout, More, Location, Settings, Count };
@@ -65,7 +80,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
                                   const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
                                   bool hasClippings, MenuAction& selectedAction, bool completionKnown = false,
-                                  bool completed = false, bool alreadyInReadFolder = false);
+                                  bool completed = false, bool alreadyInReadFolder = false,
+                                  std::function<void()> textSettingsChanged = {});
 
   void onEnter() override;
   void onExit() override;
@@ -78,7 +94,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   // fixed-capacity array avoids any heap allocation for the row list. Labels
   // are rebuilt on tab changes (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
-  static constexpr size_t MAX_MENU_ITEMS = 34;
+  static constexpr size_t MAX_MENU_ITEMS = 44;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
@@ -108,6 +124,10 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   void drawChrome() override;
 
   void closeCancelled();
+  bool handleInlineTextSetting(MenuAction action);
+  void applyInlineTextSetting(uint8_t CrossPointSettings::* field, uint8_t value);
+  void updateInlineTextRow(MenuAction action, freeink::ui::ListItem& item);
+  std::function<void()> textSettingsChanged;
 
   // Fixed menu layout
   std::vector<MenuItem> menuItems;

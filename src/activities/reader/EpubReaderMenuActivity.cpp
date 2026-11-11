@@ -9,6 +9,7 @@
 #include "CrossPointSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
+#include "ReaderLineSpacing.h"
 #include "ReaderUtils.h"
 #include "components/UITheme.h"
 #include "util/PluginEvents.h"
@@ -16,15 +17,65 @@
 
 namespace fui = freeink::ui;
 
-EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                               const std::string& title, const int currentPage, const int totalPages,
-                                               const int bookProgressPercent, const uint8_t currentOrientation,
-                                               const bool hasFootnotes, const bool hasBookmarks,
-                                               const bool hasClippings, MenuAction& selectedAction,
-                                               const bool completionKnown, const bool completed,
-                                               const bool alreadyInReadFolder)
+namespace {
+using MA = EpubReaderMenuActivity::MenuAction;
+constexpr StrId WORD_SPACING[] = {StrId::STR_SPACING_50_PERCENT,  StrId::STR_SPACING_75_PERCENT,
+                                  StrId::STR_SPACING_100_PERCENT, StrId::STR_SPACING_125_PERCENT,
+                                  StrId::STR_SPACING_150_PERCENT, StrId::STR_SPACING_175_PERCENT,
+                                  StrId::STR_SPACING_200_PERCENT};
+constexpr StrId CHARACTER_SPACING[] = {StrId::STR_SPACING_MINUS_2, StrId::STR_SPACING_MINUS_1, StrId::STR_SPACING_ZERO,
+                                       StrId::STR_SPACING_PLUS_1, StrId::STR_SPACING_PLUS_2};
+constexpr StrId ALIGNMENT[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
+                               StrId::STR_BOOK_S_STYLE};
+constexpr StrId IMAGES[] = {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS,
+                            StrId::STR_IMAGES_DISPLAY_BW};
+constexpr const char* MARGINS[] = {"5", "10", "15", "20", "25", "30", "35", "40"};
+constexpr const char* INDENTS[] = {"0", "1", "2", "3", "4", "5"};
+static_assert(CrossPointSettings::SCREEN_MARGIN_MIN == 5 && CrossPointSettings::SCREEN_MARGIN_MAX == 40 &&
+              CrossPointSettings::SCREEN_MARGIN_STEP == 5);
+static_assert(CrossPointSettings::WORD_SPACING_MIN == 50 && CrossPointSettings::WORD_SPACING_MAX == 200 &&
+              CrossPointSettings::WORD_SPACING_STEP == 25);
+
+struct TextControl {
+  MA action;
+  StrId title;
+  uint8_t CrossPointSettings::* field;
+  const StrId* ids = nullptr;
+  const char* const* text = nullptr;
+  uint8_t count = 0;  // zero is an on/off control
+  uint8_t minimum = 0;
+  uint8_t step = 1;
+};
+constexpr TextControl TEXT_CONTROLS[] = {
+    {MA::LINE_SPACING, StrId::STR_LINE_SPACING, &CrossPointSettings::lineSpacing, LINE_SPACING_IDS, nullptr, 7},
+    {MA::WORD_SPACING, StrId::STR_WORD_SPACING, &CrossPointSettings::wordSpacing, WORD_SPACING, nullptr, 7, 50, 25},
+    {MA::CHARACTER_SPACING, StrId::STR_CHARACTER_SPACING, &CrossPointSettings::characterSpacing, CHARACTER_SPACING,
+     nullptr, 5},
+    {MA::TEXT_AA, StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing},
+    {MA::FOCUS_READING, StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled},
+    {MA::SCREEN_MARGIN, StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin, nullptr, MARGINS, 8, 5, 5},
+    {MA::ALIGNMENT, StrId::STR_ALIGNMENT, &CrossPointSettings::paragraphAlignment, ALIGNMENT, nullptr, 5},
+    {MA::HYPHENATION, StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled},
+    {MA::PARAGRAPH_SPACING, StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing},
+    {MA::PARAGRAPH_INDENT, StrId::STR_PARAGRAPH_INDENTATION, &CrossPointSettings::paragraphIndentSpaces, nullptr,
+     INDENTS, 6},
+    {MA::EMBEDDED_STYLE, StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle},
+    {MA::IMAGES, StrId::STR_IMAGES, &CrossPointSettings::imageRendering, IMAGES, nullptr, 4}};
+const TextControl* textControl(MA action) {
+  for (const auto& control : TEXT_CONTROLS)
+    if (control.action == action) return &control;
+  return nullptr;
+}
+}  // namespace
+
+EpubReaderMenuActivity::EpubReaderMenuActivity(
+    GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title, const int currentPage,
+    const int totalPages, const int bookProgressPercent, const uint8_t currentOrientation, const bool hasFootnotes,
+    const bool hasBookmarks, const bool hasClippings, MenuAction& selectedAction, const bool completionKnown,
+    const bool completed, const bool alreadyInReadFolder, std::function<void()> textSettingsChanged)
     : UiTabListActivity("EpubReaderMenu", renderer, mappedInput),
       tabbed(SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TABBED),
+      textSettingsChanged(std::move(textSettingsChanged)),
       selectedAction(selectedAction),
       title(title),
       pendingOrientation(currentOrientation),
@@ -61,11 +112,23 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
   switch (action) {
     case MenuAction::TEXT_SETTINGS:
     case MenuAction::FONT_SIZE:
+    case MenuAction::LINE_SPACING:
+    case MenuAction::WORD_SPACING:
+    case MenuAction::CHARACTER_SPACING:
+    case MenuAction::TEXT_AA:
+    case MenuAction::FOCUS_READING:
       return Tab::Font;
     case MenuAction::LAYOUT_SETTINGS:
     case MenuAction::STYLE_SETTINGS:
     case MenuAction::ROTATE_SCREEN:
     case MenuAction::RENDER_MODE:
+    case MenuAction::SCREEN_MARGIN:
+    case MenuAction::ALIGNMENT:
+    case MenuAction::HYPHENATION:
+    case MenuAction::PARAGRAPH_SPACING:
+    case MenuAction::PARAGRAPH_INDENT:
+    case MenuAction::EMBEDDED_STYLE:
+    case MenuAction::IMAGES:
       return Tab::Layout;
     case MenuAction::SELECT_CHAPTER:
     case MenuAction::FOOTNOTES:
@@ -228,8 +291,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::TEXT_SETTINGS, tabbed ? StrId::STR_FONT_FAMILY : StrId::STR_TEXT_SETTINGS});
   if (tabbed) {
     items.push_back({MenuAction::FONT_SIZE, StrId::STR_FONT_SIZE});
-    items.push_back({MenuAction::LAYOUT_SETTINGS, StrId::STR_LAYOUT});
-    items.push_back({MenuAction::STYLE_SETTINGS, StrId::STR_STYLE});
+    for (const auto& control : TEXT_CONTROLS) items.push_back({control.action, control.title});
   }
   items.push_back({MenuAction::RENDER_MODE, StrId::STR_EPUB_RENDER_MODE});
   items.push_back({MenuAction::RESET_BOOK_SETTINGS, StrId::STR_RESET_BOOK_SETTINGS});
@@ -252,6 +314,50 @@ void EpubReaderMenuActivity::closeCancelled() {
   finish();
 }
 
+void EpubReaderMenuActivity::applyInlineTextSetting(uint8_t CrossPointSettings::* field, uint8_t value) {
+  {
+    RenderLock lock;
+    if (SETTINGS.*field == value) return;
+    SETTINGS.*field = value;
+  }
+  if (textSettingsChanged) textSettingsChanged();
+  SETTINGS.saveToFile();
+  requestUpdate();
+}
+
+bool EpubReaderMenuActivity::handleInlineTextSetting(MenuAction action) {
+  const auto* control = textControl(action);
+  if (!tabbed || !control) return false;
+  if (control->count == 0) {
+    applyInlineTextSetting(control->field, SETTINGS.*(control->field) ? 0 : 1);
+    return true;
+  }
+  const int current = std::clamp((static_cast<int>(SETTINGS.*(control->field)) - control->minimum) / control->step, 0,
+                                 static_cast<int>(control->count) - 1);
+  auto selected = [this, control](int index) {
+    if (index < 0 || index >= control->count) return;
+    applyInlineTextSetting(control->field, control->minimum + index * control->step);
+  };
+  if (control->ids)
+    optionPopup.show(control->title, control->ids, control->count, current, std::move(selected));
+  else
+    optionPopup.show(I18N.get(control->title), control->text, control->count, current, std::move(selected));
+  requestUpdate();
+  return true;
+}
+
+void EpubReaderMenuActivity::updateInlineTextRow(MenuAction action, fui::ListItem& item) {
+  const auto* control = textControl(action);
+  if (!control) return;
+  if (control->count == 0) {
+    GUI.setCheckboxRow(item, SETTINGS.*(control->field) != 0);
+    return;
+  }
+  const int index = std::clamp((static_cast<int>(SETTINGS.*(control->field)) - control->minimum) / control->step, 0,
+                               static_cast<int>(control->count) - 1);
+  item.value = control->ids ? I18N.get(control->ids[index]) : control->text[index];
+}
+
 bool EpubReaderMenuActivity::handleHomeGesture() {
   closeCancelled();
   return true;
@@ -265,6 +371,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   activeNav().selected = index + (tabbed ? 1 : 0);
 
   const auto selectedAction = visibleAction(index);
+  if (handleInlineTextSetting(selectedAction)) return;
   if (selectedAction == MenuAction::ROTATE_SCREEN) {
     optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
                      pendingOrientation, [this](int idx) {
@@ -364,6 +471,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   // buildMenuRowItems()); only rows with live values need refreshing here.
   for (int i = 0; i < visibleCount; ++i) {
     const auto action = visibleAction(i);
+    updateInlineTextRow(action, menuRowItems[i]);
     if (action == MenuAction::ROTATE_SCREEN) {
       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
     } else if (action == MenuAction::AUTO_PAGE_TURN) {

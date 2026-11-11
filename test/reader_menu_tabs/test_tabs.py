@@ -28,7 +28,9 @@ names = ('EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(',
          'bool EpubReaderMenuActivity::handleButtons()')
 methods = '\n'.join(method(name) for name in names)
 actions = re.search(r'enum class MenuAction\s*\{(.*?)\};', header, re.S).group(1)
-ids = sorted(set(re.findall(r'StrId::(STR_[A-Z_]+)', methods)))
+control_data = source[source.index('namespace {'):source.index('}  // namespace') + len('}  // namespace')]
+ids = sorted(set(re.findall(r'StrId::(STR_[A-Z0-9_]+)', methods + control_data)))
+capacity = re.search(r'MAX_MENU_ITEMS = (\d+)', header).group(1)
 code = r'''
 #include <array>
 #include <cassert>
@@ -39,7 +41,14 @@ code = r'''
 #include <algorithm>
 enum class StrId { __IDS__ };
 struct {const char* get(StrId){return "label";}} I18N;
-struct CrossPointSettings {enum {SLIDE_SWITCH_NIGHT_MODE};};
+struct CrossPointSettings {
+ enum {SLIDE_SWITCH_NIGHT_MODE,SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=40,SCREEN_MARGIN_STEP=5,
+ WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
+ uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
+ screenMargin=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
+ paragraphIndentSpaces=0,embeddedStyle=0,imageRendering=0;
+};
+constexpr StrId LINE_SPACING_IDS[7]{};
 struct {char dictionaryName[2]={'x',0};struct {char peerAddr[2]={'x',0};} ble;bool moveFinishedToReadFolder=false;} SETTINGS;
 struct BoardConfig {static bool hasHomeKey(){return true;}};
 struct {bool present(){return true;}} Frontlight;
@@ -55,7 +64,7 @@ class EpubReaderMenuActivity {public:
  enum class MenuAction { __ACTIONS__ };
  enum class Tab:uint8_t{Font,Layout,More,Location,Settings,Count};
  struct MenuItem {MenuAction action;StrId labelId;};
- static constexpr size_t MAX_MENU_ITEMS=34;
+ static constexpr size_t MAX_MENU_ITEMS=__CAPACITY__;
  static Tab tabForAction(MenuAction);
  static void buildMenuItems(std::vector<MenuItem>&,bool,bool,bool,bool=false,bool=false,bool=false,bool=false);
  bool tabbed=true;Tab tab=Tab::Font;std::vector<MenuItem> menuItems;
@@ -72,12 +81,12 @@ class EpubReaderMenuActivity {public:
  void activateIndex(int index){++activations;activated=index;}
  void buildMenuRowItems();void rebuildVisibleItems();void onTabAction(int);void stepTab(int);bool handleButtons();
 };
-'''.replace('__IDS__', ','.join(ids)).replace('__ACTIONS__', actions)
+'''.replace('__IDS__', ','.join(ids)).replace('__ACTIONS__', actions).replace('__CAPACITY__', capacity)
 reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 start = reader.index('    case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS:')
 end = reader.index('    case EpubReaderMenuActivity::MenuAction::BLUETOOTH:', start)
 handoff = reader[start:end]
-code += methods
+code += control_data + '\n' + methods
 code += r'''
 struct ActivityResult {};
 struct TextSettingsActivity {
@@ -103,20 +112,24 @@ struct Reader {
 code += r'''
 int main(){
  using M=EpubReaderMenuActivity;using A=M::MenuAction;using T=M::Tab;
+ assert(textControl(A::LINE_SPACING)!=nullptr && textControl(A::GO_HOME)==nullptr);
  Reader reader;
  reader.execute(A::FONT_SIZE);assert(reader.opened==TextSettingsActivity::Tab::Size && reader.saved==1 && reader.reopened==1);
  reader.execute(A::LAYOUT_SETTINGS);assert(reader.opened==TextSettingsActivity::Tab::Layout);
  reader.execute(A::STYLE_SETTINGS);assert(reader.opened==TextSettingsActivity::Tab::Style);
  reader.execute(A::TEXT_SETTINGS);assert(reader.opened==TextSettingsActivity::Tab::Family && reader.saved==4);
  allocationAvailable=false;reader.execute(A::LAYOUT_SETTINGS);assert(reader.saved==4 && reader.reopened==5);
- M m;M::buildMenuItems(m.menuItems,true,true,true,false,false,false,true);m.rebuildVisibleItems();
- assert(m.visibleCount==2 && m.visibleAction(0)==A::TEXT_SETTINGS && m.visibleAction(1)==A::FONT_SIZE);
+ M m;M::buildMenuItems(m.menuItems,true,true,true,true,false,false,true);m.rebuildVisibleItems();
+ assert(m.visibleCount==7 && m.visibleAction(0)==A::TEXT_SETTINGS && m.visibleAction(1)==A::FONT_SIZE);
  std::array<int,5> counts{};
  for(const auto& row:m.menuItems)++counts[static_cast<int>(M::tabForAction(row.action))];
  for(int count:counts)assert(count>0);
  assert(m.menuItems.size()<=M::MAX_MENU_ITEMS);
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
+ assert(m.menuItems.size()==M::MAX_MENU_ITEMS);
+#endif
  m.navs[0].selected=2;m.stepTab(1);assert(m.tab==T::Layout && m.visibleCount==counts[1]);
- bool hasStyle=false;for(int i=0;i<m.visibleCount;++i)hasStyle|=m.visibleAction(i)==A::STYLE_SETTINGS;assert(hasStyle);
+ bool hasImages=false;for(int i=0;i<m.visibleCount;++i)hasImages|=m.visibleAction(i)==A::IMAGES;assert(hasImages);
  m.stepTab(-1);assert(m.tab==T::Font && m.activeNav().selected==2);
  m.mappedInput.confirm=true;assert(m.handleButtons() && m.activated==1);
  m.activeNav().selected=0;assert(m.handleButtons() && m.tab==T::Layout && m.activations==1);
@@ -126,13 +139,14 @@ int main(){
  m.mappedInput.confirm=false;m.mappedInput.back=true;assert(m.handleButtons() && m.cancelled);
  M flat;flat.tabbed=false;M::buildMenuItems(flat.menuItems,true,true,true);flat.rebuildVisibleItems();
  assert(flat.visibleCount==static_cast<int>(flat.menuItems.size()));
- for(int i=0;i<flat.visibleCount;++i)assert(flat.visibleIndexes[i]==i && flat.menuRowItems[i].actionValue==i);
+ for(int i=0;i<flat.visibleCount;++i){assert(flat.visibleIndexes[i]==i && flat.menuRowItems[i].actionValue==i);assert(textControl(flat.visibleAction(i))==nullptr);}
  flat.nav.selected=3;flat.mappedInput.confirm=true;assert(flat.handleButtons() && flat.activated==3);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'tabs.cpp').write_text(code)
-    subprocess.run(['c++','-std=c++20','-Wall','-Wextra','-Werror',str(path/'tabs.cpp'),'-o',str(path/'tabs')],check=True)
-    subprocess.run([str(path/'tabs')],check=True)
+    for flags in ([], ['-DCROSSPOINT_EXPERIMENTAL_COMPLETION', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT']):
+        subprocess.run(['c++','-std=c++20','-Wall','-Wextra','-Werror',*flags,str(path/'tabs.cpp'),'-o',str(path/'tabs')],check=True)
+        subprocess.run([str(path/'tabs')],check=True)
 print('Tabbed menu grouping, remembered rows, wrap, popup ownership, and flat-list behavior passed')

@@ -455,23 +455,27 @@ void EpubReaderActivity::openReaderMenu() {
   }
 #endif
 
-  startActivityForResult(
-      std::make_unique<EpubReaderMenuActivity>(
-          renderer, mappedInput, epub->getTitle(), position.displayPage(), position.totalPages, bookProgressPercent,
-          SETTINGS.orientation, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), CLIPPINGS.hasClippings(),
-          selectedMenuAction, completionKnown, completed, isInReadFolder(bookPath)),
-      [this](const ActivityResult& result) {
-        const auto& menu = std::get<MenuResult>(result.data);
+  auto menuActivity = makeUniqueNoThrow<EpubReaderMenuActivity>(
+      renderer, mappedInput, epub->getTitle(), position.displayPage(), position.totalPages, bookProgressPercent,
+      SETTINGS.orientation, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), CLIPPINGS.hasClippings(),
+      selectedMenuAction, completionKnown, completed, isInReadFolder(bookPath), [this] { applyReaderTextSettings(); });
+  if (!menuActivity) {
+    LOG_ERR("ERS", "Could not allocate reader menu");
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(menuActivity), [this](const ActivityResult& result) {
+    const auto& menu = std::get<MenuResult>(result.data);
 
-        if (SETTINGS.orientation != menu.orientation) {
-          applyOrientation(menu.orientation);
-        }
+    if (SETTINGS.orientation != menu.orientation) {
+      applyOrientation(menu.orientation);
+    }
 
-        toggleAutoPageTurn(menu.pageTurnOption);
-        if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
-        }
-      });
+    toggleAutoPageTurn(menu.pageTurnOption);
+    if (!result.isCancelled) {
+      onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+    }
+  });
 }
 
 // Runs on the render task, under its lock, right before every chapter build. The page turner's
@@ -1502,6 +1506,18 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       });
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::LINE_SPACING:
+    case EpubReaderMenuActivity::MenuAction::WORD_SPACING:
+    case EpubReaderMenuActivity::MenuAction::CHARACTER_SPACING:
+    case EpubReaderMenuActivity::MenuAction::TEXT_AA:
+    case EpubReaderMenuActivity::MenuAction::FOCUS_READING:
+    case EpubReaderMenuActivity::MenuAction::SCREEN_MARGIN:
+    case EpubReaderMenuActivity::MenuAction::ALIGNMENT:
+    case EpubReaderMenuActivity::MenuAction::HYPHENATION:
+    case EpubReaderMenuActivity::MenuAction::PARAGRAPH_SPACING:
+    case EpubReaderMenuActivity::MenuAction::PARAGRAPH_INDENT:
+    case EpubReaderMenuActivity::MenuAction::EMBEDDED_STYLE:
+    case EpubReaderMenuActivity::MenuAction::IMAGES:
     case EpubReaderMenuActivity::MenuAction::BLUETOOTH:
     case EpubReaderMenuActivity::MenuAction::NIGHT_MODE:
       // Handled in-place by EpubReaderMenuActivity so its On/Off value updates
