@@ -44,6 +44,9 @@ bool EpubReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger tr
         requestUpdate();
       }
       return true;
+    case Action::SelectChapter:
+      openChapterSelection(false);
+      return true;
     case Action::Menu:
       if (usesToolbarMenu() && section)
         openOverlay(Overlay::Toolbar);
@@ -291,6 +294,7 @@ bool EpubReaderActivity::supportsReaderShortcut(Action action) const {
     case Action::NextPage:
     case Action::PreviousChapter:
     case Action::NextChapter:
+    case Action::SelectChapter:
     case Action::Menu:
     case Action::Bookmark:
     case Action::Dictionary:

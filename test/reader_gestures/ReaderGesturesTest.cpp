@@ -25,10 +25,10 @@ void ready(Controller& c) { c.update(frame(), enabled()); }
 }  // namespace
 
 TEST(ReaderGestureMigration, ImportsEmbeddedLegacyActionsIntoEachEdge) {
-  constexpr std::array<Action, 9> expected = {Action::Default,         Action::Brighter,   Action::Dimmer,
-                                              Action::Warmer,          Action::Cooler,     Action::NextChapter,
-                                              Action::PreviousChapter, Action::LargerText, Action::SmallerText};
-  for (uint8_t value = 0; value < static_cast<uint8_t>(Binding::Count); ++value) {
+  constexpr std::array<Action, 10> expected = {
+      Action::Default,     Action::Brighter,        Action::Dimmer,     Action::Warmer,      Action::Cooler,
+      Action::NextChapter, Action::PreviousChapter, Action::LargerText, Action::SmallerText, Action::Home};
+  for (uint8_t value = 0; value < expected.size(); ++value) {
     JsonDocument doc;
     doc["leftEdgeUp"] = value;
     doc["leftEdgeDown"] = value;
@@ -432,4 +432,20 @@ TEST(ReaderGestures, InitialRenderContentionPreservesInheritedContactGuard) {
   EXPECT_TRUE(c.update(frame(1), enabled()).consumed);
   EXPECT_TRUE(c.update(frame(), enabled()).consumed);
   EXPECT_FALSE(c.update(frame(), enabled()).consumed);
+}
+
+TEST(ReaderGestureBindings, ChapterAndHomeActionsKeepCrossInkIds) {
+  EXPECT_EQ(static_cast<uint8_t>(Binding::Home), 9);
+  EXPECT_EQ(static_cast<uint8_t>(Binding::HomeReader), 10);
+  EXPECT_EQ(static_cast<uint8_t>(Binding::SelectChapter), 11);
+  EXPECT_EQ(actionFor(11), Action::SelectChapter);
+  JsonDocument doc;
+  doc["twoFingerSwipeUp"] = 11;
+  std::array<uint8_t, 4> bindings{};
+  EXPECT_FALSE(readBindings(doc, bindings));
+  EXPECT_EQ(bindings[0], 11);
+  doc["leftEdgeUp"] = 11;
+  std::array<uint8_t, 4> edges{0, 0, 0, 0};
+  EXPECT_FALSE(readEmbeddedLegacyEdges(doc, {&edges[0], &edges[1], &edges[2], &edges[3]}));
+  EXPECT_EQ(edges[0], 0);
 }

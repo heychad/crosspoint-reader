@@ -284,3 +284,5 @@ add_test(NAME X4ProVolumeTypePatch COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT
 add_test(NAME X4ProVolumeTypeGuard COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/sdmmc_monitor/test_volume_guard.py)
 add_test(NAME WirelessInventoryHttp COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/inventory_http/test_protocol.py)
 add_test(NAME WirelessStageHttp COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/sync_staging/test_http.py ${arduinojson_SOURCE_DIR}/src)
+
+add_test(NAME ChapterShortcut COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_chapter_shortcut.py)

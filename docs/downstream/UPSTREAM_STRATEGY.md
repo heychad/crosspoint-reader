@@ -64,10 +64,11 @@ CrossPoint update. Do not assume the old v1.6.1 parity inventory covers them.
 
 Priorities from the current source comparison:
 
-- Audit the IPC task-stack fix in `1990a78f2` against this fork's S3 build.
-  This fork still configures a 1 KiB IPC stack; CrossInk wraps task creation to
-  raise only IPC tasks to 2 KiB. The prebuilt SDK behavior needs checking before
-  choosing a fix. This is a candidate, not an integrated fix.
+- IPC task stacks: no extra wrapper needed for the current X4 Pro build. Its
+  linked `esp32s3/dio_opi` SDK already sets `CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`;
+  `esp_ipc_init` in its `libesp_system.a` passes 2048 to task creation. The 1024
+  setting in `platformio.ini` applies only to the unused C3 profile. Recheck the
+  linked SDK when upgrading dependencies.
 - Compare sync error handling and position recovery before extending sync.
 - Compare fixes to dashboard covers, Carousel placement, and grouped EPUB
   headings against equivalent CrossPoint changes to avoid duplicate patches.

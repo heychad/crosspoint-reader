@@ -34,14 +34,31 @@ bool XtcReaderActivity::loadBook() {
 
 void XtcReaderActivity::openChapterSelection() {
   if (xtc && xtc->hasChapters() && !xtc->getChapters().empty()) {
-    startActivityForResult(std::make_unique<XtcReaderChapterSelectionActivity>(renderer, mappedInput, xtc, currentPage),
-                           [this](const ActivityResult& result) {
-                             if (!result.isCancelled) {
-                               currentPage = std::get<PageResult>(result.data).page;
-                               requestUpdate();
-                             }
-                           });
+    auto picker = makeUniqueNoThrow<XtcReaderChapterSelectionActivity>(renderer, mappedInput, xtc, currentPage);
+    if (!picker) {
+      LOG_ERR("XTR", "OOM: chapter picker");
+      return;
+    }
+    startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+      if (!result.isCancelled) {
+        currentPage = std::get<PageResult>(result.data).page;
+        requestUpdate();
+      }
+    });
   }
+}
+
+bool XtcReaderActivity::supportsReaderShortcut(readershortcuts::Action action) const {
+  if (action == readershortcuts::Action::SelectChapter) return xtc && xtc->hasChapters() && !xtc->getChapters().empty();
+  return ReaderActivity::supportsReaderShortcut(action);
+}
+
+bool XtcReaderActivity::handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger) {
+  if (action == readershortcuts::Action::SelectChapter) {
+    openChapterSelection();
+    return true;
+  }
+  return ReaderActivity::handleReaderShortcut(action, trigger);
 }
 
 bool XtcReaderActivity::handleFormatInput() {

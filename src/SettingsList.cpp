@@ -165,7 +165,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
           directions[i],
           {StrId::STR_DISABLED, StrId::STR_SHORTCUT_BRIGHTER, StrId::STR_SHORTCUT_DIMMER, StrId::STR_SHORTCUT_WARMER,
            StrId::STR_SHORTCUT_COOLER, StrId::STR_SHORTCUT_NEXT_CHAPTER, StrId::STR_SHORTCUT_PREV_CHAPTER,
-           StrId::STR_SHORTCUT_LARGER_TEXT, StrId::STR_SHORTCUT_SMALLER_TEXT},
+           StrId::STR_SHORTCUT_LARGER_TEXT, StrId::STR_SHORTCUT_SMALLER_TEXT, StrId::STR_HOME_SHORTCUT,
+           StrId::STR_HOME_READER_SHORTCUT, StrId::STR_SELECT_CHAPTER},
           [i] { return SETTINGS.twoFingerActions[i]; },
           [i](uint8_t value) {
             SETTINGS.setTwoFingerAction(i, value);

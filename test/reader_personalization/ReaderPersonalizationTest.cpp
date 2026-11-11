@@ -367,10 +367,11 @@ TEST(ReaderShortcuts, LegacySideMigrationUsesIndependentSideAndChordCatalogs) {
                               {26, A::ToggleHomeButton}, {28, A::ToggleFrontlight},
                               {29, A::ToggleTouch},      {30, A::QuickLock},
                               {31, A::PreviousPage},     {33, A::Library},
-                              {36, A::HomeReader},       {64, A::PreviousChapter},
-                              {65, A::NextChapter},      {66, A::LargerText},
-                              {67, A::SmallerText},      {68, A::RotateBackward},
-                              {69, A::Rotate},           {70, A::RotateHalfTurn}};
+                              {36, A::HomeReader},       {38, A::SelectChapter},
+                              {64, A::PreviousChapter},  {65, A::NextChapter},
+                              {66, A::LargerText},       {67, A::SmallerText},
+                              {68, A::RotateBackward},   {69, A::Rotate},
+                              {70, A::RotateHalfTurn}};
   constexpr Case chords[] = {
       {0, A::Screenshot},      {1, A::QuickLock},        {4, A::Disabled},          {5, A::Sleep},
       {6, A::NextPage},        {7, A::Bookmark},         {8, A::ReadingStatistics}, {9, A::ToggleCompletion},

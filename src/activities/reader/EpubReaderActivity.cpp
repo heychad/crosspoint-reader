@@ -1017,6 +1017,7 @@ void EpubReaderActivity::loop() {
     case HomeButtonAction::ToggleTilt:
     case HomeButtonAction::Sleep:
     case HomeButtonAction::ToggleCompletion:
+    case HomeButtonAction::SelectChapter:
     case HomeButtonAction::CycleFontFamily:
       automaticPageTurnActive = false;
       break;
@@ -1391,6 +1392,53 @@ int EpubReaderActivity::currentTocIndex() const {
   return std::max(0, cachedSection.getTocIndexForPage(nextPageNumber));
 }
 
+void EpubReaderActivity::openChapterSelection(bool returnToMenu) {
+  int tocIndex;
+  // Release the section while the chapter list is up (mirrors the
+  // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
+  // tens-of-KB footprint is the difference between the chapter list
+  // holding its CJK glyph arena (RAM-only repaints) and re-reading
+  // glyphs from SD on every row step. Cancel restores via the same
+  // cached-position rebuild TEXT_SETTINGS uses.
+  {
+    RenderLock lock;
+    tocIndex = currentTocIndex();
+    if (section) {
+      rememberCurrentContentOffset();
+      cachedSpineIndex = currentSpineIndex;
+      cachedChapterTotalPageCount = section->pageCount;
+      nextPageNumber = section->currentPage;
+    }
+  }
+  auto picker = makeUniqueNoThrow<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, tocIndex);
+  if (!picker) {
+    LOG_ERR("ERS", "OOM: chapter picker");
+    if (returnToMenu) openReaderMenu();
+    return;
+  }
+  {
+    RenderLock lock;
+    section.reset();
+  }
+  startActivityForResult(std::move(picker), [this, returnToMenu](const ActivityResult& result) {
+    if (result.isCancelled) {
+      if (returnToMenu)
+        openReaderMenu();
+      else
+        requestUpdate();
+      return;
+    }
+    const auto& chapterResult = std::get<ChapterResult>(result.data);
+    RenderLock lock;
+    clearDeferredReposition();
+    currentSpineIndex = chapterResult.spineIndex;
+    pendingAnchor = chapterResult.anchor;
+    nextPageNumber = 0;
+    section.reset();
+    requestUpdate();
+  });
+}
+
 void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     loadCachedBookmarks();
@@ -1421,43 +1469,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
 #endif
       break;
     }
-    case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
-      int tocIndex;
-      // Release the section while the chapter list is up (mirrors the
-      // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
-      // tens-of-KB footprint is the difference between the chapter list
-      // holding its CJK glyph arena (RAM-only repaints) and re-reading
-      // glyphs from SD on every row step. Cancel restores via the same
-      // cached-position rebuild TEXT_SETTINGS uses.
-      {
-        RenderLock lock;
-        tocIndex = currentTocIndex();
-        if (section) {
-          rememberCurrentContentOffset();
-          cachedSpineIndex = currentSpineIndex;
-          cachedChapterTotalPageCount = section->pageCount;
-          nextPageNumber = section->currentPage;
-        }
-        section.reset();
-      }
-      startActivityForResult(
-          std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, tocIndex),
-          [this](const ActivityResult& result) {
-            if (result.isCancelled) {
-              openReaderMenu();
-              return;
-            }
-            const auto& chapterResult = std::get<ChapterResult>(result.data);
-            RenderLock lock;
-            clearDeferredReposition();
-            currentSpineIndex = chapterResult.spineIndex;
-            pendingAnchor = chapterResult.anchor;
-            nextPageNumber = 0;
-            section.reset();
-            requestUpdate();
-          });
+    case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER:
+      openChapterSelection(true);
       break;
-    }
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
       openFootnoteSelect(true);
       break;

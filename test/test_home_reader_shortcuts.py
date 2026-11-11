@@ -12,6 +12,7 @@ program = r'''
 #include <atomic>
 #include <cassert>
 #include "personalization/HomeReaderShortcuts.h"
+#include "personalization/LegacyHomeButtonShortcuts.h"
 using readershortcuts::Action;
 struct Input {HomeButtonAction action=HomeButtonAction::Ignore;HomeButtonAction homeButtonAction(){return action;}};
 struct ReaderActivity;
@@ -27,6 +28,9 @@ struct ReaderActivity {
 ''' + handler + r'''
 int main(){
  using H=HomeButtonAction;
+ static_assert(static_cast<int>(H::CycleFontFamily)==26 && static_cast<int>(H::SelectChapter)==27);
+ static_assert(static_cast<int>(Action::HomeReader)==42 && static_cast<int>(Action::SelectChapter)==43);
+ H imported=H::Ignore;assert(readershortcuts::readLegacyHomeAction(38,imported) && imported==H::SelectChapter);
  assert(homereadershortcuts::actionFor(H::Home)==Action::Default);
  assert(homereadershortcuts::actionFor(H::QuickActions)==Action::Default);
  assert(homereadershortcuts::actionFor(H::FileBrowser)==Action::FileBrowser);
@@ -36,6 +40,7 @@ int main(){
  assert(homereadershortcuts::actionFor(H::ReadingStatistics)==Action::ReadingStatistics);
  assert(homereadershortcuts::actionFor(H::ToggleCompletion)==Action::ToggleCompletion);
  assert(homereadershortcuts::actionFor(H::CycleFontFamily)==Action::CycleFontFamily);
+ assert(homereadershortcuts::actionFor(H::SelectChapter)==Action::SelectChapter);
  assert(homereadershortcuts::actionFor(H::PreviousPage)==Action::PreviousPage);
  assert(homereadershortcuts::actionFor(H::Screenshot)==Action::Screenshot);
  assert(homereadershortcuts::actionFor(H::ToggleNight)==Action::ToggleNight);
