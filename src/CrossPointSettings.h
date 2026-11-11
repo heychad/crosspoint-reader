@@ -581,6 +581,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   bool bookReaderSettingsActive();
   BookReaderSettings captureBookReaderSettings();
   void resetBookReaderSettings();
+  bool setBookDictionary(const char* name);
   void endBookReaderSettings();
 
   static const char* getFilePath() { return "/.crosspoint/settings.json"; }

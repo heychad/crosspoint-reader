@@ -7,7 +7,12 @@ import tempfile
 root=Path(__file__).resolve().parents[2]
 source=(root/'src/activities/reader/EpubReaderActivity.cpp').read_text()
 start=source.index('void EpubReaderActivity::backgroundBuildTick()')
-end=source.index('\nvoid EpubReaderActivity::openDictionaryWordSelect()',start)
+opening=source.index('{',start)
+depth=1
+end=opening+1
+while depth:
+    depth += (source[end] == '{') - (source[end] == '}')
+    end += 1
 body=source[start:end]
 code=r'''
 #include <cassert>

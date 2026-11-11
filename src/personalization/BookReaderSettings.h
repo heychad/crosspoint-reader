@@ -10,9 +10,11 @@ class CrossPointSettings;
 struct ReaderPreferences {
   static constexpr size_t FIELD_COUNT = 15;
   static constexpr uint32_t FONT_BIT = 1U << FIELD_COUNT;
-  static constexpr uint32_t ALL_FIELDS = (FONT_BIT << 1U) - 1U;
+  static constexpr uint32_t DICTIONARY_BIT = FONT_BIT << 1U;
+  static constexpr uint32_t ALL_FIELDS = (DICTIONARY_BIT << 1U) - 1U;
   std::array<uint8_t, FIELD_COUNT> values{};
   char font[32]{};
+  char dictionary[32]{};
 
   static ReaderPreferences capture(const CrossPointSettings& settings);
   void apply(CrossPointSettings& settings, uint32_t mask = ALL_FIELDS) const;
@@ -33,6 +35,8 @@ class BookReaderSettingsScope {
   void begin(CrossPointSettings& settings, const BookReaderSettings& book);
   BookReaderSettings capture(const CrossPointSettings& settings);
   void reset(CrossPointSettings& settings);
+  // Null inherits the global choice; an empty string explicitly disables lookup.
+  bool setDictionary(CrossPointSettings& settings, const char* name);
   void end(CrossPointSettings& settings);
   void beforeGlobalLoad(CrossPointSettings& settings);
   void afterGlobalLoad(CrossPointSettings& settings);

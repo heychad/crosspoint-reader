@@ -1174,3 +1174,145 @@ TEST_F(BookSettings, CrossInkPreferencesPublishNewMappingsAndPreserveSource) {
   EXPECT_EQ(backup, original);
   EXPECT_EQ(source, legacy);
 }
+
+TEST(ReaderPreferenceScope, DictionaryChoiceIsPinnedWithoutLeakingIntoGlobalSettings) {
+  CrossPointSettings settings;
+  strcpy(settings.dictionaryName, "English");
+  BookReaderSettingsScope scope;
+  scope.begin(settings, {});
+  ASSERT_TRUE(scope.setDictionary(settings, "French"));
+  auto saved = scope.capture(settings);
+  EXPECT_EQ(saved.mask, ReaderPreferences::DICTIONARY_BIT);
+  EXPECT_STREQ(saved.preferences.dictionary, "French");
+  JsonDocument global;
+  scope.writeGlobal(global.to<JsonObject>());
+  EXPECT_STREQ(global["dictionaryName"].as<const char*>(), "English");
+  scope.end(settings);
+  EXPECT_STREQ(settings.dictionaryName, "English");
+  scope.begin(settings, saved);
+  EXPECT_STREQ(settings.dictionaryName, "French");
+  ASSERT_TRUE(scope.setDictionary(settings, ""));
+  EXPECT_NE(scope.capture(settings).mask & ReaderPreferences::DICTIONARY_BIT, 0U);
+  scope.beforeGlobalLoad(settings);
+  strcpy(settings.dictionaryName, "German");
+  scope.afterGlobalLoad(settings);
+  EXPECT_STREQ(settings.dictionaryName, "");
+  ASSERT_TRUE(scope.setDictionary(settings, nullptr));
+  EXPECT_STREQ(settings.dictionaryName, "German");
+  EXPECT_EQ(scope.capture(settings).mask & ReaderPreferences::DICTIONARY_BIT, 0U);
+}
+
+TEST(ReaderPreferenceScope, MatchingDictionaryChoiceRemainsExplicit) {
+  CrossPointSettings settings;
+  strcpy(settings.dictionaryName, "English");
+  BookReaderSettingsScope scope;
+  scope.begin(settings, {});
+  ASSERT_TRUE(scope.setDictionary(settings, "English"));
+  EXPECT_NE(scope.capture(settings).mask & ReaderPreferences::DICTIONARY_BIT, 0U);
+  for (const auto& name : {std::string(32, 'a'), std::string("../English"), std::string("a/b"), std::string("a\\b")}) {
+    EXPECT_FALSE(scope.setDictionary(settings, name.c_str()));
+    EXPECT_STREQ(settings.dictionaryName, "English");
+  }
+  scope.end(settings);
+  EXPECT_FALSE(scope.setDictionary(settings, "French"));
+}
+
+TEST_F(BookSettings, DictionaryOverrideAndExplicitNoneRoundTrip) {
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  settings.mask = ReaderPreferences::DICTIONARY_BIT;
+  strcpy(settings.preferences.dictionary, "English");
+  ASSERT_TRUE(store.save(settings));
+  BookReaderPreferences reopened;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", settings));
+  EXPECT_STREQ(settings.preferences.dictionary, "English");
+  settings.preferences.dictionary[0] = '\0';
+  ASSERT_TRUE(reopened.save(settings));
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, ReaderPreferences::DICTIONARY_BIT);
+  EXPECT_STREQ(settings.preferences.dictionary, "");
+}
+
+TEST(ReaderPreferences, DictionaryRejectsMalformedNamesAndKeepsInheritanceDistinct) {
+  for (const char* json :
+       {"{\"dictionaryName\":123}", "{\"dictionaryName\":\"../x\"}", "{\"dictionaryName\":\"a/b\"}",
+        "{\"dictionaryName\":\"a\\u0000b\"}", "{\"dictionaryName\":\"12345678901234567890123456789012\"}"}) {
+    JsonDocument doc;
+    ASSERT_FALSE(deserializeJson(doc, json));
+    ReaderPreferences result;
+    uint32_t mask = 0;
+    EXPECT_FALSE(result.read(doc.as<JsonObjectConst>(), mask));
+  }
+  JsonDocument doc;
+  doc["dictionaryName"] = nullptr;
+  ReaderPreferences result;
+  uint32_t mask = 1;
+  ASSERT_TRUE(result.read(doc.as<JsonObjectConst>(), mask));
+  EXPECT_EQ(mask, 0U);
+  result.write(doc.as<JsonObject>(), 0);
+  EXPECT_FALSE(doc["dictionaryName"].isUnbound());
+  EXPECT_TRUE(doc["dictionaryName"].isNull());
+}
+
+TEST_F(BookSettings, ImportsLegacyDictionaryAndRemembersExplicitInheritance) {
+  const auto legacy = std::string(CACHE) + "/dictionary.bin";
+  put(legacy, "/dictionaries/English/en");
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, ReaderPreferences::DICTIONARY_BIT);
+  EXPECT_STREQ(settings.preferences.dictionary, "English");
+  ASSERT_TRUE(store.save(settings));
+  EXPECT_FALSE(Storage.exists(PATH));
+  settings.mask = 0;
+  ASSERT_TRUE(store.save(settings));
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, 0U);
+  std::string bytes;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 128, bytes));
+  EXPECT_EQ(bytes, "/dictionaries/English/en");
+}
+
+TEST_F(BookSettings, ImportsDictionaryAlongsideExistingLayoutPreferences) {
+  put(PATH, "{\"version\":1,\"overrides\":{\"fontSize\":18}}");
+  put(std::string(CACHE) + "/dictionary.bin", "/.dictionaries/French/");
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.preferences.values[0], 18U);
+  EXPECT_STREQ(settings.preferences.dictionary, "French");
+  EXPECT_NE(settings.mask & ReaderPreferences::DICTIONARY_BIT, 0U);
+  ASSERT_TRUE(store.save(settings));
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_STREQ(settings.preferences.dictionary, "French");
+}
+
+TEST_F(BookSettings, UnsupportedLegacyDictionaryDoesNotGetOverwritten) {
+  for (const auto& value :
+       {std::string("/elsewhere/English"), std::string("/dictionaries/a/b/c"), std::string(128, 'x')}) {
+    Storage.reset();
+    const auto legacy = std::string(CACHE) + "/dictionary.bin";
+    put(legacy, value);
+    BookReaderPreferences store;
+    BookReaderSettings settings;
+    EXPECT_FALSE(store.load(CACHE, "/book.epub", settings));
+    EXPECT_FALSE(store.save({}));
+    std::string bytes;
+    ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, bytes));
+    EXPECT_EQ(bytes, value);
+  }
+}
+
+TEST_F(BookSettings, AmbiguousLegacyDictionaryRootsRemainUntouched) {
+  const auto legacy = std::string(CACHE) + "/dictionary.bin";
+  put(legacy, "/.dictionaries/English/en");
+  ASSERT_TRUE(Storage.mkdir("/dictionaries/English"));
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  EXPECT_FALSE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_FALSE(store.save({}));
+  std::string bytes;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 128, bytes));
+  EXPECT_EQ(bytes, "/.dictionaries/English/en");
+}

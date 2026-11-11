@@ -711,6 +711,11 @@ void CrossPointSettings::resetBookReaderSettings() {
   bookReaderSettings.reset(*this);
 }
 
+bool CrossPointSettings::setBookDictionary(const char* name) {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  return bookReaderSettings.setDictionary(*this, name);
+}
+
 void CrossPointSettings::endBookReaderSettings() {
   std::lock_guard<std::mutex> lock(storeMutex);
   bookReaderSettings.end(*this);

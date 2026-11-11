@@ -4,7 +4,11 @@ This stage adds CrossInk-style per-book overrides for the reflowable reader in t
 
 Changing the font family, font size, line spacing, word spacing, character spacing, margin, alignment, paragraph spacing or indentation, hyphenation, embedded styles, antialiasing, image handling, EPUB rendering mode, orientation, or focus reading while a book is open creates an override for that book. Reset book to global defaults is available in the list menu and More panel. Reset retains the current content position while rebuilding the layout.
 
-Only fields that the reader changes become overrides. Existing overrides stay pinned if a later global default happens to equal their value. Setting an override back to the current global default removes it. Hardware controls, status bars, networking, night mode, and other device preferences remain global.
+Only fields that the reader changes become overrides. Existing overrides stay pinned if a later global default happens to equal their value. Setting an override back to the current global default removes it. Dictionary choice has explicit ownership: selecting a dictionary or None pins
+that choice even if it matches today's global value. Use global dictionary
+removes only that override. Reset book to global defaults clears it along with
+the layout overrides. Hardware controls, status bars, networking, night mode,
+and other device preferences remain global.
 
 If an SD-card font is missing or fails to load while a book is open, the reader
 uses its built-in fallback without replacing the book's saved font or size. It
@@ -12,7 +16,7 @@ can load the selected font again when that font becomes available.
 
 ## Storage and ownership
 
-`BookReaderSettingsScope` holds the global layout defaults and the last effective book layout as two fixed-size snapshots. `CrossPointSettings` owns this scope and serializes its transitions with the existing store mutex. Global JSON saves project the saved defaults while the reader is open. Global JSON reloads update inherited defaults and reapply only the book's overrides. Normal reader rendering continues to read the effective settings without taking that mutex.
+`BookReaderSettingsScope` holds the global layout/dictionary defaults and the last effective book settings as two fixed-size snapshots. `CrossPointSettings` owns this scope and serializes its transitions with the existing store mutex. Global JSON saves project the saved defaults while the reader is open. Global JSON reloads update inherited defaults and reapply only the book's overrides. Normal reader rendering continues to read the effective settings without taking that mutex.
 
 `BookReaderPreferences` owns two paths and the write-permission flag for the reader lifetime. It loads before fonts, orientation, and EPUB parsing. It saves at layout changes, settings-menu return, sleep, and exit. The existing font pickers may still save global settings, whose serializer excludes active book overrides. Exit restores the global layout after the reader session is flushed.
 
@@ -42,7 +46,7 @@ a patch or apply a migration.
 
 ## Resource budget
 
-The scope contains two 46-byte layout snapshots, a 32-bit mask, and its enabled flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
+Each preference snapshot is 79 bytes; the scope is 168 bytes, including its two snapshots, masks, and flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
 
 ## Hardware checks
 
@@ -69,3 +73,41 @@ half-pixel values, wider spacing, fonts, and publisher-font choices remain
 unmapped. The original CrossInk file is never rewritten. Existing native book
 preferences still take precedence, and CrossInk Safe Mode still prevents a
 partial import.
+
+## Per-book dictionary
+
+The reader menu and toolbar More open a scrolling dictionary picker. It owns
+folder names discovered by the existing registry, plus Use global dictionary
+and None. No dictionary data remains open in this picker. Folder names must fit
+the existing 31-byte setting; longer names are not selectable.
+
+The existing version-1 JSON stores `dictionaryName` in `overrides`. A string
+pins that folder, an empty string pins None, and null records inheritance.
+An absent key permits import from CrossInk's `dictionary.bin` in the current
+or legacy FNV book cache. Null prevents the old file from reapplying after a
+user selects Use global. Layout settings do not need to be discarded to import
+an older dictionary choice.
+
+Legacy paths under `/dictionaries` and `/.dictionaries` map from folder/index
+stem to the native folder name. Files are read at most 127 bytes and never
+rewritten. Unsupported paths, read errors, and a same-named folder in both
+roots prevent automatic import and keep the source intact. The native registry
+still determines the actual index file. Global legacy dictionary import is
+separate from this per-book change.
+
+For the next device check, give two books different dictionaries, reopen both,
+then select None and Use global in turn. Confirm that lookup follows each book
+and that exiting restores the global choice. Change a global default while a
+book has a pinned choice; that book should retain its choice.
+
+The dictionary picker object is 1,228 bytes before its discovered entries and
+path strings; each `DictionaryEntry` is 48 bytes before string storage. It uses
+the existing registry's directory scan and holds that list only while open.
+Rows borrow those owned names, so repainting does not allocate a new list.
+The EPUB menu object is 5,056 bytes. Device heap headroom still needs measurement.
+
+Dictionary checkpoint validation: 75 focused settings tests, the picker and
+reader handoff test, and the four menu preflight checks passed. After correcting
+two source-extraction boundaries, the final full suite passed all 1,827 checks
+in 42.07 seconds. The final incremental X4 Pro build passed in 37.16 seconds
+(the initial build took 121.66 seconds). Hardware behavior remains unverified.

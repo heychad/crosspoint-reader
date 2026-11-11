@@ -21,4 +21,5 @@ class CrossPointSettings {
   uint8_t focusReadingEnabled = 0;
   uint8_t guideReadingEnabled = 0;
   char sdFontFamilyName[32]{};
+  char dictionaryName[32]{};
 };

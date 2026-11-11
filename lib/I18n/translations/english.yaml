@@ -1006,3 +1006,5 @@ STR_DELETE_BOOKMARKS: "Delete book bookmarks"
 STR_DELETE_BOOKMARKS_BODY: "Delete this book's native and imported bookmarks? Reading position and highlights stay."
 STR_BOOKMARK_CLEAR_FAILED: "Bookmarks could not be cleared"
 STR_BOOKMARK_CLEAR_RETRY_BODY: "Some bookmark files may already be cleared. Retry to clear the rest. Unreadable imported files need recovery first."
+
+STR_BOOK_DICTIONARY_GLOBAL: "Use global dictionary"

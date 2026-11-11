@@ -5,6 +5,7 @@
 #include <Memory.h>
 #include <PersistableStore.h>
 #include <ZipFile.h>
+#include <strings.h>
 
 #include "ReadingStatsStore.h"
 #include "personalization/CrossInkBookSettings.h"
@@ -75,6 +76,58 @@ bool existingDocument(const std::string& path, std::string& found) {
   return true;
 }
 
+bool readLegacyDictionary(const std::string& cachePath, const std::string& bookPath, BookReaderSettings& settings,
+                          bool& found) {
+  found = false;
+  const std::string oldCache =
+      "/.crosspoint/epub_" + std::to_string(ZipFile::fnvHash64(bookPath.data(), bookPath.size()));
+  for (const auto& cache : {cachePath, oldCache}) {
+    const auto path = cache + "/dictionary.bin";
+    const auto status = Storage.lookupPath(path.c_str());
+    if (status == HalStorage::PathStatus::Failed) return false;
+    if (status == HalStorage::PathStatus::Missing) continue;
+    HalFile file;
+    if (!Storage.openFileForRead("PREFS", path, file)) return false;
+    const auto size = file.fileSize();
+    char value[128]{};
+    if (size >= sizeof(value)) return false;
+    const bool read = file.read(value, size) == static_cast<int>(size);
+    if (!file.close() || !read || strlen(value) != size) return false;
+    found = true;
+    if (!size) return true;  // CrossInk's empty file means inherit global.
+    std::string name = value;
+    const char* prefixes[] = {"/dictionaries/", "/.dictionaries/"};
+    bool recognized = false;
+    for (const auto* prefix : prefixes) {
+      const size_t length = strlen(prefix);
+      if (strncasecmp(name.c_str(), prefix, length) == 0) {
+        name.erase(0, length);
+        recognized = true;
+        break;
+      }
+    }
+    if (!name.empty() && name.back() == '/') name.pop_back();
+    // CrossInk stores root/folder/index-stem; native settings store the folder.
+    const auto separator = name.find('/');
+    if (separator != std::string::npos) {
+      const auto stem = name.substr(separator + 1);
+      if (stem.empty() || stem.front() == '.' || stem.find_first_of("/\\") != std::string::npos) return false;
+      name.resize(separator);
+    }
+    if (!recognized || name.empty() || name.size() >= sizeof(settings.preferences.dictionary) || name.front() == '.' ||
+        name.find_first_of("/\\") != std::string::npos)
+      return false;
+    // The native resolver prefers the visible root. Do not translate a choice
+    // when a same-named folder in the other root could select different data.
+    const char* otherRoot = strncasecmp(value, "/.dictionaries/", 15) == 0 ? "/dictionaries/" : "/.dictionaries/";
+    if (Storage.lookupPath((std::string(otherRoot) + name).c_str()) != HalStorage::PathStatus::Missing) return false;
+    strcpy(settings.preferences.dictionary, name.c_str());
+    settings.mask |= ReaderPreferences::DICTIONARY_BIT;
+    return true;
+  }
+  return true;
+}
+
 bool readPreferences(const std::string& path, JsonDocument& document, BookReaderSettings& settings) {
   if (!PersistableStoreBase::readDocFromFile(path.c_str(), document, MAX_DOCUMENT_BYTES) ||
       !document["version"].is<unsigned>() || document["version"].as<unsigned>() != 1 ||
@@ -109,11 +162,21 @@ bool BookReaderPreferences::load(const std::string& cachePath, const std::string
     }
     writable = legacy != LegacyLoad::Failed;
     legacyLoaded = legacy == LegacyLoad::Loaded;
+    bool dictionaryFound = false;
+    if (writable) writable = readLegacyDictionary(cachePath, bookPath, settings, dictionaryFound);
+    legacyLoaded |= dictionaryFound;
     if (legacyLoaded) legacySettings = settings;
+    if (!writable) settings = {};
     return writable;
   }
   JsonDocument document;
   writable = readPreferences(source, document, settings);
+  if (writable && document["overrides"]["dictionaryName"].isUnbound()) {
+    bool dictionaryFound = false;
+    writable = readLegacyDictionary(cachePath, bookPath, settings, dictionaryFound);
+    legacyLoaded = dictionaryFound;
+    if (legacyLoaded) legacySettings = settings;
+  }
   if (!writable) {
     settings = {};
     LOG_ERR("PREFS", "Keeping unreadable or unsupported book preferences at %s", source.c_str());

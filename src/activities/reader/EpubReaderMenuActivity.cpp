@@ -162,6 +162,7 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
     case MenuAction::SYNC:
     case MenuAction::DELETE_CACHE:
     case MenuAction::READING_STATISTICS:
+    case MenuAction::BOOK_DICTIONARY:
     case MenuAction::TRACK_BOOK_STATS:
     case MenuAction::RESET_BOOK_STATS:
     case MenuAction::RESET_READING_PACE:
@@ -272,6 +273,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::READING_STATISTICS, StrId::STR_READING_STATISTICS});
   items.push_back({MenuAction::TRACK_BOOK_STATS, StrId::STR_TRACK_READING_STATS});
+  items.push_back({MenuAction::BOOK_DICTIONARY, StrId::STR_DICTIONARY});
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
   items.push_back({MenuAction::RESET_BOOK_STATS, StrId::STR_BOOK_STATS_RESET});
   items.push_back({MenuAction::RESET_READING_PACE, StrId::STR_READING_PACE_RESET});

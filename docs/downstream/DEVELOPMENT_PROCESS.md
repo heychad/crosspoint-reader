@@ -64,6 +64,11 @@ Review depth is defined in
 are for broad integrations, not every small feature. Standing design acceptance
 and checkpoint/push authorization remain valid for this project.
 
+Source-extraction regression tests should select the target method's body,
+not everything before an unrelated neighboring method. The latter made two
+time-left tests fail when the dictionary picker was inserted; both now stop
+at the target method's closing brace.
+
 ## Maintenance cost
 
 Keep CrossPoint's structure and SDK pin. Prefer an upstream fix or existing

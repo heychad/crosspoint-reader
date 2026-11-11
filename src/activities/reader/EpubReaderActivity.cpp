@@ -27,6 +27,7 @@
 #include <limits>
 
 #include "../../util/BookmarkFile.h"
+#include "BookDictionarySelectActivity.h"
 #include "BookmarkEntry.h"
 #include "ChapterBuildGate.h"
 #include "ClipSelectionActivity.h"
@@ -566,6 +567,28 @@ void EpubReaderActivity::backgroundBuildTick() {
     if (repositioned || (showSectionTime && readingStats.sectionTimeLeft(section->currentPage + 1, section->pageCount)))
       requestUpdate();
   }
+}
+
+void EpubReaderActivity::openBookDictionary() {
+  const auto settings = SETTINGS.captureBookReaderSettings();
+  auto picker = makeUniqueNoThrow<BookDictionarySelectActivity>(
+      renderer, mappedInput, (settings.mask & ReaderPreferences::DICTIONARY_BIT) == 0, SETTINGS.dictionaryName);
+  if (!picker) {
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+    if (!result.isCancelled) {
+      if (const auto* selected = std::get_if<BookDictionaryResult>(&result.data)) {
+        RenderLock lock;
+        if (SETTINGS.setBookDictionary(selected->useGlobal ? nullptr : selected->name.c_str()))
+          saveBookReaderSettings();
+        else
+          pendingBookSettingsSaveError.store(true);
+      }
+    }
+    openReaderMenu();
+  });
 }
 
 void EpubReaderActivity::openDictionaryWordSelect() {
@@ -1603,6 +1626,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           });
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::BOOK_DICTIONARY:
+      openBookDictionary();
+      break;
     case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
       openDictionaryWordSelect();
       break;
