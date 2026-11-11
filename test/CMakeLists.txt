@@ -292,3 +292,4 @@ add_test(NAME PageGestureToggle COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SO
 
 add_test(NAME ReaderTabbedMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_tabs.py)
 add_test(NAME ReaderInlineTextMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_inline_text.py)
+add_test(NAME ReaderFontPanes COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_font_panes.py)

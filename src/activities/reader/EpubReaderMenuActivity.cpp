@@ -6,11 +6,16 @@
 #include <HalFrontlight.h>
 #include <I18n.h>
 
+#include <cstdio>
+#include <cstring>
+
 #include "CrossPointSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
+#include "ReaderFontSizes.h"
 #include "ReaderLineSpacing.h"
 #include "ReaderUtils.h"
+#include "SdCardFontSystem.h"
 #include "components/UITheme.h"
 #include "util/PluginEvents.h"
 #include "util/SlideSwitch.h"
@@ -104,7 +109,12 @@ void EpubReaderMenuActivity::onEnter() {
 
 void EpubReaderMenuActivity::onExit() {
   const int row = activeNav().selected - (tabbed ? 1 : 0);
-  if (row >= 0 && row < visibleCount) selectedAction = visibleAction(row);
+  if (pane == Pane::FontFamily)
+    selectedAction = MenuAction::TEXT_SETTINGS;
+  else if (pane == Pane::FontSize)
+    selectedAction = MenuAction::FONT_SIZE;
+  else if (row >= 0 && row < visibleCount)
+    selectedAction = visibleAction(row);
   UiListActivity::onExit();
 }
 
@@ -183,6 +193,7 @@ void EpubReaderMenuActivity::onTabAction(int index) {
   if (!tabbed || optionPopup.isActive() || index < 0 || index >= tabCount()) return;
   RenderLock lock(*this);
   app.clearTapFlash();
+  if (pane != Pane::Root) closeFontPane();
   if (index == activeTab()) return;
   tab = static_cast<Tab>(index);
   rebuildVisibleItems();
@@ -314,6 +325,108 @@ void EpubReaderMenuActivity::closeCancelled() {
   finish();
 }
 
+int EpubReaderMenuActivity::listCount() const {
+  switch (pane) {
+    case Pane::Root:
+      return visibleCount;
+    case Pane::FontFamily:
+      return std::min<int>(32767, CrossPointSettings::BUILTIN_FONT_COUNT + sdFontSystem.registry().getFamilyCount());
+    case Pane::FontSize:
+      return static_cast<int>(fontSizes.size());
+  }
+  return 0;
+}
+
+int EpubReaderMenuActivity::currentFontRow() const {
+  if (pane == Pane::FontSize) {
+    const auto point = snapToNearestPointSize(fontSizes, SETTINGS.fontPointSize);
+    const auto found = std::find(fontSizes.begin(), fontSizes.end(), point);
+    return found == fontSizes.end() ? 0 : static_cast<int>(found - fontSizes.begin());
+  }
+  if (SETTINGS.sdFontFamilyName[0]) {
+    const auto& families = sdFontSystem.registry().getFamilies();
+    for (size_t i = 0; i < families.size(); ++i)
+      if (families[i].name == SETTINGS.sdFontFamilyName)
+        return static_cast<int>(CrossPointSettings::BUILTIN_FONT_COUNT + i);
+  }
+  return 0;
+}
+
+bool EpubReaderMenuActivity::openFontPane(Pane next) {
+  {
+    RenderLock lock;
+    if (sdFontSystem.refreshIfDirty()) {
+      if (next == Pane::FontSize) fontSizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+      rootFontNav = UiTabListActivity::activeNav();
+      pane = next;
+      selectedFontRow = currentFontRow();
+      UiTabListActivity::activeNav().reset(selectedFontRow + 1);
+      app.clearTapFlash();
+      requestUpdate();
+      return true;
+    }
+  }
+  const char* options[] = {tr(STR_OK_BUTTON)};
+  optionPopup.showMessage(tr(STR_FONT_LIST_REFRESH_FAILED), tr(STR_FONT_SETTINGS_REOPEN), options, 1, 0, [](int) {});
+  requestUpdate();
+  return false;
+}
+
+void EpubReaderMenuActivity::closeFontPane() {
+  UiTabListActivity::activeNav() = rootFontNav;
+  pane = Pane::Root;
+  app.clearTapFlash();
+  requestUpdate();
+}
+
+void EpubReaderMenuActivity::provideFontRow(void* context, uint16_t index, fui::ListItem& item) {
+  auto* self = static_cast<EpubReaderMenuActivity*>(context);
+  item = {};
+  if (index >= self->listCount()) return;
+  if (self->pane == Pane::FontSize) {
+    snprintf(self->fontSizeLabel, sizeof(self->fontSizeLabel), "%u pt", self->fontSizes[index]);
+    item.label = self->fontSizeLabel;
+  } else if (index < CrossPointSettings::BUILTIN_FONT_COUNT) {
+    item.label = tr(STR_NOTO_SANS);
+  } else {
+    const auto& name = sdFontSystem.registry().getFamilies()[index - CrossPointSettings::BUILTIN_FONT_COUNT].name;
+    item.label = name.c_str();
+    item.enabled = name.size() < sizeof(SETTINGS.sdFontFamilyName);
+  }
+  item.value = index == self->selectedFontRow ? tr(STR_SELECTED) : nullptr;
+  item.actionValue = static_cast<int16_t>(index);
+}
+
+void EpubReaderMenuActivity::selectFontRow(int index) {
+  if (index < 0 || index >= listCount() || sdFontSystem.registryNeedsRefresh()) return;
+  if (pane == Pane::FontSize) {
+    applyInlineTextSetting(&CrossPointSettings::fontPointSize, fontSizes[index]);
+  } else {
+    const bool builtin = index < CrossPointSettings::BUILTIN_FONT_COUNT;
+    const char* name =
+        builtin ? ""
+                : sdFontSystem.registry().getFamilies()[index - CrossPointSettings::BUILTIN_FONT_COUNT].name.c_str();
+    if (std::strlen(name) >= sizeof(SETTINGS.sdFontFamilyName)) {
+      LOG_ERR("MENU", "Font family name exceeds saved settings capacity");
+      return;
+    }
+    {
+      RenderLock lock;
+      if (std::strcmp(SETTINGS.sdFontFamilyName, name) == 0 && (!builtin || SETTINGS.fontFamily == 0)) return;
+      std::memcpy(SETTINGS.sdFontFamilyName, name, std::strlen(name) + 1);
+      if (builtin) SETTINGS.fontFamily = 0;
+    }
+    if (textSettingsChanged) textSettingsChanged();
+    SETTINGS.saveToFile();
+  }
+  {
+    RenderLock lock;
+    selectedFontRow = currentFontRow();
+  }
+  app.clearTapFlash();
+  requestUpdate();
+}
+
 void EpubReaderMenuActivity::applyInlineTextSetting(uint8_t CrossPointSettings::* field, uint8_t value) {
   {
     RenderLock lock;
@@ -364,13 +477,21 @@ bool EpubReaderMenuActivity::handleHomeGesture() {
 }
 
 void EpubReaderMenuActivity::activateIndex(const int index) {
-  if (optionPopup.isActive() || index < 0 || index >= visibleCount) return;
+  if (optionPopup.isActive() || index < 0 || index >= listCount()) return;
+  if (pane != Pane::Root) {
+    selectFontRow(index);
+    return;
+  }
   // The activated row leaves this screen (popup or finish); a lingering flash
   // would gray an unrelated element on the next render.
   app.clearTapFlash();
   activeNav().selected = index + (tabbed ? 1 : 0);
 
   const auto selectedAction = visibleAction(index);
+  if (tabbed && (selectedAction == MenuAction::TEXT_SETTINGS || selectedAction == MenuAction::FONT_SIZE)) {
+    openFontPane(selectedAction == MenuAction::TEXT_SETTINGS ? Pane::FontFamily : Pane::FontSize);
+    return;
+  }
   if (handleInlineTextSetting(selectedAction)) return;
   if (selectedAction == MenuAction::ROTATE_SCREEN) {
     optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
@@ -424,12 +545,21 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
 }
 
 bool EpubReaderMenuActivity::handleCustomInput() {
+  if (pane != Pane::Root && sdFontSystem.registryNeedsRefresh()) {
+    RenderLock lock;
+    closeFontPane();
+    return true;
+  }
   return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
 }
 
 bool EpubReaderMenuActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    closeCancelled();
+    if (pane != Pane::Root) {
+      RenderLock lock;
+      closeFontPane();
+    } else
+      closeCancelled();
     return true;
   }
 
@@ -466,6 +596,20 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   const int16_t pad = screen.theme().headerSidePadding;
   screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine.c_str(), screen.theme().smallText);
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+
+  if (pane != Pane::Root) {
+    fui::ListProps props;
+    props.rowProvider = provideFontRow;
+    props.rowProviderCtx = this;
+    props.count = static_cast<uint16_t>(listCount());
+    props.action = ACTION_ROW;
+    props.inputMask = fui::InputTouch;
+    props.labelText = screen.theme().smallText;
+    props.labelText.maxLines = 2;
+    syncTabListViewport(screen, props);
+    screen.list(props);
+    return;
+  }
 
   // menuRowItems's labels/actionValue were set once in the constructor (see
   // buildMenuRowItems()); only rows with live values need refreshing here.
@@ -509,7 +653,10 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 void EpubReaderMenuActivity::drawChrome() {
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.
-  GUI.drawHeader(renderer, UITheme::getInstance().getHeaderRect(renderer, true, false), title.c_str());
+  const char* caption = pane == Pane::FontFamily ? tr(STR_FONT_FAMILY)
+                        : pane == Pane::FontSize ? tr(STR_FONT_SIZE)
+                                                 : title.c_str();
+  GUI.drawHeader(renderer, UITheme::getInstance().getHeaderRect(renderer, true, false), caption);
 }
 
 void EpubReaderMenuActivity::render(RenderLock&& lock) {

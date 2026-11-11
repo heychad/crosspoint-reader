@@ -63,6 +63,7 @@ struct MappedInputManager {enum class Button{Back,Confirm};bool back=false,confi
 class EpubReaderMenuActivity {public:
  enum class MenuAction { __ACTIONS__ };
  enum class Tab:uint8_t{Font,Layout,More,Location,Settings,Count};
+ enum class Pane:uint8_t{Root,FontFamily,FontSize};Pane pane=Pane::Root;
  struct MenuItem {MenuAction action;StrId labelId;};
  static constexpr size_t MAX_MENU_ITEMS=__CAPACITY__;
  static Tab tabForAction(MenuAction);
@@ -78,6 +79,7 @@ class EpubReaderMenuActivity {public:
  int ringPos()const{return navs[activeTab()].selected;}
  MenuAction visibleAction(int row)const{return menuItems[visibleIndexes[row]].action;}
  void requestUpdate(){};void closeCancelled(){cancelled=true;}
+ void closeFontPane(){pane=Pane::Root;}
  void activateIndex(int index){++activations;activated=index;}
  void buildMenuRowItems();void rebuildVisibleItems();void onTabAction(int);void stepTab(int);bool handleButtons();
 };

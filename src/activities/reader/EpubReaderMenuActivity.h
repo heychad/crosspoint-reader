@@ -64,6 +64,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   };
 
   enum class Tab : uint8_t { Font, Layout, More, Location, Settings, Count };
+  enum class Pane : uint8_t { Root, FontFamily, FontSize };
   static Tab tabForAction(MenuAction action);
 
   struct MenuItem {
@@ -98,7 +99,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
-  int listCount() const override { return visibleCount; }
+  int listCount() const override;
   int tabCount() const override { return tabbed ? static_cast<int>(Tab::Count) : 1; }
   int activeTab() const override { return static_cast<int>(tab); }
   const char* tabLabel(int index) const override;
@@ -111,6 +112,16 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   MenuAction visibleAction(int row) const { return menuItems[visibleIndexes[row]].action; }
   const bool tabbed;
   Tab tab = Tab::Font;
+  Pane pane = Pane::Root;
+  freeink::ui::ListNav rootFontNav;
+  std::vector<uint8_t> fontSizes;
+  int selectedFontRow = 0;
+  char fontSizeLabel[12]{};
+  bool openFontPane(Pane next);
+  void closeFontPane();
+  void selectFontRow(int index);
+  int currentFontRow() const;
+  static void provideFontRow(void* context, uint16_t index, freeink::ui::ListItem& item);
   uint8_t visibleIndexes[MAX_MENU_ITEMS]{};
   int visibleCount = 0;
   void buildScreen(UiScreen& screen) override;
