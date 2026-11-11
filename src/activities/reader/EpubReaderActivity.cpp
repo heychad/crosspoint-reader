@@ -1470,23 +1470,36 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       });
       break;
     }
-    case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS: {
-      startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
-                                                                    TextSettingsActivity::Tab::Family),
-                             [this](const ActivityResult&) {
-                               {
-                                 RenderLock lock;
-                                 if (section) {
-                                   rememberCurrentContentOffset();
-                                   cachedSpineIndex = currentSpineIndex;
-                                   cachedChapterTotalPageCount = section->pageCount;
-                                   nextPageNumber = section->currentPage;
-                                 }
-                                 section.reset();
-                               }
-                               saveBookReaderSettings();
-                               openReaderMenu();
-                             });
+    case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS:
+    case EpubReaderMenuActivity::MenuAction::FONT_SIZE:
+    case EpubReaderMenuActivity::MenuAction::LAYOUT_SETTINGS:
+    case EpubReaderMenuActivity::MenuAction::STYLE_SETTINGS: {
+      const auto initialTab =
+          action == EpubReaderMenuActivity::MenuAction::FONT_SIZE         ? TextSettingsActivity::Tab::Size
+          : action == EpubReaderMenuActivity::MenuAction::LAYOUT_SETTINGS ? TextSettingsActivity::Tab::Layout
+          : action == EpubReaderMenuActivity::MenuAction::STYLE_SETTINGS  ? TextSettingsActivity::Tab::Style
+                                                                          : TextSettingsActivity::Tab::Family;
+      auto textSettings =
+          makeUniqueNoThrow<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(), initialTab);
+      if (!textSettings) {
+        LOG_ERR("ERS", "Could not allocate text settings");
+        openReaderMenu();
+        break;
+      }
+      startActivityForResult(std::move(textSettings), [this](const ActivityResult&) {
+        {
+          RenderLock lock;
+          if (section) {
+            rememberCurrentContentOffset();
+            cachedSpineIndex = currentSpineIndex;
+            cachedChapterTotalPageCount = section->pageCount;
+            nextPageNumber = section->currentPage;
+          }
+          section.reset();
+        }
+        saveBookReaderSettings();
+        openReaderMenu();
+      });
       break;
     }
     case EpubReaderMenuActivity::MenuAction::BLUETOOTH:

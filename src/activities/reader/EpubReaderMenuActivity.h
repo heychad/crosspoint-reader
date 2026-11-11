@@ -5,10 +5,10 @@
 #include <string>
 #include <vector>
 
-#include "activities/UiListActivity.h"
+#include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
 
-class EpubReaderMenuActivity final : public UiListActivity {
+class EpubReaderMenuActivity final : public UiTabListActivity {
  public:
   // Menu actions available from the reader menu.
   enum class MenuAction {
@@ -42,8 +42,14 @@ class EpubReaderMenuActivity final : public UiListActivity {
     HOME_BUTTON,
     CONTROLS,
     QUICK_ACTIONS,
-    TOGGLE_COMPLETION
+    TOGGLE_COMPLETION,
+    FONT_SIZE,
+    LAYOUT_SETTINGS,
+    STYLE_SETTINGS
   };
+
+  enum class Tab : uint8_t { Font, Layout, More, Location, Settings, Count };
+  static Tab tabForAction(MenuAction action);
 
   struct MenuItem {
     MenuAction action;
@@ -52,7 +58,8 @@ class EpubReaderMenuActivity final : public UiListActivity {
 
   static void toggleBluetooth();
   static void buildMenuItems(std::vector<MenuItem>& items, bool hasFootnotes, bool hasBookmarks, bool hasClippings,
-                             bool completionKnown = false, bool completed = false, bool alreadyInReadFolder = false);
+                             bool completionKnown = false, bool completed = false, bool alreadyInReadFolder = false,
+                             bool tabbed = false);
 
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
@@ -69,13 +76,27 @@ class EpubReaderMenuActivity final : public UiListActivity {
  private:
   // Row storage: menuItems is at most MAX_MENU_ITEMS, so a
   // fixed-capacity array avoids any heap allocation for the row list. Labels
-  // are set once in the constructor (buildMenuRowItems()); buildScreen()
+  // are rebuilt on tab changes (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
-  static constexpr size_t MAX_MENU_ITEMS = 31;
+  static constexpr size_t MAX_MENU_ITEMS = 34;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
-  int listCount() const override { return static_cast<int>(menuItems.size()); }
+  int listCount() const override { return visibleCount; }
+  int tabCount() const override { return tabbed ? static_cast<int>(Tab::Count) : 1; }
+  int activeTab() const override { return static_cast<int>(tab); }
+  const char* tabLabel(int index) const override;
+  void onTabAction(int index) override;
+  void stepTab(int direction) override;
+  freeink::ui::ListNav& activeNav() override;
+  void onRowAction(const freeink::ui::ActionEvent& event) override;
+  void navigateButtons() override;
+  void rebuildVisibleItems();
+  MenuAction visibleAction(int row) const { return menuItems[visibleIndexes[row]].action; }
+  const bool tabbed;
+  Tab tab = Tab::Font;
+  uint8_t visibleIndexes[MAX_MENU_ITEMS]{};
+  int visibleCount = 0;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   // Popup input runs before any button or touch handling.
