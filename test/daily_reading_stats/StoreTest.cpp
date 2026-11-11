@@ -101,6 +101,9 @@ TEST_F(DailyStore, EveryTornTargetRetainsPreviousCounter) {
     Counter value;
     ASSERT_EQ(read(day, value), ReadResult::Available);
     EXPECT_EQ(value.seconds, 120U);
+    ASSERT_TRUE(write(day, {200, 0}));
+    ASSERT_EQ(read(day, value), ReadResult::Available);
+    EXPECT_EQ(value.seconds, 200U);
   }
 }
 TEST_F(DailyStore, UncertainSyncAndCloseCanRetrySameAbsoluteValue) {
@@ -190,17 +193,46 @@ TEST_F(DailyStore, MonthBoundariesAndLeapDaysStayIndependent) {
 }
 }  // namespace
 
-TEST_F(DailyStore, InterruptedFirstBootstrapPreservesItsEvidence) {
-  Storage.failNextWriteFor(B, 4);
-  EXPECT_FALSE(write(day, {120, 0}));
-  const auto torn = bytes(B);
-  EXPECT_FALSE(torn.empty());
-  EXPECT_FALSE(write(day, {120, 0}));
-  Counter value;
-  EXPECT_EQ(read(day, value), ReadResult::Unavailable);
-  EXPECT_EQ(bytes(B), torn);
-  EXPECT_FALSE(Storage.exists(A));
+TEST_F(DailyStore, EveryInterruptedFirstBootstrapCanRetryWithoutDeletingLegacy) {
+  for (size_t cut = 0; cut < MONTH_BYTES; ++cut) {
+    SCOPED_TRACE(cut);
+    Storage.reset();
+    const auto path = legacyPath(day);
+    const auto old = legacy(day, {60, 0});
+    put(path, old);
+    Storage.failNextWriteFor(B, cut);
+    EXPECT_FALSE(write(day, {120, 0}));
+    Counter value;
+    EXPECT_EQ(read(day, value), ReadResult::Unavailable);
+    ASSERT_TRUE(write(day, {120, 0}));
+    ASSERT_EQ(read(day, value), ReadResult::Available);
+    EXPECT_EQ(value.seconds, 120U);
+    EXPECT_EQ(bytes(path.c_str()), old);
+  }
 }
+TEST_F(DailyStore, BootstrapRefusesForeignUnreadableAndAliasedEvidence) {
+  const auto old = legacy(day, {60, 0}), path = legacyPath(day);
+  put(path, old);
+  ASSERT_TRUE(Storage.aliasPath(path, B));
+  EXPECT_FALSE(write(day, {120, 0}));
+  EXPECT_EQ(bytes(path.c_str()), old);
+  EXPECT_FALSE(Storage.exists(A));
+  Storage.reset();
+  put(B, std::string(1, char(3)));
+  const auto newer = bytes(B);
+  EXPECT_FALSE(write(day, {120, 0}));
+  EXPECT_EQ(bytes(B), newer);
+  Storage.reset();
+  put(B, std::string(1, char(2)));
+  Storage.failNextReadFor(B);
+  EXPECT_FALSE(write(day, {120, 0}));
+  EXPECT_FALSE(Storage.exists(A));
+  Storage.reset();
+  put(A, std::string(1, char(2)));
+  EXPECT_FALSE(write(day, {120, 0}));
+  EXPECT_FALSE(Storage.exists(B));
+}
+
 TEST_F(DailyStore, RejectsDirectoryAndRegularFileConfusion) {
   put(DIRECTORY, "not a directory");
   EXPECT_FALSE(write(day, {1, 0}));

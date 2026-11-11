@@ -169,6 +169,10 @@ void ReadingStatsActivity::onEnter() {
   if (!hasBook) local = GlobalReadingStats::load();
   aggregate = GlobalReadingStats::loadAggregated(local);
   getCurrentLocalReadingStatsDateTime(now);
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  daily = {};
+  if (now.date.isValid()) daily = dailyreading::summarize(readingStatsDayIndex(now.date));
+#endif
   UiTabListActivity::onEnter();
 }
 
@@ -204,12 +208,14 @@ const char* ReadingStatsActivity::tabLabel(int index) const {
 }
 
 int ReadingStatsActivity::listCount() const {
-  constexpr int extraCount =
+  constexpr int extraCount = 4
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
-      6;
-#else
-      4;
+                             + 2
 #endif
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+                             + 2
+#endif
+      ;
   return (bookTab() ? std::size(BOOK_ROWS) : std::size(GLOBAL_ROWS)) +
          (tab == Tab::Device       ? extraCount
           : tab == Tab::AllDevices ? 3
@@ -221,7 +227,11 @@ ReadingStatsActivity::Row ReadingStatsActivity::rowAt(int index) const {
   const int basic = bookTab() ? std::size(BOOK_ROWS) : std::size(GLOBAL_ROWS);
   if (index < basic) return bookTab() ? BOOK_ROWS[index] : GLOBAL_ROWS[index];
   constexpr Row extra[] = {
-      Row::RecordedWeek,  Row::RecordedMonth, Row::RecordedYear, Row::BackupDevice,
+      Row::RecordedWeek,  Row::RecordedMonth,        Row::RecordedYear,
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+      Row::RecordedToday, Row::RecordedDailyAverage,
+#endif
+      Row::BackupDevice,
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
       Row::RestoreDevice, Row::ResetDevice,
 #endif
@@ -248,6 +258,11 @@ void ReadingStatsActivity::provideRow(void* context, uint16_t index, fui::ListIt
 void ReadingStatsActivity::formatRow(Row row, fui::ListItem& item) {
   const bool perBook = bookTab();
   const bool all = tab == Tab::AllDevices;
+  const bool partial = (all && !aggregate.complete)
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+                       || (tab == Tab::Device && daily.incomplete)
+#endif
+      ;
   const auto& global = all ? aggregate.stats : local;
   const bool available = perBook ? book.writable : global.writable;
   const uint32_t seconds = perBook ? book.totalReadingSeconds : global.totalReadingSeconds;
@@ -284,6 +299,16 @@ void ReadingStatsActivity::formatRow(Row row, fui::ListItem& item) {
         label = StrId::STR_STATS_PROGRESS;
         if (progress >= 0) snprintf(value, sizeof(value), "%d.%02d%%", progress / 100, progress % 100);
         break;
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+      case Row::RecordedToday:
+        label = StrId::STR_STATS_RECORDED_TODAY;
+        if (tab == Tab::Device && daily.hasToday) duration(daily.todaySeconds);
+        break;
+      case Row::RecordedDailyAverage:
+        label = StrId::STR_STATS_RECORDED_DAILY_AVERAGE;
+        if (tab == Tab::Device && daily.hasSevenDayAverage) duration(daily.sevenDayAverageSeconds);
+        break;
+#endif
       case Row::Time:
         label = StrId::STR_STATS_TOTAL_TIME;
         if (available) duration(seconds);
@@ -405,12 +430,12 @@ void ReadingStatsActivity::formatRow(Row row, fui::ListItem& item) {
       case Row::State:
         label = StrId::STR_STATS_DATA_STATE;
         snprintf(value, sizeof(value), "%s",
-                 !available                             ? tr(STR_STATS_DATA_UNAVAILABLE)
-                 : invalidDate && perBook               ? tr(STR_STATS_INVALID_DATE)
-                 : !saved && all && !aggregate.complete ? tr(STR_STATS_SAVE_PARTIAL)
-                 : !saved                               ? tr(STR_STATS_SAVE_INCOMPLETE)
-                 : all && !aggregate.complete           ? tr(STR_STATS_PARTIAL)
-                                                        : tr(STR_OK_BUTTON));
+                 !available               ? tr(STR_STATS_DATA_UNAVAILABLE)
+                 : invalidDate && perBook ? tr(STR_STATS_INVALID_DATE)
+                 : !saved && partial      ? tr(STR_STATS_SAVE_PARTIAL)
+                 : !saved                 ? tr(STR_STATS_SAVE_INCOMPLETE)
+                 : partial                ? tr(STR_STATS_PARTIAL)
+                                          : tr(STR_OK_BUTTON));
         break;
       case Row::Charts:
         label = StrId::STR_STATS_CHARTS;

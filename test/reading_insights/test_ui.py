@@ -192,6 +192,16 @@ struct UITheme {
 struct Gui {void drawButtonHints(GfxRenderer&,const char*,const char*,const char*,const char*){}};
 inline Gui GUI;
 ''')
+    (path / "activities/reader/DailyReadingStatsSummary.h").write_text(r'''
+#pragma once
+#include <cstdint>
+namespace dailyreading {
+struct Summary {uint32_t todaySeconds=0,sevenDayAverageSeconds=0;bool hasToday=false,hasSevenDayAverage=false,incomplete=false;};
+inline Summary dailyFixture;
+inline unsigned dailyReads=0;
+inline Summary summarize(uint32_t){++dailyReads;return dailyFixture;}
+}
+''')
     harness = r'''
 #include <array>
 #include <string>
@@ -338,9 +348,10 @@ uint16_t GlobalReadingStats::currentReadingStreak(const ReadingStatsDate*)const{
 uint16_t GlobalReadingStats::displayLongestReadingStreak()const{return 12;}
 void BookReadingStats::formatDuration(uint32_t n,char*out,size_t cap){snprintf(out,cap,"%u seconds",n);}
 bool ReadingStatsDate::isValid()const{return year && month && day;}
+uint32_t readingStatsDayIndex(const ReadingStatsDate&){return 9000;}
 bool readingHistoryCoversWindow(uint32_t,const ReadingStatsDate& date,uint16_t){return historyCovered && date.isValid();}
 uint16_t recordedReadingDays(uint32_t,const std::array<uint8_t,READING_HISTORY_BYTES>&,const ReadingStatsDate&,uint16_t window){return window==7 ? 4 : window==30 ? 15 : 88;}
-bool getCurrentLocalReadingStatsDateTime(ReadingStatsDateTime&out){out.date={2026,11,4};return clockAvailable;}
+bool getCurrentLocalReadingStatsDateTime(ReadingStatsDateTime&out){out={};if(!clockAvailable)return false;out.date={2026,11,4};return true;}
 uint32_t BookReadingStats::remainingReadingSeconds(int)const{return writable&&!isCompleted?estimatedTimeLeftSeconds:0;}
 ReadingStatsDate BookReadingStats::projectedFinishDate(const ReadingStatsDateTime&,int)const{return {};}
 uint16_t readingSpanDaysElapsed(const ReadingStatsDate&,const ReadingStatsDate&){return 5;}
@@ -353,9 +364,40 @@ int main(){
  aggregateFixture={localFixture,2,0,true};aggregateFixture.stats.totalReadingSeconds=500;
  ReadingStatsActivity device(renderer,input);device.onEnter();
  #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
- assert(device.tabCount()==2 && device.listCount()==29);
+ assert(device.tabCount()==2 && device.listCount()==29
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+ +2
+#endif
+);
 #else
- assert(device.tabCount()==2 && device.listCount()==27);
+ assert(device.tabCount()==2 && device.listCount()==27
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+ +2
+#endif
+);
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+ assert(value(device,ReadingStatsActivity::Row::RecordedToday)=="-");
+ assert(value(device,ReadingStatsActivity::Row::RecordedDailyAverage)=="-");
+ dailyreading::dailyFixture={140,30,true,true,false};device.onEnter();
+ assert(value(device,ReadingStatsActivity::Row::RecordedToday)=="140 seconds");
+ assert(value(device,ReadingStatsActivity::Row::RecordedDailyAverage)=="30 seconds");
+ const auto reads=dailyreading::dailyReads;device.drawFooter();
+ assert(dailyreading::dailyReads==reads);
+ dailyreading::dailyFixture.incomplete=true;device.onEnter();
+ assert(value(device,ReadingStatsActivity::Row::State)=="STR_STATS_PARTIAL");
+ device.saved=false;assert(value(device,ReadingStatsActivity::Row::State)=="STR_STATS_SAVE_PARTIAL");
+ device.saved=true;dailyreading::dailyFixture.incomplete=false;device.onEnter();
+ device.tab=ReadingStatsActivity::Tab::AllDevices;
+ for(int index=0;index<device.listCount();++index)assert(device.rowAt(index)!=ReadingStatsActivity::Row::RecordedToday && device.rowAt(index)!=ReadingStatsActivity::Row::RecordedDailyAverage);
+ device.tab=ReadingStatsActivity::Tab::Device;
+ clockAvailable=false;const auto beforeUnknown=dailyreading::dailyReads;
+ ReadingStatsActivity unknownClock(renderer,input);unknownClock.onEnter();
+ assert(value(unknownClock,ReadingStatsActivity::Row::RecordedToday)=="-");
+ assert(dailyreading::dailyReads==beforeUnknown);
+ device.onEnter();assert(value(device,ReadingStatsActivity::Row::RecordedToday)=="-");
+ assert(value(device,ReadingStatsActivity::Row::RecordedDailyAverage)=="-");
+ assert(dailyreading::dailyReads==beforeUnknown);clockAvailable=true;device.onEnter();
 #endif
  assert(value(device,ReadingStatsActivity::Row::RecordedWeek)=="4");
  assert(value(device,ReadingStatsActivity::Row::PagesPerMinute)=="6.0");
@@ -708,7 +750,7 @@ int main(){
 }
 '''
     (path / "test.cpp").write_text(harness)
-    command = ["c++", "-std=c++20", *(["-DCROSSPOINT_EXPERIMENTAL_COMPLETION"] if os.getenv("TEST_EXPERIMENTAL_COMPLETION") else []), *(["-DCROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE"] if os.getenv("TEST_EXPERIMENTAL_COMPLETION_MOVE") else []), *(["-DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE"] if os.getenv("TEST_EXPERIMENTAL_STATS_RESTORE") else []), "-I", str(path), "-I", str(root / "src"), "-I", str(root / "lib/I18n"),
+    command = ["c++", "-std=c++20", *(["-DCROSSPOINT_EXPERIMENTAL_DAILY_STATS"] if os.getenv("TEST_EXPERIMENTAL_DAILY_STATS") else []), *(["-DCROSSPOINT_EXPERIMENTAL_COMPLETION"] if os.getenv("TEST_EXPERIMENTAL_COMPLETION") else []), *(["-DCROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE"] if os.getenv("TEST_EXPERIMENTAL_COMPLETION_MOVE") else []), *(["-DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE"] if os.getenv("TEST_EXPERIMENTAL_STATS_RESTORE") else []), "-I", str(path), "-I", str(root / "src"), "-I", str(root / "lib/I18n"),
                str(source), str(root / "src/activities/reader/ReadingStatsDateEdit.cpp"), str(path / "test.cpp"), "-o", str(path / "test")]
     subprocess.run(command, check=True)
     subprocess.run([str(path / "test")], check=True)

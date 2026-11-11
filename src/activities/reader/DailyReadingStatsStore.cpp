@@ -58,7 +58,7 @@ bool loadLegacy(Work& work, uint32_t day, Counter& counter, bool& present, const
     if (status == HalStorage::PathStatus::Failed) return false;
     if (status == HalStorage::PathStatus::Missing) continue;
     present = true;
-    if (writeTarget && !Storage.distinctFirstClusters(writeTarget, path)) return false;
+    if (writeTarget && !Storage.distinctMoveChains(writeTarget, path)) return false;
     HalFile file;
     if (!Storage.openFileForRead("DailyStats", path, file)) return false;
     const size_t size = file.fileSize();
@@ -93,7 +93,12 @@ bool operate(void* raw) {
   work.slots[1] = loadSlot(work, 1, work.other);
   switch (select(work.slots[0], work.selected, work.slots[1], work.other)) {
     case Selection::Unavailable:
-      return false;
+      // This writer always establishes b before creating a and never deletes a.
+      // With only interrupted-file writes in scope, a lone corrupt b is an
+      // unfinished first bootstrap. Reads still report it as unavailable.
+      if (!work.update || work.slots[0] != Decode::Missing || work.slots[1] != Decode::Corrupt) return false;
+      work.selected = {};
+      break;
     case Selection::First:
       work.slot = 0;
       break;
@@ -122,14 +127,19 @@ bool operate(void* raw) {
   if (work.slot >= 0 && targetExists) {
     char sourcePath[64];
     monthPath(work, work.slot, sourcePath);
-    // Every accepted file is shorter than a FAT cluster. Shared first clusters
-    // would make truncating the target destroy the surviving copy.
-    if (!Storage.distinctFirstClusters(sourcePath, targetPath)) return false;
+    // Checked independent chains also admit an empty interrupted target.
+    if (!Storage.distinctMoveChains(sourcePath, targetPath)) return false;
+  }
+  char bootstrapPath[64];
+  const char* protectedTarget = targetExists ? targetPath : nullptr;
+  if (work.slot < 0 && work.slots[1] != Decode::Missing) {
+    monthPath(work, 1, bootstrapPath);
+    protectedTarget = bootstrapPath;
   }
   for (uint8_t i = 0; i < work.count; ++i) {
     Counter old;
     bool present;
-    if (!loadLegacy(work, work.first + i, old, present, targetExists ? targetPath : nullptr)) return false;
+    if (!loadLegacy(work, work.first + i, old, present, protectedTarget)) return false;
     auto& value = work.selected.days[i];
     value.seconds = std::max(value.seconds, old.seconds);
     value.uploaded = std::max(value.uploaded, old.uploaded);

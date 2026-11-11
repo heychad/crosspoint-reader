@@ -1014,3 +1014,6 @@ STR_INDEXING_INCREMENTAL: "Incremental"
 STR_INDEXING_FULL_SECTION: "Full chapter"
 
 STR_BOOK_PREVIEW: "Book preview"
+
+STR_STATS_RECORDED_TODAY: "Recorded today"
+STR_STATS_RECORDED_DAILY_AVERAGE: "Recorded 7-day average"

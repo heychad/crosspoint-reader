@@ -33,11 +33,12 @@ It does not add a task or resident cache.
   is gated by `CROSSPOINT_EXPERIMENTAL_DAILY_STATS`.
 - [x] Checkpoint on reader pause/finish and retry accepted counters without
   counting them twice. Runtime flash latency and device behavior remain unverified.
-- [ ] Show Today and the 7-day daily average; keep unavailable dates distinct
-  from known zero-reading days. Existing total time cannot be backfilled.
+- [x] Show recorded Today and the 7-day daily average in the Device view.
+  Missing or unreadable days prevent a complete average; existing total time
+  is never backfilled.
 - [ ] Complete storage/recovery review and device testing.
 
-C4 remains in progress.
+C4 core behavior is built behind the daily-statistics flag; release validation remains.
 
 ## Storage checkpoint
 
@@ -48,20 +49,27 @@ Seconds and uploaded acknowledgments cannot decrease. Repeating the same value
 after an uncertain sync or close does not add it again. The alternate slot is
 closed and decoded again before a save reports success.
 
-The store checks independent small-file clusters before overwriting an existing
-slot, including its relationship to preserved legacy files. I/O failures and
-unknown newer formats block writes. A damaged known-version slot can fall back
-to a valid sibling. A torn first bootstrap with no valid copy remains unavailable
-and keeps its evidence for recovery; it is not silently reinitialized. This
-limitation must be addressed or accepted at the storage release review.
+The store checks independent bounded file chains before overwriting an existing
+slot, including its relationship to preserved legacy files. Empty interrupted
+targets are supported. I/O failures and unknown newer formats block writes. A
+damaged known-version slot can fall back to a valid sibling.
 
-Thirteen focused host checks pass, including all 264 incomplete update lengths,
+Bootstrap recovery follows the tagged RC writer's protocol: b is established
+before a, and the writer never deletes a. A missing a plus a corrupt b therefore
+identifies an unfinished first bootstrap under the supported failure model of
+interrupted file writes. A new absolute write can reconstruct b from preserved
+legacy counters, verify it, and then publish a. Read-only inspection still
+reports that state unavailable. Foreign formats, I/O failures, aliasing with
+legacy data, and a lone corrupt a block recovery. This does not repair external
+file deletion, general filesystem damage, or lost uncheckpointed RAM data.
+
+The initial storage checkpoint passed thirteen focused host checks, including all 264 incomplete update lengths,
 uncertain sync/close retries, legacy preservation, aliasing, leap days, allocation
 and lock failures, and first-bootstrap failure. The fake filesystem models these
 API failures; actual FAT chains and device power-loss behavior remain unverified.
 
 The optional recorder is connected to the existing page timer. The default
-firmware leaves it disabled. Today and 7-day summaries remain pending.
+firmware leaves it disabled. Today and 7-day summaries are available in the enabled profile.
 
 Checkpoint validation: the 13 focused checks passed in 0.60 seconds and the
 default X4 Pro build passed in 74.26 seconds. The unconnected store's private
@@ -111,3 +119,26 @@ The final enabled X4 Pro build passed in 80.00 seconds. The first 178.74-second
 build preceded the stack-copy correction and is not the final candidate.
 Physical timing, daily-file durability, first-bootstrap recovery, and review
 remain open; no firmware was installed.
+
+## Device summary
+
+The Device tab shows Recorded today and Recorded 7-day average. The summary
+loads once on entry; rendering and navigation do not reopen its files. An
+unreadable daily source contributes a Partial data warning, combined with an
+unsaved-data warning when both apply. Missing history or an unset clock shows a
+dash. A zero stored counter displays zero; the average divides seven stored
+calendar-day values, including stored zeros. A missing month does not become
+seven invented zero-reading days. These are recorded durations, not a
+reconstruction of untracked reading. All Devices retains its aggregate rows
+and does not present local daily values as an aggregate.
+
+Recovery checks cover every 0–263-byte interruption of both bootstrap and normal
+updates, preserve legacy files, and retry empty targets through the existing
+checked-chain HAL contract. Five summary cases cover missing history, stored
+zeros, month boundaries, unreadable data, and overflow-safe accumulation. UI
+checks cover enabled/disabled recording, restore combinations, warnings, missing
+clock data, and row routing. Actual FAT failure behavior and e-ink acceptance
+remain part of the cumulative release review and device test.
+
+Summary checkpoint: all 406 relevant checks passed in 3.05 seconds; the enabled
+X4 Pro build passed in 111.61 seconds. No firmware was installed.

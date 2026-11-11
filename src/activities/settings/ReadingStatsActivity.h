@@ -5,6 +5,9 @@
 #include "activities/UiTabListActivity.h"
 #include "activities/reader/BookReadingStats.h"
 #include "activities/reader/GlobalReadingStats.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+#include "activities/reader/DailyReadingStatsSummary.h"
+#endif
 
 class ReaderStats;
 
@@ -57,6 +60,10 @@ class ReadingStatsActivity final : public UiTabListActivity {
     RestoreDevice,
     RestoreBook,
     ResetDevice,
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+    RecordedToday,
+    RecordedDailyAverage,
 #endif
     Morning,
     Afternoon,
@@ -116,6 +123,9 @@ class ReadingStatsActivity final : public UiTabListActivity {
   GlobalReadingStats local;
   GlobalStatsAggregate aggregate;
   ReadingStatsDateTime now;
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  dailyreading::Summary daily;
+#endif
   int progress = -1;
   Tab tab = Tab::Device;
   bool hasBook = false;
