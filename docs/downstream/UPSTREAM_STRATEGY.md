@@ -22,15 +22,19 @@ Keep CrossPoint as the upstream code base. Import selected CrossInk behavior in
 small commits; do not merge the whole CrossInk tree. Preserve the X4 Pro-only
 release target while retaining upstream source layout where practical.
 
-Before the next feature batch:
+The 45-commit CrossPoint update was merged at `6bea3810`. Do not repeat that
+completed integration before every feature batch.
 
-1. Push the current checked WIP checkpoint to the personal fork.
-2. Compare the 45 new upstream commits with local changes. Integrate on a
-   separate branch and resolve duplicate implementations before adding features.
-3. Reassess selected CrossInk features against its 2.0.0 release candidate.
-   Do not silently expand the agreed first-release scope.
-4. Run focused checks for conflicts, then the full host suite and X4 Pro build.
-   Keep the known device-tested revision available for rollback.
+At the next integration milestone, run:
+
+```sh
+python3 scripts/upstream_snapshot.py --fetch
+```
+
+Inspect newly reported changes, prioritize fixes to already-ported behavior, and update the comparison baseline after recording
+what was reviewed. CrossInk remains a source reference, not a merge target.
+Use the [development process](DEVELOPMENT_PROCESS.md) for verification depth.
+Keep the known device-tested revision available for rollback.
 
 ## Ongoing maintenance
 
@@ -46,13 +50,15 @@ Before the next feature batch:
   patches in this repository. Review those patches when updating the SDK.
 - Keep experiments disabled for release until reviewed and tested.
 - Use WIP checkpoint commits for backup. Releases and supported-branch merges
-  still require four-axis review and device handoff.
+  require risk-based review and device handoff as defined in the handoff skill.
 
 ## Current limitations
 
-The feature checkpoint is committed and pushed. The upstream merge passed the X4 Pro build and all 1,779 host tests, including
-focused reruns of five corrected test fixtures. It is not a firmware release. Experimental features in the
-checkpoint remain incomplete or unverified. The feature checklist is not proof
+The feature checkpoint is committed and pushed. The upstream merge passed the
+X4 Pro build; 1,774 of 1,779 host tests passed initially, and focused reruns passed
+after correcting five stale fixtures. A later full suite passed all 1,784 tests.
+This is not a firmware release. Experimental features in the checkpoint remain
+incomplete or unverified. The feature checklist is not proof
 of full CrossInk parity or release readiness. CrossInk's new release-candidate SDK submodule could not be fetched
 from its referenced upstream object during this check; the top-level source was
 fetched successfully. Do not substitute another SDK revision without review.

@@ -1,113 +1,70 @@
 ---
 name: firmware-handoff
-description: Final checks and human handoff for completed firmware/build changes. Use after implementation and self-review; excludes read-only audits and reviewer tasks.
+description: Risk-based review and device handoff for a firmware candidate, release, or supported-branch merge. Not required for checked WIP checkpoints or read-only work.
 ---
 
 # Firmware handoff
 
-Run after implementation and main-agent self-review, before declaring release
-readiness, releasing firmware, or merging to the supported branch. Authorized
-WIP checkpoints use the lighter process in AGENTS.md and do not satisfy this
-handoff. The main agent owns the result;
-reviewer output is evidence, not authority. This workflow has at most two review
-rounds per logical change, even when slot limits require dispatching in batches.
+Use at a testable-device candidate, release, or supported-branch merge. Review
+one cumulative candidate, not each feature separately. WIP checkpoints follow
+AGENTS.md. The main agent owns implementation, checks, and the final verdict.
 
-## 1. Prepare the review candidate
+## Prepare the candidate
 
-Record the human requirement, comparison base, changed files, and current diff,
-including uncommitted work and any SDK changes. Account for every hunk and
-identify unrelated user work. Finish self-review, relevant tests, and
-`./bin/clang-format-fix -g` before dispatch. Build early only when needed to
-resolve a concrete compilation or build-configuration question; the required
-final build belongs after review fixes.
+Record the requirement, comparison base, candidate revision, changed files,
+SDK pin/patches, enabled build flags, checks, and unresolved findings. Account
+for unrelated work. Reuse passing evidence while its inputs remain unchanged.
+Use the existing formatter and X4 Pro toolchain; no other board is required.
 
-**Done when:** the candidate meets the requirement, every hunk is accounted for,
-and checks run or unavailable checks with their reasons are recorded.
+## Select review depth
 
-## 2. Dispatch the initial reviews
+Choose from the actual changed contracts. Record the reason once.
 
-Launch a separate independent read-only subagent for each axis, reserving a slot
-for the main agent. Never substitute the main agent for a reviewer:
+| Candidate | Independent review |
+| --- | --- |
+| Documentation, formatting, or test-only change with no firmware effect | Main-agent review and relevant checks |
+| Bounded UI, settings, shortcuts, or reuse of an existing reader action | One combined correctness/architecture review; include input and resource checks where affected |
+| Persistent writes, migrations, deletion, concurrency, SDK patches, or ownership/resource changes | Correctness review plus a specialist review of the affected storage or embedded contract |
+| Broad upstream integration, or a candidate combining substantial storage, resource, and UI changes | Four axes: correctness, architecture, embedded, and i18n/docs |
 
-- [review-correctness](../review-correctness/SKILL.md)
-- [review-architecture](../review-architecture/SKILL.md)
-- [review-embedded](../review-embedded/SKILL.md)
-- [review-i18n-docs](../review-i18n-docs/SKILL.md)
+The existing `review-correctness`, `review-architecture`, `review-embedded`, and
+`review-i18n-docs` skills provide the applicable criteria. One reviewer can cover
+multiple axes on a bounded candidate. Do not spawn reviewers during routine WIP
+implementation. A complex change cannot qualify as bounded just because it sits
+behind a flag.
 
-Use fresh reviewer contexts where supported. Give each a compact packet: human
-requirement and constraints, repository path, comparison base, pinned diff and
-revision, review axis, and main-agent check results/log paths. Supply necessary
-human discussion without the main agent's analysis or verdict. Include this
-scope in every reviewer task:
-"Inspect code, diffs, history, and recorded checks only. No file writes, tests,
-builds, or new diagnostics; request needed checks from the main agent."
-Reviewers read relevant rule sections and do not run handoff or publish.
+Give independent reviewers the requirement, pinned diff, constraints, and check
+results without coaching their verdict. Reviewers inspect source, history, and
+recorded results only: no writes, tests, builds, commits, or deployment. Reserve
+a slot for the main agent. Freeze the candidate while reviews run.
 
-Keep the candidate unchanged while reviews run. Collect all four results before
-editing. A reviewer with no applicable changes may return a short explanation.
+## Resolve findings
 
-**Done when:** all four initial results are recorded against the same candidate.
+Verify findings against reachable behavior. Combine duplicates, fix defects as
+one batch, and defer optional cleanup outside the requirement. Seek targeted
+follow-up only when a fix changes a reviewed contract; formatting and prose do
+not restart review. Stop after two rounds. If material issues remain, isolate
+or disable that feature and advance the rest of the candidate when its
+independence is established. Keep unresolved issues visible; do not silently
+call them fixed or restart an unlimited review loop.
 
-## 3. Resolve findings as one batch
+Model failures appropriate to the change. State the supported corruption and
+power-loss behavior explicitly; do not expand a local feature into a general
+filesystem-repair project without evidence and a scope decision.
 
-Collapse duplicates by root cause and verify findings against reachable code.
-Explain rejected findings and keep unresolved disagreements visible. Decide
-which advisory cleanups belong to the requirement; defer unrelated improvements.
-Apply all accepted fixes together, then verify the whole diff yourself.
+## Verify and hand off
 
-Allow one targeted follow-up round only when fixes invalidate a review's
-conclusions about behavior, ownership, resource costs, interfaces, persistent
-formats, build compatibility, or user-facing information. Reuse the original
-reviewers, giving them the diff since their reviewed candidate and the findings
-to verify. Mechanical corrections, formatting, and comment-only changes receive
-main-agent verification unless they change a substantive contract. Record which
-final changes each review covers.
+Run the full host suite for the cumulative device candidate and one X4 Pro build
+per intended configuration. Reuse checks/builds that already cover the final
+inputs. Test flags independently when they change compiled behavior. Record
+commands, results, and unavailable checks; unavailable is not passed.
 
-After this second round, fix verified problems and run affected checks. If a
-substantive concern or independently unreviewed material change remains, report
-it and leave handoff incomplete rather than starting an automatic third round.
+Explain changed behavior, important tradeoffs, known limits, and rollback. Honor
+Chad's standing acceptance of routine design and maintenance decisions; ask only
+when a material choice falls outside it. Give a short device smoke test covering
+the changed behavior, reading-position preservation, and affected input/layout
+paths. Reserve exhaustive regression for releases or a demonstrated regression.
 
-**Done when:** no verified finding remains unaddressed and independent reviews
-cover the final substantive changes within the two-round limit.
-
-## 4. Complete final checks
-
-Run formatting and any affected tests not already green for the final change.
-Build each relevant firmware target once after the final substantive firmware or
-build edit, including configuration, code-generation sources, and translations.
-Follow the [testing rule](../../rules/testing-debugging.md). Preserve green
-results after formatting, comments, or documentation alone; repeat a check only
-when a change or failure invalidates it. Record commands, outcomes, and concrete
-reasons for unavailable checks; an unavailable check is not a pass.
-
-**Done when:** relevant tests, formatting, and final firmware builds have passed,
-or missing verification is explicitly reported and handoff remains incomplete.
-
-## 5. Hand off the actual design
-
-Explain old and new behavior, state/resource ownership, affected files, the
-important tradeoff, checks, and remaining risks in plain English. Point to the
-diff. Ask the human to accept the specific behavior and design tradeoff just
-explained, including responsibility for maintaining it. Name the relevant choice:
-for example, bounded temporary storage and a fallback when allocation fails.
-For a straightforward fix, ask whether the new behavior and its state ownership
-match their intent; do not invent a tradeoff. A generic understanding/ownership
-question does not complete handoff. Prescribe no confirmation phrase. Recognize
-explicit acceptance already given for this logical change, including standing
-delegation of routine design and maintenance decisions for the current task.
-Record its scope once; do not repeat per-feature acceptance questions within
-that scope. Reopen only for a material decision outside the delegation.
-Continuation or commit approval alone does not establish understanding and
-ownership.
-
-Give applicable hardware steps with expected results and likely failure signs,
-including orientations, resources, and caches when affected. Hardware testing is
-the human's responsibility and must happen before a PR is opened. Never claim
-hardware verification yourself. Publication follows the root guide's human
-ownership policy and the [Git rule](../../rules/git-workflow.md).
-
-**Done when:** checks and independent reviews cover the final change, no verified
-finding remains, and explicit human acceptance covers the described behavior,
-architecture, and maintenance responsibility. The hardware test plan is provided.
-If the human rejects the architecture, ask what must change and revise before
-calling it ready.
+The human installs firmware and reports physical behavior. Never infer device
+validation from compilation or file hashes. Publication and supported-branch
+merges require their existing authorization. PR ownership remains in AGENTS.md.

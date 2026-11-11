@@ -39,9 +39,9 @@ alter firmware output/build. Check ignored outputs before staging, using the
 Human device checks cover changed behavior, relevant orientations/remapping,
 and resource/cache effects. Changed input, display, or layout paths cover all
 four orientations: portrait, inverted, landscape CW, and landscape CCW.
-C3 baseline target: more than 50 KB free and no leaks;
-measure internal/PSRAM heaps and largest blocks separately across relevant repeated
-book, dictionary, font, or WiFi transitions. Free bytes alone do not prove an
+Use the X4 Pro resource budget. Measure internal/PSRAM heaps and largest blocks
+separately when the change affects allocation, lifetime, or repeated book,
+dictionary, font, or WiFi transitions. Free bytes alone do not prove an
 allocation will fit. For layout changes, back up progress and verify affected
 cache regeneration, including TXT/Markdown and partial-build resume when relevant.
 
@@ -86,9 +86,11 @@ those log values are supplied.
 
 - Work on one coherent feature batch. During implementation, use focused checks
   for the behavior changed; do not run release handoff after each edit.
-- Freeze the batch before the full host suite and X4 Pro build. Run these once
-  together. If a test fixture fails, rerun its affected tests after the fix; a
-  fixture-only edit does not invalidate a successful firmware build.
+- At a WIP checkpoint, run relevant tests and an incremental X4 Pro build when
+  firmware inputs changed. The full host suite is required at a testable-device
+  candidate, an upstream integration, or a shared-contract change whose impact
+  cannot be bounded. A small settings/UI addition does not automatically trigger
+  all tests. If a fixture fails, rerun affected tests after fixing it.
 - Rebuild only when firmware source, build inputs, or dependencies changed
   after the last successful build. A Page update, prose change, or test-only
   correction is not a rebuild trigger.

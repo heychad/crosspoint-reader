@@ -17,7 +17,7 @@ for, not silently treated as the pinned firmware dependency.
 
 ## Start here
 
-At session start, run `uname -s`, `git branch --show-current`, `git remote -v`, and `git status --short`. Integration work targets `develop`.
+At session start, run `uname -s`, `git branch --show-current`, `git remote -v`, and `git status --short`. Use `codex/` branches for checked development work. `develop` is the supported integration target; never infer permission to merge into it.
 
 Act as a senior embedded C++ engineer. Base claims on repository evidence: cite the paths and line numbers that justify a proposed change. Explain the mechanism behind performance or memory claims and justify every new heap allocation. For every fix, tell the human how to verify it.
 
@@ -53,7 +53,8 @@ Repository-local skills live under `.agents/skills/`. Their descriptions identif
 
 A PR is a long-term maintenance commitment. Working code is not enough: prefer the simplest design that meets the real requirement, fits `SCOPE.md`, and can be understood and maintained by its human owner.
 
-Fully autonomous end-to-end agents are forbidden. Review subagents inspect code,
+The main agent may implement and checkpoint work within the human-authorized scope.
+Review subagents inspect code,
 diffs, history, and recorded checks only. The main agent owns verification:
 reviewers may not write files (including temporary diagnostics), run tests/builds,
 commit, publish, deploy, or flash.
@@ -78,18 +79,23 @@ Keep generated build outputs and unrelated work out of the commit.
 
 ## Development cadence
 
-Use one coherent feature batch, followed by a checked WIP checkpoint. Carry
-forward test and review evidence until relevant code changes invalidate it.
+Group related features that share a code path into a coherent batch, followed by
+a checked WIP checkpoint. Prefer reusing upstream behavior over expanding a
+custom implementation. Carry forward test and review evidence until relevant
+code changes invalidate it.
 Do not request repeated commit/push approval when the human has already
 explicitly authorized recurring checkpoints for the current task. Keep release,
 merge-to-supported-branch and physical-device authorization separate.
 
 Compare both upstream CrossPoint and CrossInk at integration milestones. Prefer
 an upstream implementation over a duplicate port. Follow the dated comparison
-and pending audit in `docs/downstream/UPSTREAM_STRATEGY.md`.
+in `docs/downstream/UPSTREAM_STRATEGY.md`.
+
+[Development process](docs/downstream/DEVELOPMENT_PROCESS.md) defines batch size,
+verification triggers, and the boundary between implementation and release work.
 
 ## Mandatory firmware handoff
 
-For every logical change that can affect shipped firmware or its build—including C/C++, build configuration, partitions, code-generation sources, translations, and release scripts—the main agent must complete [firmware-handoff](.agents/skills/firmware-handoff/SKILL.md) before declaring release readiness, releasing firmware, or merging to the supported branch. Authorized WIP checkpoints follow the lighter process above. The handoff skill owns the required checks, four independent reviews, bounded follow-up, and explicit human acceptance of behavior, architecture, and maintenance ownership.
+For every logical change that can affect shipped firmware or its build—including C/C++, build configuration, partitions, code-generation sources, translations, and release scripts—the main agent must complete [firmware-handoff](.agents/skills/firmware-handoff/SKILL.md) before declaring release readiness, releasing firmware, or merging to the supported branch. Authorized WIP checkpoints follow the lighter process above. The handoff skill selects review depth from the actual risk, reuses valid evidence, and respects standing human delegation. It does not require four reviews for every change.
 
 Read-only inquiries, audits, and reviewers do not run implementation handoff. Pure tests, diagnostics, documentation, and host-only Python scripts use a lighter review unless they alter firmware output or its build. Hardware testing remains the human's responsibility and is required before a PR is opened.
