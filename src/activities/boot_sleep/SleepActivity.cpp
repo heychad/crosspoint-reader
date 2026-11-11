@@ -921,6 +921,10 @@ void SleepActivity::renderReadingStatsSleepScreen() const {
     if (!data->hasClock && Storage.lookupPath("/.crosspoint/global_stats.bin") == HalStorage::PathStatus::Present) {
       data->device = GlobalReadingStats::loadReadOnly();
       data->hasDevice = data->device.writable;
+      if (data->hasDevice) {
+        data->allDevices = GlobalReadingStats::loadAggregated(data->device);
+        data->hasAllDevices = data->allDevices.sources > 1 || !data->allDevices.complete;
+      }
     }
   }
   // TXT/Markdown cache validation can delete stale caches even when an EPUB

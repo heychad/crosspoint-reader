@@ -25,8 +25,8 @@ struct EpdFontFamily { enum Style { REGULAR, BOLD }; };
 constexpr int SMALL_FONT_ID=1, UI_10_FONT_ID=2, UI_12_FONT_ID=3;
 struct Rect { int x,y,width,height; };
 struct GfxRenderer {
- int width=480,height=800; mutable bool cleared=false; mutable std::vector<std::string> text;
- int getLineHeight(int f) const { return f==SMALL_FONT_ID?10:14; }
+ int width=480,height=800,fontScale=1; mutable bool cleared=false; mutable std::vector<std::string> text;
+ int getLineHeight(int f) const { return (f==SMALL_FONT_ID?10:14)*fontScale; }
  int getTextWidth(int,const char* s,EpdFontFamily::Style=EpdFontFamily::REGULAR) const {return int(strlen(s))*5;}
  void valid(int x,int y,int w,int h) const { assert(x>=0 && y>=0 && w>=0 && h>=0 && x+w<=width && y+h<=height); }
  void drawText(int f,int x,int y,const char* s,bool,EpdFontFamily::Style st) const {valid(x,y,getTextWidth(f,s,st),getLineHeight(f)); text.emplace_back(s);}
@@ -48,8 +48,9 @@ struct BookReadingStats {
  ReadingStatsDate projectedFinishDate(const ReadingStatsDateTime&,int) const {return {};}
 };
 struct GlobalReadingStats { uint32_t totalSessions=0,totalReadingSeconds=0,totalPagesTurned=0; };
+struct GlobalStatsAggregate {GlobalReadingStats stats;uint32_t sources=0,skipped=0;bool complete=false;};
 namespace sleepstats {
-struct Data { BookReadingStats book;GlobalReadingStats device;ReadingStatsDateTime now;int progress=-1;bool hasClock=false,hasDevice=false;};
+struct Data { BookReadingStats book;GlobalReadingStats device;GlobalStatsAggregate allDevices;ReadingStatsDateTime now;int progress=-1;bool hasClock=false,hasDevice=false,hasAllDevices=false;};
 struct DashboardData {int progress=-1;uint32_t readingSeconds=0,remainingSeconds=0,sessions=0,pages=0,globalSeconds=0,completedBooks=0,dailyAverageSeconds=0;ReadingStatsDate startDate;uint16_t currentStreak=0;bool hasStats=false,hasGlobal=false,hasDailyAverage=false,hasStreak=false;};
 }
 int utf8SafeTruncateBuffer(const char* b,int n){if(!n)return 0;int p=n-1;while(p>0 && (static_cast<unsigned char>(b[p])&0xc0)==0x80)--p;unsigned char c=b[p];int len=c<128?1:c<224?2:c<240?3:4;return n-p<len?p:n;}
@@ -65,6 +66,16 @@ int main(){
  assert(sleepstats::draw(unknown,"Book",data));assert(saw(unknown,"-"));
  GfxRenderer device;data.hasDevice=true;
  assert(sleepstats::draw(device,"Book",data));assert(saw(device,tr(STR_STATS_DEVICE)));
+ data.hasAllDevices=true;data.allDevices.sources=2;data.allDevices.stats.totalReadingSeconds=1234;data.allDevices.complete=true;
+ GfxRenderer all;assert(sleepstats::draw(all,"Book",data));assert(saw(all,tr(STR_STATS_ALL_DEVICES)) && saw(all,"1234s"));
+ data.allDevices.complete=false;GfxRenderer partial;assert(sleepstats::draw(partial,"Book",data));assert(saw(partial,tr(STR_STATS_PARTIAL)));
+ for(int h=120;h<=820;h+=7){GfxRenderer r;r.height=h;sleepstats::draw(r,"Book",data);}
+ GfxRenderer landscape;landscape.width=800;landscape.height=480;assert(sleepstats::draw(landscape,"Book",data));
+ for(int scale : {1,2})for(int w : {480,800}){
+  GfxRenderer sized;sized.width=w;sized.height=w==480?800:480;sized.fontScale=scale;
+  sleepstats::draw(sized,"Book",data);
+ }
+ data.hasAllDevices=false;
  GfxRenderer small;small.width=200;small.height=200;assert(!sleepstats::draw(small,"Book",data));assert(!small.cleared);
  GfxRenderer summary;data.progress=37;assert(sleepstats::drawSummary(summary,"Sample title",data));assert(summary.cleared && saw(summary,"37%") && saw(summary,"Sample title"));
  GfxRenderer emptySummary;data.progress=-1;assert(sleepstats::drawSummary(emptySummary,"Book",data));assert(saw(emptySummary,"-"));
