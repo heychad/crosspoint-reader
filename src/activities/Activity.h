@@ -13,6 +13,8 @@
 #include "RenderLock.h"
 #include "util/ScreenshotInfo.h"
 
+class ReaderActivity;
+
 class Activity {
   friend class ActivityManager;
 
@@ -34,6 +36,10 @@ class Activity {
   virtual void prepareForSleep() {}
   // Invoked with the render lock held; a stacked activity is notified only on lock.
   virtual void onInputLockChanged(bool) {}
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  virtual void onUserInput() {}
+  virtual void renderBackground(RenderLock&&) {}
+#endif
   virtual void loop() {}
 
   virtual void render(RenderLock&&) {}
@@ -51,6 +57,7 @@ class Activity {
   // transitions so no filesystem code races a raw SD-card owner.
   virtual bool requiresExclusiveStorageLoop() const { return false; }
   virtual bool isReaderActivity() const { return false; }
+  virtual ReaderActivity* bookReader() { return nullptr; }
   virtual bool isReaderPage() const { return false; }
   virtual bool acceptsRemoteInput() const { return false; }
   // Returns true when the activity schedules its own forced refresh.

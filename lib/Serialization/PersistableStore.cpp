@@ -9,6 +9,8 @@
 #include <cstring>
 #include <limits>
 
+#include "MoveReferenceSafeWrite.h"
+
 bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& doc) {
   Storage.mkdir("/.crosspoint");
   String json;
@@ -102,6 +104,24 @@ bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocu
   if (Storage.exists(backup.c_str())) Storage.remove(backup.c_str());
   return true;
 }
+
+bool PersistableStoreBase::writeDocToFileForMove(const char* path, const JsonDocument& doc) {
+  const size_t expected = measureJson(doc);
+  if (doc.overflowed() || expected == 0 || expected > 65536) return false;
+  auto json = makeUniqueNoThrow<char[]>(expected + 1);
+  if (!json || serializeJson(doc, json.get(), expected + 1) != expected) return false;
+  return movereference::write(path, json.get(), expected);
+}
+
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+bool PersistableStoreBase::writeStateSleepPreferences(const JsonDocument& doc) {
+  const size_t expected = measureJson(doc);
+  if (doc.overflowed() || expected == 0 || expected > 65536) return false;
+  auto json = makeUniqueNoThrow<char[]>(expected + 1);
+  if (!json || serializeJson(doc, json.get(), expected + 1) != expected) return false;
+  return movereference::writeSleepPreferences(json.get(), expected);
+}
+#endif
 
 std::string PersistableStoreBase::extractPassword(JsonVariantConst doc, bool& needsResave) {
   bool valid = false;

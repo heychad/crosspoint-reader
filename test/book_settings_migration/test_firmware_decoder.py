@@ -18,6 +18,11 @@ for version in range(1, 11):
     records.extend((data, data + b'\0'))
 for bit in range(19):
     records.append(test_preview.record(10, mask=1 << bit))
+for version in (3, 10):
+    for spacing in (0, 1, 4, 255):
+        data = bytearray(test_preview.record(version, mask=1 << 3))
+        data[8] = spacing
+        records.append(bytes(data))
 records.extend((test_preview.record(10, flags=0), test_preview.record(10, flags=0x80),
                 test_preview.record(10, mask=1 << 20)))
 for name in (b'caf\xc3\xa9', b'\xc0\xaf', b'\xed\xa0\x80', b'\xf4\x90\x80\x80', b'\xe2\x82'):

@@ -11,6 +11,20 @@ add_executable(BookReadingStatsAtomicTest
   StatsSaveNoticeTest.cpp
   ReadingStatsDateEditTest.cpp
   ReadingChartModelTest.cpp
+  CompletionEditTest.cpp
+  CompletionJournalTest.cpp
+  CompletionMovePlanTest.cpp
+  DeferredCompletionIntentTest.cpp
+  DeferredCompletionIntentIOTest.cpp
+  MoveReferenceSafeWriteTest.cpp
+  CompletionMovePlanIOTest.cpp
+  CompletionMoveFileTest.cpp
+  CrossInkBookmarkMoveTest.cpp
+  CompletionJournalIOTest.cpp
+  CompletionSnapshotValidationTest.cpp
+  CompletionReplayCheckTest.cpp
+  CompletionTransactionTest.cpp
+  DeferredCompletionRecoveryTest.cpp
   ${REPO_ROOT}/src/activities/reader/ReadingStatsUtils.cpp
   ${REPO_ROOT}/src/activities/reader/BookReadingStats.cpp
   ${REPO_ROOT}/src/activities/reader/StatsSafeReplace.cpp
@@ -24,12 +38,29 @@ add_executable(BookReadingStatsAtomicTest
   ${REPO_ROOT}/src/activities/reader/BookTracking.cpp
   ${REPO_ROOT}/src/activities/reader/ReaderStats.cpp
   ${REPO_ROOT}/src/activities/reader/BookCompletion.cpp
+  ${REPO_ROOT}/src/activities/reader/CompletionEdit.cpp
+  ${REPO_ROOT}/src/activities/reader/CompletionJournalIO.cpp
+  ${REPO_ROOT}/test/CompletionArchiveInventoryStub.cpp
+  ${REPO_ROOT}/src/activities/reader/CompletionLibraryDirty.cpp
+  ${REPO_ROOT}/src/activities/reader/DeferredCompletionIntentIO.cpp
+  ${REPO_ROOT}/src/activities/reader/DeferredCompletionMove.cpp
+  ${REPO_ROOT}/src/activities/reader/DeferredCompletionRecovery.cpp
+  ${REPO_ROOT}/src/activities/reader/DeferredCompletionMoveRetirement.cpp
+  ${REPO_ROOT}/lib/Serialization/MoveReferenceSafeWrite.cpp
+  ${REPO_ROOT}/src/activities/reader/CompletionMovePlanIO.cpp
+  ${REPO_ROOT}/src/activities/reader/CompletionMoveFile.cpp
+  ${REPO_ROOT}/src/activities/reader/CrossInkBookmarkMove.cpp
+  ${REPO_ROOT}/src/activities/reader/CrossInkBookmarkEdit.cpp
+  ${REPO_ROOT}/src/activities/reader/CompletionTransaction.cpp
+  ${REPO_ROOT}/src/activities/reader/StatsSessionLease.cpp
+  ${REPO_ROOT}/src/activities/reader/StatsAccessGate.cpp
 )
 
 target_include_directories(BookReadingStatsAtomicTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${REPO_ROOT}/src
   ${REPO_ROOT}/src/activities/reader
+  ${REPO_ROOT}/lib/Serialization
 )
 
 target_link_libraries(BookReadingStatsAtomicTest PRIVATE

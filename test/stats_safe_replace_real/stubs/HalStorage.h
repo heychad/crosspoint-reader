@@ -13,10 +13,12 @@ class HalFile {
   explicit HalFile(std::unique_ptr<FsBaseFile> file) : file_(std::move(file)) {}
   explicit operator bool() const { return file_ && file_->isOpen(); }
   size_t write(const uint8_t* bytes, size_t size) { return file_->write(bytes, size); }
+  void flush() { file_->sync(); }
   bool sync() { return file_->sync(); }
   bool close() { return file_->close(); }
   size_t fileSize() const { return file_->fileSize(); }
   int read(void* out, size_t size) { return file_->read(out, size); }
+  bool isDirectory() const { return file_ && file_->isDir(); }
 
  private:
   std::unique_ptr<FsBaseFile> file_;
@@ -42,7 +44,8 @@ class HalStorage {
                                                  : PathStatus::Missing;
   }
   bool exists(const char* path) { return lookupPath(path) == PathStatus::Present; }
-  HalFile open(const char* path, oflag_t flags) {
+  bool mkdir(const char* path) { return volume_ && volume_->mkdir(path); }
+  HalFile open(const char* path, oflag_t flags = O_RDONLY) {
     if (!volume_ || !path || path[0] != '/' || !path[1]) return {};
     FsBaseFile root;
     if (!root.openRoot(volume_)) return {};
@@ -55,6 +58,9 @@ class HalStorage {
   bool openFileForRead(const char*, const char* path, HalFile& out) {
     out = open(path, O_RDONLY);
     return static_cast<bool>(out);
+  }
+  bool openFileForRead(const char* module, const std::string& path, HalFile& out) {
+    return openFileForRead(module, path.c_str(), out);
   }
   bool withStorageLock(bool (*operation)(void*), void* context) { return operation && operation(context); }
   bool rename(const char* from, const char* to) { return volume_->rename(from, to); }

@@ -58,23 +58,46 @@ bool CrossInkBookmarks::open(const std::string& bookPath) {
   const uint32_t crc = credential_integrity::crc32(bookPath);
   const size_t hash = std::hash<std::string>{}(bookPath);
   const size_t keys[] = {crc, hash};
-  char path[80];
+  char path[112];
   bool found = false;
   for (size_t i = 0; i < sources.size(); ++i) {
     if (i == 1 && keys[0] == keys[1]) continue;
     snprintf(path, sizeof(path), "/.crosspoint/bookmarks/epub_%zu.bin", keys[i]);
-    if (!Storage.exists(path)) continue;
-    auto& source = sources[i];
-    source.file = Storage.open(path);
-    if (source.file && readHeader(source, bookPath)) {
-      entryCount += source.count;
-      found = true;
+    const auto status = Storage.lookupPath(path);
+    if (status == HalStorage::PathStatus::Failed) {
+      invalidFile = true;
       continue;
     }
-    invalidFile = true;
-    if (source.file) source.file.close();
-    source.count = 0;
-    LOG_ERR("BKM", "Invalid CrossInk bookmark file: %s", path);
+    auto& source = sources[i];
+    const size_t length = strlen(path);
+    const char* candidates[] = {".bookmark-edit.bak", ".bookmark-edit.guard"};
+    const unsigned firstAttempt = status == HalStorage::PathStatus::Present ? 0 : 1;
+    const unsigned attempts = 3;
+    for (unsigned attempt = firstAttempt; attempt < attempts; ++attempt) {
+      const bool recovered = attempt != 0;
+      if (recovered) {
+        snprintf(path + length, sizeof(path) - length, "%s", candidates[attempt - 1]);
+        const auto backupStatus = Storage.lookupPath(path);
+        if (backupStatus == HalStorage::PathStatus::Failed) {
+          invalidFile = true;
+          break;
+        }
+        if (backupStatus == HalStorage::PathStatus::Missing) continue;
+        invalidFile = true;
+      }
+      source.file = Storage.openChecked(path);
+      if (source.file && !source.file.isDirectory() && readHeader(source, bookPath)) {
+        source.recovered = recovered;
+        entryCount += source.count;
+        found = true;
+        break;
+      }
+      invalidFile = true;
+      if (source.file) source.file.close();
+      source.count = 0;
+      source.recovered = false;
+      LOG_ERR("BKM", "Invalid CrossInk bookmark file: %s", path);
+    }
   }
   return found;
 }
@@ -83,6 +106,7 @@ void CrossInkBookmarks::close() {
   for (auto& source : sources) {
     if (source.file) source.file.close();
     source.count = 0;
+    source.recovered = false;
   }
   entryCount = 0;
 }
@@ -91,6 +115,7 @@ bool CrossInkBookmarks::read(uint16_t index, Entry& entry) {
   entry = {};
   if (index >= entryCount) return false;
   Source& source = index < sources[0].count ? sources[0] : sources[1];
+  entry.recovered = source.recovered;
   if (&source == &sources[1]) index -= sources[0].count;
   auto& file = source.file;
   const auto version = source.version;

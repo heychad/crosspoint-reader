@@ -67,8 +67,17 @@ Repository-facing prose: use plain English for non-native readers and standard
 technical terms when clearest. Code comments must be short and useful after merge; follow the
 [comment rules](.agents/rules/coding-standards.md#comment-style).
 
+## WIP checkpoints
+
+With the human's authorization, checkpoint unfinished work on a personal
+development branch after reviewing the scoped diff, scanning for secrets and
+unintended files, and running relevant checks. Label the commit WIP and record
+experimental features, known failures, and unverified behavior. A WIP checkpoint
+does not claim release readiness. Push only when the human has authorized it.
+Keep generated build outputs and unrelated work out of the commit.
+
 ## Mandatory firmware handoff
 
-For every logical change that can affect shipped firmware or its build—including C/C++, build configuration, partitions, code-generation sources, translations, and release scripts—the main agent must complete [firmware-handoff](.agents/skills/firmware-handoff/SKILL.md) before declaring the work ready or making an approved local commit. That skill owns the required checks, four independent reviews, bounded follow-up, and explicit human acceptance of behavior, architecture, and maintenance ownership.
+For every logical change that can affect shipped firmware or its build—including C/C++, build configuration, partitions, code-generation sources, translations, and release scripts—the main agent must complete [firmware-handoff](.agents/skills/firmware-handoff/SKILL.md) before declaring release readiness, releasing firmware, or merging to the supported branch. Authorized WIP checkpoints follow the lighter process above. The handoff skill owns the required checks, four independent reviews, bounded follow-up, and explicit human acceptance of behavior, architecture, and maintenance ownership.
 
 Read-only inquiries, audits, and reviewers do not run implementation handoff. Pure tests, diagnostics, documentation, and host-only Python scripts use a lighter review unless they alter firmware output or its build. Hardware testing remains the human's responsibility and is required before a PR is opened.

@@ -87,6 +87,23 @@ std::vector<uint32_t> buildBook(const std::string& dir, const int spineCount) {
 
 }  // namespace
 
+TEST(BookMetadataCacheTitles, BoundedSpineTitleReadsRealCache) {
+  buildBook(cacheDir(), 10);
+  BookMetadataCache cache(cacheDir());
+  ASSERT_TRUE(cache.load());
+  char title[32]{};
+  ASSERT_TRUE(cache.copySpineTocTitle(4, title, sizeof(title)));
+  EXPECT_STREQ(title, "Chapter 4");
+  char shortTitle[5]{};
+  ASSERT_TRUE(cache.copySpineTocTitle(4, shortTitle, sizeof(shortTitle)));
+  EXPECT_STREQ(shortTitle, "Chap");
+  EXPECT_FALSE(cache.copySpineTocTitle(10, title, sizeof(title)));
+  EXPECT_EQ(title[0], '\0');
+  std::filesystem::resize_file(cacheDir() + "/book.bin", 4);
+  EXPECT_FALSE(cache.copySpineTocTitle(4, title, sizeof(title)));
+  EXPECT_EQ(title[0], '\0');
+}
+
 // A loaded book must not hold heap per chapter: 5,000 chapters may hold at most 1 KB more than 30.
 TEST(BookMetadataCacheHeap, ResidentHeapDoesNotGrowWithSpineCount) {
   size_t resident[2] = {};

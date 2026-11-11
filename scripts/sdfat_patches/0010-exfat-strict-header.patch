@@ -9,18 +9,24 @@
    /** Clear writeError. */
    void clearWriteError() { m_error &= ~WRITE_ERROR; }
    /** Close a file and force cached data and directory information
-@@ -197,6 +199,10 @@
+@@ -197,6 +199,16 @@
     *
     * \return true for success or false for failure.
     */
 +  bool firstClusterMarkedAllocated();
++  bool moveDifferentEntry(const ExFatFile& other) const {
++    if (!isFile() || !other.isFile() || !m_vol || m_vol != other.m_vol ||
++        m_dirPos.cluster < 2 || other.m_dirPos.cluster < 2) return false;
++    return m_dirPos.cluster != other.m_dirPos.cluster ||
++           (m_dirPos.position & 0x1ff) != (other.m_dirPos.position & 0x1ff);
++  }
 +  bool settingsClusterList(Cluster_t* out, size_t capacity, size_t* count);
 +  bool settingsSingleClusterChain();
 +  bool smallSingleClusterChain();
    bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
    /** \return The current cluster number for a file or directory. */
    Cluster_t curCluster() const { return m_curCluster; }
-@@ -843,6 +849,7 @@
+@@ -843,6 +855,7 @@
    bool hashName(ExName_t* fname);
    bool mkdir(ExFatFile* parent, ExName_t* fname);
  
@@ -28,7 +34,7 @@
    bool openPrivate(ExFatFile* dir, ExName_t* fname, oflag_t oflag);
    bool parsePathName(const char* path, ExName_t* fname, const char** ptr);
    ExFatVolume* volume() const { return m_vol; }
-@@ -879,6 +886,7 @@
+@@ -879,6 +892,7 @@
    uint8_t m_attributes = FILE_ATTR_CLOSED;
    uint8_t m_error = 0;
    uint8_t m_flags = 0;

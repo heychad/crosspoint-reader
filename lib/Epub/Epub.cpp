@@ -1234,6 +1234,13 @@ BookMetadataCache::TocEntry Epub::getTocItem(const int tocIndex) const {
   return bookMetadataCache->getTocEntry(tocIndex);
 }
 
+bool Epub::copyChapterTitleForSpine(int spineIndex, char* output, size_t capacity) const {
+  if (!output || !capacity) return false;
+  output[0] = '\0';
+  return bookMetadataCache && bookMetadataCache->isLoaded() &&
+         bookMetadataCache->copySpineTocTitle(spineIndex, output, capacity);
+}
+
 int Epub::getTocItemsCount() const {
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
     return 0;

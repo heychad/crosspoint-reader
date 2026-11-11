@@ -1,4 +1,5 @@
 #include <HalStorage.h>
+#include <InterruptiblePrint.h>
 #include <ZipFile.h>
 #include <gtest/gtest.h>
 
@@ -134,6 +135,8 @@ class VectorSink : public Print {
  private:
   std::vector<uint8_t> bytes;
 };
+
+bool cancelAfterWrites(void* context) { return (*static_cast<int*>(context))-- <= 0; }
 
 class ZipFileTest : public ::testing::Test {
  protected:
@@ -330,6 +333,26 @@ TEST_F(ZipFileTest, RejectsArchivesWithoutAnEndOfCentralDirectoryRecord) {
   Storage.setFile(path, std::vector<uint8_t>(8, 'P'));
   ZipFile tiny(path);
   EXPECT_FALSE(tiny.getInflatedFileSize("anything", &size));
+}
+
+TEST_F(ZipFileTest, InterruptedExtractionStopsAndCanBeRetried) {
+  ZipBuilder builder;
+  builder.addStored("stored.xhtml", DEFLATED_TEXT)
+      .addDeflated("deflated.xhtml", DEFLATED_BYTES, static_cast<uint32_t>(DEFLATED_TEXT.size()));
+  install(builder);
+  for (const char* name : {"stored.xhtml", "deflated.xhtml"}) {
+    ZipFile zip(path);
+    VectorSink partial;
+    int writesUntilCancel = 1;
+    InterruptiblePrint interruptible(partial, cancelAfterWrites, &writesUntilCancel);
+    EXPECT_FALSE(zip.readFileToStream(name, interruptible, 16));
+    EXPECT_TRUE(interruptible.cancelled());
+    EXPECT_GT(partial.text().size(), 0u);
+    EXPECT_LT(partial.text().size(), DEFLATED_TEXT.size());
+    VectorSink retry;
+    EXPECT_TRUE(zip.readFileToStream(name, retry, 16));
+    EXPECT_EQ(retry.text(), DEFLATED_TEXT);
+  }
 }
 
 }  // namespace

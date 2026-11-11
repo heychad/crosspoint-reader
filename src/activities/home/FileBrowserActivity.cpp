@@ -29,6 +29,12 @@ namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr size_t NAME_BUFFER_SIZE = 500;
 
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+bool savePreferredSleepFolder(const std::string& folder, bool clear) {
+  return APP_STATE.updateSleepFolderForPageOverlay(clear ? "" : folder);
+}
+#endif
+
 std::string getBookCachePath(const std::string& path) {
   const char* prefix = nullptr;
   if (FsHelpers::hasReflowableBookExtension(path)) {
@@ -122,11 +128,11 @@ void FileBrowserActivity::loadFiles() {
       continue;
     }
 
-    if (isDirectory) {
+    if (isDirectory && mode != Mode::PickStatsBackup) {
       files.emplace_back(std::string(fileNameBuffer.get()) + "/");
-    } else {
+    } else if (!isDirectory) {
       std::string_view filename{fileNameBuffer.get()};
-      if (mode == Mode::PickFirmware) {
+      if (mode == Mode::PickFirmware || mode == Mode::PickStatsBackup) {
         // Firmware picker: only show .bin files.
         if (FsHelpers::checkFileExtension(filename, ".bin")) {
           files.emplace_back(filename);
@@ -346,7 +352,7 @@ void FileBrowserActivity::activateSelected() {
   bool isDirectory = (entry.back() == '/');
 
   // Firmware picker: select file -> return path; navigate into directories normally.
-  if (mode == Mode::PickFirmware && !isDirectory) {
+  if (mode != Mode::Books && !isDirectory) {
     std::string cleanBasePath = basepath;
     if (cleanBasePath.back() != '/') cleanBasePath += "/";
     ActivityResult res{FilePathResult{cleanBasePath + entry}};
@@ -384,6 +390,32 @@ void FileBrowserActivity::showEntryActions() {
   const bool isDirectory = files[nav.selected].back() == '/';
   static constexpr StrId FILE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_RENAME};
   static constexpr StrId DIRECTORY_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE};
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  if (isDirectory) {
+    std::string folder = basepath;
+    if (folder.back() != '/') folder += '/';
+    folder += files[nav.selected];
+    while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
+    const bool clear = folder == APP_STATE.preferredSleepFolderPath || folder == "/sleep" || folder == "/.sleep";
+    static constexpr StrId USE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_USE_SLEEP_FOLDER};
+    static constexpr StrId CLEAR_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_CLEAR_SLEEP_FOLDER};
+    optionPopup.show(StrId::STR_FILENAME, clear ? CLEAR_OPTIONS : USE_OPTIONS, 3, 0,
+                     [this, folder, clear](const int index) {
+                       if (index == 0) return activateSelected();
+                       if (index == 1) return deleteSelected();
+                       if (index != 2) return;
+                       if (!savePreferredSleepFolder(folder, clear)) {
+                         RenderLock lock(*this);
+                         GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
+                         lock.unlock();
+                         delay(1000);
+                       }
+                       requestUpdate();
+                     });
+    requestUpdate();
+    return;
+  }
+#endif
   optionPopup.show(StrId::STR_FILENAME, isDirectory ? DIRECTORY_OPTIONS : FILE_OPTIONS, isDirectory ? 2 : 3, 0,
                    [this](const int index) {
                      if (index == 0) {
@@ -551,8 +583,13 @@ bool FileBrowserActivity::handleButtons() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
-    if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      if (basepath != "/") {
+    if (mappedInput.getHeldTime() < GO_HOME_MS || mode == Mode::PickStatsBackup) {
+      if (mode == Mode::PickStatsBackup) {
+        ActivityResult res;
+        res.isCancelled = true;
+        setResult(std::move(res));
+        finish();
+      } else if (basepath != "/") {
         const std::string oldPath = basepath;
 
         {
@@ -637,8 +674,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   }
 
   if (files.empty()) {
-    screen.centeredText(mode == Mode::PickFirmware ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND),
-                        screen.theme().bodyText);
+    screen.centeredText(mode != Mode::Books ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
     return;
   }
 
@@ -674,7 +710,8 @@ void FileBrowserActivity::drawChrome() {
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   std::string folderName =
-      (mode == Mode::PickFirmware)
+      (mode == Mode::PickStatsBackup) ? std::string(tr(STR_STATS_RESTORE_PICK))
+      : (mode == Mode::PickFirmware)
           ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
           : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
@@ -686,7 +723,7 @@ void FileBrowserActivity::drawFooter() {
   const char* backLabel = (basepath == "/") ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
-  const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && nav.selected >= 0 &&
+  const bool selectingFirmwareFile = mode != Mode::Books && !files.empty() && nav.selected >= 0 &&
                                      nav.selected < listCount() && files[nav.selected].back() != '/';
   const char* confirmLabel = files.empty() ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN));
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, files.empty() ? "" : tr(STR_DIR_UP),

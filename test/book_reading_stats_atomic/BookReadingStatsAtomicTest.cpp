@@ -21,6 +21,38 @@ class BookReadingStatsAtomicTest : public testing::Test {
   void SetUp() override { Storage.reset(); }
 };
 
+TEST_F(BookReadingStatsAtomicTest, DecodeChecksPayloadAndPreservesOutputOnFailure) {
+  BookReadingStats original;
+  original.totalReadingSeconds = 1234;
+  original.isCompleted = true;
+  original.dayOfWeekSeconds[2] = 55;
+  std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE> bytes{};
+  ASSERT_TRUE(original.encode(bytes.data(), bytes.size()));
+  BookReadingStats decoded;
+  ASSERT_TRUE(BookReadingStats::decode(bytes.data(), bytes.size(), decoded));
+  EXPECT_EQ(decoded.totalReadingSeconds, 1234U);
+  EXPECT_TRUE(decoded.isCompleted);
+  EXPECT_EQ(decoded.dayOfWeekSeconds[2], 55U);
+  EXPECT_FALSE(BookReadingStats::decode(nullptr, bytes.size(), decoded));
+  EXPECT_FALSE(BookReadingStats::decode(bytes.data(), bytes.size() - 1, decoded));
+  bytes[0] = BookReadingStats::CURRENT_FILE_VERSION + 1;
+  EXPECT_FALSE(BookReadingStats::decode(bytes.data(), bytes.size(), decoded));
+  EXPECT_EQ(decoded.totalReadingSeconds, 1234U);
+  EXPECT_TRUE(decoded.isCompleted);
+}
+
+TEST_F(BookReadingStatsAtomicTest, DecodeLegacyClearsFieldsNotPresentInOldPayload) {
+  const std::array<uint8_t, 11> bytes{1, 2, 0, 100, 0, 0, 0, 5, 0, 0, 0};
+  BookReadingStats decoded;
+  decoded.isCompleted = true;
+  decoded.dayOfWeekSeconds[2] = 55;
+  ASSERT_TRUE(BookReadingStats::decode(bytes.data(), bytes.size(), decoded));
+  EXPECT_EQ(decoded.sessionCount, 2U);
+  EXPECT_EQ(decoded.totalReadingSeconds, 100U);
+  EXPECT_FALSE(decoded.isCompleted);
+  EXPECT_EQ(decoded.dayOfWeekSeconds[2], 0U);
+}
+
 TEST_F(BookReadingStatsAtomicTest, RestoresOriginalWhenReplacementRenameFails) {
   statsWithSeconds(123).save(CACHE_PATH);
   Storage.failNextRenameFrom(statsPath + ".tmp");

@@ -1,4 +1,7 @@
 #pragma once
+#include <array>
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -17,9 +20,20 @@ class HomeActivity final : public Activity {
   OptionPopup statsSavePopup;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  std::atomic<int> carouselCenterIndex{0};
+  std::array<HomeDashboardData, 3> carouselData{};
+#endif
   bool recentsLoading = false;
   bool recentsLoaded = false;
   bool firstRenderDone = false;
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+  bool deferredMoveNeedsReview = false;
+  bool deferredMoveRetryPending = false;
+  uint32_t deferredMoveRetryAt = 0;
+  bool deferredMoveOverlayShown = false;
+  static void showDeferredMove(void* context);
+#endif
   bool hasOpdsServers = false;
   bool hasPlugins = false;
   // The home "library" slot (after Saved Items) shows Plugins when any plugin is

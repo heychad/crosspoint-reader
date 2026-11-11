@@ -24,6 +24,31 @@
 #include <base64.h>
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+#include <errno.h>
+#include <esp_random.h>
+#include <lwip/sockets.h>
+
+#include "PluginDeviceId.h"
+#include "sync/InventorySession.h"
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+#include "PluginDeviceId.h"
+#include "sync/CopyPublication.h"
+#include "sync/PreparePublication.h"
+#include "sync/RecoveryPreview.h"
+#include "sync/StageDigest.h"
+#include "sync/StageInspect.h"
+#include "sync/StageRequest.h"
+#include "sync/StageWriter.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+#include "sync/ArchivePublication.h"
+#include "sync/EnsureParents.h"
+#include "sync/TransferPublication.h"
+#endif
+#endif
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/hash.h>
 
@@ -148,6 +173,726 @@ bool isProtectedItemName(const String& name) {
 
 }  // namespace
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+struct CrossPointWebServer::InventoryWebState {
+  std::unique_ptr<wirecheck::InventorySession> session;
+  char token[33]{};
+  char output[1024]{};
+  unsigned long lastActivity = 0;
+  bool first = true;
+};
+
+namespace {
+constexpr unsigned long INVENTORY_IDLE_MS = 60000;
+constexpr unsigned long INVENTORY_RESPONSE_MS = 120000;
+constexpr unsigned long INVENTORY_WRITE_MS = 2000;
+using InventoryActive = bool (*)(void*);
+
+bool inventoryWrite(NetworkClient& client, const char* data, size_t length, InventoryActive active, void* context) {
+  const unsigned long started = millis();
+  while (length) {
+    if (!active(context) || millis() - started >= INVENTORY_WRITE_MS) return false;
+    const int descriptor = client.fd();
+    if (descriptor < 0) return false;
+    const int written = send(descriptor, data, length, MSG_DONTWAIT);
+    if (written > 0) {
+      if (static_cast<size_t>(written) > length) return false;
+      data += written;
+      length -= static_cast<size_t>(written);
+    } else if (written == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+      return false;
+    } else {
+      delay(5);
+    }
+    yield();
+    resetTaskWatchdogIfSubscribed();
+  }
+  return true;
+}
+
+bool inventoryChunk(NetworkClient& client, const char* data, size_t length, InventoryActive active, void* context) {
+  char header[24];
+  const int count = snprintf(header, sizeof(header), "%lx\r\n", static_cast<unsigned long>(length));
+  return count > 0 && static_cast<size_t>(count) < sizeof(header) &&
+         inventoryWrite(client, header, static_cast<size_t>(count), active, context) &&
+         inventoryWrite(client, data, length, active, context) && inventoryWrite(client, "\r\n", 2, active, context);
+}
+}  // namespace
+
+void CrossPointWebServer::expireInventory() {
+  if (inventory && millis() - inventory->lastActivity > INVENTORY_IDLE_MS) inventory.reset();
+}
+
+bool CrossPointWebServer::inventoryActive() const {
+  return running && inventory && server && server->client().connected() &&
+         millis() - inventory->lastActivity < INVENTORY_RESPONSE_MS && (!uploadCancelCheck || !uploadCancelCheck());
+}
+
+bool CrossPointWebServer::inventoryEmit(const wirecheck::DirectoryEntry& entry) {
+  if (!inventoryActive()) return false;
+  if (!wirecheck::InventorySession::includedName(entry.name)) return true;
+  // DirectoryEnumerator has already rejected JSON control and escape bytes.
+  const int length =
+      snprintf(inventory->output, sizeof(inventory->output), "%s{\"name\":\"%s\",\"size\":%llu,\"isDirectory\":%s}",
+               inventory->first ? "" : ",", entry.name, static_cast<unsigned long long>(entry.size),
+               entry.directory ? "true" : "false");
+  if (length < 0 || static_cast<size_t>(length) >= sizeof(inventory->output)) return false;
+  const auto active = [](void* ctx) { return static_cast<CrossPointWebServer*>(ctx)->inventoryActive(); };
+  if (!inventoryChunk(server->client(), inventory->output, static_cast<size_t>(length), active, this)) return false;
+  inventory->first = false;
+  return true;
+}
+
+void CrossPointWebServer::handleInventoryStart() {
+  if (inventory) {
+    server->send(409, "application/json", "{\"error\":\"inventory busy\"}");
+    return;
+  }
+  auto state = makeUniqueNoThrow<InventoryWebState>();
+  if (!state) {
+    server->send(503, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  const wirecheck::InventorySession::Callbacks callbacks{
+      this, [](void* ctx) { return static_cast<CrossPointWebServer*>(ctx)->inventoryActive(); },
+      [](void* ctx, const wirecheck::DirectoryEntry& entry) {
+        return static_cast<CrossPointWebServer*>(ctx)->inventoryEmit(entry);
+      }};
+  state->session = makeUniqueNoThrow<wirecheck::InventorySession>(Storage, callbacks);
+  if (!state->session || !state->session->snapshotValid()) {
+    server->send(503, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  uint8_t nonce[16];
+  esp_fill_random(nonce, sizeof(nonce));
+  static constexpr char hexDigits[] = "0123456789abcdef";
+  for (size_t i = 0; i < sizeof(nonce); ++i) {
+    state->token[i * 2] = hexDigits[nonce[i] >> 4];
+    state->token[i * 2 + 1] = hexDigits[nonce[i] & 15];
+  }
+  state->lastActivity = millis();
+  snprintf(state->output, sizeof(state->output), "{\"token\":\"%s\"}", state->token);
+  inventory = std::move(state);
+  server->send(200, "application/json", inventory->output);
+}
+
+void CrossPointWebServer::handleInventoryDirectory() {
+  if (!inventory || !server->hasArg("token") || server->arg("token") != inventory->token) {
+    server->send(404, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  if (!server->hasArg("path") || !inventory->session->beginDirectory(server->arg("path").c_str())) {
+    inventory.reset();
+    server->send(409, "application/json", "{\"error\":\"inventory invalid\"}");
+    return;
+  }
+  inventory->lastActivity = millis();
+  inventory->first = true;
+  NetworkClient& client = server->client();
+  static constexpr char RESPONSE[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+      "Transfer-Encoding: chunked\r\nConnection: close\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
+      "Access-Control-Allow-Methods: *\r\n"
+      "Access-Control-Allow-Headers: *\r\n"
+      "Cache-Control: no-store\r\n\r\n";
+  static constexpr char START[] = "{\"entries\":[";
+  const auto active = [](void* ctx) { return static_cast<CrossPointWebServer*>(ctx)->inventoryActive(); };
+  bool ok = inventoryWrite(client, RESPONSE, sizeof(RESPONSE) - 1, active, this) &&
+            inventoryChunk(client, START, sizeof(START) - 1, active, this);
+  wirecheck::ScanResult result = wirecheck::ScanResult::Failed;
+  if (ok) {
+    do {
+      result = inventory->session->step();
+      yield();
+      resetTaskWatchdogIfSubscribed();
+    } while (result == wirecheck::ScanResult::Pending);
+    ok = result == wirecheck::ScanResult::Complete && inventoryActive();
+  }
+  static constexpr char END[] = "],\"complete\":true}";
+  if (ok)
+    ok = inventoryChunk(client, END, sizeof(END) - 1, active, this) &&
+         inventoryWrite(client, "0\r\n\r\n", 5, active, this);
+  client.stop();
+  if (!ok)
+    inventory.reset();
+  else
+    inventory->lastActivity = millis();
+}
+
+void CrossPointWebServer::handleInventoryFinish() {
+  if (!inventory || !server->hasArg("token") || server->arg("token") != inventory->token) {
+    server->send(404, "application/json", "{\"error\":\"inventory unavailable\"}");
+    return;
+  }
+  const bool valid = inventory->session->snapshotValid();
+  inventory.reset();
+  server->send(valid ? 200 : 409, "application/json", valid ? "{\"snapshotValid\":true}" : "{\"snapshotValid\":false}");
+}
+
+#endif
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+void CrossPointWebServer::handleInventoryIdentity() const {
+  static constexpr char SCOPE[] = "xteink-book-sync";
+  char id[65];
+  JsonDocument response;
+  if (pluginidentity::deviceId(SCOPE, sizeof(SCOPE) - 1, id, false))
+    response["deviceId"] = id;
+  else
+    response["deviceId"] = nullptr;
+  String result;
+  serializeJson(response, result);
+  server->send(200, "application/json", result);
+}
+#endif
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+bool CrossPointWebServer::syncStageIdentityValid() const {
+  // The experimental sync client is native and sends no browser Origin.
+  if (server->hasHeader("Origin")) return false;
+  const String provided = server->arg("deviceId");
+  char expected[65];
+  return provided.length() == 64 && strlen(provided.c_str()) == 64 &&
+         pluginidentity::deviceId(syncstage::ID_SCOPE, sizeof(syncstage::ID_SCOPE) - 1, expected, false) &&
+         strcmp(provided.c_str(), expected) == 0;
+}
+
+void CrossPointWebServer::clearSyncStage() {
+  if (syncStage) syncStage->abort();
+  syncStage.reset();
+  syncStageAttempted = syncStageRejected = false;
+}
+
+void CrossPointWebServer::handleSyncStage() {
+  if (!running || !server) return;
+  resetTaskWatchdogIfSubscribed();
+  const HTTPUpload& incoming = server->upload();
+  if (incoming.status == UPLOAD_FILE_START) {
+    if (syncStageAttempted) {
+      syncStageRejected = true;
+      if (syncStage) syncStage->abort();
+      return;
+    }
+    syncStageAttempted = true;
+    const String size = server->arg("size");
+    uint64_t expected = 0;
+    if (!server->hasArg("path") || server->arg("path") != "/" || server->hasArg("overwrite") ||
+        incoming.name != "file" || strlen(incoming.name.c_str()) != incoming.name.length() ||
+        strlen(incoming.filename.c_str()) != incoming.filename.length() || !syncStageIdentityValid() ||
+        strlen(size.c_str()) != size.length() || !syncstage::parseSize({size.c_str(), size.length()}, expected)) {
+      syncStageRejected = true;
+      return;
+    }
+    syncStage = makeUniqueNoThrow<StageWriter>(Storage);
+    if (!syncStage || !syncStage->begin(incoming.filename.c_str(), expected)) syncStageRejected = true;
+  } else if (incoming.status == UPLOAD_FILE_WRITE) {
+    if (!syncStage || syncStageRejected || dropUploadIfCancelled() ||
+        !syncStage->write(incoming.buf, incoming.currentSize)) {
+      syncStageRejected = true;
+      if (syncStage) syncStage->abort();
+    }
+  } else if (incoming.status == UPLOAD_FILE_END) {
+    if (!syncStage || syncStageRejected || dropUploadIfCancelled() || !server->client().connected() ||
+        !syncStage->finish()) {
+      syncStageRejected = true;
+      if (syncStage) syncStage->abort();
+    }
+  } else if (incoming.status == UPLOAD_FILE_ABORTED) {
+    syncStageRejected = true;
+    if (syncStage) syncStage->abort();
+  }
+}
+
+void CrossPointWebServer::handleSyncStagePost() {
+  const bool success = syncStageAttempted && !syncStageRejected && syncStage && syncStage->takeResult();
+  clearSyncStage();
+  server->send(success ? 200 : 400, "text/plain", success ? "Staged" : "Staging failed; a partial file may remain");
+}
+
+void CrossPointWebServer::handleSyncStageHash() {
+  const String name = server->arg("name");
+  const String size = server->arg("size");
+  uint64_t expected = 0;
+  if (strlen(name.c_str()) != name.length() || !syncstage::validName({name.c_str(), name.length()}) ||
+      strlen(size.c_str()) != size.length() || !syncstage::parseSize({size.c_str(), size.length()}, expected) ||
+      !syncStageIdentityValid()) {
+    server->send(400, "text/plain", "Invalid stage verification request");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  uint8_t digest[32];
+  const auto result = syncstage::hashStage(Storage, name.c_str(), expected, digest, tick, this);
+  if (result == syncstage::DigestResult::Cancelled) {
+    server->client().stop();
+    return;
+  }
+  if (result != syncstage::DigestResult::Ok) {
+    server->send(409, "text/plain", "Stage could not be verified");
+    return;
+  }
+  constexpr char hex[] = "0123456789abcdef";
+  char response[78] = "{\"sha256\":\"";
+  constexpr size_t offset = sizeof("{\"sha256\":\"") - 1;
+  for (size_t i = 0; i < sizeof(digest); ++i) {
+    response[offset + i * 2] = hex[digest[i] >> 4];
+    response[offset + i * 2 + 1] = hex[digest[i] & 15];
+  }
+  response[offset + 64] = '"';
+  response[offset + 65] = '}';
+  response[offset + 66] = '\0';
+  server->send(200, "application/json", response);
+}
+void CrossPointWebServer::handleSyncStageInspect() {
+  if (server->args() != 3 || !server->hasArg("name") || !server->hasArg("size") || !server->hasArg("deviceId") ||
+      !syncStageIdentityValid()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const String name = server->arg("name"), size = server->arg("size");
+  uint64_t expected = 0;
+  if (strlen(name.c_str()) != name.length() || !syncstage::validName({name.c_str(), name.length()}) ||
+      strlen(size.c_str()) != size.length() || !syncstage::parseSize({size.c_str(), size.length()}, expected)) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  uint8_t digest[32];
+  switch (syncstage::inspectStage(Storage, name.c_str(), expected, digest, tick, this)) {
+    case syncstage::StageInspectResult::Missing:
+      server->send(200, "application/json", "{\"state\":\"missing\"}");
+      return;
+    case syncstage::StageInspectResult::WrongSize:
+      server->send(200, "application/json", "{\"state\":\"wrong_size\"}");
+      return;
+    case syncstage::StageInspectResult::Complete: {
+      constexpr char hex[] = "0123456789abcdef";
+      char response[97] = "{\"state\":\"complete\",\"sha256\":\"";
+      const size_t offset = strlen(response);
+      for (size_t i = 0; i < sizeof(digest); ++i) {
+        response[offset + 2 * i] = hex[digest[i] >> 4];
+        response[offset + 2 * i + 1] = hex[digest[i] & 15];
+      }
+      response[offset + 64] = '"';
+      response[offset + 65] = '}';
+      response[offset + 66] = 0;
+      server->send(200, "application/json", response);
+      return;
+    }
+    case syncstage::StageInspectResult::Changed:
+      server->send(409, "application/json", "{\"state\":\"changed\"}");
+      return;
+    case syncstage::StageInspectResult::Cancelled:
+      server->client().stop();
+      return;
+    case syncstage::StageInspectResult::Invalid:
+      server->send(400, "application/json", "{\"state\":\"invalid\"}");
+      return;
+    case syncstage::StageInspectResult::Unavailable:
+      server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+      return;
+  }
+}
+
+void CrossPointWebServer::handleSyncRecoveryPreview() {
+  if (!syncStageIdentityValid()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  auto preview = makeUniqueNoThrow<syncpublish::RecoveryPreview>();
+  if (!preview) {
+    server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  const auto result = syncpublish::previewRecovery(Storage, *preview, tick, this);
+  if (result == syncpublish::PreviewResult::Cancelled) {
+    server->client().stop();
+    return;
+  }
+  if (result == syncpublish::PreviewResult::NoIntent) {
+    server->send(200, "application/json", "{\"state\":\"none\"}");
+    return;
+  }
+  if (result != syncpublish::PreviewResult::Observed) {
+    const bool damaged = result == syncpublish::PreviewResult::Damaged;
+    const bool changed = result == syncpublish::PreviewResult::Changed;
+    server->send(damaged || changed ? 409 : 503, "application/json",
+                 damaged   ? "{\"state\":\"damaged\"}"
+                 : changed ? "{\"state\":\"changed\"}"
+                           : "{\"state\":\"unavailable\"}");
+    return;
+  }
+  JsonDocument response;
+  response["state"] = "pending";
+  response["stage"] = preview->stage.data();
+  response["destination"] = preview->destination.data();
+  response["size"] = preview->size;
+  response["stageState"] = preview->stageState == syncpublish::StageState::Missing   ? "missing"
+                           : preview->stageState == syncpublish::StageState::Matches ? "matches"
+                                                                                     : "mismatch";
+  response["copyState"] = preview->copyState == syncpublish::StageState::Missing   ? "missing"
+                          : preview->copyState == syncpublish::StageState::Matches ? "matches"
+                                                                                   : "mismatch";
+  response["destinationState"] = preview->destinationState == syncpublish::DestinationState::Missing   ? "missing"
+                                 : preview->destinationState == syncpublish::DestinationState::Matches ? "matches"
+                                                                                                       : "mismatch";
+  String body;
+  if (response.overflowed() || !serializeJson(response, body)) {
+    server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+    return;
+  }
+  server->send(200, "application/json", body);
+}
+
+void CrossPointWebServer::handleSyncPrepareIntent() {
+  unsigned fields = 0;
+  if (server->args() != 5) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  for (int i = 0; i < server->args(); ++i) {
+    const String key = server->argName(i);
+    const unsigned bit = key == "deviceId"      ? 1
+                         : key == "stage"       ? 2
+                         : key == "destination" ? 4
+                         : key == "size"        ? 8
+                         : key == "sha256"      ? 16
+                                                : 0;
+    if (!bit || (fields & bit)) {
+      server->send(400, "application/json", "{\"state\":\"invalid\"}");
+      return;
+    }
+    fields |= bit;
+  }
+  const String stage = server->arg("stage");
+  const String destination = server->arg("destination");
+  const String size = server->arg("size");
+  const String hash = server->arg("sha256");
+  uint64_t expected = 0;
+  uint8_t digest[32];
+  if (fields != 31 || !syncStageIdentityValid() || strlen(stage.c_str()) != stage.length() ||
+      strlen(destination.c_str()) != destination.length() || strlen(size.c_str()) != size.length() ||
+      strlen(hash.c_str()) != hash.length() || !syncstage::parseSize({size.c_str(), size.length()}, expected) ||
+      !syncstage::parseDigest({hash.c_str(), hash.length()}, digest)) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  syncpublish::IntentView intent{
+      {stage.c_str(), stage.length()}, {destination.c_str(), destination.length()}, expected, {}};
+  memcpy(intent.digest.data(), digest, sizeof(digest));
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  const auto result = syncpublish::prepareVerifiedIntent(Storage, intent, tick, this);
+  if (result == syncpublish::PreflightResult::Cancelled) {
+    server->client().stop();
+    return;
+  }
+  switch (result) {
+    case syncpublish::PreflightResult::Prepared:
+      server->send(200, "application/json", "{\"state\":\"prepared\"}");
+      return;
+    case syncpublish::PreflightResult::ExistingIntent:
+      server->send(409, "application/json", "{\"state\":\"existing\"}");
+      return;
+    case syncpublish::PreflightResult::StageMissing:
+      server->send(409, "application/json", "{\"state\":\"stage_missing\"}");
+      return;
+    case syncpublish::PreflightResult::HashMismatch:
+      server->send(409, "application/json", "{\"state\":\"hash_mismatch\"}");
+      return;
+    case syncpublish::PreflightResult::ParentMissing:
+      server->send(409, "application/json", "{\"state\":\"parent_missing\"}");
+      return;
+    case syncpublish::PreflightResult::NonCanonical:
+      server->send(409, "application/json", "{\"state\":\"noncanonical_path\"}");
+      return;
+    case syncpublish::PreflightResult::DestinationPresent:
+      server->send(409, "application/json", "{\"state\":\"destination_present\"}");
+      return;
+    case syncpublish::PreflightResult::ReservedState:
+      server->send(409, "application/json", "{\"state\":\"destination_state_conflict\"}");
+      return;
+    case syncpublish::PreflightResult::Changed:
+      server->send(409, "application/json", "{\"state\":\"changed\"}");
+      return;
+    case syncpublish::PreflightResult::Invalid:
+      server->send(400, "application/json", "{\"state\":\"invalid\"}");
+      return;
+    case syncpublish::PreflightResult::Uncertain:
+      server->send(503, "application/json", "{\"state\":\"uncertain\"}");
+      return;
+    default:
+      server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+      return;
+  }
+}
+
+void CrossPointWebServer::handleSyncCopy() {
+  if (server->args() != 1 || server->argName(0) != "deviceId" || !syncStageIdentityValid()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  auto record = makeUniqueNoThrow<syncpublish::Record>();
+  if (!record) {
+    server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+    return;
+  }
+  size_t length = 0;
+  const auto inspected = syncpublish::inspectIntent(Storage, *record, length);
+  if (inspected != syncpublish::InspectResult::Valid) {
+    const bool missing = inspected == syncpublish::InspectResult::Missing;
+    const bool damaged = inspected == syncpublish::InspectResult::Damaged;
+    server->send(missing || damaged ? 409 : 503, "application/json",
+                 missing   ? "{\"state\":\"no_intent\"}"
+                 : damaged ? "{\"state\":\"damaged\"}"
+                           : "{\"state\":\"unavailable\"}");
+    return;
+  }
+  syncpublish::IntentView intent{};
+  if (!syncpublish::decode(record->data(), length, intent)) {
+    server->send(409, "application/json", "{\"state\":\"damaged\"}");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  const auto result = syncpublish::copyVerifiedStage(Storage, intent, tick, this);
+  if (result == syncpublish::CopyResult::Cancelled || result == syncpublish::CopyResult::CancelledPartial) {
+    server->client().stop();
+    return;
+  }
+  switch (result) {
+    case syncpublish::CopyResult::Copied:
+      server->send(200, "application/json", "{\"state\":\"copied\"}");
+      return;
+    case syncpublish::CopyResult::VerifiedExistingCopy:
+      server->send(200, "application/json", "{\"state\":\"verified_existing_copy\"}");
+      return;
+    case syncpublish::CopyResult::ExistingCopy:
+      server->send(409, "application/json", "{\"state\":\"copy_exists\"}");
+      return;
+    case syncpublish::CopyResult::NoIntent:
+      server->send(409, "application/json", "{\"state\":\"no_intent\"}");
+      return;
+    case syncpublish::CopyResult::Conflict:
+      server->send(409, "application/json", "{\"state\":\"conflict\"}");
+      return;
+    case syncpublish::CopyResult::Changed:
+    case syncpublish::CopyResult::ChangedPartial:
+      server->send(409, "application/json", "{\"state\":\"changed\"}");
+      return;
+    case syncpublish::CopyResult::Invalid:
+      server->send(400, "application/json", "{\"state\":\"invalid\"}");
+      return;
+    case syncpublish::CopyResult::Uncertain:
+      server->send(503, "application/json", "{\"state\":\"uncertain\"}");
+      return;
+    default:
+      server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+      return;
+  }
+}
+#if defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+void CrossPointWebServer::handleSyncFinalize() {
+  if (!experimentalPublicationEnabled) {
+    server->send(403, "application/json", "{\"state\":\"disabled\"}");
+    return;
+  }
+  if (server->args() != 1 || server->argName(0) != "deviceId" || !syncStageIdentityValid()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  const auto result = syncpublish::finalizeFromTransferActivity(Storage, tick, this);
+  switch (result) {
+    case syncpublish::FinalizeResult::Published:
+      server->send(200, "application/json", "{\"state\":\"published\"}");
+      return;
+    case syncpublish::FinalizeResult::MatchingDestination:
+      server->send(200, "application/json", "{\"state\":\"matching_destination\"}");
+      return;
+    case syncpublish::FinalizeResult::Cancelled:
+      server->client().stop();
+      return;
+    case syncpublish::FinalizeResult::NoIntent:
+      server->send(409, "application/json", "{\"state\":\"no_intent\"}");
+      return;
+    case syncpublish::FinalizeResult::Conflict:
+      server->send(409, "application/json", "{\"state\":\"conflict\"}");
+      return;
+    case syncpublish::FinalizeResult::Changed:
+      server->send(409, "application/json", "{\"state\":\"changed\"}");
+      return;
+    case syncpublish::FinalizeResult::Unavailable:
+      server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+      return;
+    case syncpublish::FinalizeResult::Uncertain:
+      server->send(503, "application/json", "{\"state\":\"uncertain\"}");
+      return;
+  }
+}
+void CrossPointWebServer::handleSyncArchive() {
+  if (!experimentalPublicationEnabled) {
+    server->send(403, "application/json", "{\"state\":\"disabled\"}");
+    return;
+  }
+  if (server->args() != 2 || !server->hasArg("stage") || !server->hasArg("deviceId") || !syncStageIdentityValid()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const String stage = server->arg("stage");
+  if (strlen(stage.c_str()) != stage.length() || !syncstage::validName(stage.c_str())) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  switch (syncpublish::archiveVerifiedIntent(Storage, stage.c_str(), tick, this)) {
+    case syncpublish::ArchiveResult::Archived:
+      server->send(200, "application/json", "{\"state\":\"archived\"}");
+      return;
+    case syncpublish::ArchiveResult::AlreadyArchived:
+      server->send(200, "application/json", "{\"state\":\"already_archived\"}");
+      return;
+    case syncpublish::ArchiveResult::Cancelled:
+      server->client().stop();
+      return;
+    case syncpublish::ArchiveResult::NoIntent:
+      server->send(409, "application/json", "{\"state\":\"no_intent\"}");
+      return;
+    case syncpublish::ArchiveResult::Conflict:
+      server->send(409, "application/json", "{\"state\":\"conflict\"}");
+      return;
+    case syncpublish::ArchiveResult::Changed:
+      server->send(409, "application/json", "{\"state\":\"changed\"}");
+      return;
+    case syncpublish::ArchiveResult::Unavailable:
+      server->send(503, "application/json", "{\"state\":\"unavailable\"}");
+      return;
+    case syncpublish::ArchiveResult::Uncertain:
+      server->send(503, "application/json", "{\"state\":\"uncertain\"}");
+      return;
+  }
+}
+void CrossPointWebServer::handleSyncEnsureParents() {
+  if (!experimentalPublicationEnabled) {
+    server->send(403, "application/json", "{\"state\":\"disabled\"}");
+    return;
+  }
+  if (server->args() != 2 || !server->hasArg("destination") || !server->hasArg("deviceId") ||
+      !syncStageIdentityValid()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const String destination = server->arg("destination");
+  if (strlen(destination.c_str()) != destination.length()) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const auto tick = [](void* opaque) {
+    auto& self = *static_cast<CrossPointWebServer*>(opaque);
+    if (!self.running || !self.server || !self.server->client().connected() ||
+        (self.uploadCancelCheck && self.uploadCancelCheck()))
+      return false;
+    resetTaskWatchdogIfSubscribed();
+    yield();
+    return true;
+  };
+  const auto result = syncpublish::ensureParents(Storage, {destination.c_str(), destination.length()}, tick, this);
+  if (result.state == syncpublish::ParentState::Cancelled) {
+    server->client().stop();
+    return;
+  }
+  const char* state = "unavailable";
+  int code = 503;
+  switch (result.state) {
+    case syncpublish::ParentState::Ready:
+      state = "ready";
+      code = 200;
+      break;
+    case syncpublish::ParentState::Conflict:
+      state = "conflict";
+      code = 409;
+      break;
+    case syncpublish::ParentState::Changed:
+      state = "changed";
+      code = 409;
+      break;
+    case syncpublish::ParentState::Invalid:
+      state = "invalid";
+      code = 400;
+      break;
+    case syncpublish::ParentState::Uncertain:
+      state = "uncertain";
+      break;
+    case syncpublish::ParentState::Unavailable:
+      break;
+    case syncpublish::ParentState::Cancelled:
+      return;
+  }
+  char body[80];
+  snprintf(body, sizeof(body), "{\"state\":\"%s\",\"created\":%u}", state, result.created);
+  server->send(code, "application/json", body);
+}
+#endif
+#endif
+
 // File listing page template - now using generated headers:
 // - HomePageHtml (from html/HomePage.html)
 // - FilesPageHeaderHtml (from html/FilesPageHeader.html)
@@ -242,6 +987,27 @@ void CrossPointWebServer::begin() {
 
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
   server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+  server->on("/api/sync/stage", HTTP_POST, [this] { handleSyncStagePost(); }, [this] { handleSyncStage(); });
+  server->on("/api/sync/stage-hash", HTTP_GET, [this] { handleSyncStageHash(); });
+  server->on("/api/sync/stage-inspect", HTTP_GET, [this] { handleSyncStageInspect(); });
+  server->on("/api/sync/recovery-preview", HTTP_GET, [this] { handleSyncRecoveryPreview(); });
+  server->on("/api/sync/prepare-intent", HTTP_POST, [this] { handleSyncPrepareIntent(); });
+  server->on("/api/sync/copy", HTTP_POST, [this] { handleSyncCopy(); });
+#if defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+  server->on("/api/sync/finalize", HTTP_POST, [this] { handleSyncFinalize(); });
+  server->on("/api/sync/archive", HTTP_POST, [this] { handleSyncArchive(); });
+  server->on("/api/sync/ensure-parents", HTTP_POST, [this] { handleSyncEnsureParents(); });
+#endif
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+  server->on("/api/sync/inventory/start", HTTP_POST, [this] { handleInventoryStart(); });
+  server->on("/api/sync/inventory/files", HTTP_GET, [this] { handleInventoryDirectory(); });
+  server->on("/api/sync/inventory/finish", HTTP_POST, [this] { handleInventoryFinish(); });
+  server->on("/api/sync/identity", HTTP_GET, [this] { handleInventoryIdentity(); });
+#endif
   server->on("/download", HTTP_GET, [this] { handleDownload(); });
 
   // Upload endpoint with special handling for multipart form data
@@ -301,9 +1067,9 @@ void CrossPointWebServer::begin() {
   // Collect WebDAV headers and register handler
   // If-None-Match is collected so static pages and plugin files can answer conditional GETs with 304,
   // and Host for the captive-portal check
-  const char* collectedHeaders[] = {"Depth",      "Destination", "Overwrite",     "If",
-                                    "Lock-Token", "Timeout",     "If-None-Match", "Host"};
-  server->collectHeaders(collectedHeaders, 8);
+  const char* collectedHeaders[] = {"Depth",   "Destination",   "Overwrite", "If",    "Lock-Token",
+                                    "Timeout", "If-None-Match", "Host",      "Origin"};
+  server->collectHeaders(collectedHeaders, 9);
   server->addHandler(new WebDAVHandler());  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
   LOG_DBG("WEB", "WebDAV handler initialized");
 
@@ -388,6 +1154,14 @@ void CrossPointWebServer::abortWsUpload(const char* tag) {
 }
 
 void CrossPointWebServer::stop() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+  clearSyncStage();
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+  inventory.reset();
+#endif
   if (!running || !server) {
     LOG_DBG("WEB", "stop() called but already stopped (running=%d, server=%p)", running, server.get());
     return;
@@ -455,7 +1229,17 @@ void CrossPointWebServer::handleClient() {
     lastDebugPrint = millis();
   }
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+  expireInventory();
+#endif
   server->handleClient();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+  // The web server consumes a multipart request inside handleClient(). If the
+  // connection closes before its POST callback, retain the file but reset RAM.
+  if (syncStageAttempted || syncStageRejected) clearSyncStage();
+#endif
   // WebServer otherwise keeps the last request's argument strings allocated
   // until another request arrives. They are no longer observable once its
   // handler returns, so release them now instead of retaining a JSON body.
@@ -554,6 +1338,24 @@ void CrossPointWebServer::handleStatus() const {
   const String ipAddr = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
 
   JsonDocument doc;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+  doc["syncExperimentalStageVersion"] = 1;
+  doc["syncExperimentalStageInspectVersion"] = 1;
+  doc["syncExperimentalRecoveryPreviewVersion"] = 3;
+  doc["syncExperimentalPrepareIntentVersion"] = 1;
+  doc["syncExperimentalCopyVersion"] = 1;
+#if defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+  if (experimentalPublicationEnabled) {
+    doc["syncExperimentalPublicationVersion"] = 1;
+    doc["syncExperimentalParentVersion"] = 1;
+  }
+#endif
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+  doc["syncIdentityVersion"] = 1;
+#endif
   doc["version"] = CROSSPOINT_VERSION;
   doc["firmwareFamily"] = firmwareidentity::FAMILY;
   doc["pluginApi"] = firmwareidentity::PLUGIN_API_VERSION;

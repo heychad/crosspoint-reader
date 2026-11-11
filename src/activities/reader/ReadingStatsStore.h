@@ -3,6 +3,7 @@
 #include <string>
 
 #include "BookReadingStats.h"
+#include "StatsSessionLease.h"
 
 namespace readingstats {
 // Separate from rebuildable page caches; the filename still uses the existing book identity.
@@ -23,6 +24,8 @@ class BookMove {
   void commit() { moved = false; }
 
  private:
+  bool prepareLocked();
+  StatsSessionLease lease;
   std::string oldCache;
   std::string oldBookPath;
   std::string source;

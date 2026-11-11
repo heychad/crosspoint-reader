@@ -8,3 +8,6 @@
 // use derives its own value so none reveals another. False when NVS is
 // unavailable: an unstable secret is worse than none.
 bool deviceSecret(uint8_t (&out)[32]);
+
+// Read an already-created secret without creating or changing NVS state.
+bool existingDeviceSecret(uint8_t (&out)[32]);

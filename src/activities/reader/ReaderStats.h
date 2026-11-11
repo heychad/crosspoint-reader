@@ -3,19 +3,35 @@
 #include <string>
 
 #include "ReadingStatsSession.h"
+#include "StatsSessionLease.h"
 
 // Reader-lifetime state; all access is under the existing render/transition lock.
 class ReaderStats {
  public:
-  void begin(const std::string& cachePath, const std::string& bookPath, bool trackingEnabled, uint16_t idleSeconds);
+  void begin(const std::string& cachePath, const std::string& bookPath, bool trackingEnabled, uint16_t idleSeconds,
+             bool enableCompletion = false);
   void noteTurn(bool forward, bool succeeded);
   void onRender(ReadingStatsFrame frame);
   void pause();
 
   // True only when enabled tracking could not safely load its state.
   bool unavailableAtStart() const { return startUnavailable; }
+  bool completionStatus(bool& completed) const {
+    if (!completionAvailable) return false;
+    completed = book.isCompleted;
+    return true;
+  }
   bool finish();
-  bool snapshot(BookReadingStats& bookOut, GlobalReadingStats& globalOut, bool& saved);
+  bool snapshot(BookReadingStats& bookOut, GlobalReadingStats& globalOut, bool& saved, bool forceSave = false);
+  enum class CompletionResult { Applied, Unchanged, NotTracking, Busy, SaveFailed, RecoveryRequired, Unavailable };
+  using RemoveRecent = bool (*)(const std::string& bookPath, void* context);
+  // The caller supplies the persisted Recents removal. Moves remain deferred.
+  CompletionResult editCompletionStats(const std::string& cachePath, const std::string& bookPath, bool completed,
+                                       const ReadingStatsDate& today, bool removeRecent = false,
+                                       RemoveRecent remove = nullptr, void* removeContext = nullptr,
+                                       bool deferMove = false);
+  CompletionResult recoverCompletionStats(const std::string& cachePath, const std::string& bookPath,
+                                          RemoveRecent remove = nullptr, void* removeContext = nullptr);
   // Apply an explicit date override while retaining the current session.
   bool editBookDate(bool started, const ReadingStatsDate& date, BookReadingStats& bookOut,
                     GlobalReadingStats& globalOut, bool& saved);
@@ -28,11 +44,17 @@ class ReaderStats {
   BookReadingStats book;
   GlobalReadingStats global;
   ReadingStatsSession session;
+  StatsSessionLease lease;
   std::string directory;
   uint16_t idleSeconds = 300;
   bool active = false;
+  bool completionAvailable = false;
   bool startUnavailable = false;
   bool dirty = false;
+  bool completionRecoveryPending = false;
+  bool completionRecoveryTarget = false;
+  bool completionRecoveryWasTracking = false;
+  ReadingStatsDate completionRecoveryDate;
 };
 
 static_assert(sizeof(ReaderStats) <= 640, "Review reader statistics RAM growth");

@@ -42,3 +42,6 @@ class StatsSaveNotice {
 
 StatsSaveNotice& statsSaveNotice();
 StatsSaveNotice& settingsSaveNotice();
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+StatsSaveNotice& stateSaveNotice();
+#endif

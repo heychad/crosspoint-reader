@@ -131,6 +131,11 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
       }
     }
   }
+  // CrossInk's zero adds no pixels; the native equivalent is 100 percent.
+  if ((mask & (1UL << 3)) && old[3] == 0) {
+    set(result, 2, 100);
+    result.unmappedMask &= ~(1UL << 3);
+  }
   map(4, 4, 3);
   if ((mask & (3UL << 5)) == (3UL << 5) && old[5] == old[6] && old[5] >= 5 && old[5] <= 40) {
     set(result, 5, old[5]);

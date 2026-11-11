@@ -5,8 +5,10 @@ description: Final checks and human handoff for completed firmware/build changes
 
 # Firmware handoff
 
-Run after implementation and main-agent self-review, before calling a firmware
-change ready or making an approved local commit. The main agent owns the result;
+Run after implementation and main-agent self-review, before declaring release
+readiness, releasing firmware, or merging to the supported branch. Authorized
+WIP checkpoints use the lighter process in AGENTS.md and do not satisfy this
+handoff. The main agent owns the result;
 reviewer output is evidence, not authority. This workflow has at most two review
 rounds per logical change, even when slot limits require dispatching in batches.
 

@@ -13,6 +13,9 @@
 #include "BookReaderPreferences.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+#include "ChapterTimeEstimate.h"
+#endif
 #include "ClipSelectionActivity.h"
 #include "EpubReaderMenuActivity.h"
 #include "LinkNoteTitle.h"
@@ -20,8 +23,12 @@
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
 #include "components/OptionPopup.h"
+#include "personalization/EpubRenderRecovery.h"
 #include "personalization/ReaderPageLayout.h"
 #include "personalization/ReaderShortcuts.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
+#include "personalization/CompletionPrompt.h"
+#endif
 #include "util/SavedItems.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -29,6 +36,7 @@ class EpubReaderActivity final : public ReaderActivity {
   char barChapterTitle[192]{};
   int barChapterSpine = -1;
   readershortcuts::Tracker shortcutTracker;
+  bool shortcutSideSwapped = false;
   bool handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None) override;
   bool supportsReaderShortcut(readershortcuts::Action action) const override;
   void onReaderGestureStarted() override;
@@ -37,7 +45,33 @@ class EpubReaderActivity final : public ReaderActivity {
   void cycleAutoPageTurn();
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
+  EpubRenderRecovery renderRecovery;
+  bool tryRenderRecovery();
+  ReaderRenderSpec effectiveRenderSpec(uint16_t width, uint16_t height, int spine) const;
+  int visibleOffsetSpine = -1;
+  bool showRenderRecoveryMessage = false;
+  unsigned long renderRecoveryMessageTime = 0;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  std::atomic<uint32_t> prefetchInputSequence{0};
+  uint32_t prefetchArmedSequence = 0;
+  int prefetchArmedSpine = -1;
+  int prefetchAttemptedSpine = -1;
+  void armChapterPrefetch();
+  void prefetchNextChapter(uint16_t viewportWidth, uint16_t viewportHeight);
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
+  CompletionPrompt completionPrompt;
+  void initializeCompletionPrompt();
+  void observeCompletionPosition();
+  bool showQueuedCompletionPrompt();
+  void handleCompletionAttempt(bool recovery, bool completed = true);
+#endif
   int currentSpineIndex = 0;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+  int chapterTimeSpine = -1;
+  bool chapterTimeExtentValid = false;
+  chaptertime::Extent chapterTimeExtent{};
+#endif
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
   std::string pendingAnchor;
@@ -284,6 +318,10 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void setInitialSavedView(SavedItemKind kind) { pendingSavedView = kind; }
   void onExit() override;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  void onUserInput() override { prefetchInputSequence.fetch_add(1, std::memory_order_relaxed); }
+  void renderBackground(RenderLock&&) override { prefetchNextChapter(buildViewportWidth, buildViewportHeight); }
+#endif
   void prepareForSleep() override;
   void loop() override;
   void render(RenderLock&& lock) override;

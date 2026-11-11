@@ -142,8 +142,8 @@ int main() {
         metrics = profile;
         if (touch) metrics.buttonHintsHeight = 0;
         for (int font : {0, 1}) {
-          for (auto warning :
-               {readingcharts::Warning::None, readingcharts::Warning::Partial, readingcharts::Warning::Unsaved}) {
+          for (auto warning : {readingcharts::Warning::None, readingcharts::Warning::Partial,
+                               readingcharts::Warning::Unsaved, readingcharts::Warning::UnsavedPartial}) {
             for (int selected = 0; selected < 3; ++selected) {
               ReadingChartsActivity activity;
               activity.renderer.width = size.width;

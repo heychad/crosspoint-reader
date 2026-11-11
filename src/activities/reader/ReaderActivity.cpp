@@ -88,8 +88,13 @@ void ReaderActivity::onEnter() {
 
   {
     RenderLock lock(*this);
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+    constexpr bool completionEnabled = true;
+#else
+    constexpr bool completionEnabled = false;
+#endif
     readingStats.begin(getBookCachePath(), bookPath, SETTINGS.trackReadingStats != 0,
-                       static_cast<uint16_t>(SETTINGS.readingIdleTimeThresholdUnits) * 10U);
+                       static_cast<uint16_t>(SETTINGS.readingIdleTimeThresholdUnits) * 10U, completionEnabled);
     pendingStatsLoadWarning.store(readingStats.unavailableAtStart());
     pendingStatsSaveWarning.store(statsSaveNotice().pending() != 0);
   }
@@ -243,6 +248,10 @@ void ReaderActivity::pollSettingsSaveWarning() {
   const uint32_t settingsWarning = settingsSaveNotice().pending();
   if (settingsWarning && settingsWarning != shownSettingsNotice.load() && !homeButtonFeedbackVisible.load())
     requestUpdate();
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  const uint32_t stateWarning = stateSaveNotice().pending();
+  if (stateWarning && stateWarning != shownStateNotice.load() && !homeButtonFeedbackVisible.load()) requestUpdate();
+#endif
 }
 
 void ReaderActivity::loop() {
@@ -275,6 +284,14 @@ void ReaderActivity::loop() {
 }
 
 bool ReaderActivity::showPendingSettingsWarning() {
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  const uint32_t stateWarning = stateSaveNotice().pending();
+  if (stateWarning && stateWarning != shownStateNotice.load()) {
+    GUI.drawPopup(renderer, tr(STR_STATE_SAVE_RECOVERY));
+    shownStateNotice.store(stateWarning);
+    return true;
+  }
+#endif
   const uint32_t observed = settingsSaveNotice().pending();
   if (!observed || observed == shownSettingsNotice.load()) return false;
   GUI.drawPopup(renderer, tr(STR_SETTINGS_SAVE_RECOVERY));

@@ -49,6 +49,8 @@ bool ReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger trigge
     case Action::Home:
       onGoHome();
       return true;
+    case Action::HomeReader:
+      return activityManager.handleHomeReaderShortcut();
     case Action::FileBrowser:
       activityManager.goToFileBrowser();
       return true;

@@ -5,6 +5,22 @@
 
 #include <algorithm>
 
+bool RecentBooksStore::saveForCompletionLocked() const {
+  const std::string path = getFilePath();
+  for (const char* suffix : {".tmp", ".bak"})
+    if (Storage.lookupPath((path + suffix).c_str()) != HalStorage::PathStatus::Missing) return false;
+  const auto status = Storage.lookupPath(path.c_str());
+  if (status == HalStorage::PathStatus::Failed) return false;
+  if (status == HalStorage::PathStatus::Present) {
+    JsonDocument previous;
+    if (!PersistableStoreBase::readDocFromFile(path.c_str(), previous, 65536) || !previous.is<JsonObject>())
+      return false;
+  }
+  JsonDocument document;
+  toJson(document);
+  return PersistableStoreBase::writeDocToFileForMove(path.c_str(), document);
+}
+
 void RecentBooksStore::toJson(JsonDocument& doc) const {
   JsonArray arr = doc["books"].to<JsonArray>();
   for (const auto& book : recentBooks) {
@@ -88,6 +104,25 @@ bool RecentBooksStore::removeByPath(const std::string& path) {
   return true;
 }
 
+bool RecentBooksStore::removeByPathPersisted(const std::string& path) {
+  // Completion can hold the storage lock while another store save holds this
+  // mutex and waits for storage. Do not wait in the reverse lock order.
+  std::unique_lock<std::mutex> lock(storeMutex, std::try_to_lock);
+  if (!lock.owns_lock()) return false;
+  auto it =
+      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
+  if (it == recentBooks.end()) return true;
+  const auto position = static_cast<size_t>(it - recentBooks.begin());
+  auto removed = std::move(*it);
+  recentBooks.erase(it);
+  if (saveForCompletionLocked()) return true;
+  // Erase retains vector capacity, so reinserting this moved entry does not
+  // require growing the vector. On-disk outcome may still be uncertain.
+  recentBooks.insert(recentBooks.begin() + position, std::move(removed));
+  LOG_ERR("RBS", "Failed to persist removal of recent book: %s", path.c_str());
+  return false;
+}
+
 void RecentBooksStore::updatePath(const std::string& oldPath, const std::string& newPath,
                                   const std::string& oldCachePath, const std::string& newCachePath) {
   auto it = std::find_if(recentBooks.begin(), recentBooks.end(),
@@ -100,6 +135,31 @@ void RecentBooksStore::updatePath(const std::string& oldPath, const std::string&
     it->coverBmpPath = newCachePath + it->coverBmpPath.substr(oldCachePath.size());
   }
   saveToFile();
+}
+
+bool RecentBooksStore::updatePathPersisted(const std::string& oldPath, const std::string& newPath,
+                                           const std::string& oldCachePath, const std::string& newCachePath) {
+  std::unique_lock<std::mutex> lock(storeMutex, std::try_to_lock);
+  if (!lock.owns_lock()) return false;
+  if (oldPath == newPath) return true;
+  auto old = std::find_if(recentBooks.begin(), recentBooks.end(),
+                          [&](const RecentBook& book) { return book.path == oldPath; });
+  if (old == recentBooks.end()) return true;
+  const auto destination = std::find_if(recentBooks.begin(), recentBooks.end(),
+                                        [&](const RecentBook& book) { return book.path == newPath; });
+  if (destination != recentBooks.end()) return false;
+  const std::string targetPath = newPath;
+  auto savedPath = std::move(old->path);
+  auto savedCover = std::move(old->coverBmpPath);
+  old->path = targetPath;
+  old->coverBmpPath = savedCover;
+  if (!oldCachePath.empty() && !savedCover.empty() && savedCover.rfind(oldCachePath, 0) == 0)
+    old->coverBmpPath = newCachePath + savedCover.substr(oldCachePath.size());
+  if (saveForCompletionLocked()) return true;
+  old->path = std::move(savedPath);
+  old->coverBmpPath = std::move(savedCover);
+  LOG_ERR("RBS", "Failed to persist recent book path: %s", old->path.c_str());
+  return false;
 }
 
 bool RecentBooksStore::isMissing(const RecentBook& book) { return !Storage.exists(book.path.c_str()); }

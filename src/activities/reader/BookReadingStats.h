@@ -7,6 +7,7 @@
 
 // Per-book reading statistics, persisted to cachePath/stats_v5.bin.
 struct BookReadingStats {
+  static constexpr uint8_t CURRENT_FILE_VERSION = 5;
   static constexpr size_t CURRENT_FILE_SIZE = 73;
   enum class LoadMode : uint8_t { Repair, ReadOnly, TransactionalEdit };
   // Runtime guard: an unreadable or newer file must never become an empty overwrite.
@@ -32,6 +33,9 @@ struct BookReadingStats {
   // holding the storage lock across the complete read, edit, and safe save.
   // Returns defaults if none exists; unsupported or damaged data disables writes.
   static BookReadingStats load(const std::string& cachePath, LoadMode mode = LoadMode::Repair);
+
+  // Decode a supported complete payload; failure leaves output unchanged.
+  static bool decode(const uint8_t* data, size_t size, BookReadingStats& output);
 
   // Serialize the same versioned payload used by save().
   bool encode(uint8_t* data, size_t size) const;

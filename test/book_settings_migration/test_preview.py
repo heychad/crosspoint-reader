@@ -76,6 +76,13 @@ class DecodeTest(unittest.TestCase):
         single = preview.decode(record(10, mask=1 << 5))
         self.assertEqual(single['preview'], {})
 
+    def test_only_natural_word_spacing_maps(self):
+        data = bytearray(record(10, mask=1 << 3))
+        data[8] = 0
+        self.assertEqual(preview.decode(bytes(data))['preview'], {'wordSpacing': 100})
+        data[8] = 1
+        self.assertEqual(preview.decode(bytes(data))['unmapped'], ['wordSpacing'])
+
     def test_rejects_unknown_version_flags_and_masks(self):
         for data in (b'\x0b', record(10, flags=0x80), record(10, mask=1 << 20)):
             with self.assertRaises(ValueError):

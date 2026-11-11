@@ -122,6 +122,8 @@ class BookMetadataCache {
   bool load();
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);
+  // Reads only the title for a spine entry into caller-owned bounded storage.
+  bool copySpineTocTitle(int spineIndex, char* output, size_t capacity);
   // Cumulative byte size up to and including the given spine item (0 if out of range
   // or not loaded).
   uint32_t getCumulativeSize(int index) const;

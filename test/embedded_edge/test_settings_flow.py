@@ -7,6 +7,7 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source = (root / 'src/CrossPointSettings.cpp').read_text()
 start = source.index('  forEachBaseSetting(visit);', source.index('bool CrossPointSettings::fromJson('))
+start = source.index('  if (BoardConfig::hasTouch()) {', start)
 end = source.index('  needsResave |= readergestures::readBindings', start)
 hook = source[start:end]
 code = r'''
@@ -24,7 +25,7 @@ struct Settings {
    readerRightEdgeUp=doc["readerRightEdgeUp"] | readerRightEdgeUp;
    readerRightEdgeDown=doc["readerRightEdgeDown"] | readerRightEdgeDown;
   };
-  auto forEachBaseSetting=[](auto& fn){fn();};
+  visit();
 ''' + hook + r'''
  }
 };

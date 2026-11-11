@@ -271,11 +271,19 @@ inline SettingInfo buildShortPowerButtonSetting() {
 }
 
 inline std::vector<StrId> homeThemeValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC,       StrId::STR_THEME_LYRA,
-                                     StrId::STR_THEME_LYRA_EXTENDED, StrId::STR_THEME_ROUNDEDRAFF,
-                                     StrId::STR_THEME_COVER_GRID,    StrId::STR_THEME_MINIMAL_HOME,
-                                     StrId::STR_THEME_DASHBOARD_HOME};
-  const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : std::size(VALUES) - 3;
+  static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC,
+                                     StrId::STR_THEME_LYRA,
+                                     StrId::STR_THEME_LYRA_EXTENDED,
+                                     StrId::STR_THEME_ROUNDEDRAFF,
+                                     StrId::STR_THEME_COVER_GRID,
+                                     StrId::STR_THEME_MINIMAL_HOME,
+                                     StrId::STR_THEME_DASHBOARD_HOME
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+                                     ,
+                                     StrId::STR_THEME_LYRA_CAROUSEL
+#endif
+  };
+  const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : 4;
   return {VALUES, VALUES + count};
 }
 

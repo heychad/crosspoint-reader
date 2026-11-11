@@ -3,7 +3,7 @@ PlatformIO post: script: apply CrossPoint's SdFat patches via `git apply`.
 
 The patches in `scripts/sdfat_patches/` make USE_SEPARATE_FAT_CACHE
 overridable, invalidate the sector cache after a failed read, and write the
-FAT cache before the data cache on sync, preserve LFN lookup read errors, and
+FAT cache before the data cache on sync, preserve exFAT file metadata after a failed sync while the handle remains open, preserve LFN lookup read errors, and
 provide scoped FAT and exFAT directory checks (see the patches). They target
 SdFat 2.3.1 only.
 
@@ -41,19 +41,22 @@ PATCHES = (
      "e5506cfd44e2776482404d3e378a458538aa9debd3d8a2640c42728b56f846ac"),
     ("0007-fatfile-strict-lookup.patch", "src/FatLib/FatFile.h",
      "42355cd5bf5dc6e37b13931922e029a7c2a64bc409e7b3e56b632021ee925644",
-     "f7e5c8d52debfa5b8581cc5da80d4336d3c563cd19b9b173fd647cad99713e6a"),
+     "ff8d84261de125aab6f89c100475f771cd8abc4783a2789fbd531c8a8a891a84"),
     ("0008-fsfile-strict-lookup.patch", "src/FsLib/FsFile.h",
      "4c77e48772c707876f56c48ab71dbfb0b66f4de12375ead237c8d929d7755126",
-     "003cd1432cbbdb5ccaad189ce0eee446e0ea5ce219e1c8a5b8f88fa57df3c805"),
+     "483f37e0df9bbbcf58117c9044708d36b8773bd02beaa3f3de7f6543a83f77cc"),
     ("0010-exfat-strict-header.patch", "src/ExFatLib/ExFatFile.h",
      "a0863afa1035a8dd799e8d17899a62369f9b50b3916a197ce99504ba3cb8ab13",
-     "1dd6ec99291b7c956f9819cbb0543d364fb10575edcb61b427aee9dba3014aef"),
+     "2c9052a915907aa4f7761d5e82e56325ee409155da28059a85e96c958b61b597"),
     ("0011-exfat-strict-scan.patch", "src/ExFatLib/ExFatFile.cpp",
      "ebcdb4c15e9200caf15a93095a37428d987e96da0f85733104550373ce6f0aa0",
-     "fc548634c76ba8078d99222ff41f5d3b3e373fb3b4635a67c52904cf19f9edbb"),
+     "ac9f77b4824e0ef4b65aa3169b4db3730fd263e870b8422062634985fbf77dce"),
+    ("0035-exfat-retain-dirty-on-sync-failure.patch", "src/ExFatLib/ExFatFileWrite.cpp",
+     "439e1fe566bc04c8e53962eeb8bdd91c89d5358cfff20bcf8be90c742e683ea4",
+     "2f78988a33c5c3a828a287b239847db1d313882e1f5fc8fed21d94890dec24b3"),
     ("0017-fat-source-bounded-chain.patch", "src/FatLib/FatFile.cpp",
      "c1757a57ea134df2aab650d2db109b7d731f66cf309e5a070a9b50667c258948",
-     "a3eced090c0a4f5dfb370bf6056a7f52d1b46940b5103102569443b3da225c51"),
+     "6e22cddac127b6fd0acdebb1c4a7e5bb48f24d57d855f0bc1345fc0246aba2f6"),
     ("0026-fat-partition-strict-eoc.patch", "src/FatLib/FatPartition.cpp",
      "36163b3dc4ee985da9a6c6fb99b635fb5b63255d35fa5b3ccc1778db1534c0fe",
      "07f1656abc18b97cceb66913eac49212d354a4858c9e7d1450333431686d70ab"),
@@ -65,6 +68,8 @@ MIGRATIONS = {
             "0025-fat-partition-header-strict-eoc.patch",
     },
     "src/FatLib/FatFile.cpp": {
+        "a3eced090c0a4f5dfb370bf6056a7f52d1b46940b5103102569443b3da225c51":
+            "0051-fat-move-larger-chain.patch",
         "8384806cf747bf68ae5268863830c99dadb2b562dd02fe5973a3a03022030c0f":
             "0031-fat-source-settings-chain.patch",
         "c30bfec7874a1c768604478196a78a8916870bbee62eeefa1b97067355aabe5d":
@@ -80,37 +85,45 @@ MIGRATIONS = {
             "0006-enable-strict-fat-lookup.patch",
     },
     "src/FatLib/FatFile.h": {
+        "f7e5c8d52debfa5b8581cc5da80d4336d3c563cd19b9b173fd647cad99713e6a":
+            "0036-fat-move-entry.patch",
         "62754161d29a82ebb494f6b465f076f5ede05d35b1967da8cb9b127796e2f1fe":
-            "0030-fat-header-settings-chain.patch",
+            "0040-move-entry-from-0030-fat-header-settings-chain.patch",
         "dc07c47d649314aa058955a0564e0e29ff42d233f08a58f0f4a0b4e07387f7bd":
-            "0020-fat-header-settings-cluster.patch",
+            "0041-move-entry-from-0020-fat-header-settings-cluster.patch",
 
         "ec69d17ea1acae4b153099f3c4f5d142a536e41987a8872c09eb8378667724f8":
-            "0013-fatfile-bounded-chain.patch",
+            "0042-move-entry-from-0013-fatfile-bounded-chain.patch",
     },
     "src/FsLib/FsFile.h": {
+        "003cd1432cbbdb5ccaad189ce0eee446e0ea5ce219e1c8a5b8f88fa57df3c805":
+            "0038-fs-move-entry.patch",
         "f01c7594c9ebde562bab35ea90c7e946e23f141f2eed958cd2a317a348e13c00":
-            "0032-fs-header-settings-chain.patch",
+            "0047-move-entry-from-0032-fs-header-settings-chain.patch",
         "36c47655281a70a46eb2e4717d5c6d399bacf9522b7a4aa2c8fa3218facbbd06":
-            "0021-fs-header-settings-cluster.patch",
+            "0048-move-entry-from-0021-fs-header-settings-cluster.patch",
 
         "e72a825f134494e240ee85f3406949dd45e5562de7de9ff0afa2f84d536897b6":
-            "0018-fsfile-prior-bounded-chain.patch",
+            "0049-move-entry-from-0018-fsfile-prior-bounded-chain.patch",
         "1763b25f564226de9886e25efefa4b6d74bb6280550b1d891d6d752caa9305e6":
-            "0014-fsfile-bounded-chain.patch",
+            "0050-move-entry-from-0014-fsfile-bounded-chain.patch",
     },
     "src/ExFatLib/ExFatFile.h": {
+        "1dd6ec99291b7c956f9819cbb0543d364fb10575edcb61b427aee9dba3014aef":
+            "0037-exfat-move-entry.patch",
         "91e24d17f84c9226e0fafc80b92b1d30128e7019581a4058be52ab08e67151ea":
-            "0033-exfat-header-settings-chain.patch",
+            "0043-move-entry-from-0033-exfat-header-settings-chain.patch",
         "11b0189f631a70b33800b506d16194f0a3de5f4c0af090549e0e050f24aba08b":
-            "0028-exfat-header-bitmap-check.patch",
+            "0044-move-entry-from-0028-exfat-header-bitmap-check.patch",
         "9fb9de05d16ccb2e71137a2a438bed927bc7dd1a224521980270b6b7203ec188":
-            "0022-exfat-header-settings-cluster.patch",
+            "0045-move-entry-from-0022-exfat-header-settings-cluster.patch",
 
         "a6e2641cf08e28c3ea03b8d56d0d14633bfacebef2844c7d9189caad9f33cccc":
-            "0015-exfat-header-bounded-chain.patch",
+            "0046-move-entry-from-0015-exfat-header-bounded-chain.patch",
     },
     "src/ExFatLib/ExFatFile.cpp": {
+        "fc548634c76ba8078d99222ff41f5d3b3e373fb3b4635a67c52904cf19f9edbb":
+            "0052-exfat-move-larger-chain.patch",
         "46c066263885e61c5a0482dc3509df5bace79f089ad38a9378b1f82e551b0a4e":
             "0034-exfat-source-settings-chain.patch",
         "82457f4546982f3ab075d99c50fa2d63116c9e83f111a78d6a276ae5a5ccfede":

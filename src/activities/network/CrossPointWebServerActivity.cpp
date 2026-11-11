@@ -301,6 +301,10 @@ void CrossPointWebServerActivity::startWebServer() {
 
   // Create the web server instance
   webServer.reset(new CrossPointWebServer());
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE && defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+  webServer->enableExperimentalPublication();
+#endif
   // An upload holds loop() inside handleClient(), so input is sampled on each received chunk instead. On a slow
   // link chunks come ~0.5 s apart, so a button found down gets a second sample past the SDK's 5 ms debounce.
   webServer->setUploadCancelCheck([this] {

@@ -25,6 +25,7 @@ bool ReaderActivity::supportsReaderShortcut(Action action) const {
     case Action::Sleep:
     case Action::Refresh:
     case Action::Home:
+    case Action::HomeReader:
     case Action::FileBrowser:
     case Action::FileTransfer:
     case Action::Library:

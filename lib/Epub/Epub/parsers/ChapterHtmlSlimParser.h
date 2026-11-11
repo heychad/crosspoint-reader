@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "Epub/EpubBuildFailure.h"
 #include "Epub/EpubRenderMode.h"
 #include "Epub/FootnoteEntry.h"
 #include "Epub/ParsedText.h"
@@ -235,6 +236,7 @@ class ChapterHtmlSlimParser {
   // ParsedText::hadDroppedWords() this turns layout OOM into ParseStatus::Error
   // so the section build fails readably instead of emitting pages with holes.
   bool layoutOom = false;
+  EpubBuildFailure parseFailure = EpubBuildFailure::None;
   bool stopRequested = false;
 
   // Resumable parse state. The one-shot parseAndBuildPages() drives these
@@ -344,6 +346,7 @@ class ChapterHtmlSlimParser {
   enum class ParseStatus { More, Done, Error };
   bool beginParse();
   ParseStatus parseStep();
+  EpubBuildFailure lastParseFailure() const { return parseFailure; }
   bool finishParse();  // flush the trailing page and tear down; false on OOM/stop
   void abortParse();   // tear down without flushing (error / abandon)
   // Safe from completePageFn; cleanup waits until the active callback returns.

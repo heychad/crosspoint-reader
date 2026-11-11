@@ -9,6 +9,7 @@
 #include "ReaderFontSizes.h"
 #include "ReaderUtils.h"
 #include "SdCardFontSystem.h"
+#include "util/ReadFolder.h"
 
 using readershortcuts::Action;
 using readershortcuts::Trigger;
@@ -78,6 +79,7 @@ bool EpubReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger tr
     case Action::QuickLock:
     case Action::Sleep:
     case Action::Home:
+    case Action::HomeReader:
     case Action::FileBrowser:
     case Action::FileTransfer:
     case Action::Library:
@@ -107,6 +109,19 @@ bool EpubReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger tr
       return true;
     case Action::CycleFontFamily: {
       cycleFontFamily();
+      return true;
+    }
+    case Action::ToggleCompletion: {
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
+      bool completed = false;
+      bool known = false;
+      {
+        RenderLock lock(*this);
+        known = readingStats.completionStatus(completed);
+      }
+      if (known && (completed || !SETTINGS.moveFinishedToReadFolder || isInReadFolder(bookPath)))
+        handleCompletionAttempt(false, !completed);
+#endif
       return true;
     }
     case Action::ToggleFocus: {
@@ -159,12 +174,19 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
   using Button = MappedInputManager::Button;
   static_assert(CrossPointSettings::OFF == 0 && CrossPointSettings::CHAPTER_SKIP == 1 &&
                 CrossPointSettings::ORIENTATION_CHANGE == 2);
+  static_assert(CrossPointSettings::PORTRAIT == 0);
+  const bool swapped = readershortcuts::swapSideBindings(SETTINGS.readerSideFollowOrientation, SETTINGS.orientation);
+  if (swapped != shortcutSideSwapped) {
+    shortcutTracker.reset();
+    shortcutSideSwapped = swapped;
+  }
   const auto defaultAction = [this](bool up, bool hold) {
     return readershortcuts::defaultAction(up, hold, SETTINGS.sideButtonLayout, mappedInput.isNavDirectionSwapped(),
                                           SETTINGS.longPressButtonBehavior);
   };
   const auto holdAction = [&](bool up) {
-    const auto action = static_cast<Action>(up ? SETTINGS.readerUpHold : SETTINGS.readerDownHold);
+    const bool logicalUp = readershortcuts::logicalSideUp(up, swapped);
+    const auto action = static_cast<Action>(logicalUp ? SETTINGS.readerUpHold : SETTINGS.readerDownHold);
     return action == Action::Default ? defaultAction(up, true) : action;
   };
   const std::array<readershortcuts::Contact, 2> contacts{
@@ -184,10 +206,10 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
     Action action = Action::Disabled;
     switch (event.trigger) {
       case Trigger::UpTap:
-        action = static_cast<Action>(SETTINGS.readerUpTap);
+        action = static_cast<Action>(swapped ? SETTINGS.readerDownTap : SETTINGS.readerUpTap);
         break;
       case Trigger::DownTap:
-        action = static_cast<Action>(SETTINGS.readerDownTap);
+        action = static_cast<Action>(swapped ? SETTINGS.readerUpTap : SETTINGS.readerDownTap);
         break;
       case Trigger::UpHold:
         action = holdAction(true);
@@ -236,12 +258,19 @@ void EpubReaderActivity::onReaderGestureStarted() {
 
 bool EpubReaderActivity::supportsReaderShortcut(Action action) const {
   switch (action) {
+    case Action::ToggleCompletion:
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
+      return true;
+#else
+      return false;
+#endif
     case Action::ToggleFrontlight:
     case Action::Brighter:
     case Action::Dimmer:
     case Action::Warmer:
     case Action::Cooler:
     case Action::Home:
+    case Action::HomeReader:
     case Action::FileBrowser:
     case Action::FileTransfer:
     case Action::Library:

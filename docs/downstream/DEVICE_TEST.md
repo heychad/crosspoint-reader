@@ -25,7 +25,9 @@ The archived source patch and X4 Pro firmware image match their recorded
 SHA-256 hashes. Chad reported that test1 booted, an existing book resumed, and
 page turns and touch worked. Chad subsequently installed test2 and reported
 that the side margins looked good, while the top bar was still one or two pixels
-too low. The later candidates have not been tested on the reader.
+too low. Chad later installed test58 and confirmed basic reading, resuming,
+Quick Lock, library filters, compact rows, and saved items. More recent local
+source changes have not been installed or tested on the reader.
 
 Before a reviewed device update, back up and verify the entire hidden
 `/.crosspoint` directory, including settings, progress, bookmarks and clippings.

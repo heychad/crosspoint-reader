@@ -14,38 +14,39 @@ Source revisions:
 ## Selected first-release scope: current source snapshot
 
 The table describes the current local candidate. “Built” means implemented with
-local checks, not accepted on the X4 Pro. The reader previously ran test2; the
-later bundle has not been installed or physically tested. The historical
+local checks, not accepted on the X4 Pro. Chad installed test58 and confirmed
+several basic reader and library behaviors. Subsequent work is not installed or
+physically tested. The historical
 inventory below records an earlier stage and is not the current status.
 
 | Choice | Current state |
 | --- | --- |
 | A1 Custom top and bottom bars | Built, including full-width filled progress bars and book/section time-left. Test2 bars were checked on the reader; later changes need device checks. |
-| A2 Button remapping and shortcuts | Reader bindings and additional Home-button actions built; full CrossInk mapping parity remains. |
+| A2 Button remapping and shortcuts | Reader bindings, optional orientation-aware side shortcuts, and additional Home-button actions built, including previous page, screenshot, night mode, reader touch, tilt, and sleep; full CrossInk mapping parity remains. |
 | A3 Touch gestures and Quick Lock | Built; hardware and interaction checks remain. |
-| A4 Five-slot Quick Actions | Built; hardware checks remain. |
+| A4 Five-slot Quick Actions | Built; the reader menu and toolbar More panel now provide direct access as well as shortcut triggers. Hardware checks remain. |
 | A5 Per-book reading layout | Native overrides built; compatible CrossInk binary values can load when native preferences are absent. Unsupported fields and Safe Mode need further migration work. |
-| A9 Extra actions and legacy mappings | Many actions built, including Saved Items and File Transfer; the full legacy action mapping remains. |
+| A9 Extra actions and legacy mappings | Many actions built, including Saved Items, File Transfer, Home / Reader stack navigation, and an experimental finished-status toggle; the full legacy action mapping remains. Home / Reader needs device and transition checks. |
 | B1 Format and finished-book filters | Built; completion data that cannot be read stays visible. |
 | B2 Compact rows and filenames | Built. |
 | B3 Browse by genre and series | Built from EPUB metadata; hardware checks remain. |
 | B4 Recent-books cover grid | Built; hardware checks remain. An optional Title shelf grid is also available independently. |
-| B5 Mark finished and organize completed books | Finished status can be read for filtering. For EPUBs, existing end-of-book settings can remove Recents and defer a move to `/read`; explicit marking is not integrated. |
+| B5 Mark finished and organize completed books | Finished status can be read for filtering. Experimental reader menus can mark finished or unfinished and apply Recents removal. A separately flagged prototype records a deferred move for an open EPUB and attempts it when Home opens. It disables the old unjournaled end-of-book move and needs lifecycle, recovery, storage ownership, and device checks before use. Journal rollover is prototyped. |
 | B6 Unified Saved Items | Built with reader-menu, button, and Quick Actions entry. Older CrossInk bookmarks are read-only. |
-| B7 Full CrossInk menu and navigation parity | Partial; EPUB reader entries include Home Button, Library, Browse Files, File Transfer, and Saved Items, and an optional Library-first Home order, but full menu parity remains. |
-| C1 Reading statistics and time-left | Built for supported tracking data; reader bars estimate book and current-section time. A true table-of-contents chapter estimate remains. |
+| B7 Full CrossInk menu and navigation parity | Partial; EPUB reader entries include Controls, Home Button, Library, Browse Files, File Transfer, and Saved Items, and an optional Library-first Home order, but full menu parity remains. |
+| C1 Reading statistics and time-left | Built for supported tracking data; book, device, and All Devices views show page-turn pace, and reader bars estimate book and current-section time. An experimental table-of-contents chapter estimate is available behind a build flag; ambiguous boundaries show no estimate. It needs review and device checks. |
 | C2 Edit dates and per-book tracking | Dates and tracking are available for an actively tracked book. Library statistics can edit dates and tracking for a closed book with readable existing statistics; device checks remain. |
-| C3 All Devices statistics | Built for compatible statistics files already present locally; it does not transfer them or detect absent device files. If a snapshot save and aggregate load both fail, the save warning currently takes precedence over the partial-data warning. |
-| C4 History charts and trends | Time-of-day, weekday, and device reading-day charts built; the device view shows recorded reading days for the last 7 and 30 days. Richer trends remain. |
-| C5 Statistics backup, restore, reset | Manual device and individual-book backups built; restore, reset, and whole-library backup remain. |
-| C6 Near-end completion prompt | Not in this candidate. |
-| D1 Google Drive to reader sync | Incomplete; the wireless inventory prototype is parked for correctness and SD responsiveness fixes. |
-| E1 Extra home-screen themes | Cover-grid home and initial Minimal and Dashboard layouts built; full CrossInk theme parity and device checks remain. |
-| E2 Extra sleep-screen dashboards | Reading-statistics, Reading summary, and cover summary sleep screens built; further CrossInk variants remain. |
+| C3 All Devices statistics | Built for compatible statistics files already present locally; it does not transfer them or detect absent device files. The statistics screen and charts report simultaneous save and partial-data warnings together. |
+| C4 History charts and trends | Time-of-day, weekday, and device reading-day charts built; the device and All Devices views show recorded reading days for the last 7, 30, and 365 days. Richer trends remain. |
+| C5 Statistics backup, restore, reset | Manual device and individual-book backups are built. Experimental device restore/reset, closed-book restore, and automatic device backups are available behind build flags; review and device checks remain. Automatic-backup pruning is not integrated. CrossInk's backup covers device totals, not a whole-library backup. |
+| C6 Near-end completion prompt | Experimental prompt and live completion save are wired behind separate build flags. It uses optimizer character or word metadata when valid, falling back to byte-weighted progress, and supports tracking being off without enabling it. A further experimental flag allows it to request a deferred move; lifecycle, recovery, device testing, and final review remain. |
+| D1 Google Drive to reader sync | Experimental batch transfer and recovery prototypes exist; security, storage ownership, responsiveness, review, and hardware validation remain. |
+| E1 Extra home-screen themes | Cover-grid home and initial Minimal and Dashboard layouts built. An experimental Carousel adds cover selection, touch and swipe controls, a horizontal home menu, saved reading progress, and reading time. Its visual and input parity remain incomplete. Library import maps Carousel only in the experimental build. Device checks remain. |
+| E2 Extra sleep-screen dashboards | Reading-statistics, Reading summary, cover summary, Minimal book, and Book dashboard sleep screens built. The latter two show progress without requiring statistics and use a title fallback when no cached cover is available. Book dashboard can show the saved EPUB section's chapter title, start date, daily average, and current device streak when their data is available. Experimental Page Overlay uses retained screen content and CrossInk image locations; its favorite and folder controls use a recoverable state writer. State-save warnings appear in Reader and Home, with a limited retry that preserves artifacts. Broader recovery, normal state-save hardening, rebuilding an unavailable reader frame, visual parity, and device checks remain. |
 | E4 Small/large UI scale | Built; display fit needs hardware checks. |
-| G1 Rendering controls and recovery | Manual Default, Balanced, and Light profiles built; automatic fallback and recovery remain. |
-| G2 Silent next-chapter prefetch | Not integrated in this candidate. |
-| G3 Complete old-settings migration | Partial; embedded edge-gesture keys import when modern global keys are absent. Compatible per-book values can import when native book preferences are absent. The separate CrossInk settings file and remaining per-book fields need migration. |
+| G1 Rendering controls and recovery | Manual Default, Balanced, and Light profiles built. Known chapter-build memory failures retry progressively with simpler profiles, then without embedded styling or focus mode, for the current session. Disabling styles can reveal text hidden by the publisher's CSS. The last known text offset is preserved when available. Other failures do not trigger this retry. The fallback, message, and device behavior need review and testing. |
+| G2 Silent next-chapter prefetch | Experimental scheduler builds the next EPUB section near the end of the current one, with input cancellation and heap/radio guards. It requires the experimental build flag; review, responsiveness measurements, and device validation remain. |
+| G3 Complete old-settings migration | Partial; embedded edge gestures, supported side-button bindings and orientation, long-power and Power+Up bindings, and compatible Quick Actions slots import when modern keys are absent. CrossInk font-switch bindings import as the fork's font cycle, which also includes usable installed fonts. Separate imports cover supported controls, touch gestures, library filters and layouts, compatible reading and sleep settings, and top and bottom bars; conflicting two-finger swipe groups stay unchanged. CrossInk chapter-time slots import when experimental chapter time is enabled; stable-page slots and chapter time in other builds are refused without changing current bars. Compatible per-book values can import when native book preferences are absent. Unsupported Quick Actions slots and triggers, other global settings, and remaining per-book fields need migration. |
 | G4 Personal automatic update channel | Fork release configuration prepared, but online checking and installation are disabled pending authentication. |
 | G5 Optional developer diagnostics | Read-only X4 Pro memory diagnostics built; hardware checks remain. |
 

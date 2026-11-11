@@ -15,6 +15,7 @@
 #include "components/CoverGridHomeUi.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
+#include "components/themes/lyra/LyraCarouselTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
 #include "components/themes/minimal/DashboardHomeTheme.h"
 #include "components/themes/minimal/MinimalHomeTheme.h"
@@ -43,11 +44,26 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
   if (type == CrossPointSettings::COVER_GRID && !supportsCoverGrid()) type = CrossPointSettings::LYRA;
 
   switch (type) {
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+    case CrossPointSettings::UI_THEME::LYRA_CAROUSEL: {
+      auto theme = makeUniqueNoThrow<LyraCarouselTheme>();
+      if (!theme) {
+        LOG_ERR("UI", "OOM: Carousel home theme");
+        return;
+      }
+      currentTheme = std::move(theme);
+      currentMetrics = &LyraCarouselMetrics::values;
+      break;
+    }
+#endif
     case CrossPointSettings::UI_THEME::CLASSIC:
       LOG_DBG("UI", "Using Classic theme");
       currentTheme = std::make_unique<BaseTheme>();
       currentMetrics = &BaseMetrics::values;
       break;
+#if !defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+    case CrossPointSettings::UI_THEME::LYRA_CAROUSEL:
+#endif
     case CrossPointSettings::UI_THEME::COVER_GRID:
     case CrossPointSettings::UI_THEME::LYRA: {
       // The cover home owns its screen-lifetime UI state; other screens retain Lyra styling.

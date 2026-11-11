@@ -36,6 +36,11 @@ enum class SettingAction {
   HomeButton,
   About,
   DeviceDiagnostics,
+  ImportCrossInkControls,
+  ImportCrossInkBars,
+  ImportCrossInkLibrary,
+  ImportCrossInkPreferences,
+  RecoverCrossInkControls,
 };
 
 struct SettingInfo {
@@ -195,6 +200,8 @@ class SettingsActivity final : public UiListActivity {
   bool quickResumeTimeoutAutoEnabled = false;
 
   OptionPopup optionPopup;
+  StrId pendingCrossInkMessage = StrId::STR_NONE_OPT;
+  StrId pendingCrossInkTitle = StrId::STR_IMPORT_CROSSINK_CONTROLS;
 
   // Row structure (label/actionValue), rebuilt only when the setting list
   // changes; rowValues_ holds the live value text, refreshed every
@@ -206,6 +213,12 @@ class SettingsActivity final : public UiListActivity {
   void rebuildRowItems();
   void toggleSelectedSetting();
   void openSleepTimeoutPicker();
+  void openCrossInkControlsImport();
+  void openCrossInkBarsImport();
+  void openCrossInkLibraryImport();
+  void openCrossInkPreferencesImport();
+  void openCrossInkControlsRecovery();
+  void showCrossInkMessage(StrId message, StrId title = StrId::STR_IMPORT_CROSSINK_CONTROLS);
   void applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr);
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
   static std::string settingValueText(const SettingInfo& setting);

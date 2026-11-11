@@ -1,30 +1,47 @@
 #include "ReaderStats.h"
 
 #include <Arduino.h>
+#include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 
 #include <algorithm>
 
+#include "CompletionEdit.h"
+#include "CompletionTransaction.h"
 #include "ReadingStatsStore.h"
 
 void ReaderStats::begin(const std::string& cachePath, const std::string& bookPath, bool trackingEnabled,
-                        uint16_t requestedIdleSeconds) {
+                        uint16_t requestedIdleSeconds, bool enableCompletion) {
   startUnavailable = false;
-  if (!trackingEnabled) return;
-  bool bookEnabled = true;
-  bool trackingKnown = false;
-  book = readingstats::loadBook(cachePath, bookPath, bookEnabled, nullptr, BookReadingStats::LoadMode::Repair,
-                                &trackingKnown);
-  if (!trackingKnown) {
-    startUnavailable = true;
+  completionAvailable = false;
+  if (!trackingEnabled && !enableCompletion) return;
+  if (!lease.acquire()) {
+    startUnavailable = trackingEnabled;
     return;
   }
-  if (!bookEnabled) return;
-  global = GlobalReadingStats::load();
-  active = book.writable && global.writable;
-  startUnavailable = !active;
+  bool bookEnabled = true;
+  bool trackingKnown = false;
+  const auto mode =
+      trackingEnabled ? BookReadingStats::LoadMode::Repair : BookReadingStats::LoadMode::TransactionalEdit;
+  book = readingstats::loadBook(cachePath, bookPath, bookEnabled, nullptr, mode, &trackingKnown);
+  if (!trackingKnown) {
+    startUnavailable = trackingEnabled;
+    lease.release();
+    return;
+  }
+  if ((!bookEnabled || !trackingEnabled) && !enableCompletion) {
+    lease.release();
+    return;
+  }
+  const bool track = trackingEnabled && bookEnabled;
+  if (track) global = GlobalReadingStats::load();
+  completionAvailable = book.writable && (!track || global.writable);
+  active = track && completionAvailable;
+  startUnavailable = track && !active;
+  if (!completionAvailable) lease.release();
   idleSeconds = std::clamp<uint16_t>(requestedIdleSeconds, 30, 600);
-  if (active) directory = readingstats::bookDirectory(cachePath);
+  if (completionAvailable) directory = readingstats::bookDirectory(cachePath);
 }
 
 void ReaderStats::noteTurn(bool forward, bool succeeded) {
@@ -46,15 +63,157 @@ void ReaderStats::pause() {
   }
 }
 
-bool ReaderStats::snapshot(BookReadingStats& bookOut, GlobalReadingStats& globalOut, bool& saved) {
-  if (!active) return false;
+bool ReaderStats::snapshot(BookReadingStats& bookOut, GlobalReadingStats& globalOut, bool& saved, bool forceSave) {
+  if (!active && !(forceSave && completionAvailable)) return false;
   pause();
   bookOut = book;
   globalOut = global;
   auto preview = session;
   preview.commit(bookOut, globalOut);
-  saved = !dirty || (readingstats::saveBook(directory, bookOut) && globalOut.save());
+  saved = (!dirty && !forceSave) || (readingstats::saveBook(directory, bookOut) && globalOut.save());
   return true;
+}
+
+ReaderStats::CompletionResult ReaderStats::editCompletionStats(const std::string& cachePath,
+                                                               const std::string& bookPath, bool completed,
+                                                               const ReadingStatsDate& today, bool removeRecent,
+                                                               RemoveRecent remove, void* removeContext,
+                                                               bool deferMove) {
+  if (!completionAvailable) return CompletionResult::NotTracking;
+  if (!readingstats::completionCacheMatchesBook(bookPath, cachePath) ||
+      readingstats::bookDirectory(cachePath) != directory ||
+      (!today.isValid() && (today.year || today.month || today.day)) || (removeRecent && (!completed || !remove)) ||
+      (deferMove && !completed))
+    return CompletionResult::Unavailable;
+  struct Work {
+    ReaderStats* reader;
+    const std::string* path;
+    bool completed;
+    const ReadingStatsDate* today;
+    bool removeRecent;
+    bool deferMove;
+    RemoveRecent remove;
+    void* removeContext;
+    BookReadingStats snapshotBook;
+    GlobalReadingStats snapshotGlobal;
+    bool snapshotSaved = false;
+    CompletionResult result = CompletionResult::Unavailable;
+  };
+  auto work =
+      makeUniqueNoThrow<Work>(this, &bookPath, completed, &today, removeRecent, deferMove, remove, removeContext);
+  if (!work) return CompletionResult::Unavailable;
+  const auto edit = [](void* raw) {
+    auto& w = *static_cast<Work*>(raw);
+    if (!w.reader->active) {
+      w.reader->global = GlobalReadingStats::load();
+      if (!w.reader->global.writable) return false;
+    }
+    bool saved = false;
+    if (!w.reader->snapshot(w.snapshotBook, w.snapshotGlobal, saved, true) || !saved) {
+      w.result = CompletionResult::SaveFailed;
+      return false;
+    }
+    w.snapshotSaved = true;
+    const uint8_t policy = (w.removeRecent ? readingstats::completionjournal::REMOVE_RECENTS : 0) |
+                           (w.deferMove ? readingstats::completionjournal::DEFER_MOVE_TO_READ : 0);
+    const auto result = readingstats::setClosedBookCompletionStats(*w.path, w.completed, *w.today, policy);
+    if (result != readingstats::ClosedCompletionResult::Applied &&
+        result != readingstats::ClosedCompletionResult::Unchanged) {
+      if (result == readingstats::ClosedCompletionResult::Busy)
+        w.result = CompletionResult::Busy;
+      else if (result == readingstats::ClosedCompletionResult::RecoveryRequired)
+        w.result = CompletionResult::RecoveryRequired;
+      return false;
+    }
+    if (w.removeRecent && !w.remove(*w.path, w.removeContext)) {
+      w.result = CompletionResult::RecoveryRequired;
+      return false;
+    }
+    const auto finalized = readingstats::finalizeClosedBookCompletion(*w.path, w.completed);
+    if (finalized != readingstats::CompletionFinalizeResult::Finalized &&
+        finalized != readingstats::CompletionFinalizeResult::NoPending) {
+      w.result = CompletionResult::RecoveryRequired;
+      return false;
+    }
+    readingstats::applyCompletion(w.reader->book, w.reader->global, w.completed, *w.today);
+    w.result = result == readingstats::ClosedCompletionResult::Applied ? CompletionResult::Applied
+                                                                       : CompletionResult::Unchanged;
+    return true;
+  };
+  const auto outcome = lease.withExclusiveSuspension(edit, work.get());
+  if (outcome == StatsSessionLease::SuspensionResult::RecoveryRequired) {
+    completionRecoveryPending = work->snapshotSaved;
+    completionRecoveryTarget = completed;
+    completionRecoveryDate = today;
+    completionRecoveryWasTracking = active;
+    active = false;
+    completionAvailable = false;
+    startUnavailable = true;
+    return CompletionResult::RecoveryRequired;
+  }
+  if (outcome == StatsSessionLease::SuspensionResult::Busy) return CompletionResult::Busy;
+  if (outcome == StatsSessionLease::SuspensionResult::Unavailable ||
+      outcome == StatsSessionLease::SuspensionResult::NotHeld)
+    return CompletionResult::Unavailable;
+  if (work->result == CompletionResult::RecoveryRequired) {
+    completionRecoveryPending = work->snapshotSaved;
+    completionRecoveryTarget = completed;
+    completionRecoveryDate = today;
+    completionRecoveryWasTracking = active;
+    active = false;
+    completionAvailable = false;
+    startUnavailable = true;
+    lease.release();
+  }
+  return work->result;
+}
+
+ReaderStats::CompletionResult ReaderStats::recoverCompletionStats(const std::string& cachePath,
+                                                                  const std::string& bookPath, RemoveRecent remove,
+                                                                  void* removeContext) {
+  if (active || !completionRecoveryPending || !readingstats::completionCacheMatchesBook(bookPath, cachePath) ||
+      readingstats::bookDirectory(cachePath) != directory)
+    return CompletionResult::Unavailable;
+  struct Recovery {
+    ReaderStats* reader;
+    const std::string* path;
+    RemoveRecent remove;
+    void* removeContext;
+    CompletionResult result = CompletionResult::RecoveryRequired;
+  };
+  Recovery work{this, &bookPath, remove, removeContext};
+  const auto recover = [](void* raw) {
+    auto& w = *static_cast<Recovery*>(raw);
+    auto& reader = *w.reader;
+    if (!reader.lease.release()) return true;
+    bool target = false;
+    uint8_t policy = 0;
+    if (readingstats::probeClosedBookCompletion(*w.path, target, &policy) !=
+            readingstats::CompletionProbeResult::Matching ||
+        target != reader.completionRecoveryTarget ||
+        (policy &
+         ~(readingstats::completionjournal::REMOVE_RECENTS | readingstats::completionjournal::DEFER_MOVE_TO_READ)) ||
+        ((policy & readingstats::completionjournal::REMOVE_RECENTS) && !w.remove))
+      return true;
+    if (readingstats::recoverClosedBookCompletionStats(*w.path, target) !=
+        readingstats::CompletionRecoveryResult::Recovered)
+      return true;
+    if ((policy & readingstats::completionjournal::REMOVE_RECENTS) && !w.remove(*w.path, w.removeContext)) return true;
+    if (readingstats::finalizeClosedBookCompletion(*w.path, target) !=
+        readingstats::CompletionFinalizeResult::Finalized)
+      return true;
+    readingstats::applyCompletion(reader.book, reader.global, target, reader.completionRecoveryDate);
+    // If reacquisition fails after retirement, leave tracking stopped. A later
+    // caller must reload persisted statistics before it can safely resume.
+    reader.completionRecoveryPending = false;
+    if (!reader.lease.acquire()) return true;
+    reader.active = reader.completionRecoveryWasTracking;
+    reader.completionAvailable = true;
+    reader.startUnavailable = false;
+    w.result = CompletionResult::Applied;
+    return true;
+  };
+  return Storage.withStorageLock(recover, &work) ? work.result : CompletionResult::Unavailable;
 }
 
 bool ReaderStats::editBookDate(bool started, const ReadingStatsDate& date, BookReadingStats& bookOut,

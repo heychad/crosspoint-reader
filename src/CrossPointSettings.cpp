@@ -21,7 +21,10 @@
 #include "SettingsList.h"
 #include "activities/reader/StatsSaveNotice.h"
 #include "fontIds.h"
+#include "personalization/CrossInkImportGuard.h"
 #include "personalization/LegacyHomeShortcut.h"
+#include "personalization/LegacyPowerShortcuts.h"
+#include "personalization/LegacySideShortcuts.h"
 #include "personalization/ReaderBarsJson.h"
 #include "personalization/ReaderGestureJson.h"
 #include "personalization/ReaderQuickActions.h"
@@ -45,6 +48,15 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 
 bool CrossPointSettings::saveSpecializedToFile() const {
   std::lock_guard<std::mutex> lock(storeMutex);
+  if (!crossInkImportGuardChecked) {
+    crossInkImportGuardBlocked = crossinkimport::inspectImports() != crossinkimport::GuardState::Clear;
+    crossInkImportGuardChecked = true;
+  }
+  if (crossInkImportWriteBlocked || crossInkImportGuardBlocked) {
+    LOG_ERR("CPS", "Settings writes blocked after an uncertain CrossInk import");
+    settingsSaveNotice().recordFailure();
+    return false;
+  }
   const bool saved = [this] {
     size_t size = 0;
     std::unique_ptr<char[]> bytes;
@@ -66,11 +78,110 @@ bool CrossPointSettings::saveSpecializedToFile() const {
   return saved;
 }
 
+crossinkimport::ApplyResult CrossPointSettings::importCrossInkControls(
+    char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]) {
+  return importCrossInkSettings(crossinkimport::ImportKind::Controls, snapshot);
+}
+
+crossinkimport::ApplyResult CrossPointSettings::importCrossInkBars(
+    char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]) {
+  return importCrossInkSettings(crossinkimport::ImportKind::ReaderBars, snapshot);
+}
+crossinkimport::ApplyResult CrossPointSettings::importCrossInkLibrary(
+    char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]) {
+  return importCrossInkSettings(crossinkimport::ImportKind::Library, snapshot);
+}
+crossinkimport::ApplyResult CrossPointSettings::importCrossInkPreferences(
+    char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]) {
+  return importCrossInkSettings(crossinkimport::ImportKind::Preferences, snapshot);
+}
+
+crossinkimport::ApplyResult CrossPointSettings::importCrossInkSettings(
+    crossinkimport::ImportKind kind, char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]) {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  snapshot[0] = '\0';
+  if (crossInkImportWriteBlocked || crossInkImportGuardBlocked) return crossinkimport::ApplyResult::RecoveryRequired;
+  HalFile file = Storage.openChecked(getFilePath(), O_RDONLY);
+  if (!file) return crossinkimport::ApplyResult::Unavailable;
+  const uint64_t size = file.fileSize64();
+  if (file.isDirectory() || !size || size > 32768) {
+    file.close();
+    return crossinkimport::ApplyResult::Unavailable;
+  }
+  auto original = makeUniqueNoThrow<char[]>(static_cast<size_t>(size));
+  if (!original) {
+    LOG_ERR("CROSSINK", "Could not allocate %u bytes for current settings", static_cast<unsigned>(size));
+    file.close();
+    return crossinkimport::ApplyResult::Unavailable;
+  }
+  const bool read = file.read(original.get(), static_cast<size_t>(size)) == static_cast<int>(size);
+  const bool closed = file.close();
+  if (!read || !closed) return crossinkimport::ApplyResult::Unavailable;
+  JsonDocument proposed;
+  if (deserializeJson(proposed, static_cast<const char*>(original.get()), static_cast<size_t>(size),
+                      DeserializationOption::NestingLimit(16)) ||
+      !proposed.is<JsonObjectConst>())
+    return crossinkimport::ApplyResult::Unavailable;
+  for (const char* key : {"sdFontFamilyName", "dictionaryName", "keyboardLayouts", "bleRemotes"})
+    proposed.as<JsonObject>().remove(key);
+  toJson(proposed);
+  if (proposed.overflowed()) return crossinkimport::ApplyResult::Unavailable;
+  const auto bindings = readerquickactions::bindingValues(*this);
+  const bool hasQuickTrigger = std::any_of(bindings.begin(), bindings.end(), [](uint8_t value) { return value != 0; });
+  crossinkimport::ApplyResult result = crossinkimport::ApplyResult::Unavailable;
+  switch (kind) {
+    case crossinkimport::ImportKind::Controls:
+      result = crossinkimport::publishControls(proposed, true, hasQuickTrigger, original.get(),
+                                               static_cast<size_t>(size), snapshot);
+      break;
+    case crossinkimport::ImportKind::ReaderBars:
+      result = crossinkimport::publishReaderBars(proposed, original.get(), static_cast<size_t>(size), snapshot);
+      break;
+    case crossinkimport::ImportKind::Library:
+      result = crossinkimport::publishLibrary(proposed, original.get(), static_cast<size_t>(size), snapshot);
+      break;
+    case crossinkimport::ImportKind::Preferences:
+      result = crossinkimport::publishPreferences(proposed, original.get(), static_cast<size_t>(size), snapshot);
+      break;
+  }
+  if (result == crossinkimport::ApplyResult::WriteUncertain ||
+      result == crossinkimport::ApplyResult::RecoveryRequired) {
+    crossInkImportWriteBlocked = true;
+    settingsSaveNotice().recordFailure();
+  } else if (result == crossinkimport::ApplyResult::Published) {
+    const bool pendingResave = resaveRequested;
+    if (!fromJson(proposed.as<JsonVariantConst>())) {
+      crossInkImportWriteBlocked = true;
+      settingsSaveNotice().recordFailure();
+      resaveRequested = pendingResave;
+      return crossinkimport::ApplyResult::WriteUncertain;
+    }
+    resaveRequested = pendingResave;
+  }
+  return result;
+}
+
+crossinkimport::RecoveryResult CrossPointSettings::recoverUnchangedCrossInkImport() {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  const auto result = crossinkimport::recoverUnchangedImport();
+  if (result == crossinkimport::RecoveryResult::Recovered) {
+    crossInkImportWriteBlocked = false;
+    crossInkImportGuardBlocked = false;
+    crossInkImportGuardChecked = true;
+  }
+  return result;
+}
+
 bool CrossPointSettings::loadSpecializedFromFile() {
   bool ok = false;
   bool doResave = false;
   {
     std::lock_guard<std::mutex> lock(storeMutex);
+    if (!crossInkImportGuardChecked) {
+      crossInkImportGuardBlocked = crossinkimport::inspectImports() != crossinkimport::GuardState::Clear;
+      crossInkImportGuardChecked = true;
+      if (crossInkImportGuardBlocked) settingsSaveNotice().recordFailure();
+    }
     struct LoadContext {
       CrossPointSettings* settings;
       bool ok;
@@ -296,6 +407,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   };
   forEachBaseSetting(visit);
+  readershortcuts::readEmbeddedLegacyPower(doc, {&powerHoldAction, &powerUpChordAction});
+  readershortcuts::readEmbeddedLegacySideOrientation(doc, readerSideFollowOrientation);
+  readershortcuts::readEmbeddedLegacySides(
+      doc, {&readerUpTap, &readerUpHold, &readerDownTap, &readerDownHold, &readerSideChord});
   if (BoardConfig::hasTouch()) {
     // A normal settings save later persists imported values under modern keys.
     readergestures::readEmbeddedLegacyEdges(
@@ -303,6 +418,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   }
   needsResave |= readergestures::readBindings(doc, twoFingerActions);
   needsResave |= readerquickactions::read(doc, readerQuickActions);
+  const bool importedLegacyQuickSlots = readershortcuts::readEmbeddedLegacyQuickSlots(doc, readerQuickActions);
 
   // Plugin System did not exist in older settings files. Preserve the behavior
   // of users who already have SD plugins installed, while keeping the new
@@ -441,6 +557,16 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
 
+  const auto quickBindingsAfterLoad = readerquickactions::bindingValues(s);
+  const bool currentQuickTrigger = std::any_of(quickBindingsAfterLoad.begin(), quickBindingsAfterLoad.end(),
+                                               [](uint8_t value) { return value != 0; });
+  const bool invalidLegacyQuickSlots =
+      doc["readerQuickActionsV1"].isUnbound() && !doc["quickActionSlots"].isUnbound() && !importedLegacyQuickSlots;
+  readershortcuts::readEmbeddedLegacySideQuickAction(
+      doc, {&readerUpTap, &readerUpHold, &readerDownTap, &readerDownHold, &readerSideChord},
+      currentQuickTrigger || invalidLegacyQuickSlots);
+  readershortcuts::readEmbeddedLegacyPowerQuickAction(doc, {&powerTapAction, &powerHoldAction, &powerUpChordAction},
+                                                      currentQuickTrigger || invalidLegacyQuickSlots);
   needsResave |= readerquickactions::normalizeChangedBindings(s, quickBindingsBefore);
 
   if (needsResave) {

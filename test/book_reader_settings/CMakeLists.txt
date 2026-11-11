@@ -1,14 +1,23 @@
 FetchContent_GetProperties(ArduinoJson)
 add_executable(BookReaderSettingsTest
   BookReaderSettingsTest.cpp
+  StatsAccessGateStub.cpp
   ${REPO_ROOT}/src/personalization/BookReaderSettings.cpp
   ${REPO_ROOT}/src/personalization/CrossInkBookSettings.cpp
+  ${REPO_ROOT}/src/personalization/CrossInkSettingsSource.cpp
+  ${REPO_ROOT}/src/personalization/CrossInkImportSnapshot.cpp
+  ${REPO_ROOT}/src/personalization/CrossInkImportGuard.cpp
+  ${REPO_ROOT}/src/personalization/CrossInkImportTransaction.cpp
+  ${REPO_ROOT}/lib/Serialization/SettingsSafeWrite.cpp
+  ${REPO_ROOT}/lib/Serialization/SettingsRecoveryProbe.cpp
   ${REPO_ROOT}/src/activities/reader/BookReaderPreferences.cpp
   ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
+  ${REPO_ROOT}/lib/Serialization/MoveReferenceSafeWrite.cpp
   ${REPO_ROOT}/src/activities/reader/ReadingStatsStore.cpp
   ${REPO_ROOT}/src/activities/reader/BookTracking.cpp
   ${REPO_ROOT}/src/activities/reader/BookReadingStats.cpp
   ${REPO_ROOT}/src/activities/reader/StatsSafeReplace.cpp
+  ${REPO_ROOT}/src/activities/reader/StatsSessionLease.cpp
   ${REPO_ROOT}/src/activities/reader/ReadingStatsUtils.cpp
 )
 target_include_directories(BookReaderSettingsTest PRIVATE

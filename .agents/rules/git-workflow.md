@@ -29,12 +29,15 @@ body containing relevant facts and verification. Types match branch prefixes.
 
 ### When to Commit
 
-A local commit requires explicit human approval, completed requested work,
-relevant passing checks, and [firmware-handoff](../skills/firmware-handoff/SKILL.md)
-for firmware/build changes. A pure refactor preserves behavior. Do not commit
-experiments, failed builds, build warnings, or ignored outputs; inspect status
-and `.gitignore` before staging. Exclude unrelated user work. Ask if commit
-authorization is unclear.
+A local commit requires human authorization. Authorized WIP checkpoints on a
+personal development branch may include unfinished and experimental work after
+a scoped diff review, secret and file scan, and relevant checks. Label these
+commits WIP and document known failures and unverified behavior. Do not include
+generated build outputs or unrelated work. Push requires human authorization.
+
+Releases and merges to the supported branch require completed work, passing
+checks, and [firmware-handoff](../skills/firmware-handoff/SKILL.md), including its
+four independent reviews. A checkpoint does not satisfy this release gate.
 
 Hardware testing is required before a PR, not before an approved local commit.
 The human owns hardware results and PR prose/publication.

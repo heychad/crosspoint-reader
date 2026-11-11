@@ -8,6 +8,8 @@
 #include <cstdint>
 
 #include "personalization/BookReaderSettings.h"
+#include "personalization/CrossInkImportGuard.h"
+#include "personalization/CrossInkImportTransaction.h"
 #include "personalization/ReaderBars.h"
 #include "personalization/ReaderShortcuts.h"
 #include "personalization/UiScale.h"
@@ -18,12 +20,22 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Private constructor for singleton
   CrossPointSettings() = default;
   BookReaderSettingsScope bookReaderSettings;
+  bool crossInkImportWriteBlocked = false;
+  mutable bool crossInkImportGuardChecked = false;
+  mutable bool crossInkImportGuardBlocked = false;
 
   friend class PersistableStore<CrossPointSettings>;
   bool saveSpecializedToFile() const;
   bool loadSpecializedFromFile();
+  crossinkimport::ApplyResult importCrossInkSettings(crossinkimport::ImportKind kind,
+                                                     char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]);
 
  public:
+  crossinkimport::ApplyResult importCrossInkControls(char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]);
+  crossinkimport::ApplyResult importCrossInkBars(char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]);
+  crossinkimport::ApplyResult importCrossInkLibrary(char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]);
+  crossinkimport::ApplyResult importCrossInkPreferences(char (&snapshot)[crossinkimport::SNAPSHOT_PATH_SIZE]);
+  crossinkimport::RecoveryResult recoverUnchangedCrossInkImport();
   enum SLEEP_SCREEN_MODE {
     DARK = 0,
     LIGHT = 1,
@@ -37,6 +49,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     READING_STATS_SLEEP = 9,
     READING_SUMMARY_SLEEP = 10,
     COVER_SUMMARY_SLEEP = 11,
+    MINIMAL_BOOK_SLEEP = 12,
+    DASHBOARD_BOOK_SLEEP = 13,
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    PAGE_OVERLAY_SLEEP = 14,
+#endif
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -221,7 +238,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     ROUNDEDRAFF = 3,
     COVER_GRID = 4,
     MINIMAL_HOME = 5,
-    DASHBOARD_HOME = 6
+    DASHBOARD_HOME = 6,
+    LYRA_CAROUSEL = 7
   };
   enum RECENT_BOOKS_VIEW { RECENT_BOOKS_LIST = 0, RECENT_BOOKS_GRID = 1, RECENT_BOOKS_VIEW_COUNT };
 
@@ -291,6 +309,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t readerDownTap = 0;
   uint8_t readerDownHold = 0;
   uint8_t readerSideChord = 0;
+  uint8_t readerSideFollowOrientation = 0;
   uint8_t pinchFontResizeEnabled = 1;
   uint8_t twoFingerRotationEnabled = 1;
   std::array<uint8_t, 4> twoFingerActions{};
@@ -409,6 +428,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Focus Reading - emphasizes the first part of words with bold
   uint8_t focusReadingEnabled = 0;
   uint8_t trackReadingStats = 1;
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+  uint8_t autoBackupStats = 1;
+#endif
   uint8_t readingIdleTimeThresholdUnits = 30;  // Ten-second units, 30s to 10 min.
   uint8_t readerMenuStyle = READER_MENU_LIST;
   // SD card font family name (empty = use built-in fontFamily)

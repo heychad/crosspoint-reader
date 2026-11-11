@@ -23,6 +23,14 @@ enum class HomeButtonAction : uint8_t {
   SavedItems,
   FileTransfer,
   ReadingStatistics,
+  PreviousPage,
+  Screenshot,
+  ToggleNight,
+  ToggleTouch,
+  ToggleTilt,
+  Sleep,
+  ToggleCompletion,
+  CycleFontFamily,
   Count
 };
 

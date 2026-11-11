@@ -34,12 +34,22 @@ int main(){
  assert(homereadershortcuts::actionFor(H::SavedItems)==Action::SavedItems);
  assert(homereadershortcuts::actionFor(H::FileTransfer)==Action::FileTransfer);
  assert(homereadershortcuts::actionFor(H::ReadingStatistics)==Action::ReadingStatistics);
+ assert(homereadershortcuts::actionFor(H::ToggleCompletion)==Action::ToggleCompletion);
+ assert(homereadershortcuts::actionFor(H::CycleFontFamily)==Action::CycleFontFamily);
+ assert(homereadershortcuts::actionFor(H::PreviousPage)==Action::PreviousPage);
+ assert(homereadershortcuts::actionFor(H::Screenshot)==Action::Screenshot);
+ assert(homereadershortcuts::actionFor(H::ToggleNight)==Action::ToggleNight);
+ assert(homereadershortcuts::actionFor(H::ToggleTouch)==Action::ToggleTouch);
+ assert(homereadershortcuts::actionFor(H::ToggleTilt)==Action::ToggleTilt);
+ assert(homereadershortcuts::actionFor(H::Sleep)==Action::Sleep);
  ReaderActivity r;assert(!r.handleHomeReaderShortcut());
  r.mappedInput.action=H::Library;assert(r.handleHomeReaderShortcut() && r.calls==0);
  r.pageRendered=true;r.overlay=true;assert(r.handleHomeReaderShortcut() && r.calls==0);
  r.overlay=false;r.supported=false;assert(r.handleHomeReaderShortcut() && r.calls==0);
  r.supported=true;assert(r.handleHomeReaderShortcut() && r.calls==1 && r.last==Action::Library);
  r.mappedInput.action=H::FileTransfer;assert(r.handleHomeReaderShortcut() && r.calls==2 && r.last==Action::FileTransfer);
+ r.mappedInput.action=H::ToggleCompletion;assert(r.handleHomeReaderShortcut() && r.calls==3 && r.last==Action::ToggleCompletion);
+ r.mappedInput.action=H::CycleFontFamily;assert(r.handleHomeReaderShortcut() && r.calls==4 && r.last==Action::CycleFontFamily);
 }
 '''
 reader = (root / 'src/activities/reader/ReaderActivity.cpp').read_text()
@@ -51,7 +61,7 @@ assert epub_loop.index('overlay != Overlay::None') < epub_loop.index('handleHome
 assert 'if (!endOfBookMenuOpen && handleHomeReaderShortcut()) return;' in epub_loop
 for transition in epub.split('overlay = Overlay::None;')[:-1]:
     assert transition.rstrip().endswith('mappedInput.resetHomeButtonInput();')
-for action in ('FileBrowser','Library','SavedItems','FileTransfer','ReadingStatistics'):
+for action in ('FileBrowser','Library','SavedItems','FileTransfer','ReadingStatistics','PreviousPage','Screenshot','ToggleNight','ToggleTouch','ToggleTilt','Sleep','ToggleCompletion','CycleFontFamily'):
     assert f'case HomeButtonAction::{action}:' in epub_loop[:epub_loop.index('if (automaticPageTurnActive)')]
 with tempfile.TemporaryDirectory() as directory:
     directory = Path(directory)

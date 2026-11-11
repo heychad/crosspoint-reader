@@ -126,6 +126,16 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
   }
 };
 
+TEST_F(ChapterHtmlSlimParserTest, LayoutLossReportsOutOfMemoryWithoutParsing) {
+  parser.xmlParser_ = XML_ParserCreate(nullptr);
+  ASSERT_NE(parser.xmlParser_, nullptr);
+  parser.layoutOom = true;
+  EXPECT_EQ(parser.parseStep(), ChapterHtmlSlimParser::ParseStatus::Error);
+  EXPECT_EQ(parser.lastParseFailure(), EpubBuildFailure::OutOfMemory);
+  parser.abortParse();
+  EXPECT_EQ(parser.lastParseFailure(), EpubBuildFailure::OutOfMemory);
+}
+
 TEST(ImageDimsProbe, ReadsBothGifSignaturesInFragmentedStreams) {
   for (const uint8_t version : {'7', '9'}) {
     const uint8_t header[] = {'G', 'I', 'F', '8', version, 'a', 0, 12, 2, 0};
@@ -2299,4 +2309,44 @@ TEST(TextDecorationPosition, UnderlineStaysBelowBaseline) {
     line->render(renderer, 0, 0, 20);
     EXPECT_EQ(renderer.lastLineY, 34);
   });
+}
+
+TEST(PageSerialization, RejectsEveryTruncatedWrite) {
+  GfxRenderer renderer;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textIndentDefined = true;
+  ParsedText text(false, false, style);
+  text.addWord("Alpha", EpdFontFamily::REGULAR);
+  text.addWord("Beta", EpdFontFamily::BOLD);
+  Page page;
+  text.layoutAndExtractLines(
+      renderer, 0, 200,
+      [&](std::unique_ptr<TextBlock> line, auto) {
+        page.elements.push_back(std::make_unique<PageLine>(std::move(line), 4, 12));
+      },
+      true, 0, 100);
+  ASSERT_FALSE(page.elements.empty());
+  page.elements.push_back(std::make_unique<PageHorizontalRule>(60, 1, 2, 18));
+  page.elements.push_back(std::make_unique<PageDropCap>(0, 256, EpdFontFamily::REGULAR, "A", 3, 20));
+  CssBorderSide sides[4]{};
+  page.elements.push_back(std::make_unique<PageBorderBox>(80, 30, sides, true, 1, 1));
+  page.addFootnote("1", "#note");
+  ASSERT_TRUE(page.addLink("#chapter", 3, 4, 10, 12));
+  const auto path = (std::filesystem::temp_directory_path() / "crosspoint-page-write-fault.bin").string();
+  size_t fullSize = 0;
+  {
+    HalFile output;
+    ASSERT_TRUE(output.open(path.c_str(), "wb"));
+    ASSERT_TRUE(page.serialize(output));
+    fullSize = output.position();
+  }
+  ASSERT_GT(fullSize, 0u);
+  for (size_t limit = 0; limit < fullSize; ++limit) {
+    HalFile output;
+    ASSERT_TRUE(output.open(path.c_str(), "wb"));
+    output.limitWritesTo(limit);
+    EXPECT_FALSE(page.serialize(output)) << "write limit " << limit;
+  }
+  std::filesystem::remove(path);
 }

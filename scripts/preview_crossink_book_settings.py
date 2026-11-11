@@ -111,6 +111,9 @@ def decode(data: bytes) -> dict:
         if key == 'lineHeightPercent' and value in LINE_HEIGHTS:
             preview['lineHeight'] = LINE_HEIGHTS.index(value)
             continue
+        if key == 'wordSpacing' and value == 0:
+            preview['wordSpacing'] = 100
+            continue
         # One fork margin replaces two CrossInk margins only when both were
         # explicit, equal and within the native setting's supported range.
         if key in ('screenMarginVertical', 'screenMarginHorizontal'):

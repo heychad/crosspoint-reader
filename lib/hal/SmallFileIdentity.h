@@ -66,3 +66,47 @@ bool settingsFilesHaveDisjointChains(File& left, File& right) {
       if (a[i] == b[j]) return false;
   return true;
 }
+
+// Move checks allow up to 512 clusters using at most two 2 KiB buffers.
+// Both handles must come from the same mounted volume under the storage lock.
+template <typename File>
+bool moveFileHasCheckedChain(File& file) {
+  constexpr size_t kMaxClusters = 512;
+  auto clusters = makeUniqueNoThrow<uint32_t[]>(kMaxClusters);
+  if (!clusters) return false;
+  size_t count = 0;
+  return file.settingsClusterList(clusters.get(), kMaxClusters, &count) && count != 0;
+}
+
+template <typename File>
+bool moveFilesHaveDisjointChains(File& left, File& right) {
+  constexpr size_t kMaxClusters = 512;
+  auto a = makeUniqueNoThrow<uint32_t[]>(kMaxClusters);
+  if (!a) return false;
+  auto b = makeUniqueNoThrow<uint32_t[]>(kMaxClusters);
+  if (!b) return false;
+  size_t aCount = 0, bCount = 0;
+  if (!left.settingsClusterList(a.get(), kMaxClusters, &aCount) ||
+      !right.settingsClusterList(b.get(), kMaxClusters, &bCount) || !aCount || !bCount)
+    return false;
+  for (size_t i = 0; i < aCount; ++i)
+    for (size_t j = 0; j < bCount; ++j)
+      if (a[i] == b[j]) return false;
+  return true;
+}
+
+template <typename File>
+bool moveFilesHaveIndependentStorage(File& left, File& right) {
+  // Empty files still need distinct entries even though they own no clusters.
+  const auto unallocatedEmpty = [](const File& file) {
+    return file.isFile() && file.fileSize() == 0 && file.dataLength() == 0 && file.validLength() == 0 &&
+           file.firstCluster() == 0;
+  };
+  const bool leftEmpty = unallocatedEmpty(left), rightEmpty = unallocatedEmpty(right);
+  if (!leftEmpty && !rightEmpty) return moveFilesHaveDisjointChains(left, right);
+  if (!left.moveDifferentEntry(right)) return false;
+  if (leftEmpty && rightEmpty) return true;
+  if (leftEmpty) return moveFileHasCheckedChain(right);
+  if (rightEmpty) return moveFileHasCheckedChain(left);
+  return false;
+}

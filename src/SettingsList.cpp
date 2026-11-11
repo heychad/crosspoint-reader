@@ -25,6 +25,11 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
     values[CrossPointSettings::READING_STATS_SLEEP] = StrId::STR_READING_STATISTICS;
     values[CrossPointSettings::READING_SUMMARY_SLEEP] = StrId::STR_READING_SUMMARY;
     values[CrossPointSettings::COVER_SUMMARY_SLEEP] = StrId::STR_COVER_READING_SUMMARY;
+    values[CrossPointSettings::MINIMAL_BOOK_SLEEP] = StrId::STR_MINIMAL_BOOK_SLEEP;
+    values[CrossPointSettings::DASHBOARD_BOOK_SLEEP] = StrId::STR_DASHBOARD_BOOK_SLEEP;
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    values[CrossPointSettings::PAGE_OVERLAY_SLEEP] = StrId::STR_PAGE_OVERLAY_SLEEP;
+#endif
     return values;
   }();
   static constexpr auto STATUS_BAR_CLOCK_VALUES = [] {
@@ -74,6 +79,10 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   // --- Reader ---
   emit(SettingInfo::Toggle(StrId::STR_TRACK_READING_STATS, &CrossPointSettings::trackReadingStats, "trackReadingStats",
                            StrId::STR_CAT_READER));
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+  emit(SettingInfo::Toggle(StrId::STR_AUTO_BACKUP_STATS, &CrossPointSettings::autoBackupStats, "autoBackupStats",
+                           StrId::STR_CAT_READER));
+#endif
   emit(SettingInfo::Value(StrId::STR_READING_IDLE_LIMIT, &CrossPointSettings::readingIdleTimeThresholdUnits, {3, 60, 1},
                           "readingIdleTimeThresholdUnits", StrId::STR_CAT_READER)
            .withWebHidden());
@@ -181,6 +190,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                                  "confirmHoldAction", StrId::STR_CAT_CONTROLS));
   }
 
+  emit(SettingInfo::Toggle(StrId::STR_SIDE_SHORTCUTS_FOLLOW_ORIENTATION,
+                           &CrossPointSettings::readerSideFollowOrientation, "readerSideFollowOrientation",
+                           StrId::STR_CAT_CONTROLS));
   emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_UP_TAP, &CrossPointSettings::readerUpTap, readerActions,
                                "readerUpTap", StrId::STR_CAT_CONTROLS));
   emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_UP_HOLD, &CrossPointSettings::readerUpHold, readerActions,

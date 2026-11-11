@@ -48,6 +48,9 @@ ActivityManager::ActivityManager(GfxRenderer& renderer, MappedInputManager& mapp
 ActivityManager::~ActivityManager() { assert(false); /* should never be called */ }
 
 void ActivityManager::begin() {
+  TaskHandle_t noTask = nullptr;
+  mainTaskHandle.compare_exchange_strong(noTask, xTaskGetCurrentTaskHandle(), std::memory_order_release,
+                                         std::memory_order_relaxed);
 #if defined(configNUM_CORES) && configNUM_CORES > 1
   constexpr BaseType_t renderTaskCore = 1;
 #else
@@ -79,11 +82,28 @@ void ActivityManager::renderTaskTrampoline(void* param) {
 }
 
 void ActivityManager::renderTaskLoop() {
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  uint32_t renderedSequence = 0;
+#endif
   while (true) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+    const uint32_t sequence = normalRenderSequence.load(std::memory_order_acquire);
+    const bool background = backgroundRenderPending.exchange(false, std::memory_order_acq_rel);
+    if (background && sequence == renderedSequence && !requestedUpdate.load(std::memory_order_acquire)) {
+      if (currentActivity && !isInputLocked() && backgroundRenderVisit == screenVisit) {
+        HalPowerManager::Lock powerLock;
+        renderInFlight.store(true, std::memory_order_release);
+        currentActivity->renderBackground(std::move(lock));
+        renderInFlight.store(false, std::memory_order_release);
+      }
+      continue;
+    }
+    renderedSequence = sequence;
+#endif
     if (isInputLocked()) lockedRenderPending = true;
     if (currentActivity && !isInputLocked()) {
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
@@ -118,14 +138,13 @@ void ActivityManager::loop() {
     // processing a pending action here could re-enable filesystem users while
     // the USB host still owns the raw SD card.
     if (requestedUpdate.exchange(false) && renderTaskHandle) {
-      xTaskNotify(renderTaskHandle, 1, eIncrement);
+      notifyRenderTask();
     }
     return;
   }
 
   bool readerGestureHandled = false;
-  if (currentActivity && currentActivity->isReaderActivity()) {
-    auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  if (auto* reader = currentActivity ? currentActivity->bookReader() : nullptr) {
     if (mappedInput.homeButtonAction() == HomeButtonAction::QuickActions) {
       reader->finishReaderGestures();
       reader->handleReaderShortcut(readershortcuts::Action::QuickActions);
@@ -213,6 +232,13 @@ void ActivityManager::loop() {
           handler(pendingResult);
         }
 
+        if (pendingHomeReaderTarget) {
+          if (pendingAction != PendingAction::None)
+            pendingHomeReaderTarget = nullptr;
+          else if (continueHomeReaderUnwind())
+            continue;
+        }
+
         // Request an update to ensure the popped activity gets re-rendered
         if (pendingAction == PendingAction::None) {
           requestUpdate();
@@ -235,8 +261,7 @@ void ActivityManager::loop() {
           stackActivities.pop_back();
         }
       } else if (pendingAction == PendingAction::Push) {
-        if (currentActivity && currentActivity->isReaderActivity()) {
-          auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+        if (auto* reader = currentActivity ? currentActivity->bookReader() : nullptr) {
           reader->readingStats.pause();
           reader->finishReaderGestures();
         }
@@ -263,7 +288,7 @@ void ActivityManager::loop() {
     // Using direct notification to signal the render task to update
     // Increment counter so multiple rapid calls won't be lost
     if (renderTaskHandle) {
-      xTaskNotify(renderTaskHandle, 1, eIncrement);
+      notifyRenderTask();
     }
   }
 }
@@ -281,6 +306,7 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   mappedInput.resetHomeButtonInput();
+  pendingHomeReaderTarget = nullptr;
   // Note: no lock here, this is usually called by loop() and we may run into deadlock
   if (currentActivity) {
     // Defer launch if we're currently in an activity, to avoid deleting the current activity
@@ -455,6 +481,17 @@ void ActivityManager::popActivity() {
 }
 
 bool ActivityManager::preventAutoSleep() const { return currentActivity && currentActivity->preventAutoSleep(); }
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+void ActivityManager::notifyUserInput() {
+  if (currentActivity) currentActivity->onUserInput();
+}
+void ActivityManager::requestBackgroundRender() {
+  if (!renderTaskHandle) return;
+  backgroundRenderVisit = screenVisit;
+  backgroundRenderPending.store(true, std::memory_order_release);
+  xTaskNotify(renderTaskHandle, 1, eIncrement);
+}
+#endif
 
 bool ActivityManager::requiresExclusiveStorageLoop() const {
   return currentActivity && currentActivity->requiresExclusiveStorageLoop();
@@ -467,7 +504,7 @@ bool ActivityManager::isReaderActivity() const {
 }
 
 bool ActivityManager::isForegroundReader() const {
-  return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->bookReader();
 }
 
 bool ActivityManager::isForegroundReaderPage() const {
@@ -492,7 +529,7 @@ bool ActivityManager::isForegroundHomeShown() const {
 bool ActivityManager::remoteShortcut(const bool readerMenu) {
   if (isInputLocked()) return false;
   if (!isForegroundReader()) return false;
-  auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  auto* reader = currentActivity->bookReader();
   if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
                           reader->inputOverPage())) {
     return false;
@@ -503,7 +540,7 @@ bool ActivityManager::remoteShortcut(const bool readerMenu) {
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
   if (isInputLocked()) return false;
   if (!isRemoteReaderContext() || mappedInput.hasRemoteClick()) return false;
-  auto* reader = isForegroundReader() ? static_cast<ReaderActivity*>(currentActivity.get()) : nullptr;
+  auto* reader = isForegroundReader() ? currentActivity->bookReader() : nullptr;
   if (!reader || reader->inputOverPage()) {
     return !chapter && remoteClick(forward ? RemoteButton::Next : RemoteButton::Previous);
   }
@@ -534,10 +571,18 @@ void ActivityManager::prepareForSleep() {
   if (currentActivity) currentActivity->prepareForSleep();
 }
 
+void ActivityManager::notifyRenderTask() {
+  if (!renderTaskHandle) return;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  normalRenderSequence.fetch_add(1, std::memory_order_release);
+#endif
+  xTaskNotify(renderTaskHandle, 1, eIncrement);
+}
+
 void ActivityManager::requestUpdate(bool immediate) {
   if (immediate) {
     if (renderTaskHandle) {
-      xTaskNotify(renderTaskHandle, 1, eIncrement);
+      notifyRenderTask();
     }
   } else {
     // Deferring the update until current loop is finished
@@ -571,7 +616,7 @@ void ActivityManager::requestUpdateAndWait() {
   // Cannot call while holding RenderLock or it will cause a deadlock
   assert(!holdingRenderLock && "Cannot call requestUpdateAndWait() while holding RenderLock");
 
-  xTaskNotify(renderTaskHandle, 1, eIncrement);
+  notifyRenderTask();
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 }
 
@@ -660,8 +705,8 @@ bool ActivityManager::dispatchShortcut(readershortcuts::Action action, QuickLock
     return true;
   }
   if (isInputLocked()) return false;
-  if (isForegroundReader())
-    return static_cast<ReaderActivity*>(currentActivity.get())->handleReaderShortcut(action, trigger);
+  if (action == Action::HomeReader) return handleHomeReaderShortcut();
+  if (isForegroundReader()) return currentActivity->bookReader()->handleReaderShortcut(action, trigger);
   switch (action) {
     case Action::Home:
       goHome();
@@ -684,4 +729,42 @@ bool ActivityManager::dispatchShortcut(readershortcuts::Action action, QuickLock
     default:
       return false;  // Reader-only commands are inert outside a reader.
   }
+}
+
+bool ActivityManager::handleHomeReaderShortcut() {
+  if (pendingAction != PendingAction::None || pendingHomeReaderTarget) return true;
+  if (!currentActivity || currentActivity->isHomeActivity() || currentActivity->requiresExclusiveStorageLoop())
+    return true;
+  if (currentActivity->bookReader()) {
+    goHome();
+    return true;
+  }
+  const auto reader = std::find_if(stackActivities.rbegin(), stackActivities.rend(),
+                                   [](const auto& activity) { return activity && activity->bookReader(); });
+  if (reader == stackActivities.rend()) {
+    goHome();
+    return true;
+  }
+  pendingHomeReaderTarget = reader->get();
+  return continueHomeReaderUnwind();
+}
+
+bool ActivityManager::continueHomeReaderUnwind() {
+  if (!pendingHomeReaderTarget) return false;
+  if (!currentActivity || currentActivity.get() == pendingHomeReaderTarget ||
+      currentActivity->requiresExclusiveStorageLoop()) {
+    pendingHomeReaderTarget = nullptr;
+    return false;
+  }
+  const auto target = std::find_if(stackActivities.begin(), stackActivities.end(),
+                                   [this](const auto& activity) { return activity.get() == pendingHomeReaderTarget; });
+  if (target == stackActivities.end()) {
+    pendingHomeReaderTarget = nullptr;
+    return false;
+  }
+  ActivityResult result;
+  result.isCancelled = true;
+  currentActivity->setResult(std::move(result));
+  popActivity();
+  return true;
 }

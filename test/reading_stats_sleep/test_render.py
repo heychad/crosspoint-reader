@@ -48,7 +48,10 @@ struct BookReadingStats {
  ReadingStatsDate projectedFinishDate(const ReadingStatsDateTime&,int) const {return {};}
 };
 struct GlobalReadingStats { uint32_t totalSessions=0,totalReadingSeconds=0,totalPagesTurned=0; };
-namespace sleepstats {struct Data { BookReadingStats book;GlobalReadingStats device;ReadingStatsDateTime now;int progress=-1;bool hasClock=false,hasDevice=false;};}
+namespace sleepstats {
+struct Data { BookReadingStats book;GlobalReadingStats device;ReadingStatsDateTime now;int progress=-1;bool hasClock=false,hasDevice=false;};
+struct DashboardData {int progress=-1;uint32_t readingSeconds=0,remainingSeconds=0,sessions=0,pages=0,globalSeconds=0,completedBooks=0,dailyAverageSeconds=0;ReadingStatsDate startDate;uint16_t currentStreak=0;bool hasStats=false,hasGlobal=false,hasDailyAverage=false,hasStreak=false;};
+}
 int utf8SafeTruncateBuffer(const char* b,int n){if(!n)return 0;int p=n-1;while(p>0 && (static_cast<unsigned char>(b[p])&0xc0)==0x80)--p;unsigned char c=b[p];int len=c<128?1:c<224?2:c<240?3:4;return n-p<len?p:n;}
 namespace readingcharts {int barWidth(uint32_t v,uint32_t max,int width){return max?int(uint64_t(v)*width/max):0;}}
 '''.replace('IDS', ','.join(ids))
@@ -70,6 +73,22 @@ int main(){
  Bitmap cover;GfxRenderer withCover;data.progress=42;assert(sleepstats::drawCoverSummary(withCover,"Book",data,cover));assert(saw(withCover,"42%") && saw(withCover,"Book"));
  GfxRenderer badCover;coverDrawOk=false;assert(!sleepstats::drawCoverSummary(badCover,"Book",data,cover));coverDrawOk=true;
  for(int height=120;height<=820;height+=7){GfxRenderer resized;resized.height=height;sleepstats::drawCoverSummary(resized,"Book",data,cover);}
+ GfxRenderer minimal;assert(sleepstats::drawMinimalBook(minimal,"Book",37,400,&cover));
+ assert(minimal.cleared && saw(minimal,"37%") && saw(minimal,"400s"));
+ GfxRenderer placeholder;assert(sleepstats::drawMinimalBook(placeholder,"Unknown book",-1,0,nullptr));
+ assert(placeholder.cleared && saw(placeholder,"Unknown book") && !saw(placeholder,"0%"));
+ GfxRenderer clipped;assert(sleepstats::drawMinimalBook(clipped,"Book",140,0,&cover) && saw(clipped,"100%"));
+ GfxRenderer brokenCover;coverDrawOk=false;
+ assert(sleepstats::drawMinimalBook(brokenCover,"Fallback",42,0,&cover) && saw(brokenCover,"Fallback"));
+ coverDrawOk=true;
+ for(int height=120;height<=820;height+=7){GfxRenderer resized;resized.height=height;sleepstats::drawMinimalBook(resized,"Book",37,400,&cover);}
+ sleepstats::DashboardData dashboard;dashboard.progress=42;dashboard.hasStats=true;dashboard.readingSeconds=600;dashboard.pages=30;dashboard.sessions=3;dashboard.hasGlobal=true;dashboard.globalSeconds=1200;dashboard.completedBooks=7;dashboard.startDate={2026,11,8};dashboard.hasDailyAverage=true;dashboard.dailyAverageSeconds=300;dashboard.hasStreak=true;dashboard.currentStreak=5;
+ GfxRenderer dashboardScreen;assert(sleepstats::drawBookDashboard(dashboardScreen,"Book","Author",dashboard,&cover));
+ assert(saw(dashboardScreen,"42%") && saw(dashboardScreen,"Book") && saw(dashboardScreen,"Author") && saw(dashboardScreen,"7") && saw(dashboardScreen,"2026-11-08") && saw(dashboardScreen,"300s") && saw(dashboardScreen,"5"));
+ for(int height=120;height<=820;height+=7){GfxRenderer resized;resized.height=height;sleepstats::drawBookDashboard(resized,"Book","Author",dashboard,&cover);}
+ GfxRenderer dashboardFallback;dashboard.hasStats=false;dashboard.hasGlobal=false;
+ assert(sleepstats::drawBookDashboard(dashboardFallback,"No cover","",dashboard,nullptr));assert(saw(dashboardFallback,"No cover"));
+ for(int height=120;height<=820;height+=7){GfxRenderer resized;resized.height=height;sleepstats::drawBookDashboard(resized,"Book","Author",dashboard,&cover);}
  GfxRenderer wide;wide.width=800;wide.height=480;data.hasClock=true;
  assert(sleepstats::draw(wide,"An extremely long book title that must be clipped to fit even when translated",data));
 }

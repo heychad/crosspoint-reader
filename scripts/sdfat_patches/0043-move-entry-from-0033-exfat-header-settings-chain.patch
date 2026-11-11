@@ -1,0 +1,16 @@
+--- a/src/ExFatLib/ExFatFile.h
++++ b/src/ExFatLib/ExFatFile.h
+@@ -200,6 +200,13 @@
+    * \return true for success or false for failure.
+    */
+   bool firstClusterMarkedAllocated();
++  bool moveDifferentEntry(const ExFatFile& other) const {
++    if (!isFile() || !other.isFile() || !m_vol || m_vol != other.m_vol ||
++        m_dirPos.cluster < 2 || other.m_dirPos.cluster < 2) return false;
++    return m_dirPos.cluster != other.m_dirPos.cluster ||
++           (m_dirPos.position & 0x1ff) != (other.m_dirPos.position & 0x1ff);
++  }
++  bool settingsClusterList(Cluster_t* out, size_t capacity, size_t* count);
+   bool settingsSingleClusterChain();
+   bool smallSingleClusterChain();
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);

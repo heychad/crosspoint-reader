@@ -17,6 +17,22 @@ inline readershortcuts::Action actionFor(HomeButtonAction action) {
       return Action::FileTransfer;
     case HomeButtonAction::ReadingStatistics:
       return Action::ReadingStatistics;
+    case HomeButtonAction::PreviousPage:
+      return Action::PreviousPage;
+    case HomeButtonAction::Screenshot:
+      return Action::Screenshot;
+    case HomeButtonAction::ToggleNight:
+      return Action::ToggleNight;
+    case HomeButtonAction::ToggleTouch:
+      return Action::ToggleTouch;
+    case HomeButtonAction::ToggleTilt:
+      return Action::ToggleTilt;
+    case HomeButtonAction::Sleep:
+      return Action::Sleep;
+    case HomeButtonAction::ToggleCompletion:
+      return Action::ToggleCompletion;
+    case HomeButtonAction::CycleFontFamily:
+      return Action::CycleFontFamily;
     default:
       // Existing Home actions retain their current owners.
       return Action::Default;

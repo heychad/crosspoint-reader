@@ -163,6 +163,12 @@ readingstats::BookMove::BookMove(const std::string& oldCache, const std::string&
       destination(bookDirectory(newCache)) {}
 
 bool readingstats::BookMove::prepare() {
+  if (!lease.acquire()) return false;
+  const auto prepare = [](void* raw) { return static_cast<BookMove*>(raw)->prepareLocked(); };
+  return Storage.withStorageLock(prepare, this);
+}
+
+bool readingstats::BookMove::prepareLocked() {
   bool enabled = true;
   bool found = false;
   bool trackingKnown = false;

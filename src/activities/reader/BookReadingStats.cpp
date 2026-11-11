@@ -9,6 +9,7 @@
 #include <array>
 #include <cstring>
 
+#include "StatsAccessGate.h"
 #include "StatsSafeReplace.h"
 
 namespace {
@@ -55,7 +56,7 @@ namespace {
 // Binary layout v5 (73 bytes):
 //   [0-68]   v4 fields
 //   [69-72]  estimatedTimeLeftSeconds  uint32_t LE, 0 means unavailable
-static constexpr uint8_t STATS_FILE_VERSION = 5;
+static constexpr uint8_t STATS_FILE_VERSION = BookReadingStats::CURRENT_FILE_VERSION;
 static constexpr uint8_t STATS_FILE_VERSION_V2 = 2;
 static constexpr uint8_t STATS_FILE_VERSION_V1 = 1;
 static constexpr uint8_t STATS_FILE_VERSION_V3 = 3;
@@ -201,6 +202,57 @@ ReadingStatsDate readDate(const uint8_t* data, const int offset) {
 }  // namespace
 
 namespace {
+bool decodeBookPayload(const uint8_t* data, size_t size, BookReadingStats& stats) {
+  if (!data || size == 0) return false;
+  if (size == STATS_FILE_SIZE_V1 && data[0] == STATS_FILE_VERSION_V1) {
+    readCommonStats(data, stats);
+    return true;
+  }
+
+  if (size == STATS_FILE_SIZE_V2 && data[0] == STATS_FILE_VERSION_V2) {
+    readCommonStats(data, stats);
+    stats.isCompleted = data[11] != 0;
+    return true;
+  }
+
+  if (size == STATS_FILE_SIZE_V3 && data[0] == STATS_FILE_VERSION_V3) {
+    readCommonStats(data, stats);
+    stats.isCompleted = data[11] != 0;
+    stats.avgSecondsPerForwardPage = readLe16(data, 12);
+    stats.paceSampleCount = readLe16(data, 14);
+    return true;
+  }
+
+  if (size != STATS_FILE_SIZE && size != STATS_FILE_SIZE_V4) {
+    return false;
+  }
+  if (size == STATS_FILE_SIZE_V4 && data[0] != STATS_FILE_VERSION_V4) {
+    return false;
+  }
+  if (size == STATS_FILE_SIZE && data[0] != STATS_FILE_VERSION) {
+    return false;
+  }
+  readCommonStats(data, stats);
+  stats.isCompleted = data[11] != 0;
+  stats.avgSecondsPerForwardPage = readLe16(data, 12);
+  stats.paceSampleCount = readLe16(data, 14);
+  const uint8_t flags = data[16];
+  stats.startDateManual = (flags & FLAG_START_DATE_MANUAL) != 0;
+  stats.finishedDateManual = (flags & FLAG_FINISHED_DATE_MANUAL) != 0;
+  stats.startDate = readDate(data, 17);
+  stats.finishedDate = readDate(data, 21);
+  for (size_t i = 0; i < stats.timeOfDaySeconds.size(); ++i) {
+    stats.timeOfDaySeconds[i] = readLe32(data, 25 + static_cast<int>(i) * 4);
+  }
+  for (size_t i = 0; i < stats.dayOfWeekSeconds.size(); ++i) {
+    stats.dayOfWeekSeconds[i] = readLe32(data, 41 + static_cast<int>(i) * 4);
+  }
+  if (size == STATS_FILE_SIZE) {
+    stats.estimatedTimeLeftSeconds = readLe32(data, 69);
+  }
+  return true;
+}
+
 BookReadingStats loadBookUnlocked(const std::string& cachePath, BookReadingStats::LoadMode mode) {
   BookReadingStats stats;
   HalFile f;
@@ -219,57 +271,9 @@ BookReadingStats loadBookUnlocked(const std::string& cachePath, BookReadingStats
     return stats;
   }
 
-  if (n == STATS_FILE_SIZE_V1 && data[0] == STATS_FILE_VERSION_V1) {
-    readCommonStats(data, stats);
-    return stats;
-  }
-
-  if (n == STATS_FILE_SIZE_V2 && data[0] == STATS_FILE_VERSION_V2) {
-    readCommonStats(data, stats);
-    stats.isCompleted = data[11] != 0;
-    return stats;
-  }
-
-  if (n == STATS_FILE_SIZE_V3 && data[0] == STATS_FILE_VERSION_V3) {
-    readCommonStats(data, stats);
-    stats.isCompleted = data[11] != 0;
-    stats.avgSecondsPerForwardPage = readLe16(data, 12);
-    stats.paceSampleCount = readLe16(data, 14);
-    return stats;
-  }
-
-  if (n != STATS_FILE_SIZE && n != STATS_FILE_SIZE_V4) {
+  if (!decodeBookPayload(data, size, stats)) {
     stats.writable = false;
     LOG_ERR("STATS", "Unsupported or damaged stats file; preserving on disk");
-    return stats;
-  }
-  if (n == STATS_FILE_SIZE_V4 && data[0] != STATS_FILE_VERSION_V4) {
-    stats.writable = false;
-    LOG_ERR("STATS", "Unsupported or damaged stats file; preserving on disk");
-    return stats;
-  }
-  if (n == STATS_FILE_SIZE && data[0] != STATS_FILE_VERSION) {
-    stats.writable = false;
-    LOG_ERR("STATS", "Unsupported or damaged stats file; preserving on disk");
-    return stats;
-  }
-  readCommonStats(data, stats);
-  stats.isCompleted = data[11] != 0;
-  stats.avgSecondsPerForwardPage = readLe16(data, 12);
-  stats.paceSampleCount = readLe16(data, 14);
-  const uint8_t flags = data[16];
-  stats.startDateManual = (flags & FLAG_START_DATE_MANUAL) != 0;
-  stats.finishedDateManual = (flags & FLAG_FINISHED_DATE_MANUAL) != 0;
-  stats.startDate = readDate(data, 17);
-  stats.finishedDate = readDate(data, 21);
-  for (size_t i = 0; i < stats.timeOfDaySeconds.size(); ++i) {
-    stats.timeOfDaySeconds[i] = readLe32(data, 25 + static_cast<int>(i) * 4);
-  }
-  for (size_t i = 0; i < stats.dayOfWeekSeconds.size(); ++i) {
-    stats.dayOfWeekSeconds[i] = readLe32(data, 41 + static_cast<int>(i) * 4);
-  }
-  if (n == STATS_FILE_SIZE) {
-    stats.estimatedTimeLeftSeconds = readLe32(data, 69);
   }
   return stats;
 }
@@ -281,10 +285,21 @@ struct LoadContext {
 };
 bool loadBookLocked(void* input) {
   auto& context = *static_cast<LoadContext*>(input);
+  if (!readingstats::normalStatsAllowed()) {
+    context.result.writable = false;
+    return true;
+  }
   context.result = loadBookUnlocked(context.path, context.mode);
   return true;
 }
 }  // namespace
+
+bool BookReadingStats::decode(const uint8_t* data, size_t size, BookReadingStats& output) {
+  BookReadingStats candidate;
+  if (!decodeBookPayload(data, size, candidate)) return false;
+  output = candidate;
+  return true;
+}
 
 BookReadingStats BookReadingStats::load(const std::string& cachePath, LoadMode mode) {
   LoadContext context{cachePath, mode, {}};
@@ -363,12 +378,25 @@ bool BookReadingStats::encode(uint8_t* data, size_t size) const {
   return true;
 }
 
+namespace {
+struct BookSaveContext {
+  const std::string& cachePath;
+  const uint8_t* data;
+};
+bool saveBookLocked(void* raw) {
+  const auto& context = *static_cast<BookSaveContext*>(raw);
+  return readingstats::normalStatsAllowed() &&
+         statsreplace::save("STATS", context.cachePath + "/" + statsFileNameForVersion(STATS_FILE_VERSION),
+                            context.data, STATS_FILE_SIZE, false);
+}
+}  // namespace
+
 bool BookReadingStats::save(const std::string& cachePath) const {
   if (!writable) return false;
   uint8_t data[STATS_FILE_SIZE];
   if (!encode(data, sizeof(data))) return false;
-  return statsreplace::save("STATS", cachePath + "/" + statsFileNameForVersion(STATS_FILE_VERSION), data, sizeof(data),
-                            false);
+  BookSaveContext context{cachePath, data};
+  return Storage.withStorageLock(saveBookLocked, &context);
 }
 
 namespace {
@@ -376,6 +404,7 @@ struct RemoveContext {
   const std::string& path;
 };
 bool removeBookLocked(void* input) {
+  if (!readingstats::normalStatsAllowed()) return false;
   const auto& cachePath = static_cast<RemoveContext*>(input)->path;
   const std::string statsFileName = statsFileNameForVersion(STATS_FILE_VERSION);
   const std::string statsPath = cachePath + "/" + statsFileName;

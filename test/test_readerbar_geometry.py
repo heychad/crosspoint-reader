@@ -1,5 +1,6 @@
 """Exercise the real reader-bar renderer with a recording display."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
@@ -56,7 +57,7 @@ int main() {
   assert(screen.fills.size()==1);
   const auto first=screen.fills[0];
   // Progress reaches the screen edge and the top bar moves up one more pixel.
-  assert(first.x==0 && first.y==7 && first.width==196 && first.height==2);
+  assert(first.x==0 && first.y==6 && first.width==196 && first.height==2);
   screen.fills.clear();
   readerbars::draw(screen,top,ReaderBarPosition::Top,0,0,0,false,"","",false);
   assert(screen.fills.empty());  // No visible unfilled track.
@@ -88,6 +89,15 @@ int main() {
   readerbars::draw(screen,times,ReaderBarPosition::Top,0,0,0,false,"","",false);
   assert(screen.textValues.size()==1 && screen.textValues[0]=="-");
 
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+  screen.textValues.clear();
+  ReaderBar chapter;chapter.slots[ReaderBar::CENTER]=ReaderBarItem::TimeLeftChapter;
+  readerbars::draw(screen,chapter,ReaderBarPosition::Top,0,0,0,false,"","",false,nullptr,nullptr,nullptr,"~12 min");
+  assert(screen.textValues.size()==1 && screen.textValues[0]=="~12 min");
+  screen.textValues.clear();
+  readerbars::draw(screen,chapter,ReaderBarPosition::Top,0,0,0,false,"","",false);
+  assert(screen.textValues.size()==1 && screen.textValues[0]=="-");
+#endif
   // The viewable insets rotate with the panel, including the short upper inset.
   for (const auto insets : {std::array<int,4>{3,7,9,7}, std::array<int,4>{7,9,7,3},
                             std::array<int,4>{7,3,7,9}}) {
@@ -107,7 +117,7 @@ int main() {
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(code)
-    subprocess.run(['c++', '-std=c++20', '-I', str(root / 'src'), str(path / 'test.cpp'), '-o', str(path / 'test')],
+    subprocess.run(['c++', '-std=c++20', *(['-DCROSSPOINT_EXPERIMENTAL_CHAPTER_TIME=1'] if os.getenv('TEST_CHAPTER_TIME') else []), '-I', str(root / 'src'), str(path / 'test.cpp'), '-o', str(path / 'test')],
                    check=True)
     subprocess.run([str(path / 'test')], check=True)
 print('Reader bar geometry checks passed')

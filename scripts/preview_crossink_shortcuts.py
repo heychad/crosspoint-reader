@@ -17,7 +17,9 @@ class ReaderAction(IntEnum):
     NEXT_PAGE = 3
     PREVIOUS_CHAPTER = 4
     NEXT_CHAPTER = 5
+    BOOKMARK = 7
     DICTIONARY = 8
+    FOOTNOTES = 9
     REFRESH = 10
     TOGGLE_FRONTLIGHT = 11
     ROTATE = 14
@@ -33,10 +35,16 @@ class ReaderAction(IntEnum):
     SYNC_PROGRESS = 27
     CREATE_CLIPPING = 28
     TOGGLE_NIGHT = 29
+    TOGGLE_FOCUS = 30
     TOGGLE_TOUCH = 31
+    TOGGLE_TILT = 32
     QUICK_LOCK = 34
     SLEEP = 35
     FILE_TRANSFER = 37
+    CYCLE_FONT_FAMILY = 39
+    TOGGLE_HOME_BUTTON = 40
+    TOGGLE_COMPLETION = 41
+    HOME_READER = 42
 
 
 class HomeAction(IntEnum):
@@ -44,7 +52,9 @@ class HomeAction(IntEnum):
     IGNORE = 1
     NEXT_PAGE = 2
     REFRESH = 3
+    FOOTNOTES = 4
     SYNC_PROGRESS = 6
+    BOOKMARK = 7
     DICTIONARY = 8
     READER_MENU = 9
     TOGGLE_FRONTLIGHT = 10
@@ -55,16 +65,25 @@ class HomeAction(IntEnum):
     LIBRARY = 15
     FILE_TRANSFER = 17
     READING_STATISTICS = 18
+    PREVIOUS_PAGE = 19
+    SCREENSHOT = 20
+    TOGGLE_NIGHT = 21
+    TOGGLE_TOUCH = 22
+    TOGGLE_TILT = 23
+    SLEEP = 24
+    TOGGLE_COMPLETION = 25
+    CYCLE_FONT_FAMILY = 26
 
 
 # CrossInk v1.6.1 SHORT_PWRBTN and SIDE_BUTTON_ACTION values, not display indices.
 SIDE_ACTIONS = {
     0: ReaderAction.DISABLED, 1: ReaderAction.SLEEP, 2: ReaderAction.NEXT_PAGE,
-    3: ReaderAction.REFRESH, 8: ReaderAction.SYNC_PROGRESS, 10: ReaderAction.READING_STATISTICS,
-    11: ReaderAction.SCREENSHOT, 13: ReaderAction.FILE_TRANSFER, 15: ReaderAction.TOGGLE_NIGHT,
-    17: ReaderAction.FILE_BROWSER, 21: ReaderAction.CREATE_CLIPPING, 22: ReaderAction.DICTIONARY,
+    3: ReaderAction.REFRESH, 4: ReaderAction.CYCLE_FONT_FAMILY, 6: ReaderAction.TOGGLE_FOCUS, 7: ReaderAction.BOOKMARK, 8: ReaderAction.SYNC_PROGRESS, 9: ReaderAction.TOGGLE_COMPLETION, 10: ReaderAction.READING_STATISTICS,
+    11: ReaderAction.SCREENSHOT, 13: ReaderAction.FILE_TRANSFER, 14: ReaderAction.TOGGLE_TILT, 15: ReaderAction.TOGGLE_NIGHT,
+    16: ReaderAction.FOOTNOTES, 17: ReaderAction.FILE_BROWSER, 21: ReaderAction.CREATE_CLIPPING, 22: ReaderAction.DICTIONARY,
+    26: ReaderAction.TOGGLE_HOME_BUTTON,
     27: ReaderAction.QUICK_ACTIONS, 28: ReaderAction.TOGGLE_FRONTLIGHT, 29: ReaderAction.TOGGLE_TOUCH,
-    30: ReaderAction.QUICK_LOCK, 31: ReaderAction.PREVIOUS_PAGE, 33: ReaderAction.LIBRARY,
+    30: ReaderAction.QUICK_LOCK, 31: ReaderAction.PREVIOUS_PAGE, 33: ReaderAction.LIBRARY, 36: ReaderAction.HOME_READER,
     64: ReaderAction.PREVIOUS_CHAPTER, 65: ReaderAction.NEXT_CHAPTER,
     66: ReaderAction.LARGER_TEXT, 67: ReaderAction.SMALLER_TEXT,
     68: ReaderAction.ROTATE_BACKWARD, 69: ReaderAction.ROTATE, 70: ReaderAction.ROTATE_HALF_TURN,
@@ -72,19 +91,21 @@ SIDE_ACTIONS = {
 # CrossInk uses a different POWER_CHORD_ACTION enum for the side-button chord.
 CHORD_ACTIONS = {
     0: ReaderAction.SCREENSHOT, 1: ReaderAction.QUICK_LOCK, 4: ReaderAction.DISABLED,
-    5: ReaderAction.SLEEP, 6: ReaderAction.NEXT_PAGE, 8: ReaderAction.READING_STATISTICS,
-    10: ReaderAction.REFRESH, 15: ReaderAction.SYNC_PROGRESS, 16: ReaderAction.FILE_TRANSFER,
-    20: ReaderAction.TOGGLE_NIGHT, 22: ReaderAction.FILE_BROWSER, 23: ReaderAction.CREATE_CLIPPING,
-    24: ReaderAction.DICTIONARY, 26: ReaderAction.QUICK_ACTIONS, 27: ReaderAction.TOGGLE_FRONTLIGHT,
-    28: ReaderAction.TOGGLE_TOUCH, 29: ReaderAction.PREVIOUS_PAGE, 31: ReaderAction.LIBRARY,
+    5: ReaderAction.SLEEP, 6: ReaderAction.NEXT_PAGE, 7: ReaderAction.BOOKMARK, 8: ReaderAction.READING_STATISTICS,
+    9: ReaderAction.TOGGLE_COMPLETION, 10: ReaderAction.REFRESH, 11: ReaderAction.CYCLE_FONT_FAMILY, 13: ReaderAction.TOGGLE_FOCUS, 15: ReaderAction.SYNC_PROGRESS, 16: ReaderAction.FILE_TRANSFER,
+    20: ReaderAction.TOGGLE_NIGHT, 21: ReaderAction.FOOTNOTES, 22: ReaderAction.FILE_BROWSER, 23: ReaderAction.CREATE_CLIPPING,
+    24: ReaderAction.DICTIONARY, 25: ReaderAction.TOGGLE_HOME_BUTTON, 26: ReaderAction.QUICK_ACTIONS, 27: ReaderAction.TOGGLE_FRONTLIGHT,
+    28: ReaderAction.TOGGLE_TOUCH, 29: ReaderAction.PREVIOUS_PAGE, 31: ReaderAction.LIBRARY, 32: ReaderAction.HOME_READER,
 }
 # CrossInk Home uses SHORT_PWRBTN plus dedicated raw values 23-25.
 HOME_ACTIONS = {
-    0: HomeAction.IGNORE, 2: HomeAction.NEXT_PAGE, 3: HomeAction.REFRESH,
-    8: HomeAction.SYNC_PROGRESS, 10: HomeAction.READING_STATISTICS, 13: HomeAction.FILE_TRANSFER,
-    17: HomeAction.FILE_BROWSER, 21: HomeAction.CREATE_CLIPPING, 22: HomeAction.DICTIONARY,
+    0: HomeAction.IGNORE, 1: HomeAction.SLEEP, 2: HomeAction.NEXT_PAGE, 3: HomeAction.REFRESH, 4: HomeAction.CYCLE_FONT_FAMILY,
+    7: HomeAction.BOOKMARK, 8: HomeAction.SYNC_PROGRESS, 9: HomeAction.TOGGLE_COMPLETION, 10: HomeAction.READING_STATISTICS,
+    11: HomeAction.SCREENSHOT, 13: HomeAction.FILE_TRANSFER, 14: HomeAction.TOGGLE_TILT,
+    15: HomeAction.TOGGLE_NIGHT, 16: HomeAction.FOOTNOTES, 17: HomeAction.FILE_BROWSER, 21: HomeAction.CREATE_CLIPPING, 22: HomeAction.DICTIONARY,
     23: HomeAction.HOME, 24: HomeAction.TOGGLE_FRONTLIGHT, 25: HomeAction.READER_MENU,
-    27: HomeAction.QUICK_ACTIONS, 30: HomeAction.QUICK_LOCK, 33: HomeAction.LIBRARY,
+    27: HomeAction.QUICK_ACTIONS, 28: HomeAction.TOGGLE_FRONTLIGHT, 29: HomeAction.TOGGLE_TOUCH, 30: HomeAction.QUICK_LOCK,
+    31: HomeAction.PREVIOUS_PAGE, 33: HomeAction.LIBRARY, 34: HomeAction.SLEEP,
 }
 SIDE_FIELDS = {
     'sideButtonUpShort': 'readerUpTap', 'sideButtonUpLong': 'readerUpHold',

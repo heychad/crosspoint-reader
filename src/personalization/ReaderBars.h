@@ -18,6 +18,9 @@ enum class ReaderBarItem : uint8_t {
   Date,
   TimeLeftBook,
   TimeLeftSection,
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+  TimeLeftChapter,
+#endif
   Count
 };
 

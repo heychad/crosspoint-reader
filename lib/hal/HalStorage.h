@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "StorageMutationFence.h"
+
 class HalFile;
 
 enum class UsbDriveState : uint8_t {
@@ -25,6 +27,41 @@ class HalStorage {
   HalStorage();
   bool begin();
   bool ready() const;
+  // X4 Pro only: whether the SDMMC driver has reported an I/O error since
+  // mounting began. This is not a filesystem consistency check.
+  bool observedSdmmcHealthy() const;
+  // Process-local observations only: all writers must use this HAL, and raw
+  // card access invalidates the fence. These APIs do not verify filesystem integrity.
+  using MutationSnapshot = checkedscan::StorageMutationFence::Snapshot;
+  bool beginMutationSnapshot(MutationSnapshot& snapshot);
+  bool mutationSnapshotUnchanged(const MutationSnapshot& snapshot);
+  // A marker can be held while a known writer is open; callers must serialize
+  // their own changes and capture a new marker after each of them.
+  using MutationMarker = checkedscan::StorageMutationFence::Marker;
+  bool captureMutationMarker(MutationMarker& marker);
+  bool mutationMarkerUnchanged(const MutationMarker& marker);
+  enum class SnapshotFormat { Unknown, Fat, ExFat };
+  SnapshotFormat snapshotFormat(const MutationSnapshot& snapshot);
+  enum class SnapshotRead { Record, End, Changed, Failed };
+  // Read a single FAT/exFAT directory record while holding the snapshot lock.
+  SnapshotRead readDirectoryRecord(HalFile& directory, const MutationSnapshot& snapshot, uint8_t* record);
+  struct DirectoryCursor {
+    MutationSnapshot snapshot{};
+    uint64_t position = 0;
+    uint32_t cluster = 0;
+    bool started = false;
+    bool ended = false;
+    bool failed = false;
+    uint8_t buffered = 0;
+    uint8_t nextRecord = 0;
+    uint8_t records[8][32]{};
+    char path[2049]{};
+  };
+  // Reopens and closes the directory within each locked batch of up to eight
+  // records. Each returned record still checks the snapshot. A cursor is
+  // bound to one path and snapshot and must live off a small task stack.
+  SnapshotRead readDirectoryRecordAtPath(const char* path, const MutationSnapshot& snapshot, DirectoryCursor& cursor,
+                                         uint8_t* record);
   // Stop the SD card for deep sleep: unmount, stop the SDMMC host, and release
   // the bus pads (no-op on SPI boards). Call only after all file users have
   // stopped; open HalFiles become invalid. A deep-sleep wake resets the MCU and
@@ -63,6 +100,9 @@ class HalStorage {
   bool exists(const char* path);
   // Missing alone does not authorize recovery writes on FAT or exFAT.
   PathStatus lookupPath(const char* path);
+  // Check exactly 64 prefix+two-digit child names under one directory.
+  // False leaves the output unchanged; a missing directory returns an empty mask.
+  bool lookupNumberedChildren(const char* directory, const char* prefix, uint64_t& present);
   // Execute a bounded transaction under the same recursive lock used by all
   // storage operations. The callback must not block waiting for another task
   // which needs storage. This only serializes operations through HalStorage.
@@ -80,6 +120,8 @@ class HalStorage {
   // not establish ownership against other files on a damaged filesystem.
   bool settingsChainEligible(const char* path);
   bool distinctSettingsChains(const char* first, const char* second);
+  // Distinct entries and independent bounded chains, including empty files.
+  bool distinctMoveChains(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);
   // Move a fully written temp file over `path`, replacing any existing file.
@@ -99,7 +141,9 @@ class HalStorage {
   class StorageLock;  // private class, used internally
 
  private:
+  friend class HalFile;
   static HalStorage instance;
+  checkedscan::StorageMutationFence mutationFence;
 
   bool initialized = false;
   SemaphoreHandle_t storageMutex = nullptr;

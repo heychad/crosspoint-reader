@@ -3,15 +3,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string_view>
 
 // Reject invalid or ambiguous FAT components before a lookup can report Missing.
 // FAT long names are limited to 255 UTF-16 code units.
-inline bool validCheckedStorageComponent(const char* name) {
-  if (!name || !*name || *name == ' ') return false;
-  const size_t length = strlen(name);
+inline bool validCheckedStorageComponent(std::string_view name) {
+  if (name.empty() || name.front() == ' ') return false;
+  const size_t length = name.size();
   if (name[length - 1] == ' ' || name[length - 1] == '.') return false;
-  if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return false;
-  const auto* bytes = reinterpret_cast<const unsigned char*>(name);
+  if (name == "." || name == "..") return false;
+  const auto* bytes = reinterpret_cast<const unsigned char*>(name.data());
   size_t offset = 0;
   size_t units = 0;
   while (offset < length) {
@@ -49,4 +50,7 @@ inline bool validCheckedStorageComponent(const char* name) {
     offset += count;
   }
   return true;
+}
+inline bool validCheckedStorageComponent(const char* name) {
+  return name && validCheckedStorageComponent(std::string_view(name));
 }

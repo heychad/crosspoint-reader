@@ -257,6 +257,7 @@ class HalStorage {
     if (file && (flags & (O_APPEND | O_AT_END))) file.pos = file.node->bytes.size();
     return file;
   }
+  HalFile openChecked(const char* path, const int flags = 0) { return open(path, flags); }
   bool openFileForRead(const char* module, const std::string& path, HalFile& file) {
     return openFileForRead(module, path.c_str(), file);
   }

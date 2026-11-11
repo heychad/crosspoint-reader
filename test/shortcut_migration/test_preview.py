@@ -32,19 +32,27 @@ class PreviewTests(unittest.TestCase):
         names = {
             'DISABLED': 'Disabled', 'PREVIOUS_PAGE': 'PreviousPage', 'NEXT_PAGE': 'NextPage',
             'PREVIOUS_CHAPTER': 'PreviousChapter', 'NEXT_CHAPTER': 'NextChapter',
-            'DICTIONARY': 'Dictionary', 'REFRESH': 'Refresh', 'TOGGLE_FRONTLIGHT': 'ToggleFrontlight',
+            'BOOKMARK': 'Bookmark', 'DICTIONARY': 'Dictionary', 'FOOTNOTES': 'Footnotes', 'REFRESH': 'Refresh', 'TOGGLE_FRONTLIGHT': 'ToggleFrontlight',
             'ROTATE': 'Rotate', 'ROTATE_BACKWARD': 'RotateBackward', 'LARGER_TEXT': 'LargerText',
             'SMALLER_TEXT': 'SmallerText', 'ROTATE_HALF_TURN': 'RotateHalfTurn', 'QUICK_ACTIONS': 'QuickActions',
             'FILE_BROWSER': 'FileBrowser', 'LIBRARY': 'Library', 'READING_STATISTICS': 'ReadingStatistics',
             'SCREENSHOT': 'Screenshot', 'SYNC_PROGRESS': 'SyncProgress', 'CREATE_CLIPPING': 'CreateClipping',
-            'TOGGLE_NIGHT': 'ToggleNight', 'TOGGLE_TOUCH': 'ToggleTouch', 'QUICK_LOCK': 'QuickLock',
-            'SLEEP': 'Sleep', 'FILE_TRANSFER': 'FileTransfer',
+            'TOGGLE_NIGHT': 'ToggleNight', 'TOGGLE_FOCUS': 'ToggleFocus', 'TOGGLE_TOUCH': 'ToggleTouch', 'TOGGLE_TILT': 'ToggleTilt', 'QUICK_LOCK': 'QuickLock',
+            'TOGGLE_HOME_BUTTON': 'ToggleHomeButton', 'TOGGLE_COMPLETION': 'ToggleCompletion',
+            'SLEEP': 'Sleep', 'FILE_TRANSFER': 'FileTransfer', 'CYCLE_FONT_FAMILY': 'CycleFontFamily',
+            'HOME_READER': 'HomeReader',
         }
         for action in preview.ReaderAction:
             self.assertEqual(action.value, reader[names[action.name]])
         home_names = dict(names, HOME='Home', IGNORE='Ignore', READER_MENU='ReaderMenu', SYNC_PROGRESS='Sync')
         for action in preview.HomeAction:
             self.assertEqual(action.value, home[home_names[action.name]])
+
+    def test_home_frontlight_power_action(self):
+        legacy = {'homeButtonInReaderEnabled': 1, 'homeButtonTapAction': 28}
+        result = preview.preview(legacy, {})
+        self.assertEqual(result['patch_for_missing_fields_only']['homeButtonTapAction'],
+                         preview.HomeAction.TOGGLE_FRONTLIGHT)
 
     def test_distinct_legacy_enum_families_and_existing_values(self):
         legacy = {'sideButtonOrientationAware': 0, 'homeButtonInReaderEnabled': 1,
@@ -61,11 +69,29 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(by_source['homeButtonDoubleTapAction']['status'], 'manual_review')
         self.assertEqual(by_source['homeButtonDoubleTapAction']['target_id'], 12)
 
+    def test_added_home_actions_match_importer(self):
+        for raw, expected in ((1, 24), (7, 7), (11, 20), (14, 23), (15, 21), (16, 4), (29, 22), (31, 19), (34, 24)):
+            data = {'homeButtonInReaderEnabled': 1, 'homeButtonTapAction': raw}
+            result = preview.preview(data, {})
+            self.assertEqual(result['patch_for_missing_fields_only']['homeButtonTapAction'], expected)
+
     def test_no_current_file_produces_no_patch(self):
         data = {'sideButtonOrientationAware': 0, 'sideButtonUpShort': 2}
         result = preview.preview(data, None)
         self.assertEqual(result['patch_for_missing_fields_only'], {})
         self.assertEqual(result['candidates'][0]['status'], 'needs_current_settings')
+
+    def test_font_switch_maps_side_and_chord_to_font_cycle(self):
+        legacy = {'sideButtonOrientationAware': 0, 'sideButtonUpShort': 4, 'sideButtonChordAction': 11,
+                  'homeButtonInReaderEnabled': 1, 'homeButtonTapAction': 4}
+        result = preview.preview(legacy, {})
+        self.assertEqual(result['patch_for_missing_fields_only'], {'readerUpTap': 39, 'readerSideChord': 39,
+                                                                    'homeButtonTapAction': 26})
+
+    def test_home_reader_mappings_use_distinct_legacy_ids(self):
+        legacy = {'sideButtonOrientationAware': 0, 'sideButtonUpShort': 36, 'sideButtonChordAction': 32}
+        result = preview.preview(legacy, {})
+        self.assertEqual(result['patch_for_missing_fields_only'], {'readerUpTap': 42, 'readerSideChord': 42})
 
     def test_unknown_orientation_home_enablement_and_bad_actions_fail_closed(self):
         data = {'sideButtonOrientationAware': 1, 'sideButtonUpShort': 2,

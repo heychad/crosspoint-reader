@@ -16,16 +16,21 @@ namespace {
 constexpr StrId SLOT_LABELS[] = {StrId::STR_BAR_LEFT_1, StrId::STR_BAR_LEFT_2,  StrId::STR_BAR_LEFT_3,
                                  StrId::STR_CENTER,     StrId::STR_BAR_RIGHT_1, StrId::STR_BAR_RIGHT_2,
                                  StrId::STR_BAR_RIGHT_3};
-constexpr StrId ITEM_LABELS[] = {StrId::STR_HIDE,
-                                 StrId::STR_CLOCK,
-                                 StrId::STR_BATTERY,
-                                 StrId::STR_CHAPTER_PAGE_COUNT,
-                                 StrId::STR_BOOK_PROGRESS_PERCENTAGE,
-                                 StrId::STR_BAR_BOOK_TITLE,
-                                 StrId::STR_BAR_CHAPTER_TITLE,
-                                 StrId::STR_BAR_DATE,
-                                 StrId::STR_BAR_TIME_BOOK,
-                                 StrId::STR_BAR_TIME_SECTION};
+constexpr StrId ITEM_LABELS[] = {
+    StrId::STR_HIDE,
+    StrId::STR_CLOCK,
+    StrId::STR_BATTERY,
+    StrId::STR_CHAPTER_PAGE_COUNT,
+    StrId::STR_BOOK_PROGRESS_PERCENTAGE,
+    StrId::STR_BAR_BOOK_TITLE,
+    StrId::STR_BAR_CHAPTER_TITLE,
+    StrId::STR_BAR_DATE,
+    StrId::STR_BAR_TIME_BOOK,
+    StrId::STR_BAR_TIME_SECTION,
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+    StrId::STR_BAR_TIME_CHAPTER,
+#endif
+};
 static_assert(std::size(ITEM_LABELS) == static_cast<size_t>(ReaderBarItem::Count));
 constexpr StrId PROGRESS_LABELS[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 constexpr StrId THICKNESS_LABELS[] = {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM,

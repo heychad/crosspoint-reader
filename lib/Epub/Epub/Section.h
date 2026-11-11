@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Epub.h"
+#include "EpubBuildFailure.h"
 #include "ReaderRenderSpec.h"
 
 class Page;
@@ -21,7 +22,7 @@ class Section {
   std::string filePath;
   HalFile file;
 
-  void writeSectionFileHeader(const ReaderRenderSpec& spec);
+  bool writeSectionFileHeader(const ReaderRenderSpec& spec);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
 
   // Page-offset table entry, kept in RAM while an incremental build is running so
@@ -57,6 +58,8 @@ class Section {
     uint32_t smoothedAtConsumed = 0;
   };
   std::unique_ptr<BuildContext> build_;
+  bool buildPageWriteFailed_ = false;
+  EpubBuildFailure buildFailure_ = EpubBuildFailure::None;
   bool buildComplete_ = false;
   // Pages laid out by the active build (== build_->lut.size()). Distinct from pageCount,
   // which is the pages *available to read* and also counts a loaded partial file's pages.
@@ -98,14 +101,17 @@ class Section {
   // builds. createSectionFile() above is the one-shot wrapper over these.
   //   if (!startBuild(...)) fail;
   //   each tick: buildSomeMore(N); render up to pageCount; when isBuildComplete() stop.
-  bool startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr);
+  bool startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr,
+                  bool (*cancelExtraction)(void*) = nullptr, void* cancelContext = nullptr);
   // Lay out up to maxPages more pages (maxPages <= 0 = build to completion). Returns
   // false on error (the build is abandoned). Sets isBuildComplete() when finished.
   // yieldNow, when given, is asked after every parse step (1 KB of HTML, whose callbacks may
   // lay out and write several pages); true ends the call early so the caller can serve input.
   // The next call resumes where this one left off.
-  bool buildSomeMore(int maxPages, bool (*yieldNow)() = nullptr);
+  bool buildSomeMore(int maxPages, bool (*yieldNow)() = nullptr, bool (*cancel)(void*) = nullptr,
+                     void* cancelContext = nullptr);
   bool isBuilding() const { return static_cast<bool>(build_); }
+  EpubBuildFailure lastBuildFailure() const { return buildFailure_; }
   bool isBuildComplete() const { return buildComplete_; }
   // Best-known total page count: the exact pageCount once finalized, or a smoothed byte-based
   // estimate (pages so far scaled by totalBytes/bytesConsumed, damped by an EMA) while a giant spine

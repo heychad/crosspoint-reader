@@ -55,6 +55,11 @@ class PersistableStoreBase {
 
   // Caller serializes access and validates any existing document before replacement.
   static bool writeDocToFileAtomic(const char* path, const JsonDocument& doc, size_t maxBytes);
+  // Checked move-reference update for state.json and recent.json only.
+  static bool writeDocToFileForMove(const char* path, const JsonDocument& doc);
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  static bool writeStateSleepPreferences(const JsonDocument& doc);
+#endif
 
  protected:
   /**

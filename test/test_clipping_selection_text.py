@@ -235,6 +235,9 @@ struct EpubReaderActivity {
   struct Section { int currentPage = 0, pageCount = 1; } sectionData;
   Section* section = &sectionData;
   int currentSpineIndex = 0, buildViewportWidth = 480, buildViewportHeight = 800;
+  ReaderRenderSpec effectiveRenderSpec(uint16_t width, uint16_t height, int) const {
+    return SETTINGS.readerRenderSpec(width, height);
+  }
   int clippingAtPoint(const Page&, int, int) const;
   void drawClippingHighlights(const Page&, int, int, int) const;
 };

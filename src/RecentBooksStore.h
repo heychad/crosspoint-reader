@@ -20,6 +20,8 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
 
  private:
   std::vector<RecentBook> recentBooks;
+  // Caller owns storeMutex; completion paths use a nonblocking acquisition.
+  bool saveForCompletionLocked() const;
 
   RecentBooksStore() = default;
   ~RecentBooksStore() = default;
@@ -42,12 +44,19 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   // Returns true if an entry was found and removed (no-op + false otherwise).
   // Persistence is best-effort: a failed save is logged, not reflected in the return.
   bool removeByPath(const std::string& path);
+  // Remove if present and report persistence failures. A missing entry is
+  // already in the requested state; failed saves restore the in-memory entry.
+  bool removeByPathPersisted(const std::string& path);
 
   // Repoint an entry's path (and coverBmpPath, if it lived under the old cache dir) after the
   // backing file and cache dir were moved on disk. No-op if no entry matches oldPath.
   // Persists on success. Keeps the entry's list position (does not reorder).
   void updatePath(const std::string& oldPath, const std::string& newPath, const std::string& oldCachePath,
                   const std::string& newCachePath);
+  // Retryable variant: preserve list order and restore memory after a failed
+  // save. Refuse to merge two existing entries for different paths.
+  bool updatePathPersisted(const std::string& oldPath, const std::string& newPath, const std::string& oldCachePath,
+                           const std::string& newCachePath);
 
   // True if the book's backing file is no longer present on the SD card.
   static bool isMissing(const RecentBook& book);

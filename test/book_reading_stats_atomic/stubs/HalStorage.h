@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <string>
@@ -108,9 +109,11 @@ class HalStorage {
     failWriteLimits_.clear();
     failNewClosePaths_.clear();
     failNewSyncPaths_.clear();
+    failNextOpenReadPaths_.clear();
     failCheckedOpenAt_ = -1;
     failSettingsIdentity_ = false;
     failSettingsEligibility_ = false;
+    failNextLock_ = false;
   }
 
   HalFile open(const char* path) {
@@ -152,7 +155,14 @@ class HalStorage {
     return open(path, flags);
   }
   void failCheckedOpenAfter(int count) { failCheckedOpenAt_ = count; }
-  bool withStorageLock(bool (*operation)(void*), void* context) { return operation && operation(context); }
+  bool withStorageLock(bool (*operation)(void*), void* context) {
+    if (failNextLock_) {
+      failNextLock_ = false;
+      return false;
+    }
+    return operation && operation(context);
+  }
+  void failNextStorageLock() { failNextLock_ = true; }
   bool distinctFirstClusters(const char* first, const char* second) const {
     const auto a = files_.find(first), b = files_.find(second);
     return a != files_.end() && b != files_.end() && a->second != b->second;
@@ -166,10 +176,25 @@ class HalStorage {
   bool distinctSettingsChains(const char* first, const char* second) const {
     return distinctSettingsClusters(first, second);
   }
+  bool distinctMoveChains(const char* first, const char* second) const {
+    return distinctSettingsClusters(first, second);
+  }
   void failSettingsEligibility() { failSettingsEligibility_ = true; }
   PathStatus lookupPath(const char* path) const {
     if (failReadPaths_.contains(path)) return PathStatus::Failed;
     return exists(path) ? PathStatus::Present : PathStatus::Missing;
+  }
+  bool lookupNumberedChildren(const char* directory, const char* prefix, uint64_t& present) const {
+    uint64_t mask = 0;
+    for (unsigned i = 0; i < 64; ++i) {
+      char path[128];
+      snprintf(path, sizeof(path), "%s/%s%02u", directory, prefix, i);
+      const auto status = lookupPath(path);
+      if (status == PathStatus::Failed) return false;
+      if (status == PathStatus::Present) mask |= uint64_t{1} << i;
+    }
+    present = mask;
+    return true;
   }
   bool mkdir(const char* path, bool = true) {
     directories_.insert(path);
@@ -233,6 +258,11 @@ class HalStorage {
   }
 
   bool openFileForRead(const char*, const std::string& path, HalFile& file) {
+    const auto pendingOpenFailure = failNextOpenReadPaths_.find(path);
+    if (pendingOpenFailure != failNextOpenReadPaths_.end()) {
+      if (--pendingOpenFailure->second == 0) failNextOpenReadPaths_.erase(pendingOpenFailure);
+      return false;
+    }
     if (failReadPaths_.contains(path)) return false;
     const auto found = files_.find(path);
     if (found == files_.end()) return false;
@@ -266,7 +296,12 @@ class HalStorage {
   void failNextNewCloseFor(const std::string& path) { failNewClosePaths_.insert(path); }
   void failNextNewSyncFor(const std::string& path) { failNewSyncPaths_.insert(path); }
   void failNextWriteFor(const std::string& path, size_t limit) { failWriteLimits_[path] = limit; }
+  void allowWritesFor(const std::string& path) {
+    const auto it = files_.find(path);
+    if (it != files_.end()) it->second->writeLimit = std::numeric_limits<size_t>::max();
+  }
   void failReadsFor(const std::string& path) { failReadPaths_.insert(path); }
+  void failNextOpenReadFor(const std::string& path, unsigned count = 1) { failNextOpenReadPaths_[path] = count; }
   void failNextReadFor(const std::string& path) {
     const auto found = files_.find(path);
     if (found != files_.end()) found->second->failRead = true;
@@ -288,10 +323,12 @@ class HalStorage {
   std::unordered_map<std::string, size_t> failWriteLimits_;
   std::unordered_set<std::string> failNewClosePaths_;
   std::unordered_set<std::string> failNewSyncPaths_;
+  std::unordered_map<std::string, unsigned> failNextOpenReadPaths_;
   std::string failRemovePath_;
   int failCheckedOpenAt_ = -1;
   bool failSettingsIdentity_ = false;
   bool failSettingsEligibility_ = false;
+  bool failNextLock_ = false;
 };
 
 #ifndef Storage

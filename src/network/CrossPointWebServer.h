@@ -10,6 +10,17 @@
 #include <string>
 #include <vector>
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+namespace wirecheck {
+struct DirectoryEntry;
+}
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+class StageWriter;
+#endif
+
 // Structure to hold file information
 struct FileInfo {
   String name;
@@ -70,6 +81,11 @@ class CrossPointWebServer {
   // An HTTP upload holds handleClient() until its body is read, so this is polled on each chunk.
   // Returning true drops the client: the upload aborts and its partial file is removed.
   void setUploadCancelCheck(std::function<bool()> check) { uploadCancelCheck = std::move(check); }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE && defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+  // Only the file-transfer activity may enable publication on its main task.
+  void enableExperimentalPublication() { experimentalPublicationEnabled = true; }
+#endif
 
   // Get the port number
   uint16_t getPort() const { return port; }
@@ -85,6 +101,41 @@ class CrossPointWebServer {
   bool udpActive = false;
   std::function<bool()> uploadCancelCheck;
   bool dropUploadIfCancelled() const;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
+    CROSSPOINT_EXPERIMENTAL_STAGE
+  std::unique_ptr<StageWriter> syncStage;
+  bool syncStageAttempted = false;
+  bool syncStageRejected = false;
+  bool syncStageIdentityValid() const;
+  void clearSyncStage();
+  void handleSyncStage();
+  void handleSyncStagePost();
+  void handleSyncStageHash();
+  void handleSyncStageInspect();
+  void handleSyncRecoveryPreview();
+  void handleSyncPrepareIntent();
+  void handleSyncCopy();
+#if defined(CROSSPOINT_EXPERIMENTAL_PUBLISH) && CROSSPOINT_EXPERIMENTAL_PUBLISH
+  bool experimentalPublicationEnabled = false;
+  void handleSyncFinalize();
+  void handleSyncArchive();
+  void handleSyncEnsureParents();
+#endif
+#endif
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
+    CROSSPOINT_EXPERIMENTAL_INVENTORY
+  struct InventoryWebState;
+  std::unique_ptr<InventoryWebState> inventory;
+  void handleInventoryStart();
+  void handleInventoryDirectory();
+  void handleInventoryFinish();
+  void handleInventoryIdentity() const;
+  void expireInventory();
+  bool inventoryActive() const;
+  bool inventoryEmit(const wirecheck::DirectoryEntry& entry);
+
+#endif
 
   // WebSocket upload state
   void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);

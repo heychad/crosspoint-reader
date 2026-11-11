@@ -1,0 +1,17 @@
+--- a/src/FatLib/FatFile.cpp
++++ b/src/FatLib/FatFile.cpp
+@@ -1522,12 +1522,12 @@
+ }
+ 
+ bool FatFile::settingsClusterList(Cluster_t* out, size_t capacity, size_t* count) {
+-  if (!out || !count || !isFile() || !fileSize() || fileSize() > 32768 || m_firstCluster < 2) return false;
++  if (!out || !count || !isFile() || !fileSize() || fileSize() > (capacity > 64 ? 262144 : 32768) || m_firstCluster < 2) return false;
+   const uint8_t shift = m_vol->bytesPerClusterShift();
+   if (shift >= 63) return false;
+   const uint64_t clusterBytes = uint64_t{1} << shift;
+   const size_t expected = (uint64_t(fileSize()) + clusterBytes - 1) / clusterBytes;
+-  if (!expected || expected > capacity || expected > 64) return false;
++  if (!expected || expected > capacity || expected > 512) return false;
+   Cluster_t current = m_firstCluster;
+   for (size_t i = 0; i < expected; ++i) {
+     if (current < 2 || current - 2 >= m_vol->clusterCount()) return false;

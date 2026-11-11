@@ -14,6 +14,7 @@ stubs = r'''
 #include <vector>
 inline std::vector<uint8_t> fakeBytes;
 inline bool shortRead=false, canOpen=true;
+inline int chapterReads=0;
 struct HalFile {
  size_t fileSize()const{return fakeBytes.size();}
  int read(void* out,size_t size){size_t n=std::min(size,fakeBytes.size());if(shortRead && n>0)--n;memcpy(out,fakeBytes.data(),n);return static_cast<int>(n);}
@@ -29,6 +30,7 @@ struct Epub {
  Epub(const std::string&,const char*){} bool load(bool,bool){return true;}
  std::string getCachePath()const{return "cache";} int getSpineItemsCount()const{return 4;}
  unsigned getBookSize()const{return 100;} float calculateProgress(int,float f)const{return .25f+f/2;}
+ bool copyChapterTitleForSpine(int, char* out, size_t cap)const{++chapterReads;if(cap>1){out[0]='C';out[1]=0;return true;}return false;}
 };
 struct Xtc {
  Xtc(const std::string&,const char*){} bool load(){return true;}
@@ -44,11 +46,13 @@ main = r'''
 int main(){
  fakeBytes={1,0,1,0}; assert(loadBookProgress("test.epub")==25);
  fakeBytes={1,0,1,0,2,0}; assert(loadBookProgress("test.epub")==50);
+ char chapter[8]{};assert(loadBookProgress("test.epub",chapter,sizeof(chapter))==50 && chapter[0]=='C' && chapterReads==1);
  fakeBytes={1,0,1,0,2,0,0,0,0,0}; assert(loadBookProgress("test.epub")==50);
  fakeBytes.push_back(0);assert(loadBookProgress("test.epub")==-1);
  fakeBytes={1,0,1};assert(loadBookProgress("test.epub")==-1);
  fakeBytes={1,0,1,0,2,0};shortRead=true;assert(loadBookProgress("test.epub")==-1);shortRead=false;
  fakeBytes={4,0,0,0};assert(loadBookProgress("test.epub")==100);
+ chapter[0]='X';assert(loadBookProgress("test.epub",chapter,sizeof(chapter))==100 && chapter[0]==0 && chapterReads==1);
  fakeBytes={5,0,0,0};assert(loadBookProgress("test.epub")==-1);
  fakeBytes={5,0,0,0};assert(loadBookProgress("test.xtc")==50);
  fakeBytes={10,0,0,0};assert(loadBookProgress("test.xtc")==100);

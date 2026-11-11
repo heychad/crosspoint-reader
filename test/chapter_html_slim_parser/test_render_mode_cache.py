@@ -41,34 +41,36 @@ struct File {
   size_t read(uint8_t* out, size_t n) {assert(pos+n <= bytes.size());memcpy(out,bytes.data()+pos,n);pos+=n;return n;}
   void seek(size_t next) {pos=next;}
   size_t size() const {return bytes.size();}
-  void close() {}
+  bool close() {return true;}
 };
 namespace serialization {
-template<class T> void writePod(File& f, const T& value) {f.write(reinterpret_cast<const uint8_t*>(&value), sizeof value);}
+template<class T> bool tryWritePod(File& f, const T& value) {return f.write(reinterpret_cast<const uint8_t*>(&value), sizeof value)==sizeof value;}
 template<class T> void readPod(File& f, T& value) {f.read(reinterpret_cast<uint8_t*>(&value), sizeof value);}
 }
 struct StorageType {
   std::vector<uint8_t> saved;
   bool openFileForRead(const char*, const std::string&, File& f) {f.bytes=saved;f.pos=0;return true;}
 } Storage;
+bool recoverSectionCache(const std::string&) {return true;}
+void retireSectionCacheBackup(const std::string&) {}
 struct Section {
   File file; std::string filePath; uint16_t pageCount=2, partialPageCount_=0;
   uint32_t partialBytesConsumed_=0, partialTotalBytes_=0; bool partial_=false, cleared=false;
-  void writeSectionFileHeader(const ReaderRenderSpec&);
+  bool writeSectionFileHeader(const ReaderRenderSpec&);
   bool loadSectionFile(const ReaderRenderSpec&);
   bool clearCache() {cleared=true; return true;}
 };
-''' + header + '\n' + method('void Section::writeSectionFileHeader(') + '\n' + method('bool Section::loadSectionFile(') + r'''
+''' + header + '\n' + method('bool Section::writeSectionFileHeader(') + '\n' + method('bool Section::loadSectionFile(') + r'''
 int main() {
   ReaderRenderSpec original; original.viewportWidth=480;original.viewportHeight=800;
   auto signature=readerRenderSpecSignature(original);
   for (auto mode : {EpubRenderMode::Default, EpubRenderMode::Balanced, EpubRenderMode::Light}) {
-    ReaderRenderSpec spec=original;spec.renderMode=mode;Section written;written.writeSectionFileHeader(spec);
+    ReaderRenderSpec spec=original;spec.renderMode=mode;Section written;assert(written.writeSectionFileHeader(spec));
     assert(written.file.bytes.size()==HEADER_SIZE);Storage.saved=written.file.bytes;
     Storage.saved[0]=SECTION_FILE_VERSION;
     Section match;assert(match.loadSectionFile(spec));assert(match.pageCount==2);assert(!match.cleared);
     ReaderRenderSpec other=spec;other.renderMode=mode==EpubRenderMode::Light?EpubRenderMode::Default:EpubRenderMode::Light;
-    Section mismatch;assert(!mismatch.loadSectionFile(other));assert(mismatch.cleared);
+    Section mismatch;assert(!mismatch.loadSectionFile(other));assert(!mismatch.cleared);
     if(mode!=EpubRenderMode::Default) assert(readerRenderSpecSignature(spec)!=signature);
     Storage.saved[0]=73;Section old;assert(!old.loadSectionFile(spec));assert(old.cleared);
     Storage.saved[0]=SECTION_FILE_PARTIAL_VERSION;

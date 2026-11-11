@@ -20,7 +20,9 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
                                                const bool hasFootnotes, const bool hasBookmarks,
-                                               const bool hasClippings, MenuAction& selectedAction)
+                                               const bool hasClippings, MenuAction& selectedAction,
+                                               const bool completionKnown, const bool completed,
+                                               const bool alreadyInReadFolder)
     : UiListActivity("EpubReaderMenu", renderer, mappedInput),
       selectedAction(selectedAction),
       title(title),
@@ -28,7 +30,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
-  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, hasClippings);
+  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, hasClippings, completionKnown, completed, alreadyInReadFolder);
   buildMenuRowItems();
 }
 
@@ -63,7 +65,9 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
 }
 
 void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const bool hasFootnotes,
-                                            const bool hasBookmarks, const bool hasClippings) {
+                                            const bool hasBookmarks, const bool hasClippings,
+                                            const bool completionKnown, const bool completed,
+                                            const bool alreadyInReadFolder) {
   items.clear();
   items.reserve(MAX_MENU_ITEMS);
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
@@ -94,7 +98,23 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::READING_STATISTICS, StrId::STR_READING_STATISTICS});
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+  (void)alreadyInReadFolder;
+  if (completionKnown) {
+#else
+  if (completionKnown && (!SETTINGS.moveFinishedToReadFolder || completed || alreadyInReadFolder)) {
+#endif
+    items.push_back({MenuAction::TOGGLE_COMPLETION, completed ? StrId::STR_MARK_UNFINISHED : StrId::STR_MARK_FINISHED});
+  }
+#else
+  (void)completionKnown;
+  (void)completed;
+  (void)alreadyInReadFolder;
+#endif
   items.push_back({MenuAction::READER_BARS, StrId::STR_READER_BARS});
+  items.push_back({MenuAction::CONTROLS, StrId::STR_CAT_CONTROLS});
+  items.push_back({MenuAction::QUICK_ACTIONS, StrId::STR_QUICK_ACTIONS});
   if (BoardConfig::hasHomeKey()) items.push_back({MenuAction::HOME_BUTTON, StrId::STR_HOME_BUTTON});
   items.push_back({MenuAction::SAVED_ITEMS, StrId::STR_SAVED_ITEMS});
   items.push_back({MenuAction::LIBRARY, StrId::STR_LIBRARY});

@@ -15,7 +15,10 @@ uint32_t readLe32(const uint8_t* p) {
 }
 }  // namespace
 
-int loadBookProgress(const std::string& path) {
+int loadBookProgress(const std::string& path) { return loadBookProgress(path, nullptr, 0); }
+
+int loadBookProgress(const std::string& path, char* chapter, size_t capacity) {
+  if (chapter && capacity) chapter[0] = '\0';
   uint8_t data[10]{};
   if (FsHelpers::hasReflowableBookExtension(path)) {
     // Metadata objects exceed the stack budget; only the featured book is loaded, once per entry.
@@ -36,6 +39,7 @@ int loadBookProgress(const std::string& path) {
     if (epub->getSpineItemsCount() <= 0 || epub->getBookSize() == 0) return -1;
     if (spine == epub->getSpineItemsCount()) return 100;
     if (spine > epub->getSpineItemsCount()) return -1;
+    if (chapter && capacity) epub->copyChapterTitleForSpine(spine, chapter, capacity);
     const float fraction = total > 0 && page != UINT16_MAX ? std::clamp(float(page) / total, 0.0f, 1.0f) : 0;
     return std::clamp(static_cast<int>(epub->calculateProgress(spine, fraction) * 100 + 0.5f), 0, 100);
   }

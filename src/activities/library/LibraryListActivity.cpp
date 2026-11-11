@@ -474,6 +474,22 @@ void LibraryListActivity::openBookStatistics(const std::string& path, const std:
 }
 
 void LibraryListActivity::restoreIndexAfterStatistics(bool reopenIndex) {
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE)
+  if (reopenIndex && library::isLibraryIndexDirty()) {
+    GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
+    if (rebuildIndex() && index.open(library::libraryIndexPath())) {
+      degraded = index.ranksDegraded();
+      resetAfterRebuild();
+      return;
+    }
+    LOG_ERR("LIB", "cannot rebuild library index after statistics");
+    filterFailed = true;
+    filteredCount = 0;
+    pinnedTotal = 0;
+    closeRouting();
+    return;
+  }
+#endif
   if (!reopenIndex || index.open(library::libraryIndexPath())) return;
   LOG_ERR("LIB", "cannot reopen library index after statistics");
   filterFailed = true;

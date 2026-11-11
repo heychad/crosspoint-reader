@@ -2898,6 +2898,7 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
 ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
 
 bool ChapterHtmlSlimParser::beginParse() {
+  parseFailure = EpubBuildFailure::None;
   stopRequested = false;
   htmlEnded_ = false;
   // Initialize block style stack with a root entry representing "no ancestor block elements".
@@ -2936,6 +2937,7 @@ bool ChapterHtmlSlimParser::beginParse() {
   xmlParser_ = XML_ParserCreate(nullptr);
   if (!xmlParser_) {
     LOG_ERR("EHP", "Couldn't allocate memory for parser");
+    parseFailure = EpubBuildFailure::OutOfMemory;
     return false;
   }
 
@@ -2944,6 +2946,7 @@ bool ChapterHtmlSlimParser::beginParse() {
   XML_SetDefaultHandlerExpand(xmlParser_, defaultHandlerExpand);
 
   if (!Storage.openFileForRead("EHP", filepath, parseFile_)) {
+    parseFailure = EpubBuildFailure::InputOutput;
     destroyXmlParser(xmlParser_);
     xmlParser_ = nullptr;
     return false;
@@ -2964,16 +2967,22 @@ bool ChapterHtmlSlimParser::beginParse() {
 
 ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
   if (stopRequested) return ParseStatus::Error;
+  if (!xmlParser_) {
+    parseFailure = EpubBuildFailure::InvalidState;
+    return ParseStatus::Error;
+  }
   // Layout OOM latched during the previous buffer's callbacks: fail the build
   // instead of emitting pages with silently missing text.
   if (layoutOom || (currentTextBlock && currentTextBlock->hadDroppedWords())) {
     LOG_ERR("EHP", "Text layout dropped content (OOM); failing section build");
+    parseFailure = EpubBuildFailure::OutOfMemory;
     return ParseStatus::Error;
   }
 
   void* const buf = XML_GetBuffer(xmlParser_, PARSE_BUFFER_SIZE);
   if (!buf) {
     LOG_ERR("EHP", "Couldn't allocate memory for buffer");
+    parseFailure = EpubBuildFailure::OutOfMemory;
     return ParseStatus::Error;
   }
 
@@ -2981,6 +2990,7 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
 
   if (len == 0 && parseFile_.available() > 0) {
     LOG_ERR("EHP", "File read error");
+    parseFailure = EpubBuildFailure::InputOutput;
     return ParseStatus::Error;
   }
 
@@ -2988,12 +2998,17 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
 
   if (XML_ParseBuffer(xmlParser_, static_cast<int>(len), done) == XML_STATUS_ERROR) {
     if (stopRequested) return ParseStatus::Error;
+    if (XML_GetErrorCode(xmlParser_) == XML_ERROR_NO_MEMORY) {
+      parseFailure = EpubBuildFailure::OutOfMemory;
+      return ParseStatus::Error;
+    }
     if (htmlEnded_) {
       LOG_DBG("EHP", "Ignoring trailing data after </html>: %s", XML_ErrorString(XML_GetErrorCode(xmlParser_)));
       return ParseStatus::Done;
     }
     LOG_ERR("EHP", "Parse error at line %lu:\n%s", XML_GetCurrentLineNumber(xmlParser_),
             XML_ErrorString(XML_GetErrorCode(xmlParser_)));
+    parseFailure = EpubBuildFailure::InvalidInput;
     return ParseStatus::Error;
   }
 
@@ -3013,6 +3028,7 @@ void ChapterHtmlSlimParser::abortParse() {
 
 void ChapterHtmlSlimParser::requestStop() {
   if (stopRequested) return;
+  parseFailure = EpubBuildFailure::Cancelled;
   stopRequested = true;
   if (xmlParser_) XML_StopParser(xmlParser_, XML_FALSE);
 }
@@ -3023,6 +3039,7 @@ bool ChapterHtmlSlimParser::finishParse() {
   // through because Done is returned before the next step's check runs.
   if (layoutOom || (currentTextBlock && currentTextBlock->hadDroppedWords())) {
     LOG_ERR("EHP", "Text layout dropped content (OOM); failing section build");
+    parseFailure = EpubBuildFailure::OutOfMemory;
     return false;
   }
 
@@ -3041,6 +3058,7 @@ bool ChapterHtmlSlimParser::finishParse() {
     // final layout, which the entry check above cannot have seen.
     if (layoutOom) {
       LOG_ERR("EHP", "Text layout dropped content (OOM); failing section build");
+      parseFailure = EpubBuildFailure::OutOfMemory;
       return false;
     }
     if (!pendingAnchorId.empty()) {

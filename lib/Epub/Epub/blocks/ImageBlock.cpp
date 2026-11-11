@@ -416,10 +416,10 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
 }
 
 bool ImageBlock::serialize(HalFile& file) {
-  serialization::writeString(file, imagePath);
-  serialization::writeString(file, srcPath);
-  serialization::writePod(file, width);
-  serialization::writePod(file, height);
+  if (!serialization::tryWriteString(file, imagePath)) return false;
+  if (!serialization::tryWriteString(file, srcPath)) return false;
+  if (!serialization::tryWritePod(file, width)) return false;
+  if (!serialization::tryWritePod(file, height)) return false;
   return true;
 }
 

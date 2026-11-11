@@ -196,6 +196,7 @@ harness = harness.replace("int main() {", r"""
 #include "activities/reader/RemoteTurnGate.h"
 struct RenderLock { static bool peek() { return false; } };
 struct ReaderActivity {
+  ReaderActivity* bookReader() { return this; }
   std::atomic<bool> pageRendered{true};
   bool menu = false;
   int pages = 0, chapters = 0, turnReports = 0;

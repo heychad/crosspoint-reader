@@ -1,0 +1,15 @@
+--- a/src/FatLib/FatFile.h
++++ b/src/FatLib/FatFile.h
+@@ -249,6 +249,12 @@
+    * The parameters may be nullptr to only set the flag.
+    * \return true for success or false for failure.
+    */
++  bool moveDifferentEntry(const FatFile& other) const {
++    return isFile() && other.isFile() && m_vol && m_vol == other.m_vol &&
++           (m_dirSector != other.m_dirSector || ((m_dirIndex ^ other.m_dirIndex) & 0x0f));
++  }
++  bool settingsClusterList(Cluster_t* out, size_t capacity, size_t* count);
++  bool settingsSingleClusterChain();
+   bool smallSingleClusterChain();
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
+   /** Create and open a new contiguous file of a specified size.

@@ -9,7 +9,10 @@
 #include <string>
 
 #include "BookReadingStats.h"
+#include "CompletionTransaction.h"
 #include "ReadingStatsStore.h"
+#include "StatsAccessGate.h"
+#include "StatsSessionLease.h"
 
 namespace {
 using Bytes = std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE>;
@@ -49,9 +52,26 @@ uint64_t hashBytes(const Bytes& bytes) {
   for (const auto byte : bytes) hash = (hash ^ byte) * 1099511628211ULL;
   return hash;
 }
+
+bool filenameHash(const std::string& name, uint64_t& hash) {
+  if (name.size() != 36 || name.compare(0, 5, "book_") != 0 || name[15] != '_' || name.compare(32, 4, ".bin") != 0)
+    return false;
+  for (size_t i = 5; i < 15; ++i)
+    if (name[i] < '0' || name[i] > '9') return false;
+  uint64_t value = 0;
+  for (size_t i = 16; i < 32; ++i) {
+    const char c = name[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    value = (value << 4) | static_cast<uint64_t>(c <= '9' ? c - '0' : c - 'a' + 10);
+  }
+  hash = value;
+  return true;
+}
 }  // namespace
 
-bool statsbackup::createBookBackup(const std::string& cachePath, const BookReadingStats& stats) {
+namespace {
+bool createBookBackupUnlocked(const std::string& cachePath, const BookReadingStats& stats,
+                              std::string* createdPath = nullptr) {
   const size_t slash = cachePath.find_last_of('/');
   const std::string leaf = cachePath.substr(slash == std::string::npos ? 0 : slash + 1);
   if (!validCacheLeaf(leaf)) return false;
@@ -79,5 +99,142 @@ bool statsbackup::createBookBackup(const std::string& cachePath, const BookReadi
   const bool written = file.write(bytes.data(), bytes.size()) == bytes.size();
   file.flush();
   if (!file.close() || !written) return false;
-  return readMatches(target, bytes);
+  if (!readMatches(target, bytes)) return false;
+  if (createdPath) *createdPath = target;
+  return true;
+}
+}  // namespace
+
+bool statsbackup::createBookBackup(const std::string& cachePath, const BookReadingStats& stats) {
+  struct Context {
+    const std::string& cachePath;
+    const BookReadingStats& stats;
+  } context{cachePath, stats};
+  const auto save = [](void* raw) {
+    const auto& input = *static_cast<Context*>(raw);
+    return readingstats::normalStatsAllowed() && createBookBackupUnlocked(input.cachePath, input.stats);
+  };
+  return Storage.withStorageLock(save, &context);
+}
+
+bool statsbackup::readBookBackup(const std::string& cachePath, const std::string& filename, BookReadingStats& output) {
+  const size_t slash = cachePath.find_last_of('/');
+  const std::string leaf = cachePath.substr(slash == std::string::npos ? 0 : slash + 1);
+  uint64_t expected = 0;
+  if (!validCacheLeaf(leaf) || !filenameHash(filename, expected)) return false;
+  struct Context {
+    const std::string& leaf;
+    const std::string& filename;
+    uint64_t expected;
+    BookReadingStats& output;
+  } context{leaf, filename, expected, output};
+  const auto read = [](void* raw) {
+    auto& input = *static_cast<Context*>(raw);
+    if (!readingstats::normalStatsAllowed()) return false;
+    const std::string path = std::string(BOOKS) + "/" + input.leaf + "/" + input.filename;
+    HalFile file;
+    if (Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Present ||
+        !Storage.openFileForRead("STATS", path, file))
+      return false;
+    Bytes bytes{};
+    const bool readOk =
+        file.fileSize() == bytes.size() && file.read(bytes.data(), bytes.size()) == static_cast<int>(bytes.size());
+    const bool closed = file.close();
+    if (!readOk || !closed || hashBytes(bytes) != input.expected) return false;
+    BookReadingStats decoded;
+    if (!BookReadingStats::decode(bytes.data(), bytes.size(), decoded)) return false;
+    input.output = decoded;
+    return true;
+  };
+  return Storage.withStorageLock(read, &context);
+}
+
+statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string& cachePath, const std::string& bookPath,
+                                                              const std::string& filename,
+                                                              const uint8_t* expectedCurrent,
+                                                              size_t expectedCurrentSize, const uint8_t* expectedBackup,
+                                                              size_t expectedBackupSize) {
+  struct Context {
+    const std::string& cachePath;
+    const std::string& bookPath;
+    const std::string& filename;
+    const uint8_t* expectedCurrent;
+    size_t expectedCurrentSize;
+    const uint8_t* expectedBackup;
+    size_t expectedBackupSize;
+    BookRestoreResult result = BookRestoreResult::Unavailable;
+  } context{cachePath, bookPath, filename, expectedCurrent, expectedCurrentSize, expectedBackup, expectedBackupSize};
+  const auto restore = [](void* raw) {
+    auto& input = *static_cast<Context*>(raw);
+    if (!readingstats::normalStatsAllowed()) return true;
+    if (StatsSessionLease::anyActive()) {
+      input.result = BookRestoreResult::Busy;
+      return true;
+    }
+    if (!readingstats::completionCacheMatchesBook(input.bookPath, input.cachePath) ||
+        Storage.lookupPath(input.bookPath.c_str()) != HalStorage::PathStatus::Present)
+      return true;
+    const size_t slash = input.cachePath.find_last_of('/');
+    const std::string leaf = input.cachePath.substr(slash == std::string::npos ? 0 : slash + 1);
+    if (!validCacheLeaf(leaf)) return true;
+    const std::string directory = readingstats::bookDirectory(input.cachePath);
+    const std::string primary = directory + "/stats_v5.bin";
+    const std::string oldBackup = primary + ".bak";
+    const std::string source = std::string(BOOKS) + "/" + leaf + "/" + input.filename;
+    const auto oldBackupStatus = Storage.lookupPath(oldBackup.c_str());
+    if (Storage.lookupPath(primary.c_str()) != HalStorage::PathStatus::Present ||
+        oldBackupStatus == HalStorage::PathStatus::Failed)
+      return true;
+    const BookReadingStats current = BookReadingStats::load(directory, BookReadingStats::LoadMode::TransactionalEdit);
+    BookReadingStats replacement;
+    Bytes currentBytes{}, replacementBytes{};
+    if (!current.writable || !current.encode(currentBytes.data(), currentBytes.size()) ||
+        !readBookBackup(input.cachePath, input.filename, replacement) ||
+        !replacement.encode(replacementBytes.data(), replacementBytes.size()))
+      return true;
+    if ((input.expectedCurrent && (input.expectedCurrentSize != currentBytes.size() ||
+                                   memcmp(input.expectedCurrent, currentBytes.data(), currentBytes.size()) != 0)) ||
+        (!input.expectedCurrent && input.expectedCurrentSize) ||
+        (input.expectedBackup &&
+         (input.expectedBackupSize != replacementBytes.size() ||
+          memcmp(input.expectedBackup, replacementBytes.data(), replacementBytes.size()) != 0)) ||
+        (!input.expectedBackup && input.expectedBackupSize))
+      return true;
+    if (!Storage.settingsChainEligible(primary.c_str()) || !Storage.settingsChainEligible(source.c_str()) ||
+        !Storage.distinctSettingsChains(primary.c_str(), source.c_str()) ||
+        (oldBackupStatus == HalStorage::PathStatus::Present &&
+         (!Storage.settingsChainEligible(oldBackup.c_str()) ||
+          !Storage.distinctSettingsChains(primary.c_str(), oldBackup.c_str()) ||
+          !Storage.distinctSettingsChains(source.c_str(), oldBackup.c_str()))))
+      return true;
+    std::string before;
+    if (!createBookBackupUnlocked(input.cachePath, current, &before) ||
+        !Storage.settingsChainEligible(before.c_str()) ||
+        !Storage.distinctSettingsChains(primary.c_str(), before.c_str()) ||
+        !Storage.distinctSettingsChains(source.c_str(), before.c_str()) ||
+        (oldBackupStatus == HalStorage::PathStatus::Present &&
+         !Storage.distinctSettingsChains(oldBackup.c_str(), before.c_str()))) {
+      input.result = BookRestoreResult::BackupFailed;
+      return true;
+    }
+    if (current.isCompleted != replacement.isCompleted) {
+      const auto result =
+          readingstats::restoreClosedBookSnapshot(input.bookPath, input.cachePath, currentBytes, replacementBytes);
+      if (result == readingstats::ClosedCompletionResult::Applied) {
+        const auto finished = readingstats::finalizeClosedBookCompletion(input.bookPath, replacement.isCompleted);
+        input.result = finished == readingstats::CompletionFinalizeResult::Finalized
+                           ? BookRestoreResult::Restored
+                           : BookRestoreResult::RecoveryRequired;
+      } else if (result == readingstats::ClosedCompletionResult::Busy) {
+        input.result = BookRestoreResult::Busy;
+      } else if (result == readingstats::ClosedCompletionResult::RecoveryRequired) {
+        input.result = BookRestoreResult::RecoveryRequired;
+      }
+      return true;
+    }
+    input.result = replacement.save(directory) ? BookRestoreResult::Restored : BookRestoreResult::WriteUncertain;
+    return true;
+  };
+  if (!Storage.withStorageLock(restore, &context)) return BookRestoreResult::Unavailable;
+  return context.result;
 }

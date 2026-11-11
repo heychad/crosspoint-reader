@@ -22,11 +22,11 @@ code = r'''
 #include <variant>
 #define LOG_ERR(...) ((void)0)
 bool failAllocation=false;
-enum class HomeButtonAction { Count=19 };
+enum class HomeButtonAction { Count=26 };
 using StrId=int;
 struct Settings { uint8_t tap=0, twice=0, hold=0; int saves=0; void saveToFile(){++saves;} } SETTINGS;
 namespace home_button {
- constexpr StrId ACTION_LABELS[19] = {};
+ constexpr StrId ACTION_LABELS[26] = {};
  constexpr StrId GESTURE_LABELS[3] = {};
  constexpr uint8_t Settings::* FIELDS[] = {&Settings::tap,&Settings::twice,&Settings::hold};
 }
@@ -63,15 +63,15 @@ struct Reader {
  default:break;}}
 };
 int main(){
- for(int i=0;i<19;++i){
-  HomeButtonSettingsActivity screen;SETTINGS.tap=18;int saves=SETTINGS.saves, calls=readerquickactions::calls;
-  screen.activateIndex(0);assert(screen.child && screen.child->count==19 && screen.child->selected==18);
+ for(int i=0;i<26;++i){
+  HomeButtonSettingsActivity screen;SETTINGS.tap=24;int saves=SETTINGS.saves, calls=readerquickactions::calls;
+  screen.activateIndex(0);assert(screen.child && screen.child->count==26 && screen.child->selected==24);
   screen.callback(ActivityResult{false,MenuResult{i}});
   assert(SETTINGS.tap==i && SETTINGS.saves==saves+1 && readerquickactions::calls==calls+1 && screen.updates==1);
  }
  HomeButtonSettingsActivity screen;SETTINGS.twice=3;screen.activateIndex(1);int saves=SETTINGS.saves;
  screen.callback(ActivityResult{true,MenuResult{18}});assert(SETTINGS.twice==3 && SETTINGS.saves==saves);
- screen.callback(ActivityResult{false,MenuResult{19}});screen.callback(ActivityResult{false,MenuResult{-1}});
+ screen.callback(ActivityResult{false,MenuResult{26}});screen.callback(ActivityResult{false,MenuResult{-1}});
  screen.callback(ActivityResult{});assert(SETTINGS.twice==3 && SETTINGS.saves==saves);
  HomeButtonSettingsActivity invalid;invalid.activateIndex(3);assert(!invalid.child);
  failAllocation=true;HomeButtonSettingsActivity oom;oom.activateIndex(0);assert(!oom.child && oom.updates==1);

@@ -10,7 +10,8 @@ spec = importlib.util.spec_from_file_location('patcher', root / 'scripts/patch_s
 patcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patcher)
 selected = {'src/FatLib/FatFile.h', 'src/FatLib/FatFile.cpp', 'src/FsLib/FsFile.h',
-            'src/ExFatLib/ExFatFile.h', 'src/ExFatLib/ExFatFile.cpp'}
+            'src/ExFatLib/ExFatFile.h', 'src/ExFatLib/ExFatFile.cpp',
+            'src/ExFatLib/ExFatFileWrite.cpp'}
 with tempfile.TemporaryDirectory() as directory:
     project = Path(directory) / 'project'
     dep = project / '.pio/libdeps/x4pro/SdFat'

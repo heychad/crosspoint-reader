@@ -47,9 +47,16 @@ class ReaderActivity : public Activity {
   std::atomic<bool> endOfBookOptionsReady{false};
   ReaderSession readerSession;
   ReaderStats readingStats;
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+  ReaderStats::CompletionResult setBookCompleted(bool completed);
+  ReaderStats::CompletionResult recoverBookCompletion();
+#endif
   std::atomic<bool> pendingStatsLoadWarning{false};
   std::atomic<bool> pendingStatsSaveWarning{false};
   std::atomic<uint32_t> shownSettingsNotice{0};
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  std::atomic<uint32_t> shownStateNotice{0};
+#endif
   std::atomic<bool> settingsNoticeRenderReady{false};
   // 1 = enabled, 2 = disabled, 3 = save failed. The render task owns painting.
   std::atomic<uint8_t> pendingHomeButtonFeedback{0};
@@ -136,6 +143,7 @@ class ReaderActivity : public Activity {
   void render(RenderLock&& lock) override;
 
   bool isReaderActivity() const final { return true; }
+  ReaderActivity* bookReader() final { return this; }
   bool isReaderPage() const final { return !inputOverPage(); }
   bool acceptsRemoteInput() const final { return pageRendered.load(std::memory_order_acquire); }
   bool handleForcedRefresh() final;

@@ -240,3 +240,108 @@ TEST(SavedItems, DamagedPrimaryDoesNotHideReadableLegacySource) {
   EXPECT_FALSE(saveditems::inspect(BOOK, kinds));
   EXPECT_EQ(kinds, saveditems::CROSSINK_BOOKMARKS);
 }
+
+TEST(SavedItems, InterruptedLegacyEditShowsValidatedBackupReadOnly) {
+  fake::reset();
+  const auto backup = legacyPath() + ".bookmark-edit.bak";
+  const auto original = legacyData(5);
+  fake::add(backup, original);
+  CrossInkBookmarks bookmarks;
+  ASSERT_TRUE(bookmarks.open(BOOK));
+  EXPECT_TRUE(bookmarks.unreadable());
+  ASSERT_EQ(bookmarks.count(), 2);
+  CrossInkBookmarks::Entry entry;
+  ASSERT_TRUE(bookmarks.read(0, entry));
+  EXPECT_TRUE(entry.recovered);
+  EXPECT_EQ(entry.spine, 1);
+  uint8_t kinds = 0;
+  EXPECT_FALSE(saveditems::inspect(BOOK, kinds));
+  EXPECT_EQ(kinds, saveditems::CROSSINK_BOOKMARKS);
+  EXPECT_EQ(std::string(fake::files.at(backup)->bytes.begin(), fake::files.at(backup)->bytes.end()), original);
+  EXPECT_TRUE(fake::writesByPath.empty());
+}
+
+TEST(SavedItems, LegacyBackupNeverOverridesExistingOrUncertainPrimary) {
+  const auto backup = legacyPath() + ".bookmark-edit.bak";
+  fake::reset();
+  fake::add(legacyPath(), legacyData(3));
+  fake::add(backup, legacyData(5));
+  CrossInkBookmarks existing;
+  ASSERT_TRUE(existing.open(BOOK));
+  CrossInkBookmarks::Entry entry;
+  ASSERT_TRUE(existing.read(0, entry));
+  EXPECT_FALSE(entry.recovered);
+  EXPECT_EQ(entry.paragraph, UINT16_MAX);
+  EXPECT_FALSE(existing.unreadable());
+
+  fake::reset();
+  fake::add(backup, legacyData(5));
+  fake::failOpenPath = legacyPath();
+  CrossInkBookmarks uncertain;
+  EXPECT_FALSE(uncertain.open(BOOK));
+  EXPECT_TRUE(uncertain.unreadable());
+  EXPECT_TRUE(fake::writesByPath.empty());
+}
+
+TEST(SavedItems, DamagedPrimaryShowsValidatedLegacyBackupReadOnly) {
+  for (bool useGuard : {false, true}) {
+    fake::reset();
+    const auto primary = legacyPath();
+    const auto backup = primary + (useGuard ? ".bookmark-edit.guard" : ".bookmark-edit.bak");
+    const auto original = legacyData(5);
+    fake::add(primary, "damaged");
+    fake::add(backup, original);
+    if (useGuard) fake::add(primary + ".bookmark-edit.bak", "damaged");
+    CrossInkBookmarks bookmarks;
+    ASSERT_TRUE(bookmarks.open(BOOK));
+    EXPECT_TRUE(bookmarks.unreadable());
+    ASSERT_EQ(bookmarks.count(), 2);
+    CrossInkBookmarks::Entry entry;
+    ASSERT_TRUE(bookmarks.read(0, entry));
+    EXPECT_TRUE(entry.recovered);
+    EXPECT_EQ(entry.spine, 1);
+    EXPECT_EQ(std::string(fake::files.at(primary)->bytes.begin(), fake::files.at(primary)->bytes.end()), "damaged");
+    EXPECT_EQ(std::string(fake::files.at(backup)->bytes.begin(), fake::files.at(backup)->bytes.end()), original);
+    EXPECT_TRUE(fake::writesByPath.empty());
+  }
+}
+
+TEST(SavedItems, LegacyBackupMustMatchBookPath) {
+  for (bool damagedPrimary : {false, true}) {
+    fake::reset();
+    if (damagedPrimary) fake::add(legacyPath(), "damaged");
+    fake::add(legacyPath() + ".bookmark-edit.bak", legacyData(5, 2, "/other.epub"));
+    CrossInkBookmarks bookmarks;
+    EXPECT_FALSE(bookmarks.open(BOOK));
+    EXPECT_TRUE(bookmarks.unreadable());
+    EXPECT_TRUE(fake::writesByPath.empty());
+  }
+}
+
+TEST(SavedItems, LegacyBackupLookupFailureIsNotReportedAsEmpty) {
+  fake::reset();
+  fake::failOpenPath = legacyPath() + ".bookmark-edit.bak";
+  CrossInkBookmarks bookmarks;
+  EXPECT_FALSE(bookmarks.open(BOOK));
+  EXPECT_TRUE(bookmarks.unreadable());
+  EXPECT_TRUE(fake::writesByPath.empty());
+}
+
+TEST(SavedItems, InterruptedRenameCanReadGuardWithoutMutatingFiles) {
+  for (bool damagedBackup : {false, true}) {
+    fake::reset();
+    const auto guard = legacyPath() + ".bookmark-edit.guard";
+    const auto original = legacyData(5);
+    fake::add(guard, original);
+    if (damagedBackup) fake::add(legacyPath() + ".bookmark-edit.bak", "damaged");
+    CrossInkBookmarks bookmarks;
+    ASSERT_TRUE(bookmarks.open(BOOK));
+    EXPECT_TRUE(bookmarks.unreadable());
+    CrossInkBookmarks::Entry entry;
+    ASSERT_TRUE(bookmarks.read(0, entry));
+    EXPECT_TRUE(entry.recovered);
+    EXPECT_EQ(entry.spine, 1);
+    EXPECT_EQ(std::string(fake::files.at(guard)->bytes.begin(), fake::files.at(guard)->bytes.end()), original);
+    EXPECT_TRUE(fake::writesByPath.empty());
+  }
+}

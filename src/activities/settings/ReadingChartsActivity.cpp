@@ -142,10 +142,11 @@ void ReadingChartsActivity::build(UiScreen& screen) {
   tabProps.contentInset = fui::Insets{4, 4, 4, 4};
   fui::tabBar(screen.frame(), screen.takeTop(std::max<int>(screen.theme().minTouchSize, lineHeight + 12)), tabProps);
   if (data.warning != readingcharts::Warning::None) {
-    screen.target().text(
-        screen.takeTop(lineHeight),
-        data.warning == readingcharts::Warning::Unsaved ? tr(STR_STATS_SAVE_INCOMPLETE) : tr(STR_STATS_PARTIAL),
-        screen.theme().smallText);
+    screen.target().text(screen.takeTop(lineHeight),
+                         data.warning == readingcharts::Warning::UnsavedPartial ? tr(STR_STATS_SAVE_PARTIAL)
+                         : data.warning == readingcharts::Warning::Unsaved      ? tr(STR_STATS_SAVE_INCOMPLETE)
+                                                                                : tr(STR_STATS_PARTIAL),
+                         screen.theme().smallText);
   }
   if (mappedInput.hasTouch()) {
     const auto controls = screen.takeBottom(std::max<int>(screen.theme().minTouchSize, metrics.menuRowHeight));

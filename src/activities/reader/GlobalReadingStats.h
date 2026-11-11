@@ -32,6 +32,9 @@ struct GlobalReadingStats {
 
   static GlobalStatsAggregate loadAggregated(const GlobalReadingStats& local);
 
+  // Decode a supported complete payload. Failure leaves output unchanged.
+  static bool decode(const uint8_t* data, size_t size, GlobalReadingStats& output);
+
   // Encode the current supported format without writing to storage.
   bool encode(std::array<uint8_t, CURRENT_FILE_SIZE>& output) const;
 

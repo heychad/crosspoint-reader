@@ -11,8 +11,10 @@
 #include <Memory.h>
 
 #include <algorithm>
+#include <utility>
 
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -41,6 +43,25 @@ bool overlaySleepMode() {
   const uint8_t mode = SETTINGS.sleepScreen;
   return mode == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT_CUSTOM ||
          mode == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_TRANSPARENT;
+}
+
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+bool pageOverlaySleepMode() { return SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP; }
+
+bool savePageOverlayFavorite(const std::string& path) { return APP_STATE.updateSleepFavoriteForPageOverlay(path); }
+#endif
+
+bool isPageOverlayFavorite(const std::string& path) {
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  return pageOverlaySleepMode() && !path.empty() && path == APP_STATE.favoriteSleepImagePath;
+#else
+  (void)path;
+  return false;
+#endif
+}
+
+const char* sleepCoverActionLabel(const std::string& path) {
+  return isPageOverlayFavorite(path) ? tr(STR_CLEAR_SLEEP_FAVORITE) : tr(STR_SET_SLEEP_COVER);
 }
 }  // namespace
 
@@ -101,7 +122,12 @@ void BmpViewerActivity::loadSiblingImages() {
 
 bool BmpViewerActivity::canSetSleepCover() const {
   return FsHelpers::hasBmpExtension(filePath) || FsHelpers::hasJpgExtension(filePath) ||
-         (overlaySleepMode() && FsHelpers::hasPngExtension(filePath));
+         ((overlaySleepMode()
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+           || pageOverlaySleepMode()
+#endif
+               ) &&
+          FsHelpers::hasPngExtension(filePath));
 }
 
 bool BmpViewerActivity::renderImage() {
@@ -118,7 +144,7 @@ bool BmpViewerActivity::renderImage() {
   const bool hasPrevious = siblingImages.size() > 1 && currentImageIndex > 0;
   const bool hasNext = siblingImages.size() > 1 && currentImageIndex != -1 &&
                        currentImageIndex < static_cast<int>(siblingImages.size()) - 1;
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), canSetSleepCover() ? tr(STR_SET_SLEEP_COVER) : "",
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), canSetSleepCover() ? sleepCoverActionLabel(filePath) : "",
                                             hasPrevious ? "<" : "", hasNext ? ">" : "");
   const auto drawImage = [&]() {
     if (!decoder.decodeToFramebuffer(filePath, renderer, config)) return false;
@@ -217,7 +243,7 @@ void BmpViewerActivity::onEnter() {
       bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
                       currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
 
-      const auto labels = mappedInput.mapLabels(tr(STR_BACK), canSetSleepCover() ? tr(STR_SET_SLEEP_COVER) : "",
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), canSetSleepCover() ? sleepCoverActionLabel(filePath) : "",
                                                 (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
 
       GUI.fillPopupProgress(renderer, popupRect, 50);
@@ -394,6 +420,16 @@ void BmpViewerActivity::doSetSleepCover() {
   const bool transparentMode = !jpeg && overlaySleepMode();
   if (!canSetSleepCover()) return;
 
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  if (!jpeg && pageOverlaySleepMode()) {
+    const bool success = savePageOverlayFavorite(isPageOverlayFavorite(filePath) ? "" : filePath);
+    GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
+    delay(1000);
+    onEnter();
+    return;
+  }
+#endif
+
   const char* destination =
       transparentMode ? (FsHelpers::hasPngExtension(filePath) ? TRANSPARENT_SLEEP_ROOT_PNG : TRANSPARENT_SLEEP_ROOT_BMP)
                       : CUSTOM_SLEEP_ROOT_BMP;
@@ -480,7 +516,9 @@ void BmpViewerActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenLongPress(touchX, touchY)) {
     if (!canSetSleepCover()) return;
 
-    auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_SET_SLEEP_COVER_CONFIRM),
+    const char* prompt =
+        isPageOverlayFavorite(filePath) ? tr(STR_CLEAR_SLEEP_FAVORITE_CONFIRM) : tr(STR_SET_SLEEP_COVER_CONFIRM);
+    auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, prompt,
                                                                 filePath.substr(filePath.find_last_of('/') + 1));
     if (!confirmation) {
       LOG_ERR("BMP", "OOM: sleep cover confirmation (%zu bytes)", sizeof(ConfirmationActivity));

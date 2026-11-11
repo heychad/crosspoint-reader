@@ -55,7 +55,11 @@ int readerbars::height(const ReaderBar& bar, bool forceText) {
 
 void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosition position, float bookPercent,
                       int page, int pages, bool estimated, const char* bookTitle, const char* chapterTitle,
-                      bool bookmarked, const char* overrideTitle, const char* bookTime, const char* sectionTime) {
+                      bool bookmarked, const char* overrideTitle, const char* bookTime, const char* sectionTime,
+                      const char* chapterTime) {
+#if !defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+  (void)chapterTime;
+#endif
   const auto& metrics = UITheme::getInstance().getMetrics();
   int mt, mr, mb, ml;
   renderer.getOrientedViewableTRBL(&mt, &mr, &mb, &ml);
@@ -63,7 +67,7 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
   const int textHeight = bar.hasText() || overrideTitle ? metrics.statusBarVerticalMargin : 0;
   const int totalHeight = height(bar, overrideTitle != nullptr);
   if (totalHeight == 0) return;
-  const int origin = top ? std::max(0, mt - 3) : renderer.getScreenHeight() - mb - totalHeight;
+  const int origin = top ? std::max(0, mt - 4) : renderer.getScreenHeight() - mb - totalHeight;
   const int y = origin + std::max(0, (textHeight - renderer.getLineHeight(SMALL_FONT_ID)) / 2);
   const int corner = top ? BoardConfig::ACTIVE.cornerRadius
                          : std::max(BoardConfig::ACTIVE.cornerRadius, BoardConfig::ACTIVE.bottomCornerRadius);
@@ -111,6 +115,11 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
       case ReaderBarItem::TimeLeftSection:
         text[i] = sectionTime ? sectionTime : "-";
         break;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+      case ReaderBarItem::TimeLeftChapter:
+        text[i] = chapterTime ? chapterTime : "-";
+        break;
+#endif
       case ReaderBarItem::Count:
         break;
     }

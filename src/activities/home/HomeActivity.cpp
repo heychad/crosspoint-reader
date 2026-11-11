@@ -25,8 +25,21 @@
 #include "RecentBooksStore.h"
 #include "activities/reader/ReadingStatsStore.h"
 #include "activities/reader/StatsSaveNotice.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION) && \
+    (!defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) || !defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE))
+#error "Deferred automation requires completion and completion-move support"
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+#include "activities/RenderLock.h"
+#include "activities/reader/DeferredCompletionMove.h"
+#include "activities/reader/ReadingStatsUtils.h"
+#endif
 #include "components/UITheme.h"
 #include "components/themes/minimal/DashboardHomeTheme.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+#include "components/themes/lyra/CarouselLayout.h"
+#include "components/themes/lyra/LyraCarouselTheme.h"
+#endif
 #include "fontIds.h"
 #include "util/BookProgress.h"
 
@@ -51,6 +64,11 @@ HomeActivity::MenuPage HomeActivity::menuPage() const {
   const int capacity = std::max(1, (footerTop - top + metrics.menuSpacing) / (rowHeight + metrics.menuSpacing));
   const int bookRows = metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
   const int total = getMenuItemCount() - bookRows;
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
+    return {std::max(0, footerTop - rowHeight), 0, total, total};
+  }
+#endif
   const int selected = std::clamp(selectorIndex - bookRows, 0, total - 1);
   const int first = (selected / capacity) * capacity;
   return {top, first, std::min(capacity, total - first), capacity};
@@ -274,8 +292,59 @@ void HomeActivity::loadDashboardData() {
     dashboardData.remainingSeconds = stats->remainingReadingSeconds(dashboardData.progress * 100);
 }
 
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+static HomeDashboardData loadCarouselBookData(const std::string& path) {
+  HomeDashboardData data;
+  if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasXtcExtension(path)) data.progress = loadBookProgress(path);
+  if (!SETTINGS.trackReadingStats) return data;
+  std::string cache;
+  if (FsHelpers::hasEpubExtension(path)) {
+    cache = Epub::cachePathForFilePath(path, "/.crosspoint");
+  } else if (FsHelpers::hasXtcExtension(path)) {
+    auto xtc = makeUniqueNoThrow<Xtc>(path, "/.crosspoint");
+    if (!xtc) return data;
+    cache = xtc->getCachePath();
+  } else {
+    return data;
+  }
+  auto stats = makeUniqueNoThrow<BookReadingStats>();
+  if (!stats) return data;
+  bool enabled = false, found = false;
+  *stats = readingstats::loadBook(cache, path, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
+  if (enabled && found && stats->writable && stats->sessionCount > 0) {
+    data.hasStats = true;
+    data.readingSeconds = stats->totalReadingSeconds;
+  }
+  return data;
+}
+#endif
+
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+void HomeActivity::showDeferredMove(void* context) {
+  auto& home = *static_cast<HomeActivity*>(context);
+  RenderLock lock;
+  home.renderer.clearScreen();
+  GUI.drawPopup(home.renderer, tr(STR_ORGANIZING_FINISHED_BOOK));
+  home.deferredMoveOverlayShown = true;
+}
+#endif
+
 void HomeActivity::onEnter() {
   Activity::onEnter();
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+  ReadingStatsDateTime now{};
+  const ReadingStatsDate today = getCurrentLocalReadingStatsDateTime(now) ? now.date : ReadingStatsDate{};
+  const auto pending = readingstats::deferredcompletion::executeOnePending(today, showDeferredMove, this);
+  using MoveResult = readingstats::deferredcompletion::ExecuteMoveResult;
+  deferredMoveRetryPending =
+      pending == MoveResult::Moved || pending == MoveResult::Busy || pending == MoveResult::Unavailable;
+  if (deferredMoveRetryPending) deferredMoveRetryAt = millis() + 500;
+  deferredMoveNeedsReview = pending == MoveResult::Blocked || pending == MoveResult::RecoveryRequired;
+  deferredMoveOverlayShown = false;
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  carouselCenterIndex = 0;
+#endif
 
   libraryFirstOnHome = SETTINGS.libraryFirstOnHome != 0;
   hasOpdsServers = OPDS_STORE.hasServers();
@@ -291,6 +360,13 @@ void HomeActivity::onEnter() {
     if (!coverGridUi) LOG_ERR("HOME", "OOM: cover grid UI; using standard home");
   }
   loadRecentBooks(coverGridUi ? CoverGridHomeUi::MAX_BOOKS : metrics.homeRecentBooksCount);
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  carouselData.fill({});
+  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
+    for (size_t i = 0; i < recentBooks.size() && i < carouselData.size(); ++i)
+      carouselData[i] = loadCarouselBookData(recentBooks[i].path);
+  }
+#endif
   hasContinueReading = !recentBooks.empty();
   if (GUI.hasDashboardHome()) loadDashboardData();
   if (coverGridUi) {
@@ -355,6 +431,45 @@ void HomeActivity::freeCoverBuffer() {
 
 void HomeActivity::loop() {
   if (!statsSavePopup.isActive()) {
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+    if (deferredMoveRetryPending && static_cast<int32_t>(millis() - deferredMoveRetryAt) >= 0) {
+      deferredMoveRetryPending = false;
+      ReadingStatsDateTime now{};
+      const ReadingStatsDate today = getCurrentLocalReadingStatsDateTime(now) ? now.date : ReadingStatsDate{};
+      const auto result = readingstats::deferredcompletion::executeOnePending(today, showDeferredMove, this);
+      using MoveResult = readingstats::deferredcompletion::ExecuteMoveResult;
+      if (result == MoveResult::Moved) {
+        activityManager.goHome();
+        return;
+      }
+      if (deferredMoveOverlayShown) {
+        deferredMoveOverlayShown = false;
+        requestUpdate();
+      }
+      deferredMoveNeedsReview =
+          result == MoveResult::Blocked || result == MoveResult::RecoveryRequired || result == MoveResult::Unavailable;
+    }
+    if (deferredMoveNeedsReview) {
+      deferredMoveNeedsReview = false;
+      const char* options[] = {tr(STR_OK_BUTTON)};
+      statsSavePopup.showMessage(tr(STR_READING_STATISTICS), tr(STR_FINISHED_MOVE_REVIEW), options, 1, 0, [](int) {});
+      requestUpdate();
+      return;
+    }
+#endif
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    const uint32_t stateFailure = stateSaveNotice().pending();
+    if (stateFailure) {
+      const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
+      statsSavePopup.showMessage(tr(STR_STATE_SAVE_RECOVERY), tr(STR_STATE_RECOVERY_DETAILS), options, 2, 0,
+                                 [stateFailure](int index) {
+                                   if (index == 0 && !APP_STATE.recoverSleepStateForPageOverlay()) return;
+                                   stateSaveNotice().acknowledge(stateFailure);
+                                 });
+      requestUpdate();
+      return;
+    }
+#endif
     const uint32_t settingsFailure = settingsSaveNotice().pending();
     if (settingsFailure) {
       const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
@@ -379,6 +494,11 @@ void HomeActivity::loop() {
   const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto page = menuPage();
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  const bool carousel = SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL;
+  const int carouselBooks = static_cast<int>(recentBooks.size());
+  if (carousel && selectorIndex >= 0 && selectorIndex < carouselBooks) carouselCenterIndex = selectorIndex;
+#endif
 
   auto activateSelection = [this] {
     if (selectorIndex < recentBooks.size()) {
@@ -424,7 +544,24 @@ void HomeActivity::loop() {
     });
   }
 
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  int swipeY = 0;
+  const auto swipe = mappedInput.wasSwipe(nullptr, &swipeY);
+  if (carousel && carouselBooks > 1 && swipeY >= metrics.homeTopPadding &&
+      swipeY < metrics.homeTopPadding + metrics.homeCoverTileHeight &&
+      (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right)) {
+    const int step = swipe == MappedInputManager::SwipeDir::Left ? 1 : -1;
+    carouselCenterIndex = (carouselCenterIndex + carouselBooks + step) % carouselBooks;
+    selectorIndex = carouselCenterIndex;
+    requestUpdate();
+    return;
+  }
+  // A swipe belongs to the carousel even if it does not change selection.
+  // In particular, it must not also trigger Home's synthetic Back action.
+  if (carousel && swipe != MappedInputManager::SwipeDir::None) return;
+#else
   const auto swipe = mappedInput.wasSwipe();
+#endif
   if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
     const bool forward = swipe == MappedInputManager::SwipeDir::Up;
     if (coverGridUi) {
@@ -493,8 +630,33 @@ void HomeActivity::loop() {
   // screen-relative getScreenWidth()/contentSidePadding here offset the touch
   // targets from the drawn covers by content.x on bezel-inset panels (EEGO A4).
   const Rect content = UITheme::getInstance().getContentArea(renderer);
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (carousel && carouselBooks > 0) {
+    int touchX = 0, touchY = 0;
+    const int titleHeight = renderer.getLineHeight(SMALL_FONT_ID);
+    const auto layout = carousellayout::make(content.x, metrics.homeTopPadding, content.width,
+                                             metrics.homeCoverTileHeight, titleHeight);
+    if (mappedInput.wasScreenTapped(touchX, touchY)) {
+      const int target = carousellayout::hit(layout, touchX, touchY, carouselBooks, carouselCenterIndex);
+      if (target >= 0) {
+        const bool open = target == carouselCenterIndex && selectorIndex == target;
+        carouselCenterIndex = target;
+        selectorIndex = target;
+        if (open)
+          activateSelection();
+        else
+          requestUpdate();
+        return;
+      }
+    }
+  }
+#endif
   const int coverColumnCount = std::max(1, metrics.homeRecentBooksCount);
-  const int recentCount = std::min(static_cast<int>(recentBooks.size()), coverColumnCount);
+  const int recentCount =
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+      carousel ? 0 :
+#endif
+               std::min(static_cast<int>(recentBooks.size()), coverColumnCount);
   const int coverColumnWidth = (content.width - 2 * metrics.contentSidePadding) / coverColumnCount;
   int touchedBook = -1;
   const auto coverTouch = mappedInput.colTouch(
@@ -516,12 +678,32 @@ void HomeActivity::loop() {
   }
 
   const int menuTop = page.top;
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (carousel) {
+    int touchX = 0, touchY = 0;
+    if (mappedInput.wasScreenTapped(touchX, touchY)) {
+      const int target = carousellayout::menuHit(content.x, menuTop, content.width, GUI.getMenuRowHeight(renderer),
+                                                 page.count, touchX, touchY);
+      if (target >= 0) {
+        selectorIndex = page.first + target + static_cast<int>(recentBooks.size());
+        haptic_feedback::touchAction();
+        activateSelection();
+        return;
+      }
+    }
+  }
+#endif
   const int renderedMenuCount = page.count;
   int menuRow = -1;
   // Row height from the theme, not the metrics table: RoundedRaff draws
   // font-derived rows and the touch grid must match the visuals exactly.
   const int menuRowHeight = GUI.getMenuRowHeight(renderer);
-  const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, menuRowHeight + metrics.menuSpacing, renderedMenuCount,
+  const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, menuRowHeight + metrics.menuSpacing,
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+                                              carousel ? 0 : renderedMenuCount,
+#else
+                                              renderedMenuCount,
+#endif
                                               0, INT32_MAX, menuRowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
     const int touchedIndex =
@@ -607,6 +789,17 @@ void HomeActivity::render(RenderLock&&) {
   GUI.drawRecentBookCover(renderer, Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight},
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL && !recentBooks.empty()) {
+    const int center = selectorIndex >= 0 && selectorIndex < static_cast<int>(recentBooks.size())
+                           ? selectorIndex
+                           : carouselCenterIndex.load();
+    if (center >= 0 && static_cast<size_t>(center) < carouselData.size())
+      LyraCarouselTheme::drawReadingProgress(
+          renderer, Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight},
+          carouselData[center]);
+  }
+#endif
   if (GUI.hasDashboardHome() && !recentBooks.empty()) {
     DashboardHomeTheme::drawReadingInfo(
         renderer, Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight}, dashboardData);
@@ -637,13 +830,21 @@ void HomeActivity::render(RenderLock&&) {
   renderer.fillRect(content.x, page.top - inset, content.width,
                     std::max(0, pageHeight - metrics.buttonHintsHeight - page.top + inset), false);
   const int bookRows = metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
-  GUI.drawButtonMenu(
-      renderer,
-      Rect{content.x, page.top - inset, content.width,
-           page.count * (GUI.getMenuRowHeight(renderer) + metrics.menuSpacing) + inset},
-      page.count, selectorIndex - bookRows - page.first,
-      [&menuItems, &page](int index) { return std::string(menuItems[page.first + index]); },
-      [&menuIcons, &page](int index) { return menuIcons[page.first + index]; });
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
+    LyraCarouselTheme::drawHomeMenu(
+        renderer, Rect{content.x, page.top, content.width, GUI.getMenuRowHeight(renderer)}, page.count,
+        selectorIndex - bookRows, [&menuItems](int index) { return std::string(menuItems[index]); },
+        [&menuIcons](int index) { return menuIcons[index]; });
+  } else
+#endif
+    GUI.drawButtonMenu(
+        renderer,
+        Rect{content.x, page.top - inset, content.width,
+             page.count * (GUI.getMenuRowHeight(renderer) + metrics.menuSpacing) + inset},
+        page.count, selectorIndex - bookRows - page.first,
+        [&menuItems, &page](int index) { return std::string(menuItems[page.first + index]); },
+        [&menuIcons, &page](int index) { return menuIcons[page.first + index]; });
 
   const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
                                             tr(STR_DIR_DOWN));

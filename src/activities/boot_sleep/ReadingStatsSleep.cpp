@@ -252,4 +252,122 @@ bool drawCoverSummary(GfxRenderer& renderer, const char* title, const Data& data
   statCell(renderer, x + half, y, width - half, cellHeight, tr(STR_BAR_TIME_BOOK), value);
   return true;
 }
+
+bool drawMinimalBook(GfxRenderer& renderer, const char* title, int progress, uint32_t readingSeconds,
+                     const Bitmap* cover) {
+  const Rect safe = UITheme::getContentArea(renderer);
+  const int margin = std::clamp(safe.width / 30, 8, 24);
+  const int line = renderer.getLineHeight(UI_10_FONT_ID);
+  const int available = safe.height - 2 * margin - 2 * line - 30;
+  const int coverHeight = std::min({583, available, (safe.width - 2 * margin) * 5 / 3});
+  const int coverWidth = coverHeight * 3 / 5;
+  if (line <= 0 || coverHeight < 80 || coverWidth < 48) return false;
+  const Rect frame{safe.x + (safe.width - coverWidth) / 2, safe.y + margin + (available - coverHeight) / 2, coverWidth,
+                   coverHeight};
+  renderer.clearScreen();
+  if (!cover || !BaseTheme::drawCoverThumbFill(renderer, *cover, frame)) {
+    renderer.clearScreen();
+    renderer.drawRect(frame.x, frame.y, frame.width, frame.height);
+    textInBox(renderer, UI_10_FONT_ID, frame.x + 8, frame.y + (frame.height - line) / 2, frame.width - 16, title, true,
+              EpdFontFamily::BOLD);
+  }
+  const int durationY = frame.y + frame.height + 8;
+  if (readingSeconds) {
+    char duration[32];
+    BookReadingStats::formatDuration(readingSeconds, duration, sizeof(duration));
+    textInBox(renderer, UI_10_FONT_ID, frame.x, durationY, frame.width, duration);
+  }
+  if (progress >= 0) {
+    const int percent = std::clamp(progress, 0, 100);
+    const int barY = durationY + line + 4;
+    renderer.drawRect(frame.x, barY, frame.width, 6);
+    const int fill = (frame.width - 2) * percent / 100;
+    if (fill > 0) renderer.fillRect(frame.x + 1, barY + 1, fill, 4);
+    char label[8];
+    snprintf(label, sizeof(label), "%d%%", percent);
+    textInBox(renderer, UI_10_FONT_ID, frame.x, barY + 9, frame.width, label, true);
+  }
+  return true;
+}
+
+bool drawBookDashboard(GfxRenderer& renderer, const char* title, const char* author, const DashboardData& data,
+                       const Bitmap* cover) {
+  const Rect safe = UITheme::getContentArea(renderer);
+  const int margin = std::clamp(safe.width / 30, 8, 24);
+  const int line = renderer.getLineHeight(UI_10_FONT_ID);
+  const int width = safe.width - 2 * margin;
+  const int coverWidth = (width - 18) / 2;
+  const int coverHeight = std::min({420, coverWidth * 5 / 3, safe.height - 2 * margin - 5 * line - 48});
+  const int rows = data.hasStats ? 7 : 1;
+  if (line <= 0 || coverWidth < 80 || coverHeight < rows * (2 * line + 4)) return false;
+  const Rect frame{safe.x + margin, safe.y + margin, coverWidth, coverHeight};
+  const int statsX = frame.x + frame.width + 18;
+  const int statsWidth = safe.x + safe.width - margin - statsX;
+  renderer.clearScreen();
+  if (!cover || !BaseTheme::drawCoverThumbFill(renderer, *cover, frame)) {
+    renderer.clearScreen();
+    renderer.drawRect(frame.x, frame.y, frame.width, frame.height);
+    textInBox(renderer, UI_10_FONT_ID, frame.x + 8, frame.y + (frame.height - line) / 2, frame.width - 16, title, true,
+              EpdFontFamily::BOLD);
+  }
+  const int rowHeight = coverHeight / rows;
+  const auto row = [&](int index, const char* label, const char* value) {
+    const int y = frame.y + index * rowHeight;
+    textInBox(renderer, UI_10_FONT_ID, statsX, y, statsWidth, value, false, EpdFontFamily::BOLD);
+    textInBox(renderer, UI_10_FONT_ID, statsX, y + line + 3, statsWidth, label);
+  };
+  char value[32];
+  if (data.progress >= 0)
+    snprintf(value, sizeof(value), "%d%%", std::clamp(data.progress, 0, 100));
+  else
+    snprintf(value, sizeof(value), "-");
+  row(0, tr(STR_STATS_PROGRESS), value);
+  if (data.hasStats) {
+    BookReadingStats::formatDuration(data.readingSeconds, value, sizeof(value));
+    row(1, tr(STR_STATS_TOTAL_TIME), value);
+    if (data.remainingSeconds)
+      BookReadingStats::formatDuration(data.remainingSeconds, value, sizeof(value));
+    else
+      snprintf(value, sizeof(value), "-");
+    row(2, tr(STR_BAR_TIME_BOOK), value);
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(data.sessions));
+    row(3, tr(STR_STATS_SESSIONS), value);
+    if (data.readingSeconds) {
+      const uint64_t tenths = static_cast<uint64_t>(data.pages) * 600 / data.readingSeconds;
+      snprintf(value, sizeof(value), "%llu.%llu", static_cast<unsigned long long>(tenths / 10),
+               static_cast<unsigned long long>(tenths % 10));
+    } else
+      snprintf(value, sizeof(value), "-");
+    row(4, tr(STR_STATS_PAGES_PER_MINUTE), value);
+    dateValue(data.startDate, value, sizeof(value));
+    row(5, tr(STR_STATS_STARTED), value);
+    if (data.hasDailyAverage)
+      BookReadingStats::formatDuration(data.dailyAverageSeconds, value, sizeof(value));
+    else
+      snprintf(value, sizeof(value), "-");
+    row(6, tr(STR_STATS_DAILY_AVERAGE), value);
+  }
+  const int textY = frame.y + frame.height + 16;
+  textInBox(renderer, UI_10_FONT_ID, frame.x, textY, width, title, false, EpdFontFamily::BOLD);
+  if (author && *author) textInBox(renderer, UI_10_FONT_ID, frame.x, textY + line + 5, width, author);
+  if (data.hasGlobal) {
+    const int footerY = safe.y + safe.height - margin - 2 * line - 3;
+    const int columns = data.hasStreak ? 3 : 2;
+    const int cell = width / columns;
+    BookReadingStats::formatDuration(data.globalSeconds, value, sizeof(value));
+    textInBox(renderer, UI_10_FONT_ID, frame.x, footerY, cell, value, false, EpdFontFamily::BOLD);
+    textInBox(renderer, UI_10_FONT_ID, frame.x, footerY + line + 3, cell, tr(STR_STATS_TOTAL_TIME));
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(data.completedBooks));
+    textInBox(renderer, UI_10_FONT_ID, frame.x + cell, footerY, cell, value, false, EpdFontFamily::BOLD);
+    textInBox(renderer, UI_10_FONT_ID, frame.x + cell, footerY + line + 3, cell, tr(STR_STATS_COMPLETED));
+    if (data.hasStreak) {
+      snprintf(value, sizeof(value), "%u", static_cast<unsigned>(data.currentStreak));
+      textInBox(renderer, UI_10_FONT_ID, frame.x + 2 * cell, footerY, width - 2 * cell, value, false,
+                EpdFontFamily::BOLD);
+      textInBox(renderer, UI_10_FONT_ID, frame.x + 2 * cell, footerY + line + 3, width - 2 * cell,
+                tr(STR_STATS_CURRENT_STREAK));
+    }
+  }
+  return true;
+}
 }  // namespace sleepstats

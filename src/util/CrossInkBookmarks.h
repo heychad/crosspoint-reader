@@ -13,6 +13,7 @@ class CrossInkBookmarks {
     uint16_t spine = 0;
     float progress = 0;
     uint16_t paragraph = UINT16_MAX;
+    bool recovered = false;
     char chapter[48]{};
     char snippet[64]{};
   };
@@ -29,6 +30,7 @@ class CrossInkBookmarks {
     uint16_t count = 0;
     uint16_t recordSize = 0;
     uint8_t version = 0;
+    bool recovered = false;
   };
   bool readHeader(Source& source, const std::string& bookPath);
   std::array<Source, 2> sources;

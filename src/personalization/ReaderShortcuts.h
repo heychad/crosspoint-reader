@@ -48,11 +48,17 @@ enum class Action : uint8_t {
   FontFamily,
   CycleFontFamily,
   ToggleHomeButton,
+  ToggleCompletion,
+  HomeReader,
   Count
 };
 // The existing edge palette ends before physical-only lock/sleep actions.
 inline constexpr uint8_t EDGE_ACTION_COUNT = static_cast<uint8_t>(Action::QuickLock);
 enum class Trigger : uint8_t { None, UpTap, UpHold, DownTap, DownHold, Chord };
+inline bool swapSideBindings(bool followsOrientation, uint8_t orientation) {
+  return followsOrientation && orientation != 0;
+}
+inline bool logicalSideUp(bool physicalUp, bool swapped) { return physicalUp != swapped; }
 struct Contact {
   bool down = false;
   bool pressed = false;

@@ -15,6 +15,7 @@ class SleepActivity final : public Activity {
  private:
   void renderDefaultSleepScreen() const;
   void renderReadingStatsSleepScreen() const;
+  void renderMinimalBookSleepScreen() const;
   void renderCustomSleepScreen() const;
   bool renderCustomSleepBmp(const std::string& path) const;
   void renderCoverSleepScreen() const;
@@ -24,6 +25,9 @@ class SleepActivity final : public Activity {
   bool renderSleepOverlayPath(const std::string& path) const;
   void renderLastScreenSleepScreen() const;
   void renderTransparentCustomSleepScreen() const;
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  void renderPageOverlaySleepScreen() const;
+#endif
   void renderBlankSleepScreen() const;
 
   bool fromTimeout = false;

@@ -1,0 +1,22 @@
+--- a/src/FsLib/FsFile.h
++++ b/src/FsLib/FsFile.h
+@@ -180,6 +180,19 @@
+    *
+    * \return true for success or false for failure.
+    */
++  bool moveDifferentEntry(const FsBaseFile& other) const {
++    return m_fFile && other.m_fFile ? m_fFile->moveDifferentEntry(*other.m_fFile)
++         : m_xFile && other.m_xFile ? m_xFile->moveDifferentEntry(*other.m_xFile) : false;
++  }
++  bool settingsClusterList(Cluster_t* out, size_t capacity, size_t* count) {
++    return m_fFile ? m_fFile->settingsClusterList(out, capacity, count) : m_xFile && m_xFile->settingsClusterList(out, capacity, count);
++  }
++  bool settingsSingleClusterChain() {
++    return m_fFile ? m_fFile->settingsSingleClusterChain() : m_xFile ? m_xFile->settingsSingleClusterChain() : false;
++  }
++  bool smallSingleClusterChain() {
++    return m_fFile ? m_fFile->smallSingleClusterChain() : m_xFile ? m_xFile->smallSingleClusterChain() : false;
++  }
+   bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector) {
+     return m_fFile   ? m_fFile->contiguousRange(bgnSector, endSector)
+            : m_xFile ? m_xFile->contiguousRange(bgnSector, endSector)

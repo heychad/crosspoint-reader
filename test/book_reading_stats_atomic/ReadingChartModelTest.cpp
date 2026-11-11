@@ -131,3 +131,31 @@ TEST(ReadingChartModel, FutureAnchorMustCoverTheWholeWindow) {
   EXPECT_TRUE(readingHistoryCoversWindow(729, {2000, 1, 1}, 30));
   EXPECT_FALSE(readingHistoryCoversWindow(730, {2000, 1, 1}, 30));
 }
+
+TEST(ReadingChartModel, RecordedYearIncludesTodayAndPrior364Days) {
+  const ReadingStatsDate today{2026, 11, 6};
+  const uint32_t current = readingStatsDayIndex(today);
+  std::array<uint8_t, READING_HISTORY_BYTES> bits{};
+  uint32_t anchor = 0;
+  markReadingHistoryDay(anchor, bits, current - 365);
+  markReadingHistoryDay(anchor, bits, current - 364);
+  markReadingHistoryDay(anchor, bits, current);
+  EXPECT_EQ(recordedReadingDays(anchor, bits, today, 365), 2);
+  EXPECT_TRUE(readingHistoryCoversWindow(current + 365, today, 365));
+  EXPECT_FALSE(readingHistoryCoversWindow(current + 366, today, 365));
+}
+
+TEST(ReadingChartModel, AggregatedRecordedDaysCountOverlappingDaysOnce) {
+  const ReadingStatsDate today{2026, 11, 6};
+  const uint32_t current = readingStatsDayIndex(today);
+  std::array<uint8_t, READING_HISTORY_BYTES> local{}, remote{};
+  uint32_t localAnchor = 0, remoteAnchor = 0;
+  markReadingHistoryDay(localAnchor, local, current - 2);
+  markReadingHistoryDay(localAnchor, local, current);
+  markReadingHistoryDay(remoteAnchor, remote, current - 40);
+  markReadingHistoryDay(remoteAnchor, remote, current);
+  mergeReadingHistory(localAnchor, local, remoteAnchor, remote);
+  EXPECT_EQ(recordedReadingDays(localAnchor, local, today, 7), 2);
+  EXPECT_EQ(recordedReadingDays(localAnchor, local, today, 30), 2);
+  EXPECT_EQ(recordedReadingDays(localAnchor, local, today, 365), 3);
+}

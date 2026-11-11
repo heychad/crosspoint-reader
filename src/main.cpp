@@ -44,6 +44,10 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/reader/StatsSaveNotice.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+#include "activities/reader/DeviceStatsBackup.h"
+#include "activities/reader/ReadingStatsUtils.h"
+#endif
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -469,6 +473,9 @@ static bool holdSleepWhileUsbPowered() {
 
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  activityManager.notifyUserInput();
+#endif
   physicalshortcuts::beforeSleep(activityManager);
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
@@ -494,6 +501,15 @@ void enterDeepSleep(bool fromTimeout = false) {
   APP_STATE.saveToFile();
 
   activityManager.goToSleep(fromTimeout);
+
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+  if (SETTINGS.trackReadingStats && SETTINGS.autoBackupStats) {
+    ReadingStatsDateTime now;
+    if (getCurrentLocalReadingStatsDateTime(now) &&
+        statsbackup::createDailyDeviceBackup(now.date) == statsbackup::AutomaticBackupResult::Unavailable)
+      LOG_ERR("SLP", "Automatic reading statistics backup failed");
+  }
+#endif
 
   if (isQuickResumeSleep) {
     saveSleepFrameBuffer();
@@ -585,6 +601,9 @@ void setup() {
   HalSystem::begin();
   statsSaveNotice().initialize(esp_reset_reason() == ESP_RST_DEEPSLEEP);
   settingsSaveNotice().initialize(esp_reset_reason() == ESP_RST_DEEPSLEEP);
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  stateSaveNotice().initialize(esp_reset_reason() == ESP_RST_DEEPSLEEP);
+#endif
   // checkPanic() clears the watchdog capture marker after a successful SD
   // dump, so retain the boot classification for the later activity route.
   const bool rebootedFromPanic = HalSystem::isRebootFromPanic();
@@ -861,6 +880,9 @@ void loop() {
   mappedInputManager.setReaderHomeBlocked(activityManager.isForegroundReaderPage() &&
                                           !SETTINGS.homeButtonInReaderEnabled && !activityManager.isInputLocked());
   mappedInputManager.update();
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity()) activityManager.notifyUserInput();
+#endif
 
   // Bluetooth page turner, before the USB drive's early return: a card handed to USB stops the radio
   // before anything else.
@@ -896,6 +918,9 @@ void loop() {
   // After the exclusive-storage return: it saves settings to the SD card.
   handleSlideSwitch();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  if (remoteActed || halTiltSensor.hadActivity()) activityManager.notifyUserInput();
+#endif
 
   // Under the render lock, so a step never overlaps the themes' gauge reads.
   static bool gaugeCapacityPending = true;

@@ -9,17 +9,21 @@
    /** Set writeError to zero */
    void clearWriteError() { m_error &= ~WRITE_ERROR; }
    /** Close a file and force cached data and directory information
-@@ -247,6 +249,9 @@
+@@ -247,6 +249,13 @@
     * The parameters may be nullptr to only set the flag.
     * \return true for success or false for failure.
     */
++  bool moveDifferentEntry(const FatFile& other) const {
++    return isFile() && other.isFile() && m_vol && m_vol == other.m_vol &&
++           (m_dirSector != other.m_dirSector || ((m_dirIndex ^ other.m_dirIndex) & 0x0f));
++  }
 +  bool settingsClusterList(Cluster_t* out, size_t capacity, size_t* count);
 +  bool settingsSingleClusterChain();
 +  bool smallSingleClusterChain();
    bool contiguousRange(Sector_t* bgnSector, Sector_t* endSector);
    /** Create and open a new contiguous file of a specified size.
     *
-@@ -1070,6 +1075,7 @@
+@@ -1070,6 +1079,7 @@
    uint8_t m_attributes = FILE_ATTR_CLOSED;
    uint8_t m_error = 0;  // Error bits.
    uint8_t m_flags = 0;  // See above for definition of m_flags bits

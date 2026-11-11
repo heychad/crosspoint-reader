@@ -28,8 +28,11 @@ struct GlobalReadingStats {bool writable=true;static GlobalReadingStats loadRead
 struct ActivityResult{};
 struct HalStorage {enum class PathStatus{Present,Missing,Failed};};
 struct StorageType {HalStorage::PathStatus status=HalStorage::PathStatus::Present;HalStorage::PathStatus lookupPath(const char*){return status;}} Storage;
-namespace library {const char* libraryIndexPath(){return "index";}}
-struct Index {bool opened=true,openOk=true;bool isOpen(){return opened;}void close(){opened=false;}bool open(const char*){opened=openOk;return opened;}};
+namespace library {bool dirty=false;bool isLibraryIndexDirty(){return dirty;}const char* libraryIndexPath(){return "index";}}
+struct Index {bool opened=true,openOk=true;bool isOpen(){return opened;}void close(){opened=false;}bool open(const char*){opened=openOk;return opened;}bool ranksDegraded(){return false;}};
+constexpr int STR_LIBRARY_REBUILDING=1;
+int tr(int value){return value;}
+struct Gui {void drawPopup(int&,int){}} GUI;
 namespace FsHelpers {
 bool hasReflowableBookExtension(const std::string& p){return p=="book.epub" || p=="book.md";}
 bool hasEpubExtension(const std::string& p){return p=="book.epub";}
@@ -55,9 +58,10 @@ struct LibraryListActivity;
 bool locked=false;
 struct RenderLock {explicit RenderLock(LibraryListActivity&){assert(!locked);locked=true;}void unlock(){assert(locked);locked=false;}~RenderLock(){locked=false;}};
 struct LibraryListActivity {
- Index index;int renderer=0,mappedInput=0;bool filterFailed=false,statisticsOpenFailed=false;int filteredCount=3,pinnedTotal=2,closeCount=0,updates=0,releases=0,pushes=0;
+ Index index;int renderer=0,mappedInput=0;bool filterFailed=false,statisticsOpenFailed=false,degraded=false,rebuildOk=true;int filteredCount=3,pinnedTotal=2,closeCount=0,updates=0,releases=0,pushes=0,rebuilds=0,resets=0;
  std::unique_ptr<ReadingStatsActivity> child;std::function<void(const ActivityResult&)> callback;
  void closeRouting(){++closeCount;}void requestUpdate(){++updates;}void swallowHeldReleases(){++releases;}
+ bool rebuildIndex(){++rebuilds;return rebuildOk;}void resetAfterRebuild(){++resets;}
  void startActivityForResult(std::unique_ptr<ReadingStatsActivity> activity,std::function<void(const ActivityResult&)> cb){assert(!locked);++pushes;child=std::move(activity);callback=std::move(cb);}
  void openBookStatistics(const std::string&,const std::string&);void restoreIndexAfterStatistics(bool);
 };
@@ -84,6 +88,11 @@ int main(){
  assert(xtcOom.pushes==0 && xtcOom.index.isOpen() && xtcOom.statisticsOpenFailed);failAt=0;
  LibraryListActivity noIndex;noIndex.index.opened=false;allocation=0;noIndex.openBookStatistics("book.epub","Title");
  assert(noIndex.pushes==1);noIndex.callback({});assert(!noIndex.index.isOpen());
+ LibraryListActivity dirty;allocation=0;dirty.openBookStatistics("book.epub","Title");library::dirty=true;
+ dirty.callback({});assert(dirty.index.isOpen() && dirty.rebuilds==1 && dirty.resets==1 && !dirty.filterFailed);
+ LibraryListActivity rebuildFailed;allocation=0;library::dirty=false;rebuildFailed.openBookStatistics("book.epub","Title");
+ library::dirty=true;rebuildFailed.rebuildOk=false;rebuildFailed.callback({});
+ assert(rebuildFailed.filterFailed && rebuildFailed.filteredCount==0 && rebuildFailed.closeCount==1);library::dirty=false;
  LibraryListActivity badIndex;badIndex.index.openOk=false;allocation=0;badIndex.openBookStatistics("book.epub","Title");
  assert(badIndex.pushes==1);badIndex.callback({});assert(!badIndex.index.isOpen() && badIndex.filterFailed && badIndex.filteredCount==0 && badIndex.pinnedTotal==0 && badIndex.closeCount==1);
 }
@@ -91,6 +100,6 @@ int main(){
 with tempfile.TemporaryDirectory() as directory:
     directory = Path(directory)
     (directory / 'test.cpp').write_text(code)
-    subprocess.run(['c++','-std=c++20',str(directory / 'test.cpp'),'-o',str(directory / 'test')],check=True)
+    subprocess.run(['c++','-std=c++20','-DCROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE',str(directory / 'test.cpp'),'-o',str(directory / 'test')],check=True)
     subprocess.run([str(directory / 'test')],check=True)
 print('Library statistics launch and index recovery paths passed')

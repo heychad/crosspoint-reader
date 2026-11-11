@@ -16,6 +16,40 @@ void writeBytes(const char* path, const std::vector<uint8_t>& bytes) {
 }
 }  // namespace
 
+TEST_F(GlobalReadingStatsTest, DecodeChecksVersionAndSizeWithoutChangingOutputOnFailure) {
+  GlobalReadingStats source;
+  source.totalSessions = 7;
+  source.totalReadingSeconds = 1234;
+  source.completedBooks = 3;
+  source.readingHistoryBits[4] = 42;
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> bytes{};
+  ASSERT_TRUE(source.encode(bytes));
+  GlobalReadingStats decoded;
+  ASSERT_TRUE(GlobalReadingStats::decode(bytes.data(), bytes.size(), decoded));
+  EXPECT_EQ(decoded.totalSessions, 7U);
+  EXPECT_EQ(decoded.totalReadingSeconds, 1234U);
+  EXPECT_EQ(decoded.completedBooks, 3U);
+  EXPECT_EQ(decoded.readingHistoryBits[4], 42);
+  EXPECT_FALSE(GlobalReadingStats::decode(nullptr, bytes.size(), decoded));
+  EXPECT_FALSE(GlobalReadingStats::decode(bytes.data(), bytes.size() - 1, decoded));
+  bytes[0] = GlobalReadingStats::CURRENT_FILE_VERSION + 1;
+  EXPECT_FALSE(GlobalReadingStats::decode(bytes.data(), bytes.size(), decoded));
+  EXPECT_EQ(decoded.totalReadingSeconds, 1234U);
+  EXPECT_EQ(decoded.readingHistoryBits[4], 42);
+}
+
+TEST_F(GlobalReadingStatsTest, DecodeAcceptsLegacyPayloadWithCleanNewFields) {
+  const std::array<uint8_t, 13> old{1, 2, 0, 0, 0, 120, 0, 0, 0, 5, 0, 0, 0};
+  GlobalReadingStats decoded;
+  decoded.completedBooks = 99;
+  decoded.readingHistoryBits[4] = 42;
+  ASSERT_TRUE(GlobalReadingStats::decode(old.data(), old.size(), decoded));
+  EXPECT_EQ(decoded.totalSessions, 2U);
+  EXPECT_EQ(decoded.totalReadingSeconds, 120U);
+  EXPECT_EQ(decoded.completedBooks, 0U);
+  EXPECT_EQ(decoded.readingHistoryBits[4], 0);
+}
+
 TEST_F(GlobalReadingStatsTest, RoundTripAndInterruptedRenamePreserveOldHistory) {
   GlobalReadingStats stats;
   stats.totalReadingSeconds = 987;

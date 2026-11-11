@@ -58,6 +58,7 @@ TEST(HomeButtonInput, NewReaderActionsKeepStableIdsAndGestures) {
   static_assert(static_cast<unsigned>(HomeButtonAction::SavedItems) == 16);
   static_assert(static_cast<unsigned>(HomeButtonAction::FileTransfer) == 17);
   static_assert(static_cast<unsigned>(HomeButtonAction::ReadingStatistics) == 18);
+  static_assert(static_cast<unsigned>(HomeButtonAction::CycleFontFamily) == 26);
   HomeButtonInput input;
   using A = HomeButtonAction;
   EXPECT_EQ(input.update(0, true, false, false, false, A::Library, A::SavedItems, A::FileTransfer), A::Ignore);
@@ -66,6 +67,7 @@ TEST(HomeButtonInput, NewReaderActionsKeepStableIdsAndGestures) {
   EXPECT_EQ(input.update(1000, false, true, false, false, A::Library, A::SavedItems, A::FileTransfer), A::FileTransfer);
   EXPECT_EQ(input.update(2000, true, false, false, false, A::ReadingStatistics, A::Ignore, A::FileBrowser),
             A::ReadingStatistics);
+  EXPECT_EQ(input.update(3000, false, true, false, false, A::Home, A::Ignore, A::CycleFontFamily), A::CycleFontFamily);
 }
 
 TEST(HomeButtonInput, DiscardsHeldContactUntilItsReleaseThenAcceptsNewTap) {

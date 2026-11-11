@@ -60,9 +60,12 @@ class ActivityManager {
   std::unique_ptr<Activity> pendingActivity;
   enum class PendingAction { None, Push, Pop, Replace, ReplaceForSleep };
   PendingAction pendingAction = PendingAction::None;
+  Activity* pendingHomeReaderTarget = nullptr;
+  bool continueHomeReaderUnwind();
 
   // Task to render and display the activity
   TaskHandle_t renderTaskHandle = nullptr;
+  std::atomic<TaskHandle_t> mainTaskHandle{nullptr};
   static void renderTaskTrampoline(void* param);
   [[noreturn]] virtual void renderTaskLoop();
 
@@ -84,6 +87,12 @@ class ActivityManager {
   // Whether to trigger a render after the current loop()
   // This variable must only be set by the main loop, to avoid race conditions
   std::atomic<bool> requestedUpdate{false};
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  std::atomic<uint32_t> normalRenderSequence{0};
+  std::atomic<bool> backgroundRenderPending{false};
+  uint32_t backgroundRenderVisit = 0;  // Protected by RenderLock.
+#endif
+  void notifyRenderTask();
 
   // Counts screen changes, so the Bluetooth page turner can tell one visit of a book from the next.
   // Written by the main loop under RenderLock; the render task captures it under that lock.
@@ -112,8 +121,13 @@ class ActivityManager {
   bool isInputLocked() const { return inputLocked.load(std::memory_order_acquire); }
   bool applyInputLock(bool locked, bool restoreLight = true);
   bool dispatchShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None);
+  bool handleHomeReaderShortcut();
   void begin();
   void loop();
+  bool isMainTask() const {
+    const auto task = mainTaskHandle.load(std::memory_order_acquire);
+    return task && task == xTaskGetCurrentTaskHandle();
+  }
 
   // Will replace currentActivity and drop all activities on stack
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);
@@ -145,6 +159,11 @@ class ActivityManager {
   void popActivity();
 
   bool preventAutoSleep() const;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+  void notifyUserInput();
+  // Caller holds RenderLock, which binds the request to the current visit.
+  void requestBackgroundRender();
+#endif
   bool requiresExclusiveStorageLoop() const;
   bool isReaderActivity() const;
   // Bluetooth page turner (lib/BlePageTurner): the book in front, whether it has painted a page, and

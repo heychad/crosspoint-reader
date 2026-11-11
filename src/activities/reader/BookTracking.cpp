@@ -6,6 +6,7 @@
 #include <array>
 
 #include "ReadingStatsStore.h"
+#include "StatsAccessGate.h"
 
 namespace {
 std::array<std::string, 4> markers(const std::string& cache, const std::string& book) {
@@ -48,7 +49,8 @@ booktracking::State booktracking::state(const std::string& cachePath, const std:
   return State::Enabled;
 }
 
-bool booktracking::setEnabled(const std::string& cachePath, const std::string& bookPath, bool enabled) {
+namespace {
+bool setEnabledUnlocked(const std::string& cachePath, const std::string& bookPath, bool enabled) {
   if (cachePath.empty() || bookPath.empty()) return false;
   const auto paths = markers(cachePath, bookPath);
   std::array<bool, 4> found{};
@@ -56,7 +58,7 @@ bool booktracking::setEnabled(const std::string& cachePath, const std::string& b
   if (enabled) {
     for (size_t i = 0; i < paths.size(); ++i)
       if (found[i] && !Storage.remove(paths[i].c_str())) return false;
-    return state(cachePath, bookPath) == State::Enabled;
+    return booktracking::state(cachePath, bookPath) == booktracking::State::Enabled;
   }
   for (const bool present : found)
     if (present) return true;
@@ -76,5 +78,19 @@ bool booktracking::setEnabled(const std::string& cachePath, const std::string& b
   if (!Storage.openFileForRead("STATS", paths.front(), check)) return false;
   uint8_t actual = 0;
   const bool matches = check.fileSize() == 1 && check.read(&actual, 1) == 1 && actual == value;
-  return check.close() && matches && state(cachePath, bookPath) == State::Disabled;
+  return check.close() && matches && booktracking::state(cachePath, bookPath) == booktracking::State::Disabled;
+}
+}  // namespace
+
+bool booktracking::setEnabled(const std::string& cachePath, const std::string& bookPath, bool enabled) {
+  struct Context {
+    const std::string& cache;
+    const std::string& book;
+    bool enabled;
+  } context{cachePath, bookPath, enabled};
+  const auto update = [](void* raw) {
+    const auto& input = *static_cast<Context*>(raw);
+    return readingstats::normalStatsAllowed() && setEnabledUnlocked(input.cache, input.book, input.enabled);
+  };
+  return Storage.withStorageLock(update, &context);
 }

@@ -6,6 +6,7 @@
 #include <Utf8.h>
 #include <ZipFile.h>
 
+#include <algorithm>
 #include <deque>
 #include <mutex>
 #include <optional>
@@ -584,6 +585,46 @@ BookMetadataCache::TocEntry BookMetadataCache::getTocEntry(const int index) {
   serialization::readPod(bookFile, tocEntryPos);
   bookFile.seek(tocEntryPos);
   return readTocEntry(bookFile);
+}
+
+bool BookMetadataCache::copySpineTocTitle(const int spineIndex, char* output, const size_t capacity) {
+  if (!output || !capacity) return false;
+  output[0] = '\0';
+  if (!loaded || spineIndex < 0 || spineIndex >= static_cast<int>(spineCount)) return false;
+  const uint64_t fileSize = bookFile.fileSize64();
+  const auto readAt = [&](uint64_t pos, void* data, size_t count) {
+    return pos <= fileSize && count <= fileSize - pos && bookFile.seek64(pos) &&
+           static_cast<size_t>(bookFile.read(data, count)) == count;
+  };
+  uint32_t spinePos = 0, hrefLength = 0;
+  const uint64_t spineSlot = uint64_t{lutOffset} + uint64_t{sizeof(uint32_t)} * spineIndex;
+  if (!readAt(spineSlot, &spinePos, sizeof(spinePos)) || !readAt(spinePos, &hrefLength, sizeof(hrefLength)))
+    return false;
+  const uint64_t tocIndexPos = uint64_t{spinePos} + sizeof(uint32_t) + hrefLength + sizeof(uint32_t);
+  int16_t tocIndex = -1;
+  if (!readAt(tocIndexPos, &tocIndex, sizeof(tocIndex)) || tocIndex < 0 || tocIndex >= static_cast<int>(tocCount))
+    return false;
+  const uint64_t tocSlot = uint64_t{lutOffset} + uint64_t{sizeof(uint32_t)} * (uint64_t{spineCount} + tocIndex);
+  uint32_t tocPos = 0, titleLength = 0;
+  if (!readAt(tocSlot, &tocPos, sizeof(tocPos)) || !readAt(tocPos, &titleLength, sizeof(titleLength))) return false;
+  const uint64_t titlePos = uint64_t{tocPos} + sizeof(uint32_t);
+  if (!titleLength || titlePos > fileSize || titleLength > fileSize - titlePos) return false;
+  const size_t count = std::min({static_cast<size_t>(titleLength), capacity - 1, size_t{1023}});
+  if (!count || !readAt(titlePos, output, count)) {
+    output[0] = '\0';
+    return false;
+  }
+  size_t lead = count - 1;
+  while (lead && (static_cast<unsigned char>(output[lead]) & 0xc0) == 0x80) --lead;
+  const auto first = static_cast<unsigned char>(output[lead]);
+  const size_t expected = first < 0x80             ? 1
+                          : (first & 0xe0) == 0xc0 ? 2
+                          : (first & 0xf0) == 0xe0 ? 3
+                          : (first & 0xf8) == 0xf0 ? 4
+                                                   : 1;
+  const size_t safe = count - lead < expected ? lead : count;
+  output[safe] = '\0';
+  return safe > 0;
 }
 
 BookMetadataCache::SpineEntry BookMetadataCache::readSpineEntry(HalFile& file) const {

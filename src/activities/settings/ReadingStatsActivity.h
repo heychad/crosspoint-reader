@@ -42,12 +42,18 @@ class ReadingStatsActivity final : public UiTabListActivity {
     LongestStreak,
     RecordedWeek,
     RecordedMonth,
+    RecordedYear,
     Sources,
     Skipped,
     State,
     Charts,
     BackupDevice,
     BackupBook,
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+    RestoreDevice,
+    RestoreBook,
+    ResetDevice,
+#endif
     Morning,
     Afternoon,
     Evening,
@@ -61,18 +67,33 @@ class ReadingStatsActivity final : public UiTabListActivity {
     Sunday
   };
   inline static constexpr Row BOOK_ROWS[] = {
-      Row::Title,          Row::Progress, Row::Time,       Row::Sessions, Row::AverageSession, Row::Pages,
-      Row::PagesPerMinute, Row::TimeLeft, Row::Started,    Row::Finished, Row::DaysReading,    Row::ProjectedFinish,
-      Row::Completion,     Row::Tracking, Row::BackupBook, Row::State,    Row::Charts};
-  inline static constexpr Row GLOBAL_ROWS[] = {
-      Row::Time,          Row::Sessions, Row::AverageSession, Row::Pages, Row::CompletedBooks, Row::CurrentStreak,
-      Row::LongestStreak, Row::Sources,  Row::Skipped,        Row::State, Row::Charts};
+      Row::Title,       Row::Progress,        Row::Time,       Row::Sessions, Row::AverageSession,
+      Row::Pages,       Row::PagesPerMinute,  Row::TimeLeft,   Row::Started,  Row::Finished,
+      Row::DaysReading, Row::ProjectedFinish, Row::Completion, Row::Tracking, Row::BackupBook,
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+      Row::RestoreBook,
+#endif
+      Row::State,       Row::Charts};
+  inline static constexpr Row GLOBAL_ROWS[] = {Row::Time,          Row::Sessions,       Row::AverageSession,
+                                               Row::Pages,         Row::PagesPerMinute, Row::CompletedBooks,
+                                               Row::CurrentStreak, Row::LongestStreak,  Row::Sources,
+                                               Row::Skipped,       Row::State,          Row::Charts};
   static void provideRow(void* context, uint16_t index, freeink::ui::ListItem& item);
   void formatRow(Row row, freeink::ui::ListItem& item);
   Row rowAt(int index) const;
   void openCharts();
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+  void pickDeviceBackup();
+  void confirmDeviceRestore(const std::string& filename);
+  void pickBookBackup();
+  void confirmBookRestore(const std::string& filename);
+  void confirmDeviceReset();
+#endif
   void editDate(bool started);
   void savePendingDateBeforeExit();
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+  void savePendingCompletionBeforeExit();
+#endif
   bool bookTab() const { return tab == Tab::Book; }
   int listCount() const override;
   int tabCount() const override { return hasBook ? 3 : 2; }
@@ -102,6 +123,13 @@ class ReadingStatsActivity final : public UiTabListActivity {
   bool dateResultStarted = false;
   bool dateSaveIncomplete = false;
   bool closedDateSavePending = false;
+#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
+  bool completionPending = false;
+  bool completionDesired = false;
+  bool completionFailed = false;
+  bool completionRetryRecovery = false;
+  bool completionRecoveryChecking = false;
+#endif
   ReadingStatsDate pendingClosedDate;
   std::string trackingCachePath;
   std::string trackingBookPath;
@@ -110,5 +138,21 @@ class ReadingStatsActivity final : public UiTabListActivity {
   enum class BackupStatus : uint8_t { None, Saving, Saved, Failed, Unavailable };
   BackupStatus backupStatus = BackupStatus::None;
   BackupStatus bookBackupStatus = BackupStatus::None;
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+  BackupStatus restoreStatus = BackupStatus::None;
+  bool restorePending = false;
+  bool resetPending = false;
+  BackupStatus resetStatus = BackupStatus::None;
+  bool bookRestorePending = false;
+  BackupStatus bookRestoreStatus = BackupStatus::None;
+  enum class BookRestoreRecovery : uint8_t { None, Checking, Available, Running, ManualReview };
+  BookRestoreRecovery bookRestoreRecovery = BookRestoreRecovery::None;
+  bool bookRestoreRecoveryTarget = false;
+  std::string restoreFilename;
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> restorePreview{};
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> restoreCurrentPreview{};
+  std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE> bookRestorePreview{};
+  std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE> bookRestoreCurrentPreview{};
+#endif
   char value[64]{};
 };

@@ -12,6 +12,7 @@
 #include <limits>
 #include <string>
 
+#include "StatsAccessGate.h"
 #include "StatsSafeReplace.h"
 
 namespace {
@@ -144,18 +145,10 @@ void serializeStats(const GlobalReadingStats& stats, uint8_t* data) {
   data[158] = (stats.longestReadingStreak >> 8) & 0xFF;
 }
 
-StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out) {
+StatsLoadOutcome decodeStats(const uint8_t* data, size_t size, GlobalReadingStats& out) {
   StatsLoadOutcome outcome;
-  outcome.fileSize = f.fileSize();
-
-  uint8_t data[GLOBAL_STATS_FILE_SIZE] = {};
-  const size_t bytesToRead = std::min(outcome.fileSize, static_cast<size_t>(GLOBAL_STATS_FILE_SIZE));
-  const int n = f.read(data, bytesToRead);
-  if (n < 0 || static_cast<size_t>(n) != bytesToRead) {
-    outcome.result = StatsLoadResult::Unreadable;
-    return outcome;
-  }
-  if (n == 0) return outcome;
+  outcome.fileSize = size;
+  if (!data || size == 0) return outcome;
   outcome.version = data[0];
 
   if (outcome.fileSize > static_cast<size_t>(GLOBAL_STATS_FILE_SIZE) || outcome.version > GLOBAL_STATS_VERSION) {
@@ -163,21 +156,21 @@ StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out) {
     return outcome;
   }
 
-  if (n == GLOBAL_STATS_FILE_SIZE_V1 && data[0] == GLOBAL_STATS_VERSION_V1) {
+  if (size == GLOBAL_STATS_FILE_SIZE_V1 && data[0] == GLOBAL_STATS_VERSION_V1) {
     loadCommonFields(data, out);
     out.completedBooks = 0;
     outcome.result = StatsLoadResult::Ok;
     return outcome;
   }
 
-  if (n == GLOBAL_STATS_FILE_SIZE_V2 && data[0] == GLOBAL_STATS_VERSION_V2) {
+  if (size == GLOBAL_STATS_FILE_SIZE_V2 && data[0] == GLOBAL_STATS_VERSION_V2) {
     loadCommonFields(data, out);
     out.completedBooks = readLe32(data, 13);
     outcome.result = StatsLoadResult::Ok;
     return outcome;
   }
 
-  if (n != GLOBAL_STATS_FILE_SIZE || data[0] != GLOBAL_STATS_VERSION) return outcome;
+  if (size != GLOBAL_STATS_FILE_SIZE || data[0] != GLOBAL_STATS_VERSION) return outcome;
   loadCommonFields(data, out);
   out.completedBooks = readLe32(data, 13);
   for (size_t i = 0; i < out.timeOfDaySeconds.size(); ++i) {
@@ -191,6 +184,20 @@ StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out) {
   out.longestReadingStreak = readLe16(data, 157);
   outcome.result = StatsLoadResult::Ok;
   return outcome;
+}
+
+StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out) {
+  const size_t size = f.fileSize();
+  uint8_t data[GLOBAL_STATS_FILE_SIZE] = {};
+  const size_t bytesToRead = std::min(size, static_cast<size_t>(GLOBAL_STATS_FILE_SIZE));
+  const int n = f.read(data, bytesToRead);
+  if (n < 0 || static_cast<size_t>(n) != bytesToRead) {
+    StatsLoadOutcome outcome;
+    outcome.fileSize = size;
+    outcome.result = StatsLoadResult::Unreadable;
+    return outcome;
+  }
+  return decodeStats(data, size, out);
 }
 
 bool saveToFile(const GlobalReadingStats& stats, const char* path, const char* backupPath) {
@@ -220,6 +227,13 @@ static StatsLoadOutcome loadFromFile(const char* path, GlobalReadingStats& out) 
   return outcome;
 }
 
+bool GlobalReadingStats::decode(const uint8_t* data, size_t size, GlobalReadingStats& output) {
+  GlobalReadingStats candidate;
+  if (decodeStats(data, size, candidate).result != StatsLoadResult::Ok) return false;
+  output = candidate;
+  return true;
+}
+
 bool GlobalReadingStats::encode(std::array<uint8_t, CURRENT_FILE_SIZE>& output) const {
   if (!writable) return false;
   serializeStats(*this, output.data());
@@ -228,15 +242,24 @@ bool GlobalReadingStats::encode(std::array<uint8_t, CURRENT_FILE_SIZE>& output) 
 
 GlobalReadingStats GlobalReadingStats::loadReadOnly() {
   GlobalReadingStats stats;
-  HalFile file;
-  if (!Storage.openFileForRead("GSTATS", GLOBAL_STATS_PATH, file)) {
-    stats.writable = false;
-    return stats;
-  }
-  const auto result = loadFromOpenFile(file, stats);
-  if (!file.close() || result.result != StatsLoadResult::Ok ||
-      Storage.lookupPath("/.crosspoint/global_stats.bin.tmp") != HalStorage::PathStatus::Missing)
-    stats.writable = false;
+  const auto load = [](void* raw) {
+    auto& resultStats = *static_cast<GlobalReadingStats*>(raw);
+    if (!readingstats::normalStatsAllowed()) {
+      resultStats.writable = false;
+      return true;
+    }
+    HalFile file;
+    if (!Storage.openFileForRead("GSTATS", GLOBAL_STATS_PATH, file)) {
+      resultStats.writable = false;
+      return true;
+    }
+    const auto result = loadFromOpenFile(file, resultStats);
+    if (!file.close() || result.result != StatsLoadResult::Ok ||
+        Storage.lookupPath("/.crosspoint/global_stats.bin.tmp") != HalStorage::PathStatus::Missing)
+      resultStats.writable = false;
+    return true;
+  };
+  if (!Storage.withStorageLock(load, &stats)) stats.writable = false;
   return stats;
 }
 
@@ -302,7 +325,12 @@ GlobalReadingStats loadGlobalUnlocked() {
 }
 
 bool loadGlobalLocked(void* input) {
-  *static_cast<GlobalReadingStats*>(input) = loadGlobalUnlocked();
+  auto& stats = *static_cast<GlobalReadingStats*>(input);
+  if (!readingstats::normalStatsAllowed()) {
+    stats.writable = false;
+    return true;
+  }
+  stats = loadGlobalUnlocked();
   return true;
 }
 }  // namespace
@@ -362,7 +390,12 @@ bool GlobalReadingStats::save() const {
     LOG_ERR("GSTATS", "Refusing to overwrite on-disk stats after newer-format file was detected");
     return false;
   }
-  return saveToFile(*this, GLOBAL_STATS_PATH, GLOBAL_STATS_BAK_PATH);
+  const auto save = [](void* raw) {
+    const auto& stats = **static_cast<const GlobalReadingStats**>(raw);
+    return readingstats::normalStatsAllowed() && saveToFile(stats, GLOBAL_STATS_PATH, GLOBAL_STATS_BAK_PATH);
+  };
+  const GlobalReadingStats* stats = this;
+  return Storage.withStorageLock(save, &stats);
 }
 
 void GlobalReadingStats::recordReadingSpan(const ReadingStatsDateTime& localStart, const uint32_t seconds) {

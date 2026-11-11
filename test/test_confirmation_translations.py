@@ -47,10 +47,14 @@ class ConfirmationTranslationsTest(unittest.TestCase):
             with self.subTest(filename=filename):
                 text = (ROOT / filename).read_text()
                 normalized = " ".join(text.split())
-                self.assertIn(
-                    f"makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr({key}),",
-                    normalized,
-                )
+                if filename.endswith("BmpViewerActivity.cpp"):
+                    self.assertIn("isPageOverlayFavorite(filePath) ? tr(STR_CLEAR_SLEEP_FAVORITE_CONFIRM) : tr(STR_SET_SLEEP_COVER_CONFIRM)", normalized)
+                    self.assertIn("makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, prompt,", normalized)
+                else:
+                    self.assertIn(
+                        f"makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr({key}),",
+                        normalized,
+                    )
                 self.assertNotIn('tr(STR_DELETE) + std::string("? ")', text)
                 self.assertNotIn('tr(STR_SET_SLEEP_COVER) + std::string("?")', text)
 

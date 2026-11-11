@@ -41,7 +41,8 @@ void CrossInkBookmarksActivity::provideRow(void* context, const uint16_t index, 
   self.label[utf8SafeTruncateBuffer(self.label, strlen(self.label))] = '\0';
   self.subtitle[0] = '\0';
   if (valid) {
-    snprintf(self.subtitle, sizeof(self.subtitle), tr(STR_SAVED_BOOKMARK_LOCATION),
+    snprintf(self.subtitle, sizeof(self.subtitle),
+             I18N.get(entry.recovered ? StrId::STR_SAVED_BOOKMARK_BACKUP_LOCATION : StrId::STR_SAVED_BOOKMARK_LOCATION),
              static_cast<unsigned>(entry.spine + 1), static_cast<int>(entry.progress * 100));
   }
   row.label = self.label;

@@ -118,8 +118,13 @@ void SettingsActivity::rebuildSettings() {
   addAction(SettingsSection::General, StrId::STR_LANGUAGE, SettingAction::Language);
   addAction(SettingsSection::General, StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts);
   addAction(SettingsSection::Reader, StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings);
+  addAction(SettingsSection::Reader, StrId::STR_IMPORT_CROSSINK_BARS, SettingAction::ImportCrossInkBars);
+  addAction(SettingsSection::Reader, StrId::STR_IMPORT_CROSSINK_PREFERENCES, SettingAction::ImportCrossInkPreferences);
+  addAction(SettingsSection::Library, StrId::STR_IMPORT_CROSSINK_LIBRARY, SettingAction::ImportCrossInkLibrary);
   addAction(SettingsSection::Reader, StrId::STR_READING_STATISTICS, SettingAction::ReadingStatistics);
   addAction(SettingsSection::Controls, StrId::STR_QUICK_ACTIONS, SettingAction::QuickActions);
+  addAction(SettingsSection::Controls, StrId::STR_IMPORT_CROSSINK_CONTROLS, SettingAction::ImportCrossInkControls);
+  addAction(SettingsSection::Controls, StrId::STR_RECOVER_CROSSINK_IMPORT, SettingAction::RecoverCrossInkControls);
   addAction(SettingsSection::Reader, StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts);
   if (BoardConfig::hasHomeKey()) {
     addAction(SettingsSection::Controls, StrId::STR_HOME_BUTTON, SettingAction::HomeButton);
@@ -221,6 +226,15 @@ void SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valueP
 
 bool SettingsActivity::handleCustomInput() {
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
+  if (!optionPopup.isActive() && pendingCrossInkMessage != StrId::STR_NONE_OPT) {
+    const auto message = pendingCrossInkMessage;
+    pendingCrossInkMessage = StrId::STR_NONE_OPT;
+    const auto title = pendingCrossInkTitle;
+    const char* options[] = {tr(STR_OK_BUTTON)};
+    optionPopup.showMessage(I18N.get(title), I18N.get(message), options, 1, 0, [](int) {});
+    requestUpdate();
+    return true;
+  }
   const uint32_t observed = settingsSaveNotice().pending();
   if (!optionPopup.isActive() && observed) {
     const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
@@ -233,6 +247,208 @@ bool SettingsActivity::handleCustomInput() {
     return true;
   }
   return false;
+}
+
+void SettingsActivity::showCrossInkMessage(StrId message, StrId title) {
+  pendingCrossInkMessage = message;
+  pendingCrossInkTitle = title;
+  requestUpdate();
+}
+
+void SettingsActivity::openCrossInkControlsImport() {
+  const char* options[] = {tr(STR_IMPORT_CROSSINK_CONFIRM), tr(STR_CANCEL)};
+  optionPopup.showMessage(tr(STR_IMPORT_CROSSINK_CONTROLS), tr(STR_IMPORT_CROSSINK_PROMPT), options, 2, 1,
+                          [this](int choice) {
+                            if (choice != 0) return;
+                            char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+                            const auto result = SETTINGS.importCrossInkControls(snapshot);
+                            using R = crossinkimport::ApplyResult;
+                            switch (result) {
+                              case R::Published:
+                                rebuildSettings();
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_DONE);
+                                break;
+                              case R::NoChanges:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_UNCHANGED);
+                                break;
+                              case R::SourceMissing:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_MISSING);
+                                break;
+                              case R::SourceRecovery:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_SOURCE_RECOVERY);
+                                break;
+                              case R::InvalidSource:
+                              case R::Unsupported:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_INVALID);
+                                break;
+                              case R::Unavailable:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_UNAVAILABLE);
+                                break;
+                              case R::SnapshotFailed:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_BACKUP_FAILED);
+                                break;
+                              case R::RecoveryRequired:
+                              case R::WriteUncertain:
+                                showCrossInkMessage(StrId::STR_IMPORT_CROSSINK_REVIEW);
+                                break;
+                            }
+                          });
+  requestUpdate();
+}
+
+void SettingsActivity::openCrossInkBarsImport() {
+  const char* options[] = {tr(STR_IMPORT_CROSSINK_CONFIRM), tr(STR_CANCEL)};
+  optionPopup.showMessage(tr(STR_IMPORT_CROSSINK_BARS), tr(STR_IMPORT_CROSSINK_BARS_PROMPT), options, 2, 1,
+                          [this](int choice) {
+                            if (choice != 0) return;
+                            char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+                            const auto result = SETTINGS.importCrossInkBars(snapshot);
+                            using R = crossinkimport::ApplyResult;
+                            StrId message = StrId::STR_IMPORT_CROSSINK_REVIEW;
+                            switch (result) {
+                              case R::Published:
+                                rebuildSettings();
+                                message = StrId::STR_IMPORT_CROSSINK_BARS_DONE;
+                                break;
+                              case R::NoChanges:
+                                message = StrId::STR_IMPORT_CROSSINK_BARS_UNCHANGED;
+                                break;
+                              case R::SourceMissing:
+                                message = StrId::STR_IMPORT_CROSSINK_BARS_MISSING;
+                                break;
+                              case R::SourceRecovery:
+                                message = StrId::STR_IMPORT_CROSSINK_SOURCE_RECOVERY;
+                                break;
+                              case R::InvalidSource:
+                                message = StrId::STR_IMPORT_CROSSINK_INVALID;
+                                break;
+                              case R::Unsupported:
+                                message = StrId::STR_IMPORT_CROSSINK_BARS_UNSUPPORTED;
+                                break;
+                              case R::Unavailable:
+                                message = StrId::STR_IMPORT_CROSSINK_UNAVAILABLE;
+                                break;
+                              case R::SnapshotFailed:
+                                message = StrId::STR_IMPORT_CROSSINK_BACKUP_FAILED;
+                                break;
+                              case R::RecoveryRequired:
+                              case R::WriteUncertain:
+                                break;
+                            }
+                            showCrossInkMessage(message, StrId::STR_IMPORT_CROSSINK_BARS);
+                          });
+  requestUpdate();
+}
+
+void SettingsActivity::openCrossInkLibraryImport() {
+  const char* options[] = {tr(STR_IMPORT_CROSSINK_CONFIRM), tr(STR_CANCEL)};
+  optionPopup.showMessage(tr(STR_IMPORT_CROSSINK_LIBRARY), tr(STR_IMPORT_CROSSINK_LIBRARY_PROMPT), options, 2, 1,
+                          [this](int choice) {
+                            if (choice != 0) return;
+                            char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+                            const uint8_t oldTheme = SETTINGS.uiTheme;
+                            const auto result = SETTINGS.importCrossInkLibrary(snapshot);
+                            using R = crossinkimport::ApplyResult;
+                            StrId message = StrId::STR_IMPORT_CROSSINK_REVIEW;
+                            switch (result) {
+                              case R::Published:
+                                rebuildSettings();
+                                if (SETTINGS.uiTheme != oldTheme) applyUiSettingChange(&CrossPointSettings::uiTheme);
+                                message = StrId::STR_IMPORT_CROSSINK_LIBRARY_DONE;
+                                break;
+                              case R::NoChanges:
+                                message = StrId::STR_IMPORT_CROSSINK_LIBRARY_UNCHANGED;
+                                break;
+                              case R::SourceMissing:
+                                message = StrId::STR_IMPORT_CROSSINK_MISSING;
+                                break;
+                              case R::SourceRecovery:
+                                message = StrId::STR_IMPORT_CROSSINK_SOURCE_RECOVERY;
+                                break;
+                              case R::InvalidSource:
+                              case R::Unsupported:
+                                message = StrId::STR_IMPORT_CROSSINK_INVALID;
+                                break;
+                              case R::Unavailable:
+                                message = StrId::STR_IMPORT_CROSSINK_UNAVAILABLE;
+                                break;
+                              case R::SnapshotFailed:
+                                message = StrId::STR_IMPORT_CROSSINK_BACKUP_FAILED;
+                                break;
+                              case R::RecoveryRequired:
+                              case R::WriteUncertain:
+                                break;
+                            }
+                            showCrossInkMessage(message, StrId::STR_IMPORT_CROSSINK_LIBRARY);
+                          });
+  requestUpdate();
+}
+
+void SettingsActivity::openCrossInkPreferencesImport() {
+  const char* options[] = {tr(STR_IMPORT_CROSSINK_CONFIRM), tr(STR_CANCEL)};
+  optionPopup.showMessage(tr(STR_IMPORT_CROSSINK_PREFERENCES), tr(STR_IMPORT_CROSSINK_PREFERENCES_PROMPT), options, 2,
+                          1, [this](int choice) {
+                            if (choice != 0) return;
+                            char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+                            const auto result = SETTINGS.importCrossInkPreferences(snapshot);
+                            using R = crossinkimport::ApplyResult;
+                            StrId message = StrId::STR_IMPORT_CROSSINK_REVIEW;
+                            switch (result) {
+                              case R::Published:
+                                rebuildSettings();
+                                message = StrId::STR_IMPORT_CROSSINK_PREFERENCES_DONE;
+                                break;
+                              case R::NoChanges:
+                                message = StrId::STR_IMPORT_CROSSINK_PREFERENCES_UNCHANGED;
+                                break;
+                              case R::SourceMissing:
+                                message = StrId::STR_IMPORT_CROSSINK_MISSING;
+                                break;
+                              case R::SourceRecovery:
+                                message = StrId::STR_IMPORT_CROSSINK_SOURCE_RECOVERY;
+                                break;
+                              case R::InvalidSource:
+                              case R::Unsupported:
+                                message = StrId::STR_IMPORT_CROSSINK_INVALID;
+                                break;
+                              case R::Unavailable:
+                                message = StrId::STR_IMPORT_CROSSINK_UNAVAILABLE;
+                                break;
+                              case R::SnapshotFailed:
+                                message = StrId::STR_IMPORT_CROSSINK_BACKUP_FAILED;
+                                break;
+                              case R::RecoveryRequired:
+                              case R::WriteUncertain:
+                                break;
+                            }
+                            showCrossInkMessage(message, StrId::STR_IMPORT_CROSSINK_PREFERENCES);
+                          });
+  requestUpdate();
+}
+
+void SettingsActivity::openCrossInkControlsRecovery() {
+  const char* options[] = {tr(STR_RECOVER_CROSSINK_CONFIRM), tr(STR_CANCEL)};
+  optionPopup.showMessage(
+      tr(STR_RECOVER_CROSSINK_IMPORT), tr(STR_RECOVER_CROSSINK_PROMPT), options, 2, 1, [this](int choice) {
+        if (choice != 0) return;
+        const auto result = SETTINGS.recoverUnchangedCrossInkImport();
+        using R = crossinkimport::RecoveryResult;
+        switch (result) {
+          case R::Recovered:
+            showCrossInkMessage(StrId::STR_RECOVER_CROSSINK_DONE, StrId::STR_RECOVER_CROSSINK_IMPORT);
+            break;
+          case R::NotNeeded:
+            showCrossInkMessage(StrId::STR_RECOVER_CROSSINK_NOT_NEEDED, StrId::STR_RECOVER_CROSSINK_IMPORT);
+            break;
+          case R::NeedsReview:
+            showCrossInkMessage(StrId::STR_RECOVER_CROSSINK_REVIEW, StrId::STR_RECOVER_CROSSINK_IMPORT);
+            break;
+          case R::Unavailable:
+            showCrossInkMessage(StrId::STR_RECOVER_CROSSINK_UNAVAILABLE, StrId::STR_RECOVER_CROSSINK_IMPORT);
+            break;
+        }
+      });
+  requestUpdate();
 }
 
 void SettingsActivity::toggleSelectedSetting() {
@@ -485,6 +701,21 @@ void SettingsActivity::toggleSelectedSetting() {
         } else {
           LOG_ERR("SETTINGS", "OOM: DeviceDiagnosticsActivity");
         }
+        break;
+      case SettingAction::ImportCrossInkControls:
+        openCrossInkControlsImport();
+        break;
+      case SettingAction::ImportCrossInkBars:
+        openCrossInkBarsImport();
+        break;
+      case SettingAction::ImportCrossInkLibrary:
+        openCrossInkLibraryImport();
+        break;
+      case SettingAction::ImportCrossInkPreferences:
+        openCrossInkPreferencesImport();
+        break;
+      case SettingAction::RecoverCrossInkControls:
+        openCrossInkControlsRecovery();
         break;
       case SettingAction::None:
         // Do nothing

@@ -7,7 +7,8 @@
 #include <cstring>
 #include <mutex>
 
-bool deviceSecret(uint8_t (&out)[32]) {
+namespace {
+bool loadDeviceSecret(uint8_t (&out)[32], const bool create) {
   static uint8_t secret[32];
   static bool loaded = false;
   static std::mutex lock;  // web-server task and reader can both ask first
@@ -16,12 +17,12 @@ bool deviceSecret(uint8_t (&out)[32]) {
   // A failure is not cached: the next call retries.
   if (!loaded) {
     nvs_handle_t handle;
-    if (nvs_open("devid", NVS_READWRITE, &handle) == ESP_OK) {
+    if (nvs_open("devid", create ? NVS_READWRITE : NVS_READONLY, &handle) == ESP_OK) {
       size_t stored = sizeof(secret);
       const esp_err_t err = nvs_get_blob(handle, "secret", secret, &stored);
       if (err == ESP_OK) {
         loaded = stored == sizeof(secret);
-      } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+      } else if (create && err == ESP_ERR_NVS_NOT_FOUND) {
         // Only a missing secret is created. Any other read error leaves the
         // stored one alone: replacing it would orphan every wrapped book key.
         esp_fill_random(secret, sizeof(secret));
@@ -30,10 +31,14 @@ bool deviceSecret(uint8_t (&out)[32]) {
       nvs_close(handle);
     }
     if (!loaded) {
-      LOG_ERR("DSEC", "Device secret unavailable");
+      if (create) LOG_ERR("DSEC", "Device secret unavailable");
       return false;
     }
   }
   memcpy(out, secret, sizeof(out));
   return true;
 }
+}  // namespace
+
+bool deviceSecret(uint8_t (&out)[32]) { return loadDeviceSecret(out, true); }
+bool existingDeviceSecret(uint8_t (&out)[32]) { return loadDeviceSecret(out, false); }

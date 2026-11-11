@@ -1,5 +1,6 @@
 """Exercise the real background-build completion refresh decision."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
@@ -14,8 +15,8 @@ code=r'''
 #include <memory>
 #define LOG_ERR(...) ((void)0)
 constexpr int BACKGROUND_BUILD_PAGES_PER_TICK=2;
-enum class ReaderBarItem {TimeLeftSection};
-struct Bar {bool enabled=false;bool contains(ReaderBarItem)const{return enabled;}};
+enum class ReaderBarItem {TimeLeftSection,TimeLeftChapter};
+struct Bar {bool enabled=false,chapter=false;bool contains(ReaderBarItem item)const{return item==ReaderBarItem::TimeLeftSection?enabled:chapter;}};
 struct Settings {bool readerBarsEnabled=false;Bar readerTopBar,readerBottomBar;} SETTINGS;
 struct RenderLock {enum class Mode{Try};explicit RenderLock(Mode){}bool ownsLock()const{return true;}};
 bool buttonContactClosed(){return false;}
@@ -29,6 +30,7 @@ struct EpubReaderActivity {
  bool pageBufferStale=false,reposition=false;int pendingManualTurn=0,backgroundBuildFailedSpine=-1,currentSpineIndex=5,nextPageNumber=-1,updates=0;
  bool backgroundBuildWanted(){return true;}bool anyButtonPressed(){return false;}bool buildTickHeapGate(){return true;}
  bool applyDeferredReposition(){return reposition;}void requestUpdate(){++updates;}
+ bool tryRenderRecovery(){return false;}
  void backgroundBuildTick();
 };
 ''' + body + r'''
@@ -37,6 +39,11 @@ int main(){
  SETTINGS.readerBarsEnabled=true;SETTINGS.readerTopBar.enabled=true;
  EpubReaderActivity ready;ready.backgroundBuildTick();assert(ready.updates==1);
  EpubReaderActivity noPace;noPace.readingStats.remaining=0;noPace.backgroundBuildTick();assert(noPace.updates==0);
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+ SETTINGS.readerTopBar.enabled=false;SETTINGS.readerTopBar.chapter=true;
+ EpubReaderActivity chapter;chapter.readingStats.remaining=0;chapter.backgroundBuildTick();assert(chapter.updates==1);
+ SETTINGS.readerTopBar.chapter=false;SETTINGS.readerTopBar.enabled=true;
+#endif
  EpubReaderActivity ongoing;ongoing.section->complete=false;ongoing.backgroundBuildTick();assert(ongoing.updates==0);
  EpubReaderActivity reposition;reposition.reposition=true;reposition.backgroundBuildTick();assert(reposition.updates==1);
  EpubReaderActivity failed;failed.section->ok=false;failed.backgroundBuildTick();assert(!failed.section&&failed.nextPageNumber==1&&failed.updates==1);
@@ -44,6 +51,6 @@ int main(){
 '''
 with tempfile.TemporaryDirectory() as tmp:
     tmp=Path(tmp);(tmp/'test.cpp').write_text(code)
-    subprocess.run(['c++','-std=c++20',str(tmp/'test.cpp'),'-o',str(tmp/'test')],check=True)
+    subprocess.run(['c++','-std=c++20',*(['-DCROSSPOINT_EXPERIMENTAL_CHAPTER_TIME=1'] if os.getenv('TEST_CHAPTER_TIME') else []),str(tmp/'test.cpp'),'-o',str(tmp/'test')],check=True)
     subprocess.run([str(tmp/'test')],check=True)
 print('Background build refreshes available section estimates')

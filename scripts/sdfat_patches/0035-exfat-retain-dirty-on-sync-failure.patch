@@ -1,0 +1,15 @@
+--- a/src/ExFatLib/ExFatFileWrite.cpp
++++ b/src/ExFatLib/ExFatFileWrite.cpp
+@@ -369,9 +369,10 @@
+     return true;
+   }
+   if (m_flags & FILE_FLAG_DIR_DIRTY) {
+-    // clear directory dirty
++    // Keep the per-file metadata available if synchronization fails.
++    if (!syncDir()) return false;
+     m_flags &= ~FILE_FLAG_DIR_DIRTY;
+-    return syncDir();
++    return true;
+   }
+   if (!m_vol->cacheSync()) {
+     DBG_FAIL_MACRO;

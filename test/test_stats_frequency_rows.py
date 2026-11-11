@@ -1,4 +1,4 @@
-"""Check statistics row routing when frequency rows appear only on this device."""
+"""Check statistics row routing for device and aggregate frequency rows."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -13,7 +13,7 @@ code = r'''
 class ReadingStatsActivity {
  public:
   enum class Tab {Book, Device, AllDevices};
-  enum class Row {Title, Time, Charts, RecordedWeek, RecordedMonth, BackupDevice,
+  enum class Row {Title, Time, Charts, RecordedWeek, RecordedMonth, RecordedYear, BackupDevice,
                   Morning, Afternoon, Evening, Night, Monday, Tuesday, Wednesday,
                   Thursday, Friday, Saturday, Sunday};
   inline static constexpr Row BOOK_ROWS[] = {Row::Title, Row::Time, Row::Charts};
@@ -29,10 +29,11 @@ int main() {
   A a;
   assert(a.listCount() == 14 && a.rowAt(3) == A::Row::Morning && a.rowAt(13) == A::Row::Sunday);
   a.tab = A::Tab::Device;
-  assert(a.listCount() == 16 && a.rowAt(2) == A::Row::RecordedWeek && a.rowAt(3) == A::Row::RecordedMonth);
-  assert(a.rowAt(4) == A::Row::BackupDevice && a.rowAt(5) == A::Row::Morning && a.rowAt(15) == A::Row::Sunday);
+  assert(a.listCount() == 17 && a.rowAt(2) == A::Row::RecordedWeek && a.rowAt(3) == A::Row::RecordedMonth);
+  assert(a.rowAt(4) == A::Row::RecordedYear && a.rowAt(5) == A::Row::BackupDevice && a.rowAt(6) == A::Row::Morning && a.rowAt(16) == A::Row::Sunday);
   a.tab = A::Tab::AllDevices;
-  assert(a.listCount() == 13 && a.rowAt(2) == A::Row::Morning && a.rowAt(12) == A::Row::Sunday);
+  assert(a.listCount() == 16 && a.rowAt(2) == A::Row::RecordedWeek && a.rowAt(3) == A::Row::RecordedMonth);
+  assert(a.rowAt(4) == A::Row::RecordedYear && a.rowAt(5) == A::Row::Morning && a.rowAt(15) == A::Row::Sunday);
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:

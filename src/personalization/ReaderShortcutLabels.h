@@ -45,7 +45,9 @@ inline constexpr StrId ACTION_LABELS[] = {StrId::STR_SHORTCUT_DEFAULT,
                                           StrId::STR_FILE_TRANSFER,
                                           StrId::STR_FONT_FAMILY,
                                           StrId::STR_CYCLE_FONT_FAMILY,
-                                          StrId::STR_TOGGLE_HOME_BUTTON};
+                                          StrId::STR_TOGGLE_HOME_BUTTON,
+                                          StrId::STR_TOGGLE_COMPLETION,
+                                          StrId::STR_HOME_READER_SHORTCUT};
 static_assert(std::size(ACTION_LABELS) == static_cast<unsigned>(Action::Count));
 inline StrId label(Action action) {
   const auto index = static_cast<unsigned>(action);

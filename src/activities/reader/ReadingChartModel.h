@@ -8,7 +8,7 @@
 
 namespace readingcharts {
 enum class Scope : uint8_t { Book, Device, AllDevices };
-enum class Warning : uint8_t { None, Partial, Unsaved };
+enum class Warning : uint8_t { None, Partial, Unsaved, UnsavedPartial };
 enum class Day : uint8_t { Unrecorded, Recorded, OutsideHistory };
 
 struct Data {

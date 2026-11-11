@@ -53,7 +53,7 @@ class RenderModes : public testing::Test {
     files.push_back(file);
     return file.string();
   }
-  Rendered parse(const std::string& body, EpubRenderMode mode, const std::string& rules = "") {
+  Rendered parse(const std::string& body, EpubRenderMode mode, const std::string& rules = "", bool embedded = true) {
     const std::string html = temporary();
     const std::string cssFile = temporary();
     std::ofstream(html) << "<html><body>" << body << "</body></html>";
@@ -64,15 +64,27 @@ class RenderModes : public testing::Test {
     EXPECT_EQ(css.loadFromStream(input), CssParser::ParseResult::Complete);
     input.close();
     Rendered result;
+    const std::string empty;
     ChapterHtmlSlimParser parser{
-        epub,  html,  renderer,
-        0,     1,     false,
-        4,     480,   800,
-        false, false, [&](std::unique_ptr<Page> page, auto, auto, auto) {
-                                   result.pages.push_back(std::move(page)); },
-        true,  "",    "",
-        0,     {},    nullptr,
-        &css};
+        epub,
+        html,
+        renderer,
+        0,
+        1,
+        false,
+        4,
+        480,
+        800,
+        false,
+        false,
+        [&](std::unique_ptr<Page> page, auto, auto, auto) { result.pages.push_back(std::move(page)); },
+        embedded,
+        empty,
+        empty,
+        0,
+        {},
+        nullptr,
+        embedded ? &css : nullptr};
     parser.setRenderMode(mode);
     EXPECT_TRUE(parser.parseAndBuildPages());
     return result;
@@ -83,6 +95,35 @@ class RenderModes : public testing::Test {
   }
 };
 }  // namespace
+
+TEST_F(RenderModes, ParserClassifiesMalformedInputMissingFileAndCancellation) {
+  const std::string html = temporary();
+  const std::string empty;
+  std::ofstream(html) << "<html><body><p>broken</body></html>";
+  auto makeParser = [&](const std::string& path) {
+    return std::make_unique<ChapterHtmlSlimParser>(
+        epub, path, renderer, 0, 1.0f, false, 4, 480, 800, false, false,
+        [](std::unique_ptr<Page>, uint16_t, uint16_t, uint32_t) {}, true, empty, empty, 0, std::vector<std::string>{},
+        nullptr, nullptr);
+  };
+  auto malformed = makeParser(html);
+  ASSERT_TRUE(malformed->beginParse());
+  EXPECT_EQ(malformed->parseStep(), ChapterHtmlSlimParser::ParseStatus::Error);
+  EXPECT_EQ(malformed->lastParseFailure(), EpubBuildFailure::InvalidInput);
+  malformed->abortParse();
+  EXPECT_EQ(malformed->lastParseFailure(), EpubBuildFailure::InvalidInput);
+  const std::string missingPath = temporary();
+  auto missing = makeParser(missingPath);
+  EXPECT_FALSE(missing->beginParse());
+  EXPECT_EQ(missing->lastParseFailure(), EpubBuildFailure::InputOutput);
+  auto cancelled = makeParser(html);
+  ASSERT_TRUE(cancelled->beginParse());
+  cancelled->requestStop();
+  EXPECT_EQ(cancelled->parseStep(), ChapterHtmlSlimParser::ParseStatus::Error);
+  EXPECT_EQ(cancelled->lastParseFailure(), EpubBuildFailure::Cancelled);
+  cancelled->abortParse();
+  EXPECT_EQ(cancelled->lastParseFailure(), EpubBuildFailure::Cancelled);
+}
 
 TEST_F(RenderModes, SimpleProfilesPreserveWordsOffsetsLinksAndHiddenContent) {
   const std::string html =
@@ -131,6 +172,17 @@ TEST_F(RenderModes, ContextualHiddenTextKeepsVisibleSourceOffsetsAcrossProfiles)
     const auto simplified = parse(body, mode, ".outer .hidden {display:none}");
     EXPECT_EQ(simplified.words(), normal.words());
   }
+}
+
+TEST_F(RenderModes, DisablingEmbeddedStylesPreservesOffsetsAcrossHiddenText) {
+  const std::string body = "<p>before</p><p class='hidden'>secret words</p><p>after target</p>";
+  const auto styled = parse(body, EpubRenderMode::Light, ".hidden {display:none}");
+  const auto unstyled = parse(body, EpubRenderMode::Light, ".hidden {display:none}", false);
+  ASSERT_EQ(styled.words().size(), 3u);
+  ASSERT_EQ(unstyled.words().size(), 5u);
+  EXPECT_EQ(std::get<0>(styled.words()[1]), "after");
+  EXPECT_EQ(std::get<0>(unstyled.words()[3]), "after");
+  EXPECT_EQ(std::get<1>(styled.words()[1]), std::get<1>(unstyled.words()[3]));
 }
 
 TEST_F(RenderModes, LightRemovesPublisherLayoutAndKeepsBasicFormatting) {

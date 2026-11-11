@@ -26,6 +26,8 @@ with tempfile.TemporaryDirectory() as temporary:
     patches = project / 'scripts/sdfat_patches'
     for name in ('0008-fsfile-strict-lookup.patch', '0014-fsfile-bounded-chain.patch',
                  '0018-fsfile-prior-bounded-chain.patch', '0021-fs-header-settings-cluster.patch'):
+        if name != '0008-fsfile-strict-lookup.patch':
+            subprocess.run(['git', 'apply', '--reverse', str(patches / '0038-fs-move-entry.patch')], cwd=dependency, check=True)
         subprocess.run(['git', 'apply', '--reverse', str(patches / name)], cwd=dependency, check=True)
         patcher.apply_patches(project, dependency)
         assert hashlib.sha256(wrapper.read_bytes()).hexdigest() == expected

@@ -527,6 +527,7 @@ bool selectRandomSleepFile(const char* firstDirPath, const char* secondDirPath, 
   uint16_t directoryCounts[DIRECTORY_COUNT] = {};
   uint16_t fileCount = 0;
   for (size_t i = 0; i < DIRECTORY_COUNT; i++) {
+    if (!dirPaths[i]) continue;
     auto dir = Storage.open(dirPaths[i]);
     if (!dir || !dir.isDirectory()) continue;
 
@@ -717,7 +718,11 @@ void SleepActivity::onEnter() {
 
   const uint8_t sleepScreen = SETTINGS.sleepScreen;
   if (sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT_CUSTOM ||
-      sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_TRANSPARENT) {
+      sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_TRANSPARENT
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+      || sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::PAGE_OVERLAY_SLEEP
+#endif
+  ) {
     // Transparent mode retains the current framebuffer. Materialize any
     // output-level inversion first so the retained content keeps its visible
     // polarity after the display driver returns to normal.
@@ -725,11 +730,19 @@ void SleepActivity::onEnter() {
     if (APP_STATE.lastSleepFromReader) {
       ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
     }
-    drawSleepPopupPreservingFrame(renderer);
+    const bool framePreserved = drawSleepPopupPreservingFrame(renderer);
     if (APP_STATE.lastSleepFromReader) {
       renderer.setOrientation(GfxRenderer::Orientation::Portrait);
     }
     releaseSdFontCachesForDecode(renderer);
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    if (sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::PAGE_OVERLAY_SLEEP) {
+      if (!framePreserved) return renderDefaultSleepScreen();
+      return renderPageOverlaySleepScreen();
+    }
+#else
+    (void)framePreserved;
+#endif
     if (sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_TRANSPARENT) {
       return renderCoverSleepScreen();
     }
@@ -746,6 +759,9 @@ void SleepActivity::onEnter() {
   }
 
   switch (SETTINGS.sleepScreen) {
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::MINIMAL_BOOK_SLEEP):
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::DASHBOARD_BOOK_SLEEP):
+      return renderMinimalBookSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::READING_STATS_SLEEP):
     case (CrossPointSettings::SLEEP_SCREEN_MODE::READING_SUMMARY_SLEEP):
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_SUMMARY_SLEEP):
@@ -767,8 +783,118 @@ void SleepActivity::onEnter() {
   }
 }
 
+void SleepActivity::renderMinimalBookSleepScreen() const {
+  const std::string& path = APP_STATE.openEpubPath;
+  if (path.empty() || Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Present)
+    return renderDefaultSleepScreen();
+  const bool epub = FsHelpers::hasEpubExtension(path);
+  const bool xtc = FsHelpers::hasXtcExtension(path);
+  const bool dashboard = SETTINGS.sleepScreen == CrossPointSettings::DASHBOARD_BOOK_SLEEP;
+  ReadingStatsDateTime dashboardNow{};
+  const bool dashboardHasClock =
+      dashboard && getCurrentLocalReadingStatsDateTime(dashboardNow) && dashboardNow.date.isValid();
+  char chapter[128]{};
+  const int progress = epub && dashboard ? loadBookProgress(path, chapter, sizeof(chapter))
+                       : epub || xtc     ? loadBookProgress(path)
+                                         : -1;
+  sleepstats::DashboardData dashboardData;
+  dashboardData.progress = progress;
+  const auto slash = path.find_last_of('/');
+  const char* title = path.c_str() + (slash == std::string::npos ? 0 : slash + 1);
+  const char* author = "";
+  const RecentBook* matchingBook = nullptr;
+  for (const auto& recent : RECENT_BOOKS.getBooks()) {
+    if (recent.path != path) continue;
+    matchingBook = &recent;
+    if (!recent.title.empty()) title = recent.title.c_str();
+    author = recent.author.c_str();
+    break;
+  }
+  uint32_t readingSeconds = 0;
+  if (SETTINGS.trackReadingStats && (epub || xtc)) {
+    std::string cache;
+    if (epub)
+      cache = Epub::cachePathForFilePath(path, "/.crosspoint");
+    else {
+      auto book = makeUniqueNoThrow<Xtc>(path, "/.crosspoint");
+      if (book) cache = book->getCachePath();
+    }
+    if (!cache.empty()) {
+      auto stats = makeUniqueNoThrow<BookReadingStats>();
+      if (stats) {
+        bool enabled = false, found = false;
+        *stats = readingstats::loadBook(cache, path, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
+        if (enabled && found && stats->writable) {
+          readingSeconds = stats->totalReadingSeconds;
+          dashboardData.hasStats = true;
+          dashboardData.readingSeconds = stats->totalReadingSeconds;
+          dashboardData.sessions = stats->sessionCount;
+          dashboardData.pages = stats->totalPagesTurned;
+          dashboardData.startDate = stats->startDate;
+          if (!stats->isCompleted && progress >= 0)
+            dashboardData.remainingSeconds = stats->remainingReadingSeconds(std::clamp(progress, 0, 100) * 100);
+          const auto endDate = stats->isCompleted && stats->finishedDate.isValid() ? stats->finishedDate
+                               : dashboardHasClock                                 ? dashboardNow.date
+                                                                                   : ReadingStatsDate{};
+          if (stats->startDate.isValid() && endDate.isValid() &&
+              compareReadingStatsDate(endDate, stats->startDate) >= 0) {
+            const auto days = std::max<uint16_t>(1, readingSpanDaysElapsed(stats->startDate, endDate));
+            dashboardData.dailyAverageSeconds = stats->totalReadingSeconds / days;
+            dashboardData.hasDailyAverage = true;
+          }
+        }
+      }
+    }
+  }
+  if (dashboard && SETTINGS.trackReadingStats &&
+      Storage.lookupPath("/.crosspoint/global_stats.bin") == HalStorage::PathStatus::Present) {
+    auto global = makeUniqueNoThrow<GlobalReadingStats>();
+    if (global) {
+      *global = GlobalReadingStats::loadReadOnly();
+      if (global->writable) {
+        dashboardData.hasGlobal = true;
+        dashboardData.globalSeconds = global->totalReadingSeconds;
+        dashboardData.completedBooks = global->completedBooks;
+        if (dashboardHasClock) {
+          dashboardData.currentStreak = global->currentReadingStreak(&dashboardNow.date);
+          dashboardData.hasStreak = true;
+        }
+      }
+    }
+  }
+  const auto draw = [&](const Bitmap* cover) {
+    return dashboard
+               ? sleepstats::drawBookDashboard(renderer, title, chapter[0] ? chapter : author, dashboardData, cover)
+               : sleepstats::drawMinimalBook(renderer, title, progress, readingSeconds, cover);
+  };
+  bool drawn = false;
+  if (matchingBook && !matchingBook->coverBmpPath.empty()) {
+    constexpr int heights[] = {583, 400, 300, 226};
+    for (const int height : heights) {
+      const auto coverPath = UITheme::getCoverThumbPath(matchingBook->coverBmpPath, height);
+      HalFile file;
+      if (!Storage.openFileForRead("SLP", coverPath, file)) continue;
+      auto cover = makeUniqueNoThrow<Bitmap>(file);
+      if (cover && cover->parseHeaders() == BmpReaderError::Ok && cover->getWidth() > 0 && cover->getWidth() <= 512 &&
+          cover->getHeight() > 0 && cover->getHeight() <= 640 && cover->getBpp() <= 2 && cover->getRowBytes() > 0 &&
+          cover->getRowBytes() <= 256)
+        drawn = draw(cover.get());
+      cover.reset();
+      if (!file.close()) drawn = false;
+      if (drawn) break;
+    }
+  }
+  if (!drawn) drawn = draw(nullptr);
+  if (!drawn) return renderDefaultSleepScreen();
+  if (SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::INVERTED_BLACK_AND_WHITE)
+    renderer.invertScreen();
+  renderer.displayBuffer(kSleepClean);
+}
+
 void SleepActivity::renderReadingStatsSleepScreen() const {
   const std::string& path = APP_STATE.openEpubPath;
+  if (!SETTINGS.trackReadingStats && SETTINGS.sleepScreen == CrossPointSettings::READING_STATS_SLEEP)
+    return renderMinimalBookSleepScreen();
   if (!SETTINGS.trackReadingStats || path.empty() ||
       Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Present)
     return renderDefaultSleepScreen();
@@ -784,7 +910,10 @@ void SleepActivity::renderReadingStatsSleepScreen() const {
   bool enabled = false;
   bool found = false;
   data->book = readingstats::loadBook(cache, path, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
-  if (!enabled || !found || !data->book.writable) return renderDefaultSleepScreen();
+  if (!enabled || !found || !data->book.writable) {
+    if (SETTINGS.sleepScreen == CrossPointSettings::READING_STATS_SLEEP) return renderMinimalBookSleepScreen();
+    return renderDefaultSleepScreen();
+  }
   const bool coverSummary = SETTINGS.sleepScreen == CrossPointSettings::COVER_SUMMARY_SLEEP;
   const bool summary = coverSummary || SETTINGS.sleepScreen == CrossPointSettings::READING_SUMMARY_SLEEP;
   if (!summary) {
@@ -1103,6 +1232,41 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
   }
   renderDefaultSleepScreen();
 }
+
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+void SleepActivity::renderPageOverlaySleepScreen() const {
+  bool candidateFailed = false;
+  const auto tryOverlay = [&](const std::string& path) {
+    if (!Storage.exists(path.c_str())) return false;
+    if (renderSleepOverlayPath(path)) return true;
+    candidateFailed = true;
+    return false;
+  };
+  const auto& favorite = APP_STATE.favoriteSleepImagePath;
+  if (!favorite.empty() && (FsHelpers::hasBmpExtension(favorite) || FsHelpers::hasPngExtension(favorite)) &&
+      tryOverlay(favorite))
+    return;
+  if (candidateFailed) return renderDefaultSleepScreen();
+
+  const auto& preferred = APP_STATE.preferredSleepFolderPath;
+  std::string selectedPath;
+  auto preferredDir = preferred.empty() ? HalFile{} : Storage.open(preferred.c_str());
+  const bool usePreferred = preferredDir && preferredDir.isDirectory();
+  if (preferredDir) preferredDir.close();
+  if (usePreferred) {
+    selectRandomSleepFile(preferred.c_str(), nullptr, SleepRecentKind::Overlay, selectedPath);
+  } else {
+    selectRandomSleepFile("/.sleep", "/sleep", SleepRecentKind::Overlay, selectedPath);
+  }
+  if (!selectedPath.empty() && tryOverlay(selectedPath)) return;
+  if (candidateFailed) return renderDefaultSleepScreen();
+  if (tryOverlay("/sleep.bmp")) return;
+  if (candidateFailed) return renderDefaultSleepScreen();
+  if (tryOverlay("/sleep.png")) return;
+  if (candidateFailed) return renderDefaultSleepScreen();
+  renderer.displayBuffer(kSleepClean);
+}
+#endif
 
 void SleepActivity::renderCoverSleepScreen() const {
   void (SleepActivity::*renderNoCoverSleepScreen)() const;
