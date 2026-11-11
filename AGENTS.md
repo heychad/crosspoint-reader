@@ -76,6 +76,18 @@ experimental features, known failures, and unverified behavior. A WIP checkpoint
 does not claim release readiness. Push only when the human has authorized it.
 Keep generated build outputs and unrelated work out of the commit.
 
+## Development cadence
+
+Use one coherent feature batch, followed by a checked WIP checkpoint. Carry
+forward test and review evidence until relevant code changes invalidate it.
+Do not request repeated commit/push approval when the human has already
+explicitly authorized recurring checkpoints for the current task. Keep release,
+merge-to-supported-branch and physical-device authorization separate.
+
+Compare both upstream CrossPoint and CrossInk at integration milestones. Prefer
+an upstream implementation over a duplicate port. Follow the dated comparison
+and pending audit in `docs/downstream/UPSTREAM_STRATEGY.md`.
+
 ## Mandatory firmware handoff
 
 For every logical change that can affect shipped firmware or its build—including C/C++, build configuration, partitions, code-generation sources, translations, and release scripts—the main agent must complete [firmware-handoff](.agents/skills/firmware-handoff/SKILL.md) before declaring release readiness, releasing firmware, or merging to the supported branch. Authorized WIP checkpoints follow the lighter process above. The handoff skill owns the required checks, four independent reviews, bounded follow-up, and explicit human acceptance of behavior, architecture, and maintenance ownership.

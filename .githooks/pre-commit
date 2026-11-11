@@ -13,10 +13,10 @@ while IFS= read -r -d '' file; do
   staged_files+=("${file}")
 done < <(git diff --cached --name-only -z --diff-filter=ACMR)
 
-# Intentionally format all currently modified tracked C/C++ files.
+# Format only staged paths; leave unrelated working files alone.
 # The helper handles no-op cases and exits 0 when nothing matches.
 echo "Running clang-format fix before commit..."
-./bin/clang-format-fix
+./bin/clang-format-fix --staged
 
 # Ensure formatting changes are included in the pending commit without
 # staging unrelated tracked modifications from other files in the
