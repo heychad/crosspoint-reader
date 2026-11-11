@@ -148,7 +148,7 @@ int main(){
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'tabs.cpp').write_text(code)
-    for flags in ([], ['-DCROSSPOINT_EXPERIMENTAL_COMPLETION', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT']):
+    for flags in ([], ['-DCROSSPOINT_EXPERIMENTAL_COMPLETION', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT', '-DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE']):
         subprocess.run(['c++','-std=c++20','-Wall','-Wextra','-Werror',*flags,str(path/'tabs.cpp'),'-o',str(path/'tabs')],check=True)
         subprocess.run([str(path/'tabs')],check=True)
 print('Tabbed menu grouping, remembered rows, wrap, popup ownership, and flat-list behavior passed')

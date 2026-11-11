@@ -71,13 +71,13 @@ scope. Cumulative review and device validation remain; this does not complete B7
 ## Verification
 
 The full host run passed all 1,806 tests. The reset-enabled
-X4 Pro build passed in 243.45 seconds (112,972 bytes static RAM; 5,681,122 bytes
+X4 Pro build passed in 76.03 seconds (112,972 bytes static RAM; 5,681,366 bytes
 flash). It uses a local profile extending `env:x4pro` and preserves its flags,
 adding `CROSSPOINT_EXPERIMENTAL_COMPLETION=1` and
 `CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT=1`, and
 `CROSSPOINT_EXPERIMENTAL_STATS_RESTORE=1`; deferred automation is not enabled.
-The final default X4 Pro build passed in 69.10 seconds (113,060 bytes static
-RAM; 5,638,090 bytes flash).
+The final default X4 Pro build passed in 86.17 seconds (113,060 bytes static
+RAM; 5,638,258 bytes flash).
 Tests cover menus with and without chapters/touch,
 Confirm and touch entry, cancellation, percentage bounds, shared-action
 dispatch, allocation failures, one-shot tracking toggles in both directions,

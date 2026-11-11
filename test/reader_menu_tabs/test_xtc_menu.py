@@ -30,7 +30,7 @@ reader_methods += "\n#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)\n" + "\n".j
     method(reader, signature) for signature in (
         "bool XtcReaderActivity::completionActionAvailable(", "void XtcReaderActivity::toggleCompletion()")) + "\n#endif\n"
 reader_methods += "\n#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)\n" + method(
-    reader, "void XtcReaderActivity::confirmStatisticsReset(") + "\n#endif\n"
+    (root / "src/activities/reader/ReaderStatisticsActions.cpp").read_text(), "void ReaderActivity::confirmStatisticsReset(").replace("ReaderActivity::", "XtcReaderActivity::") + "\n#endif\n"
 actions = re.search(r'enum class MenuAction\s*\{(.*?)\};', header, re.S).group(1)
 ids = sorted(set(re.findall(r"STR_[A-Z0-9_]+", menu_methods + reader_methods)))
 code = r'''
@@ -101,6 +101,7 @@ struct XtcReaderActivity {
  int renderer=0,lastKind=0,updates=0,quick=0,home=0,trackingRequests=0;Input mappedInput;
  readershortcuts::Action last=readershortcuts::Action::Default;
  std::function<void(const ActivityResult&)>callback;
+ const std::string& getBookCachePath(){return xtc->getCachePath();}
  void requestUpdate(){++updates;}int getProgressPercent(){return 24;}
  bool handleReaderShortcut(readershortcuts::Action a){last=a;return true;}
  void openReadingStatistics(bool toggle){assert(toggle);last=readershortcuts::Action::ReadingStatistics; ++trackingRequests;}

@@ -2,7 +2,7 @@
 
 `statsbackup::resetBookStatistics` resets one closed book through the existing
 backup/restore code. Builds with `CROSSPOINT_EXPERIMENTAL_STATS_RESTORE` now
-connect it to XTC's Delete book statistics menu action. Confirmation is required.
+connect it to the EPUB and XTC Delete book statistics menu actions. Confirmation is required.
 The reader flushes its statistics, suspends its sole session lease for the reset,
 then reloads the saved state before resuming. Other active readers block the reset.
 
@@ -34,6 +34,7 @@ counters, retained historical totals, disabled tracking, failed flushes, and
 stopping old writes after an uncertain reset. Device testing remains pending.
 
 Validation: all 1,806 host tests passed, including live reset, completion,
-backup, and recovery checks. X4 Pro builds passed with reset enabled (243.45
-seconds) and in the default configuration (69.10 seconds). Independent release
+backup, and recovery checks. After sharing the EPUB/XTC menu flow, X4 Pro builds
+passed with reset enabled (76.03 seconds) and in the default configuration
+(86.17 seconds). Independent release
 review and device validation remain pending.

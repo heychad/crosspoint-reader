@@ -22,6 +22,12 @@ Location contains bookmarks, clippings, Saved Items, screenshots, and QR.
 Settings contains the remaining device, navigation, statistics, and reset
 controls. Availability checks are shared with the List menu.
 
+Per-book tracking is available from the reader menu and toolbar More panel.
+It uses the shared statistics screen and applies when returning to reading.
+Statistics-restore-enabled builds also offer Delete book statistics, using the
+same confirmation, backup, session, and recovery flow as XTC. Cancel returns
+to the appropriate reader menu. List, Toolbar, and Tabbed retain their layouts.
+
 The 12 inline controls stay in the reader menu. Choices use the existing popup;
 toggles apply immediately. An unchanged choice does not write settings. Each
 change uses the reader's existing text-offset preservation, pagination reset,
@@ -36,17 +42,18 @@ open, the pane closes and consumes that input frame; reopening refreshes the
 list. Names that cannot fit the existing saved font-name field are disabled
 instead of truncated. The panes do not add a live book-text preview.
 
-Other RC drawer features remain unfinished. The separate [XTC menu](XTC_READER_MENU.md)
+The [RC audit](EPUB_MENU_AUDIT.md) lists the remaining drawer work and separates
+Later/Skip controls. The separate [XTC menu](XTC_READER_MENU.md)
 now includes navigation, live tracking, completion-gated finished status, and
 state-preserving image-cache reset. Statistics deletion is available behind
 the statistics-restore flag, with session coordination and backup.
 Later-scope dictionary/font-engine
 features are not added.
 
-Root rows reuse fixed storage for at most 44 actions with a 44-byte index array.
-The final X4 Pro ELF reports a 4,748-byte menu object, including the 40-byte
-saved navigation record and 12-byte size-vector handle.
-The menu-item vector reserves 352 bytes; popup strings and shared UI allocations
+Root rows reuse fixed storage for at most 46 actions with a 46-byte index array.
+The X4 Pro ELF reports a 4,872-byte menu object.
+The menu retains its 40-byte saved navigation record and 12-byte size-vector handle.
+The menu-item vector reserves 368 bytes; popup strings and shared UI allocations
 are additional. Font panes use the shared row provider instead of copying a
 row per family. Names stay in the registry; size labels use one 12-byte buffer.
 The size vector contains at most 256 distinct byte-sized points from the
@@ -61,9 +68,12 @@ its passage. Then switch back to List and Toolbar and verify both still open.
 
 Host checks cover all 12 controls, option bounds, unchanged choices, repeated
 edits, cached-position preservation, and the unchanged List/Toolbar menu.
-The tab test exercises the maximum 44-row configuration with completion enabled.
+The tab test exercises the maximum 46-row configuration with completion and
+statistics restore enabled.
 Font-pane tests cover an 80-family registry, sparse sizes, Back restoration,
 unchanged selections, rejected long names, dirty-registry handling, and remembered
-menu actions. The full host run passed all 1,787 tests. After the final input and
-name guards, the three focused menu tests passed again. The final default X4 Pro
-build passed in 65.53 seconds. Hardware rendering and loading remain unverified.
+menu actions. The current full host run passed all 1,806 tests; focused checks
+also cover both new actions in the menu and More panel. Hardware rendering and
+loading remain unverified.
+
+The default and restore-enabled X4 Pro builds passed in 86.17 and 76.03 seconds.

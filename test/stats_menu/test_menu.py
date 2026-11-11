@@ -13,6 +13,10 @@ more = reader_source[reader_source.index("void EpubReaderActivity::buildMoreActi
 start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::READING_STATISTICS:")
 end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", start + 10)
 action = reader_source[start:end]
+for extra_action in ("TRACK_BOOK_STATS", "RESET_BOOK_STATS"):
+    extra_start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::" + extra_action + ":")
+    extra_end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", extra_start + 10)
+    action += reader_source[extra_start:extra_end]
 saved_start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::SAVED_ITEMS:")
 saved_end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", saved_start + 10)
 saved_action = reader_source[saved_start:saved_end]
@@ -71,6 +75,9 @@ class EpubReaderActivity {public:
  ReaderStats readingStats;
  std::string bookPath="/book.epub";
  void handleCompletionAttempt(bool recovery,bool completed){assert(!recovery);attempted=true;target=completed;}
+ int trackingRequests=0,resetRequests=0;
+ void openReadingStatistics(bool toggle){assert(toggle);++trackingRequests;}
+ void confirmStatisticsReset(){++resetRequests;}
  void requestUpdate(){++repaints;}
  bool handleReaderShortcut(readershortcuts::Action action){opened=action==readershortcuts::Action::ReadingStatistics;libraryOpened=action==readershortcuts::Action::Library;quickOpened=action==readershortcuts::Action::QuickActions;return true;}
  void buildMoreActions();
@@ -85,7 +92,11 @@ int main(){
  assert(rows.size()<=Menu::MAX_MENU_ITEMS);
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
  Menu::buildMenuItems(rows,true,true,true,true,false);
- assert(rows.size()==31);
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+ assert(rows.size()==33);
+#else
+ assert(rows.size()==32);
+#endif
  assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION && item.labelId==StrId::STR_MARK_FINISHED;})==1);
  Menu::buildMenuItems(rows,true,true,true,false,false);
  assert(std::none_of(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION;}));
@@ -128,6 +139,10 @@ int main(){
  reader.dispatch(MA::TOGGLE_COMPLETION);assert(!reader.attempted);
 #endif
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::READING_STATISTICS;})==1);
+ assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::TRACK_BOOK_STATS;})==1);
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+ assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::RESET_BOOK_STATS;})==1);
+#endif
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::READER_BARS;})==1);
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::HOME_BUTTON;})==1);
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::CONTROLS;})==1);
@@ -138,6 +153,16 @@ int main(){
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::FILE_BROWSER;})==1);
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::FILE_TRANSFER;})==1);
  reader.dispatch(MA::READING_STATISTICS);assert(reader.opened);
+ reader.dispatch(MA::TRACK_BOOK_STATS);assert(reader.trackingRequests==1);
+ reader.dispatch(MA::RESET_BOOK_STATS);
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+ assert(reader.resetRequests==1);
+ assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::RESET_BOOK_STATS;})==1);
+#else
+ assert(reader.resetRequests==0);
+ assert(std::none_of(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::RESET_BOOK_STATS;}));
+#endif
+ assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TRACK_BOOK_STATS;})==1);
  reader.dispatch(MA::LIBRARY);assert(reader.libraryOpened && reader.repaints==1);
  reader.dispatch(MA::QUICK_ACTIONS);assert(reader.quickOpened && reader.repaints==2);
  reader.dispatch(MA::SAVED_ITEMS);assert(activityManager.calls==1 && activityManager.pending && reader.repaints==3);
@@ -148,7 +173,7 @@ int main(){
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / "test.cpp").write_text(code)
-    for flags in ([], ["-DCROSSPOINT_EXPERIMENTAL_COMPLETION", "-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT"],
+    for flags in ([], ["-DCROSSPOINT_EXPERIMENTAL_COMPLETION", "-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT", "-DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE"],
                   ["-DCROSSPOINT_EXPERIMENTAL_COMPLETION", "-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT", "-DCROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION"]):
         subprocess.run(["c++", "-std=c++20", "-I", str(root / "src"), *flags, str(path / "test.cpp"), "-o", str(path / "test")], check=True)
         subprocess.run([str(path / "test")], check=True)

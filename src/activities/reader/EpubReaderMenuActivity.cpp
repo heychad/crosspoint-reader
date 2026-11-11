@@ -161,6 +161,8 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
     case MenuAction::SYNC:
     case MenuAction::DELETE_CACHE:
     case MenuAction::READING_STATISTICS:
+    case MenuAction::TRACK_BOOK_STATS:
+    case MenuAction::RESET_BOOK_STATS:
     case MenuAction::READER_BARS:
     case MenuAction::LIBRARY:
     case MenuAction::FILE_BROWSER:
@@ -266,6 +268,10 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::READING_STATISTICS, StrId::STR_READING_STATISTICS});
+  items.push_back({MenuAction::TRACK_BOOK_STATS, StrId::STR_TRACK_READING_STATS});
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+  items.push_back({MenuAction::RESET_BOOK_STATS, StrId::STR_BOOK_STATS_RESET});
+#endif
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
   (void)alreadyInReadFolder;

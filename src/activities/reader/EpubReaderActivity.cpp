@@ -1547,6 +1547,14 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       handleReaderShortcut(readershortcuts::Action::ReadingStatistics);
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::TRACK_BOOK_STATS:
+      openReadingStatistics(true);
+      break;
+    case EpubReaderMenuActivity::MenuAction::RESET_BOOK_STATS:
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+      confirmStatisticsReset();
+#endif
+      break;
     case EpubReaderMenuActivity::MenuAction::CONTROLS: {
       if (auto screen = makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, SettingsSection::Controls)) {
         startActivityForResult(std::move(screen), [this](const ActivityResult&) { openReaderMenu(); });

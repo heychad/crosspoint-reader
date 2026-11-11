@@ -20,13 +20,9 @@ class XtcReaderActivity final : public ReaderActivity {
 
   void renderPage();
   void openChapterSelection(bool returnToMenu = false);
-  void openReaderMenu();
+  void openReaderMenu() override;
   void openPercentSelection();
   void confirmCacheReset(bool retry = false);
-#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
-  enum class StatisticsResetPrompt { Confirm, Retry, Recovery };
-  void confirmStatisticsReset(StatisticsResetPrompt prompt = StatisticsResetPrompt::Confirm);
-#endif
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
   bool completionActionAvailable(bool& completed) const;
   void toggleCompletion();

@@ -60,7 +60,9 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
     PARAGRAPH_SPACING,
     PARAGRAPH_INDENT,
     EMBEDDED_STYLE,
-    IMAGES
+    IMAGES,
+    TRACK_BOOK_STATS,
+    RESET_BOOK_STATS
   };
 
   enum class Tab : uint8_t { Font, Layout, More, Location, Settings, Count };
@@ -95,7 +97,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   // fixed-capacity array avoids any heap allocation for the row list. Labels
   // are rebuilt on tab changes (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
-  static constexpr size_t MAX_MENU_ITEMS = 44;
+  static constexpr size_t MAX_MENU_ITEMS = 46;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 

@@ -30,6 +30,11 @@ class ReaderActivity : public Activity {
 #endif
   virtual bool handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None);
   virtual bool supportsReaderShortcut(readershortcuts::Action action) const;
+  virtual void openReaderMenu() { requestUpdate(); }
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
+  enum class StatisticsResetPrompt { Confirm, Retry, Recovery };
+  void confirmStatisticsReset(StatisticsResetPrompt prompt = StatisticsResetPrompt::Confirm);
+#endif
   void openQuickActions();
   void openReadingStatistics(bool toggleTracking = false);
   bool handlePendingQuickAction();

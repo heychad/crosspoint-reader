@@ -228,7 +228,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // released the section.
   ChapterPosition chapterPosition() const;
   int bookPercentFor(const ChapterPosition& position) const;
-  void openReaderMenu();
+  void openReaderMenu() override;
   void openChapterSelection(bool returnToMenu);
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
