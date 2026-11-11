@@ -43,6 +43,7 @@ struct HomeActivity {
 '''
 code += block(home, '  static int menuItemToIndex(')
 code += block(home, '  static HomeMenuItem indexToMenuItem(')
+code += '\n' + block((ROOT/'src/activities/home/HomeActivity.cpp').read_text(), 'int HomeActivity::homeCoverTileHeight(').replace('int HomeActivity::homeCoverTileHeight()', 'int homeCoverTileHeight()')
 code += '\n' + block((ROOT/'src/activities/home/HomeActivity.cpp').read_text(), 'HomeActivity::MenuPage HomeActivity::menuPage(')
 code = code.replace('HomeActivity::MenuPage HomeActivity::menuPage()', 'MenuPage menuPage()')
 code += r'''

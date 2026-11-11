@@ -11,6 +11,9 @@
 #include "CompletionEdit.h"
 #include "CompletionTransaction.h"
 #include "ReadingStatsStore.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+#include "DailyReadingStatsStore.h"
+#endif
 
 void ReaderStats::begin(const std::string& cachePath, const std::string& bookPath, bool trackingEnabled,
                         uint16_t requestedIdleSeconds, bool enableCompletion) {
@@ -57,9 +60,25 @@ void ReaderStats::onRender(ReadingStatsFrame frame) {
   dirty = dirty || session.pendingSeconds() > 0;
 }
 
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+bool ReaderStats::flushDaily() {
+  const auto load = [](void*, uint32_t day, dailyreading::Counter& value) {
+    return dailyreading::read(day, value) != dailyreading::ReadResult::Unavailable;
+  };
+  const auto save = [](void*, uint32_t day, const dailyreading::Counter& value) {
+    return dailyreading::write(day, value);
+  };
+  dailySaveFailed = !session.dailyCounters().flush(nullptr, load, save);
+  return !dailySaveFailed;
+}
+#endif
+
 void ReaderStats::pause() {
   if (active) {
     session.pause(millis(), book, global, idleSeconds);
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+    flushDaily();
+#endif
     dirty = dirty || session.pendingSeconds() > 0;
   }
 }
@@ -69,9 +88,11 @@ bool ReaderStats::snapshot(BookReadingStats& bookOut, GlobalReadingStats& global
   pause();
   bookOut = book;
   globalOut = global;
-  auto preview = session;
-  preview.commit(bookOut, globalOut);
+  session.preview(bookOut, globalOut);
   saved = (!dirty && !forceSave) || (readingstats::saveBook(directory, bookOut) && globalOut.save());
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  saved = saved && !dailySaveFailed;
+#endif
   return true;
 }
 
@@ -312,7 +333,13 @@ statsbackup::BookRestoreResult ReaderStats::resetBookStatistics(const std::strin
 bool ReaderStats::finish() {
   if (!active) return true;
   pause();
-  if (!dirty) return true;
+  if (!dirty) {
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+    return !dailySaveFailed;
+#else
+    return true;
+#endif
+  }
   session.commit(book, global);
   const bool saved = readingstats::saveBook(directory, book) && global.save();
   if (!saved) {
@@ -320,5 +347,9 @@ bool ReaderStats::finish() {
   } else {
     dirty = false;
   }
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  return saved && !dailySaveFailed;
+#else
   return saved;
+#endif
 }

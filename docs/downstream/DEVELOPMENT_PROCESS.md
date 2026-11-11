@@ -14,11 +14,14 @@ release ceremony with checked development batches and cumulative device tests.
    those files and the existing close/exit path. Reuse that path before adding
    storage work. For reader caches, a released section is not enough: EPUB
    metadata holds file handles until the reader is destroyed.
-4. During implementation, run the checks that can expose the changed behavior.
+4. Before growing frequently copied reader state, inspect by-value copies and
+   their stack cost. The daily recorder would have made a statistics preview
+   clone 412 bytes; a const projection removed it without another allocation.
+5. During implementation, run the checks that can expose the changed behavior.
    Add tests for a meaningful regression or risky contract, not source wording.
-5. Checkpoint and push reviewed work on the authorized personal branch. A WIP
+6. Checkpoint and push reviewed work on the authorized personal branch. A WIP
    commit may identify disabled or incomplete work; it is not a release claim.
-6. Prepare a cumulative device candidate with the full suite, intended X4 Pro
+7. Prepare a cumulative device candidate with the full suite, intended X4 Pro
    build, risk-based review, and a short smoke test. Let device feedback guide
    the next batch.
 
@@ -111,8 +114,15 @@ These are check durations, not coding speed or total development time.
 | Four compatible preference imports | 10 affected checks: 2.23 s | 68.31 s |
 | Legacy book rendering profile | 95 affected checks: 0.91 s | 67.14 s |
 | Carousel geometry | 47 affected checks: 1.84 s initially; corrected fixture: 0.52 s | Carousel-enabled profile: 190.30 s, first-use setup included |
+| Daily recorder and shared preview | 410 focused: 0.67 s; cumulative 2,227 cases: 47.90 s, one fixture corrected in 0.65 s | Enabled profile: 80.00 s final; initial 178.74 s preceded stack correction |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
 The next cumulative device candidate still requires its exact enabled profile
 and full-suite results.
+
+For Home geometry changes, include `SavedItemsHomeInput` and
+`SavedItemsNavigation` alongside the Carousel/Home checks. Both extract Home
+methods; the navigation fixture also needs new sizing helpers even though its
+name does not contain Home. Fixing that fixture does not invalidate firmware
+or other passing host results.

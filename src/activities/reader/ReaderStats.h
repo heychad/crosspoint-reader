@@ -59,10 +59,18 @@ class ReaderStats {
   bool completionAvailable = false;
   bool startUnavailable = false;
   bool dirty = false;
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  bool dailySaveFailed = false;
+  bool flushDaily();
+#endif
   bool completionRecoveryPending = false;
   bool completionRecoveryTarget = false;
   bool completionRecoveryWasTracking = false;
   ReadingStatsDate completionRecoveryDate;
 };
 
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+static_assert(sizeof(ReaderStats) <= 896, "Review reader statistics RAM growth");
+#else
 static_assert(sizeof(ReaderStats) <= 640, "Review reader statistics RAM growth");
+#endif

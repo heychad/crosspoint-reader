@@ -142,3 +142,24 @@ TEST(ReadingStatsSessionTest, RepeatedSamePageRefreshKeepsDwellAndDoesNotCountPa
   EXPECT_EQ(r.book.totalReadingSeconds, 20U);
   EXPECT_EQ(r.book.totalPagesTurned, 0U);
 }
+
+TEST(ReadingStatsSessionTest, RepeatedPreviewDoesNotCommitOrDrainTheSession) {
+  StatsRun r;
+  const ReadingStatsDateTime date{{2026, 11, 15}, 12, 0, 0};
+  r.session.onPageRendered(0, &date, ReadingStatsFrame::Page, r.book, r.global, 300);
+  r.pause(65000);
+  BookReadingStats first = r.book, second = r.book;
+  GlobalReadingStats firstGlobal = r.global, secondGlobal = r.global;
+  r.session.preview(first, firstGlobal);
+  r.session.preview(second, secondGlobal);
+  EXPECT_EQ(first.totalReadingSeconds, 65U);
+  EXPECT_EQ(second.totalReadingSeconds, 65U);
+  EXPECT_EQ(first.timeOfDaySeconds, second.timeOfDaySeconds);
+  EXPECT_EQ(firstGlobal.readingHistoryBits, secondGlobal.readingHistoryBits);
+  EXPECT_EQ(r.book.totalReadingSeconds, 0U);
+  EXPECT_EQ(r.session.pendingSeconds(), 65U);
+  r.finish();
+  EXPECT_EQ(r.book.totalReadingSeconds, 65U);
+  EXPECT_EQ(r.global.totalReadingSeconds, 65U);
+  EXPECT_EQ(r.book.timeOfDaySeconds, first.timeOfDaySeconds);
+}

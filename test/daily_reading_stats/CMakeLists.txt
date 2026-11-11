@@ -1,5 +1,7 @@
 add_executable(DailyReadingStatsStoreTest
   StoreTest.cpp
+  SessionTest.cpp
+  ${REPO_ROOT}/src/activities/reader/DailyReadingStatsSession.cpp
   ${REPO_ROOT}/src/activities/reader/DailyReadingStatsStore.cpp
   ${REPO_ROOT}/src/activities/reader/ReadingStatsUtils.cpp
 )

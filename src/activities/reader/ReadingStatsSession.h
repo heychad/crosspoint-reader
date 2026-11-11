@@ -1,6 +1,9 @@
 #pragma once
 
 #include "ReadingSessionStats.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+#include "DailyReadingStatsSession.h"
+#endif
 
 enum class ReadingStatsFrame : uint8_t { Page, Unavailable, EndOfBook };
 
@@ -12,12 +15,21 @@ class ReadingStatsSession {
   void noteTurn(bool forward, bool succeeded, uint32_t atMs);
   void pause(uint32_t nowMs, BookReadingStats& book, GlobalReadingStats& global, uint16_t idleSeconds);
   void commit(BookReadingStats& book, GlobalReadingStats& global);
+  // Project pending totals without copying the session or changing its counters.
+  void preview(BookReadingStats& book, GlobalReadingStats& global) const;
   uint32_t pendingSeconds() const { return seconds; }
   uint32_t previewPendingSeconds(uint16_t idleSeconds) const;
   // Apply a pending eligible forward-page sample to a caller-owned copy.
   void previewPendingPace(BookReadingStats& preview, uint16_t idleSeconds) const;
 
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  dailyreading::Session& dailyCounters() { return daily; }
+#endif
+
  private:
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  dailyreading::Session daily;
+#endif
   uint32_t eligibleElapsed(uint32_t nowMs, uint16_t idleSeconds) const;
   void accrue(uint32_t nowMs, BookReadingStats& book, GlobalReadingStats& global, uint16_t idleSeconds);
   uint32_t pageShownMs = 0;

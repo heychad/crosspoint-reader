@@ -35,6 +35,9 @@ void ReadingStatsSession::accrue(uint32_t nowMs, BookReadingStats& book, GlobalR
   const uint32_t elapsed = eligibleElapsed(nowMs, idleSeconds);
   if (elapsed == 0) return;
   add(seconds, elapsed);
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  daily.add(hasAnchorDate ? &anchorDate : nullptr, elapsed, seconds);
+#endif
   if (hasAnchorDate) {
     if (!firstDate.isValid()) firstDate = anchorDate.date;
     recordReadingSpanIntoBuckets(timeBuckets, dayBuckets, anchorDate, elapsed);
@@ -80,7 +83,7 @@ void ReadingStatsSession::pause(uint32_t nowMs, BookReadingStats& book, GlobalRe
   pendingForward = false;
 }
 
-void ReadingStatsSession::commit(BookReadingStats& book, GlobalReadingStats& global) {
+void ReadingStatsSession::preview(BookReadingStats& book, GlobalReadingStats& global) const {
   commitReadingSession(book, global, seconds, nullptr);
   if (seconds >= 10) {
     for (size_t i = 0; i < timeBuckets.size(); ++i) {
@@ -95,6 +98,13 @@ void ReadingStatsSession::commit(BookReadingStats& book, GlobalReadingStats& glo
     global.longestReadingStreak = global.displayLongestReadingStreak();
     if (seconds >= 120 && !book.startDateManual && !book.startDate.isValid()) book.startDate = firstDate;
   }
+}
+
+void ReadingStatsSession::commit(BookReadingStats& book, GlobalReadingStats& global) {
+  preview(book, global);
+#if defined(CROSSPOINT_EXPERIMENTAL_DAILY_STATS)
+  daily.endSession();
+#endif
   seconds = 0;
   firstDate = {};
   timeBuckets.fill(0);

@@ -87,3 +87,22 @@ target_include_directories(DeviceStatsEnabledBackupTest PRIVATE
 target_compile_definitions(DeviceStatsEnabledBackupTest PRIVATE CROSSPOINT_EXPERIMENTAL_STATS_BACKUP=1)
 target_link_libraries(DeviceStatsEnabledBackupTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(DeviceStatsEnabledBackupTest)
+
+# Keep the normal suite unchanged and exercise the optional recorder separately.
+get_target_property(DAILY_STATS_SOURCES BookReadingStatsAtomicTest SOURCES)
+add_executable(BookReadingStatsDailyTest
+  ${DAILY_STATS_SOURCES}
+  DailyReaderStatsTest.cpp
+  ${REPO_ROOT}/src/activities/reader/DailyReadingStatsSession.cpp
+  ${REPO_ROOT}/src/activities/reader/DailyReadingStatsStore.cpp
+)
+target_include_directories(BookReadingStatsDailyTest PRIVATE
+  ../daily_reading_stats/stubs
+  stubs
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/src/activities/reader
+  ${REPO_ROOT}/lib/Serialization
+)
+target_compile_definitions(BookReadingStatsDailyTest PRIVATE CROSSPOINT_EXPERIMENTAL_DAILY_STATS=1)
+target_link_libraries(BookReadingStatsDailyTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(BookReadingStatsDailyTest TEST_PREFIX DailyEnabled.)
