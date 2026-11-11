@@ -219,6 +219,8 @@ add_test(NAME LibraryShelfTransitions COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURR
 add_test(NAME CrossInkShortcutPreview COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shortcut_migration/test_preview.py)
 add_test(NAME CrossInkBookSettingsPreview COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/book_settings_migration/test_preview.py)
 add_test(NAME CrossInkBookSettingsDecoder COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/book_settings_migration/test_firmware_decoder.py)
+FetchContent_GetProperties(ArduinoJson)
+add_test(NAME ReaderMarginJson COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/book_settings_migration/test_margin_json.py ${arduinojson_SOURCE_DIR}/src)
 
 add_test(NAME ProtectedThumbnail COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_protected_thumbnail.py)
 

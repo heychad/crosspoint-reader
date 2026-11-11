@@ -112,15 +112,16 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
       break;
     }
   }
-  const auto verticalMargin = legacy["screenMarginVertical"];
-  const auto horizontalMargin = legacy["screenMarginHorizontal"];
-  const auto currentMargin = proposed["screenMargin"];
-  if (verticalMargin.is<uint8_t>() && horizontalMargin.is<uint8_t>() && verticalMargin.as<uint8_t>() >= 5 &&
-      verticalMargin.as<uint8_t>() <= 40 && verticalMargin.as<uint8_t>() == horizontalMargin.as<uint8_t>() &&
-      (replaceExisting || currentMargin.isUnbound()) &&
-      (!currentMargin.is<uint8_t>() || currentMargin.as<uint8_t>() != verticalMargin.as<uint8_t>())) {
-    proposed["screenMargin"] = verticalMargin.as<uint8_t>();
-    changed = true;
+  for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
+    const auto value = legacy[key];
+    const auto current = proposed[key];
+    // A native single-margin save already owns both axes.
+    if (value.is<uint8_t>() && value.as<uint8_t>() >= 5 && value.as<uint8_t>() <= 150 &&
+        (replaceExisting || (current.isUnbound() && proposed["screenMargin"].isUnbound())) &&
+        (!current.is<uint8_t>() || current.as<uint8_t>() != value.as<uint8_t>())) {
+      proposed[key] = value.as<uint8_t>();
+      changed = true;
+    }
   }
   const auto legacyWordSpacing = legacy["wordSpacing"];
   const auto currentWordSpacing = proposed["wordSpacing"];

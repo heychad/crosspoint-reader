@@ -130,8 +130,8 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   }
 
   // Repeat only the fallback sample; book excerpts keep their actual paragraph breaks.
-  int y = top + previewPadding;
-  const int textBottomLimit = top + height - labelReserved;
+  int y = top + previewPadding + SETTINGS.screenMarginVertical;
+  const int textBottomLimit = top + height - labelReserved - SETTINGS.screenMarginVertical;
   const int repeats = sourceText && *sourceText ? 1 : 2;
   for (int paragraph = 0; paragraph < repeats; paragraph++) {
     for (const auto& line : layout.lines) {

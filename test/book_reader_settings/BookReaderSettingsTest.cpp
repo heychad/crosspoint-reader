@@ -317,7 +317,7 @@ TEST_F(BookSettings, CrossInkPreferencesImportBacksUpAndPreservesOtherSettings) 
   EXPECT_EQ(persisted["textAntiAliasing"].as<int>(), 0);
   EXPECT_EQ(persisted["imageRendering"].as<int>(), 2);
   EXPECT_EQ(persisted["orientation"].as<int>(), 3);
-  EXPECT_EQ(persisted["screenMargin"].as<int>(), 15);
+  EXPECT_EQ(persisted["screenMarginHorizontal"].as<int>(), 15);
   EXPECT_EQ(persisted["wordSpacing"].as<int>(), 100);
   EXPECT_EQ(persisted["sleepScreen"].as<int>(), 5);
   EXPECT_EQ(persisted["sleepScreenCoverMode"].as<int>(), 1);
@@ -383,26 +383,25 @@ TEST_F(BookSettings, CrossInkPreferencesRejectInvalidLayoutAndPreserveCurrent) {
   EXPECT_EQ(current["embeddedStyle"].as<int>(), 0);
 }
 
-TEST_F(BookSettings, CrossInkPreferencesImportMatchingMarginsAndDefaultWordSpacing) {
+TEST_F(BookSettings, CrossInkPreferencesImportIndependentMargins) {
   JsonDocument source, current;
-  ASSERT_FALSE(deserializeJson(source, R"({"screenMarginVertical":15,"screenMarginHorizontal":15,"wordSpacing":0})"));
+  ASSERT_FALSE(deserializeJson(source, R"({"screenMarginVertical":150,"screenMarginHorizontal":7,"wordSpacing":0})"));
   current.to<JsonObject>();
   ASSERT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
-  EXPECT_EQ(current["screenMargin"].as<uint8_t>(), 15);
-  EXPECT_EQ(current["wordSpacing"].as<uint8_t>(), 100);
+  EXPECT_EQ(current["screenMarginHorizontal"].as<int>(), 7);
+  EXPECT_EQ(current["screenMarginVertical"].as<int>(), 150);
+  EXPECT_EQ(current["wordSpacing"].as<int>(), 100);
   source["screenMarginVertical"] = 20;
-  source["wordSpacing"] = 1;
-  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
-  source["screenMarginHorizontal"] = 41;
-  source["screenMarginVertical"] = 41;
-  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
-  source["screenMarginHorizontal"] = 20;
-  source["screenMarginVertical"] = 20;
-  source["wordSpacing"] = 0;
+  source["screenMarginHorizontal"] = 151;
   EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
-  EXPECT_EQ(current["screenMargin"].as<uint8_t>(), 15);
   EXPECT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
-  EXPECT_EQ(current["screenMargin"].as<uint8_t>(), 20);
+  EXPECT_EQ(current["screenMarginHorizontal"].as<int>(), 7);
+  EXPECT_EQ(current["screenMarginVertical"].as<int>(), 20);
+  current.clear();
+  current["screenMargin"] = 10;
+  current["wordSpacing"] = 100;
+  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
+  EXPECT_TRUE(current["screenMarginVertical"].isUnbound());
 }
 
 TEST_F(BookSettings, CrossInkBarsTransactionPreservesSnapshotAndUnrelatedSettings) {
@@ -1386,6 +1385,94 @@ TEST_F(BookSettings, LegacyRenderProfileIsImportedAndResetWithoutChangingOrigina
   BookReaderPreferences reopened;
   ASSERT_TRUE(reopened.load(CACHE, "/book.epub", imported));
   EXPECT_EQ(imported.mask, 0U);
+  std::string after;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
+  EXPECT_EQ(after, original);
+}
+
+TEST(ReaderPreferences, OldCommonMarginMigratesToBothAxesAndCanonicalKeysWin) {
+  JsonDocument doc;
+  ASSERT_FALSE(deserializeJson(doc, R"({"screenMargin":15,"screenMarginHorizontal":7})"));
+  ReaderPreferences preferences;
+  uint32_t mask;
+  ASSERT_TRUE(preferences.read(doc.as<JsonObjectConst>(), mask));
+  CrossPointSettings settings;
+  preferences.apply(settings, mask);
+  EXPECT_EQ(settings.screenMargin, 7);
+  EXPECT_EQ(settings.screenMarginVertical, 15);
+  preferences.write(doc.as<JsonObject>(), mask);
+  EXPECT_TRUE(doc["screenMargin"].isUnbound());
+  EXPECT_EQ(doc["screenMarginHorizontal"].as<int>(), 7);
+  EXPECT_EQ(doc["screenMarginVertical"].as<int>(), 15);
+}
+
+TEST(ReaderPreferences, IndependentMarginValidation) {
+  for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
+    for (int value : {-1, 0, 4, 5, 7, 40, 41, 150, 151, 256}) {
+      JsonDocument doc;
+      doc[key] = value;
+      ReaderPreferences preferences;
+      uint32_t mask;
+      EXPECT_EQ(preferences.read(doc.as<JsonObjectConst>(), mask), value >= 5 && value <= 150);
+    }
+  }
+}
+
+TEST(ReaderPreferenceScope, MarginAxesRemainIndependentAcrossBookAndGlobalEdits) {
+  CrossPointSettings settings;
+  BookReaderSettingsScope scope;
+  scope.begin(settings, {});
+  settings.screenMargin = 7;
+  auto book = scope.capture(settings);
+  EXPECT_EQ(book.mask, 1U << 5);
+  scope.beforeGlobalLoad(settings);
+  settings.screenMargin = 25;
+  settings.screenMarginVertical = 33;
+  scope.afterGlobalLoad(settings);
+  EXPECT_EQ(settings.screenMargin, 7);
+  EXPECT_EQ(settings.screenMarginVertical, 33);
+  settings.screenMarginVertical = 150;
+  book = scope.capture(settings);
+  EXPECT_EQ(book.mask, (1U << 5) | ReaderPreferences::VERTICAL_MARGIN_BIT);
+  JsonDocument defaults;
+  scope.writeGlobal(defaults.to<JsonObject>());
+  EXPECT_EQ(defaults["screenMarginHorizontal"].as<int>(), 25);
+  EXPECT_EQ(defaults["screenMarginVertical"].as<int>(), 33);
+  scope.end(settings);
+  EXPECT_EQ(settings.screenMargin, 25);
+  EXPECT_EQ(settings.screenMarginVertical, 33);
+  scope.begin(settings, book);
+  EXPECT_EQ(settings.screenMargin, 7);
+  EXPECT_EQ(settings.screenMarginVertical, 150);
+  scope.reset(settings);
+  EXPECT_EQ(settings.screenMargin, 25);
+  EXPECT_EQ(settings.screenMarginVertical, 33);
+  EXPECT_EQ(scope.capture(settings).mask, 0U);
+}
+
+TEST_F(BookSettings, IndependentLegacyMarginsSurviveNativeSaveWithoutChangingSource) {
+  auto original = crossInkV10();
+  original[10] = static_cast<char>(150);
+  original[11] = 7;
+  original[original.size() - 4] = 0x60;
+  const auto legacy = std::string(CACHE) + "/reader_settings.bin";
+  put(legacy, original);
+  BookReaderPreferences store;
+  BookReaderSettings imported;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", imported));
+  EXPECT_EQ(imported.mask, (1U << 5) | ReaderPreferences::VERTICAL_MARGIN_BIT);
+  EXPECT_EQ(imported.preferences.values[5], 7);
+  EXPECT_EQ(imported.preferences.verticalMargin, 150);
+  ASSERT_TRUE(store.save(imported));
+  EXPECT_FALSE(Storage.exists(PATH));
+  imported.preferences.verticalMargin = 33;
+  ASSERT_TRUE(store.save(imported));
+  BookReaderPreferences reopened;
+  BookReaderSettings loaded;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", loaded));
+  EXPECT_EQ(loaded.mask, imported.mask);
+  EXPECT_EQ(loaded.preferences.values[5], 7);
+  EXPECT_EQ(loaded.preferences.verticalMargin, 33);
   std::string after;
   ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
   EXPECT_EQ(after, original);

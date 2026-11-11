@@ -554,7 +554,7 @@ void SettingsActivity::toggleSelectedSetting() {
     setting.valueSetter((cur + 1) % totalValues);
     readerquickactions::normalizeChangedBindings(SETTINGS, bindingsBefore);
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
-    const int8_t currentValue = SETTINGS.*(setting.valuePtr);
+    const int currentValue = SETTINGS.*(setting.valuePtr);
     if (currentValue + setting.valueRange.step > setting.valueRange.max) {
       SETTINGS.*(setting.valuePtr) = setting.valueRange.min;
     } else {

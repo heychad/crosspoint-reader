@@ -48,7 +48,7 @@ render=r'''
 struct Rect{int x,y,width,height;};
 enum class CssTextAlign{Left,Center,Right,Justify};
 struct CrossPointSettings{static constexpr int BOOK_STYLE=4;};
-struct{int fontPointSize=14,screenMargin=5;uint8_t paragraphAlignment=0,paragraphIndentSpaces=2,wordSpacing=100;bool hyphenationEnabled=false,focusReadingEnabled=false,extraParagraphSpacing=true;
+struct{int fontPointSize=14,screenMargin=5,screenMarginVertical=0;uint8_t paragraphAlignment=0,paragraphIndentSpaces=2,wordSpacing=100;bool hyphenationEnabled=false,focusReadingEnabled=false,extraParagraphSpacing=true;
  char sdFontFamilyName[32]="First";int getReaderFontId(){return 7;}int8_t getCharacterSpacing(){return 0;}float getReaderLineCompression(){return 1;}}SETTINGS;
 enum class StrId{STR_FONT_PREVIEW_TEXT};struct{const char*get(StrId){return "sample words";}}I18N;
 constexpr int UI_10_FONT_ID=1;
@@ -78,6 +78,9 @@ int main(){GfxRenderer r;textsettings::PreviewLayout cache;Rect bounds{0,0,400,3
  textsettings::renderPreview(r,cache,2,2,bounds,"Book preview","changed");assert(layouts==5);
  std::string many;for(int i=0;i<100;i++)many+="line\n";textsettings::renderPreview(r,cache,2,2,bounds,"Book preview",many.c_str());assert(cache.lines.size()<=textsettings::MAX_PREVIEW_LINES);
  r.body.clear();textsettings::renderPreview(r,cache,2,2,bounds,"Preview",nullptr);assert(r.body.size()==2);
+ SETTINGS.screenMarginVertical=150;r.body.clear();const int before=layouts;
+ textsettings::renderPreview(r,cache,2,2,bounds,"Preview",nullptr);assert(r.body.empty()&&layouts==before);
+ SETTINGS.screenMarginVertical=0;textsettings::renderPreview(r,cache,2,2,bounds,"Preview",nullptr);assert(r.body.size()==2);
 }
 '''
 with tempfile.TemporaryDirectory() as path:

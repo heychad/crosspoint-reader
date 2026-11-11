@@ -36,15 +36,17 @@ code = r'''
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <cstdio>
+#include <variant>
 #include "I18nKeys.h"
 int lockDepth=0;
 struct RenderLock {RenderLock(){++lockDepth;}~RenderLock(){--lockDepth;}};
 struct {const char*get(StrId){return "translated";}} I18N;
 struct CrossPointSettings {
- enum {SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=40,SCREEN_MARGIN_STEP=5,
+ enum {SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=150,SCREEN_MARGIN_STEP=1,
  WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
  uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
- screenMargin=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
+ screenMargin=5,screenMarginVertical=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
  paragraphIndentSpaces=0,embeddedStyle=0,imageRendering=0;
  int saved=0;
  bool saveToFile(){assert(lockDepth==0);++saved;return true;}
@@ -56,9 +58,24 @@ struct Popup {
  template<class T>void show(T,const StrId*,int n,int index,std::function<void(int)>cb){count=n;current=index;select=std::move(cb);}
  void show(const char*,const char*const*,int n,int index,std::function<void(int)>cb){count=n;current=index;select=std::move(cb);}
 };
+struct IntervalResult{uint32_t value;};
+struct ActivityResult{bool isCancelled=false;std::variant<IntervalResult>data;};
+struct IntervalSelectionActivity{
+ int initial,minimum,maximum,small,large;
+ template<class... T>IntervalSelectionActivity(int,int,const char*,StrId,int i,int lo,int hi,int s,int l,T...):initial(i),minimum(lo),maximum(hi),small(s),large(l){}
+};
+bool allocationAllowed=true;
+template<class T,class... A>std::unique_ptr<T>makeUniqueNoThrow(A&&...a){return allocationAllowed?std::make_unique<T>(std::forward<A>(a)...):nullptr;}
+#define LOG_ERR(...) ((void)0)
 class EpubReaderMenuActivity {public:
  enum class MenuAction {__ACTIONS__};
- bool tabbed=true;int updates=0;Popup optionPopup;std::function<void()>textSettingsChanged;
+ bool tabbed=true;int renderer=0,mappedInput=0;char marginLabels[2][4]{};int updates=0;Popup optionPopup;std::function<void()>textSettingsChanged;
+ std::function<void(const ActivityResult&)>finished;
+ void startActivityForResult(std::unique_ptr<IntervalSelectionActivity>p,std::function<void(const ActivityResult&)>cb){
+  assert(p->minimum==5&&p->maximum==150&&p->small==1&&p->large==5);
+  finished=std::move(cb);optionPopup.count=146;optionPopup.current=p->initial-5;
+  optionPopup.select=[this](int index){finished(ActivityResult{false,IntervalResult{static_cast<uint32_t>(5+index)}});};
+ }
  void requestUpdate(){++updates;}
  void applyInlineTextSetting(uint8_t CrossPointSettings::*,uint8_t);
  bool handleInlineTextSetting(MenuAction);
@@ -84,7 +101,8 @@ int main(){
   {A::CHARACTER_SPACING,&CrossPointSettings::characterSpacing,5,0,1},
   {A::TEXT_AA,&CrossPointSettings::textAntiAliasing,0,0,1},
   {A::FOCUS_READING,&CrossPointSettings::focusReadingEnabled,0,0,1},
-  {A::SCREEN_MARGIN,&CrossPointSettings::screenMargin,8,5,5},
+  {A::SCREEN_MARGIN,&CrossPointSettings::screenMargin,146,5,1},
+  {A::VERTICAL_MARGIN,&CrossPointSettings::screenMarginVertical,146,5,1},
   {A::ALIGNMENT,&CrossPointSettings::paragraphAlignment,5,0,1},
   {A::HYPHENATION,&CrossPointSettings::hyphenationEnabled,0,0,1},
   {A::PARAGRAPH_SPACING,&CrossPointSettings::extraParagraphSpacing,0,0,1},
@@ -121,6 +139,12 @@ int main(){
   sdFontSystem.loads=0;
  }
  M menu;assert(!menu.handleInlineTextSetting(A::GO_HOME));
+ SETTINGS={};menu.handleInlineTextSetting(A::VERTICAL_MARGIN);
+ menu.finished(ActivityResult{true,IntervalResult{100}});assert(SETTINGS.screenMarginVertical==5);
+ menu.optionPopup.select(95);assert(SETTINGS.screenMarginVertical==100&&SETTINGS.screenMargin==5);
+ fui::ListItem h,v;menu.updateInlineTextRow(A::SCREEN_MARGIN,h);menu.updateInlineTextRow(A::VERTICAL_MARGIN,v);
+ assert(std::string(h.value)=="5"&&std::string(v.value)=="100");
+ allocationAllowed=false;assert(menu.handleInlineTextSetting(A::SCREEN_MARGIN));assert(SETTINGS.screenMargin==5);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

@@ -2363,6 +2363,15 @@ void CrossPointWebServer::handlePostSettings() {
   const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);
   int applied = 0;
 
+  // Older clients set one margin. Explicit axis keys take precedence.
+  const auto legacyMargin = doc["screenMargin"];
+  if (legacyMargin.is<int>() && legacyMargin.as<int>() >= CrossPointSettings::SCREEN_MARGIN_MIN &&
+      legacyMargin.as<int>() <= CrossPointSettings::SCREEN_MARGIN_MAX) {
+    if (doc["screenMarginHorizontal"].isNull()) SETTINGS.screenMargin = legacyMargin.as<uint8_t>();
+    if (doc["screenMarginVertical"].isNull()) SETTINGS.screenMarginVertical = legacyMargin.as<uint8_t>();
+    ++applied;
+  }
+
   for (const auto& s : settings) {
     if (!s.key || s.webHidden) continue;
     if (!doc[s.key].is<JsonVariant>()) continue;

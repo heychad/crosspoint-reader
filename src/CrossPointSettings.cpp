@@ -336,6 +336,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   readerquickactions::write(doc, readerQuickActions);
   bleturner::writeJson(ble, doc);
   bookReaderSettings.writeGlobal(doc.as<JsonObject>());
+  doc["screenMargin"] = doc["screenMarginHorizontal"];  // Compatibility for older settings readers.
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
@@ -407,6 +408,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   };
   forEachBaseSetting(visit);
+  // Older saves used one margin for both axes. Explicit axis values win.
+  const auto legacyMargin = doc["screenMargin"];
+  if (legacyMargin.is<uint8_t>()) {
+    const auto margin = std::clamp<uint8_t>(legacyMargin.as<uint8_t>(), SCREEN_MARGIN_MIN, SCREEN_MARGIN_MAX);
+    if (doc["screenMarginHorizontal"].isNull()) screenMargin = margin;
+    if (doc["screenMarginVertical"].isNull()) screenMarginVertical = margin;
+    needsResave |= doc["screenMarginHorizontal"].isNull() || doc["screenMarginVertical"].isNull();
+  }
   readershortcuts::readEmbeddedLegacyPower(doc, {&powerHoldAction, &powerUpChordAction});
   readershortcuts::readEmbeddedLegacySideOrientation(doc, readerSideFollowOrientation);
   readershortcuts::readEmbeddedLegacySides(

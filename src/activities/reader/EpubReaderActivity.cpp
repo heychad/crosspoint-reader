@@ -813,7 +813,7 @@ ReaderPageLayout EpubReaderActivity::readerPageLayout() const {
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   return makeReaderPageLayout(renderer.getScreenWidth(), renderer.getScreenHeight(), top, right, bottom, left,
-                              SETTINGS.screenMargin, UITheme::getReaderTopBarHeight(),
+                              SETTINGS.screenMargin, SETTINGS.screenMarginVertical, UITheme::getReaderTopBarHeight(),
                               UITheme::getReaderBottomBarHeight(automaticPageTurnActive));
 }
 
@@ -1625,6 +1625,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     case EpubReaderMenuActivity::MenuAction::TEXT_AA:
     case EpubReaderMenuActivity::MenuAction::FOCUS_READING:
     case EpubReaderMenuActivity::MenuAction::SCREEN_MARGIN:
+    case EpubReaderMenuActivity::MenuAction::VERTICAL_MARGIN:
     case EpubReaderMenuActivity::MenuAction::ALIGNMENT:
     case EpubReaderMenuActivity::MenuAction::HYPHENATION:
     case EpubReaderMenuActivity::MenuAction::PARAGRAPH_SPACING:

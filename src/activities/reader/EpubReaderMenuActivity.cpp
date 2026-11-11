@@ -5,6 +5,8 @@
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
 #include <I18n.h>
+#include <Logging.h>
+#include <Memory.h>
 
 #include <cstdio>
 #include <cstring>
@@ -16,6 +18,7 @@
 #include "ReaderLineSpacing.h"
 #include "ReaderUtils.h"
 #include "SdCardFontSystem.h"
+#include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "util/PluginEvents.h"
 #include "util/SlideSwitch.h"
@@ -34,10 +37,9 @@ constexpr StrId ALIGNMENT[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId:
                                StrId::STR_BOOK_S_STYLE};
 constexpr StrId IMAGES[] = {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS,
                             StrId::STR_IMAGES_DISPLAY_BW};
-constexpr const char* MARGINS[] = {"5", "10", "15", "20", "25", "30", "35", "40"};
 constexpr const char* INDENTS[] = {"0", "1", "2", "3", "4", "5"};
-static_assert(CrossPointSettings::SCREEN_MARGIN_MIN == 5 && CrossPointSettings::SCREEN_MARGIN_MAX == 40 &&
-              CrossPointSettings::SCREEN_MARGIN_STEP == 5);
+static_assert(CrossPointSettings::SCREEN_MARGIN_MIN == 5 && CrossPointSettings::SCREEN_MARGIN_MAX == 150 &&
+              CrossPointSettings::SCREEN_MARGIN_STEP == 1);
 static_assert(CrossPointSettings::WORD_SPACING_MIN == 50 && CrossPointSettings::WORD_SPACING_MAX == 200 &&
               CrossPointSettings::WORD_SPACING_STEP == 25);
 
@@ -58,7 +60,9 @@ constexpr TextControl TEXT_CONTROLS[] = {
      nullptr, 5},
     {MA::TEXT_AA, StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing},
     {MA::FOCUS_READING, StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled},
-    {MA::SCREEN_MARGIN, StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin, nullptr, MARGINS, 8, 5, 5},
+    {MA::SCREEN_MARGIN, StrId::STR_MARGIN_HORIZONTAL, &CrossPointSettings::screenMargin, nullptr, nullptr, 146, 5},
+    {MA::VERTICAL_MARGIN, StrId::STR_MARGIN_VERTICAL, &CrossPointSettings::screenMarginVertical, nullptr, nullptr, 146,
+     5},
     {MA::ALIGNMENT, StrId::STR_ALIGNMENT, &CrossPointSettings::paragraphAlignment, ALIGNMENT, nullptr, 5},
     {MA::HYPHENATION, StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled},
     {MA::PARAGRAPH_SPACING, StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing},
@@ -137,6 +141,7 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
     case MenuAction::ROTATE_SCREEN:
     case MenuAction::RENDER_MODE:
     case MenuAction::SCREEN_MARGIN:
+    case MenuAction::VERTICAL_MARGIN:
     case MenuAction::ALIGNMENT:
     case MenuAction::HYPHENATION:
     case MenuAction::PARAGRAPH_SPACING:
@@ -463,6 +468,22 @@ bool EpubReaderMenuActivity::handleInlineTextSetting(MenuAction action) {
     applyInlineTextSetting(control->field, SETTINGS.*(control->field) ? 0 : 1);
     return true;
   }
+  if (!control->ids && !control->text) {
+    auto picker = makeUniqueNoThrow<IntervalSelectionActivity>(
+        renderer, mappedInput, "ReaderMargin", control->title, SETTINGS.*(control->field),
+        CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX, 1, 5, StrId::STR_NONE_OPT, true);
+    if (!picker) {
+      LOG_ERR("MENU", "Could not allocate margin picker");
+      return true;
+    }
+    startActivityForResult(std::move(picker), [this, control](const ActivityResult& result) {
+      const auto* selected = std::get_if<IntervalResult>(&result.data);
+      if (!result.isCancelled && selected && selected->value >= CrossPointSettings::SCREEN_MARGIN_MIN &&
+          selected->value <= CrossPointSettings::SCREEN_MARGIN_MAX)
+        applyInlineTextSetting(control->field, static_cast<uint8_t>(selected->value));
+    });
+    return true;
+  }
   const int current = std::clamp((static_cast<int>(SETTINGS.*(control->field)) - control->minimum) / control->step, 0,
                                  static_cast<int>(control->count) - 1);
   auto selected = [this, control](int index) {
@@ -486,7 +507,13 @@ void EpubReaderMenuActivity::updateInlineTextRow(MenuAction action, fui::ListIte
   }
   const int index = std::clamp((static_cast<int>(SETTINGS.*(control->field)) - control->minimum) / control->step, 0,
                                static_cast<int>(control->count) - 1);
-  item.value = control->ids ? I18N.get(control->ids[index]) : control->text[index];
+  if (!control->ids && !control->text) {
+    auto& label = marginLabels[action == MenuAction::VERTICAL_MARGIN ? 1 : 0];
+    snprintf(label, sizeof(label), "%u", control->minimum + index * control->step);
+    item.value = label;
+  } else {
+    item.value = control->ids ? I18N.get(control->ids[index]) : control->text[index];
+  }
 }
 
 bool EpubReaderMenuActivity::handleHomeGesture() {

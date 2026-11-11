@@ -3,6 +3,8 @@
 
 #include "util/HomeButtonInput.h"
 struct CrossPointSettings {
+  static constexpr uint8_t SCREEN_MARGIN_MIN = 5, SCREEN_MARGIN_MAX = 150;
+  uint8_t screenMargin = SCREEN_MARGIN_MIN, screenMarginVertical = SCREEN_MARGIN_MIN;
   uint8_t powerTapAction = 0, powerHoldAction = 0, powerUpChordAction = 0, backHoldAction = 0, confirmHoldAction = 0;
   int saves = 0;
   bool failSave = false;

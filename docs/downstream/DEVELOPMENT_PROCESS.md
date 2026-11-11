@@ -115,6 +115,7 @@ These are check durations, not coding speed or total development time.
 | Legacy book rendering profile | 95 affected checks: 0.91 s | 67.14 s |
 | Carousel geometry | 47 affected checks: 1.84 s initially; corrected fixture: 0.52 s | Carousel-enabled profile: 190.30 s, first-use setup included |
 | Daily recorder and shared preview | 410 focused: 0.67 s; cumulative 2,227 cases: 47.90 s, one fixture corrected in 0.65 s | Enabled profile: 80.00 s final; initial 178.74 s preceded stack correction |
+| Independent margin settings and migration | 91 focused: 12.24 s; cumulative 2,240 cases: 242.39 s, one web fixture corrected alongside two added checks in 1.49 s | 65.85 s final; initial 112.27 s preceded resave correction |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

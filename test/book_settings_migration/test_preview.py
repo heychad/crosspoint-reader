@@ -55,8 +55,8 @@ class DecodeTest(unittest.TestCase):
 
     def test_v10_only_owned_compatible_values_are_proposed(self):
         result = preview.decode(record(10, mask=(1 << 4) | (1 << 6) | (1 << 8)))
-        self.assertEqual(result['preview'], {'orientation': 1, 'paragraphAlignment': 2})
-        self.assertEqual(result['unmapped'], ['screenMarginHorizontal'])
+        self.assertEqual(result['preview'], {'orientation': 1, 'screenMarginHorizontal': 8, 'paragraphAlignment': 2})
+        self.assertEqual(result['unmapped'], [])
         self.assertNotIn('embeddedStyle', result['overrides'])
 
     def test_flag_off_does_not_invent_overrides(self):
@@ -74,15 +74,11 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual(result['preview'], {})
         self.assertEqual(result['unmapped'], ['readerFontPointSize', 'lineHeightPercent'])
 
-    def test_margin_requires_both_explicit_and_equal(self):
-        mask = (1 << 5) | (1 << 6)
-        unequal = preview.decode(record(10, mask=mask))
-        self.assertEqual(unequal['preview'], {})
-        data = bytearray(record(10, mask=mask))
-        data[11] = data[10]  # Equal vertical/horizontal margins.
-        self.assertEqual(preview.decode(bytes(data))['preview'], {'screenMargin': 7})
+    def test_margin_axes_map_independently(self):
+        result = preview.decode(record(10, mask=3 << 5))
+        self.assertEqual(result['preview'], {'screenMarginVertical': 7, 'screenMarginHorizontal': 8})
         single = preview.decode(record(10, mask=1 << 5))
-        self.assertEqual(single['preview'], {})
+        self.assertEqual(single['preview'], {'screenMarginVertical': 7})
 
     def test_only_natural_word_spacing_maps(self):
         data = bytearray(record(10, mask=1 << 3))

@@ -778,4 +778,4 @@ of these sidecars but preserves the independent `My Clippings.txt` export.
 
 ## Per-book reader preferences in the personal fork
 
-`/.crosspoint/reading_stats/epub_<book-hash>/reader_prefs.json` holds version 1 sparse layout overrides. The book hash is the existing CrossPoint cache identity. The object contains `version` and `overrides`. Known override keys match the global settings JSON. See [per-book settings](downstream/BOOK_SETTINGS.md) for field scope, validation, recovery, and pending CrossInk binary import.
+`/.crosspoint/reading_stats/epub_<book-hash>/reader_prefs.json` holds version 1 sparse layout overrides. The book hash is the existing CrossPoint cache identity. The object contains `version` and `overrides`. Known override keys match the global settings JSON. `screenMarginHorizontal` and `screenMarginVertical` independently accept 5–150 pixels. Older `screenMargin` values initialize both missing axes; a save writes the canonical axis keys. See [per-book settings](downstream/BOOK_SETTINGS.md) for field scope, validation, recovery, and remaining CrossInk migration work.

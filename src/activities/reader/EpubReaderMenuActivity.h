@@ -67,7 +67,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
     RESET_READING_PACE,
     DELETE_BOOKMARKS,
     BOOK_DICTIONARY,
-    INDEXING_METHOD
+    INDEXING_METHOD,
+    VERTICAL_MARGIN
   };
 
   enum class Tab : uint8_t { Font, Layout, More, Location, Settings, Count };
@@ -102,7 +103,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   // fixed-capacity array avoids any heap allocation for the row list. Labels
   // are rebuilt on tab changes (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
-  static constexpr size_t MAX_MENU_ITEMS = 50;
+  static constexpr size_t MAX_MENU_ITEMS = 51;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
@@ -124,6 +125,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   std::vector<uint8_t> fontSizes;
   int selectedFontRow = 0;
   char fontSizeLabel[12]{};
+  char marginLabels[2][4]{};
   bool openFontPane(Pane next);
   void closeFontPane();
   void selectFontRow(int index);

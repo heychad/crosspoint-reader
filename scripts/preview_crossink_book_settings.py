@@ -139,13 +139,9 @@ def decode(data: bytes) -> dict:
         if key == 'wordSpacing' and value == 0:
             preview['wordSpacing'] = 100
             continue
-        # One fork margin replaces two CrossInk margins only when both were
-        # explicit, equal and within the native setting's supported range.
-        if key in ('screenMarginVertical', 'screenMarginHorizontal'):
-            if (overrides.get('screenMarginVertical') == overrides.get('screenMarginHorizontal')
-                    and overrides.get('screenMarginVertical') is not None and 5 <= value <= 40):
-                preview['screenMargin'] = value
-                continue
+        if key in ('screenMarginVertical', 'screenMarginHorizontal') and 5 <= value <= 150:
+            preview[key] = value
+            continue
         spec = COMPATIBLE.get(key)
         if spec and spec[1] <= value <= spec[2]:
             preview[spec[0]] = value

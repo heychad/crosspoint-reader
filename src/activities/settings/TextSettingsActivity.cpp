@@ -2,6 +2,8 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
+#include <Memory.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -16,6 +18,7 @@
 #include "ReaderLineSpacing.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
+#include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -25,9 +28,10 @@ namespace {
 // Tab labels for Font | Size | Layout | Style.
 constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
 
-constexpr StrId LAYOUT_ROW_NAME_IDS[] = {
-    StrId::STR_LINE_SPACING,          StrId::STR_WORD_SPACING, StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
-    StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_ALIGNMENT,    StrId::STR_SCREEN_MARGIN};
+constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,          StrId::STR_WORD_SPACING,
+                                         StrId::STR_CHARACTER_SPACING,     StrId::STR_EXTRA_SPACING,
+                                         StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_ALIGNMENT,
+                                         StrId::STR_MARGIN_HORIZONTAL,     StrId::STR_MARGIN_VERTICAL};
 constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION_NO_PREVIEW,
                                         StrId::STR_EMBEDDED_STYLE_NO_PREVIEW, StrId::STR_TEXT_AA_NO_PREVIEW};
 
@@ -56,7 +60,6 @@ constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, St
                                    StrId::STR_BOOK_S_STYLE};
 constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
 constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
-constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
 constexpr int WORD_SPACING_MIN = CrossPointSettings::WORD_SPACING_MIN;
 constexpr int WORD_SPACING_MAX = CrossPointSettings::WORD_SPACING_MAX;
 constexpr int WORD_SPACING_STEP = CrossPointSettings::WORD_SPACING_STEP;
@@ -463,16 +466,26 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
                         });
       requestUpdate();
       break;
-    case LayoutRow::ScreenMargin: {
-      std::vector<std::string> options;
-      options.reserve((MARGIN_MAX - MARGIN_MIN) / MARGIN_STEP + 1);
-      for (int m = MARGIN_MIN; m <= MARGIN_MAX; m += MARGIN_STEP) options.push_back(std::to_string(m));
-      const int cur = (std::clamp<int>(SETTINGS.screenMargin, MARGIN_MIN, MARGIN_MAX) - MARGIN_MIN) / MARGIN_STEP;
-      optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, cur, [](int idx) {
-        SETTINGS.screenMargin = static_cast<uint8_t>(MARGIN_MIN + idx * MARGIN_STEP);
-        SETTINGS.saveToFile();
+    case LayoutRow::HorizontalMargin:
+    case LayoutRow::VerticalMargin: {
+      const auto field = static_cast<LayoutRow>(row) == LayoutRow::HorizontalMargin
+                             ? &CrossPointSettings::screenMargin
+                             : &CrossPointSettings::screenMarginVertical;
+      const auto title = LAYOUT_ROW_NAME_IDS[row];
+      auto picker = makeUniqueNoThrow<IntervalSelectionActivity>(renderer, mappedInput, "ReaderMargin", title,
+                                                                 SETTINGS.*field, MARGIN_MIN, MARGIN_MAX, 1, 5);
+      if (!picker) {
+        LOG_ERR("TEXT", "Could not allocate margin picker");
+        break;
+      }
+      startActivityForResult(std::move(picker), [this, field](const ActivityResult& result) {
+        const auto* selected = std::get_if<IntervalResult>(&result.data);
+        if (!result.isCancelled && selected && selected->value >= MARGIN_MIN && selected->value <= MARGIN_MAX) {
+          SETTINGS.*field = static_cast<uint8_t>(selected->value);
+          SETTINGS.saveToFile();
+          requestUpdate();
+        }
       });
-      requestUpdate();
       break;
     }
 
@@ -502,8 +515,10 @@ std::string TextSettingsActivity::layoutValueText(int row) const {
       return v < std::size(CHARACTER_SPACING_IDS) ? I18N.get(CHARACTER_SPACING_IDS[v])
                                                   : I18N.get(StrId::STR_SPACING_ZERO);
     }
-    case LayoutRow::ScreenMargin:
+    case LayoutRow::HorizontalMargin:
       return std::to_string(SETTINGS.screenMargin);
+    case LayoutRow::VerticalMargin:
+      return std::to_string(SETTINGS.screenMarginVertical);
 
     default:
       return "";

@@ -20,6 +20,7 @@ int main() {
     std::cout << result.nativeMask;
     for (const auto value : result.values) std::cout << ' ' << static_cast<unsigned>(value);
     std::cout << ' ' << result.unmappedMask << ' ' << static_cast<unsigned>(result.extraFlags) << ' '
-              << static_cast<unsigned>(result.indexingMethod) << '\n';
+              << static_cast<unsigned>(result.indexingMethod) << ' ' << static_cast<unsigned>(result.verticalMargin)
+              << '\n';
   }
 }

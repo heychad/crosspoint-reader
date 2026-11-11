@@ -21,7 +21,7 @@ constexpr std::array<Field, ReaderPreferences::FIELD_COUNT> FIELDS = {{
     {"wordSpacing", &CrossPointSettings::wordSpacing, 50, 200},
     {"characterSpacing", &CrossPointSettings::characterSpacing, 0, 4},
     {"orientation", &CrossPointSettings::orientation, 0, 3},
-    {"screenMargin", &CrossPointSettings::screenMargin, 5, 40},
+    {"screenMarginHorizontal", &CrossPointSettings::screenMargin, 5, 150},
     {"paragraphAlignment", &CrossPointSettings::paragraphAlignment, 0, 4},
     {"extraParagraphSpacing", &CrossPointSettings::extraParagraphSpacing, 0, 1},
     {"paragraphIndentSpaces", &CrossPointSettings::paragraphIndentSpaces, 0, 5},
@@ -44,6 +44,7 @@ ReaderPreferences ReaderPreferences::capture(const CrossPointSettings& settings)
   memcpy(result.dictionary, settings.dictionaryName, sizeof(result.dictionary));
   result.dictionary[sizeof(result.dictionary) - 1] = '\0';
   result.indexingMethod = settings.indexingMethod;
+  result.verticalMargin = settings.screenMarginVertical;
   return result;
 }
 
@@ -53,6 +54,7 @@ void ReaderPreferences::apply(CrossPointSettings& settings, uint32_t mask) const
   if (mask & FONT_BIT) memcpy(settings.sdFontFamilyName, font, sizeof(font));
   if (mask & DICTIONARY_BIT) memcpy(settings.dictionaryName, dictionary, sizeof(dictionary));
   if (mask & INDEXING_BIT) settings.indexingMethod = indexingMethod;
+  if (mask & VERTICAL_MARGIN_BIT) settings.screenMarginVertical = verticalMargin;
 }
 
 uint32_t ReaderPreferences::difference(const ReaderPreferences& other) const {
@@ -62,15 +64,19 @@ uint32_t ReaderPreferences::difference(const ReaderPreferences& other) const {
   if (strcmp(font, other.font) != 0) mask |= FONT_BIT;
   if (strcmp(dictionary, other.dictionary) != 0) mask |= DICTIONARY_BIT;
   if (indexingMethod != other.indexingMethod) mask |= INDEXING_BIT;
+  if (verticalMargin != other.verticalMargin) mask |= VERTICAL_MARGIN_BIT;
   return mask;
 }
 
 void ReaderPreferences::write(JsonObject object, uint32_t mask) const {
+  object.remove("screenMargin");
   for (size_t i = 0; i < FIELDS.size(); ++i) {
     object.remove(FIELDS[i].key);
     if (mask & (1U << i)) object[FIELDS[i].key] = values[i];
   }
   object.remove("indexingMethod");
+  object.remove("screenMarginVertical");
+  if (mask & VERTICAL_MARGIN_BIT) object["screenMarginVertical"] = verticalMargin;
   if (mask & INDEXING_BIT) object["indexingMethod"] = indexingMethod;
   object.remove("sdFontFamilyName");
   if (mask & FONT_BIT) object["sdFontFamilyName"] = font;
@@ -82,6 +88,18 @@ void ReaderPreferences::write(JsonObject object, uint32_t mask) const {
 
 bool ReaderPreferences::read(JsonObjectConst object, uint32_t& mask) {
   mask = 0;
+  const auto legacyMargin = object["screenMargin"];
+  if (!legacyMargin.isNull()) {
+    if (!legacyMargin.is<uint8_t>() || legacyMargin.as<uint8_t>() < 5 || legacyMargin.as<uint8_t>() > 40) return false;
+    if (object["screenMarginHorizontal"].isNull()) {
+      values[5] = legacyMargin.as<uint8_t>();
+      mask |= 1U << 5;
+    }
+    if (object["screenMarginVertical"].isNull()) {
+      verticalMargin = legacyMargin.as<uint8_t>();
+      mask |= VERTICAL_MARGIN_BIT;
+    }
+  }
   for (size_t i = 0; i < FIELDS.size(); ++i) {
     const auto value = object[FIELDS[i].key];
     if (value.isNull()) continue;
@@ -98,6 +116,12 @@ bool ReaderPreferences::read(JsonObjectConst object, uint32_t& mask) {
     mask |= FONT_BIT;
   }
   const auto indexing = object["indexingMethod"];
+  const auto margin = object["screenMarginVertical"];
+  if (!margin.isNull()) {
+    if (!margin.is<uint8_t>() || margin.as<uint8_t>() < 5 || margin.as<uint8_t>() > 150) return false;
+    verticalMargin = margin.as<uint8_t>();
+    mask |= VERTICAL_MARGIN_BIT;
+  }
   if (!indexing.isNull()) {
     if (!indexing.is<uint8_t>() || indexing.as<uint8_t>() >= CrossPointSettings::INDEXING_METHOD_COUNT) return false;
     indexingMethod = indexing.as<uint8_t>();

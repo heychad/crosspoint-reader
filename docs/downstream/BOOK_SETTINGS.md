@@ -2,7 +2,7 @@
 
 This stage adds CrossInk-style per-book overrides for the reflowable reader in the personal CrossPoint fork. EPUB, TXT, and Markdown share this reader. Global Settings still sets the defaults for other books.
 
-Changing the font family, font size, line spacing, word spacing, character spacing, margin, alignment, paragraph spacing or indentation, hyphenation, embedded styles, antialiasing, image handling, EPUB rendering mode, orientation, focus reading, or chapter indexing while a book is open creates an override for that book. Reset book to global defaults is available in the list menu and More panel. Reset retains the current content position while rebuilding the layout.
+Changing the font family, font size, line spacing, word spacing, character spacing, horizontal and vertical margins, alignment, paragraph spacing or indentation, hyphenation, embedded styles, antialiasing, image handling, EPUB rendering mode, orientation, focus reading, or chapter indexing while a book is open creates an override for that book. Reset book to global defaults is available in the list menu and More panel. Reset retains the current content position while rebuilding the layout.
 
 Only fields that the reader changes become overrides. Existing overrides stay pinned if a later global default happens to equal their value. Setting an override back to the current global default removes it. Dictionary choice has explicit ownership: selecting a dictionary or None pins
 that choice even if it matches today's global value. Use global dictionary
@@ -46,7 +46,7 @@ a patch or apply a migration.
 
 ## Resource budget
 
-Each preference snapshot is 80 bytes; the scope is 168 bytes, including its two snapshots, masks, and flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
+Each preference snapshot is 81 bytes; the scope is 172 bytes, including its two snapshots, masks, and flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
 
 ## Hardware checks
 
@@ -127,20 +127,60 @@ The existing native override and reset paths handle the imported profile.
 Device verification remains pending: open a book with a legacy Balanced or Light
 profile, confirm the selected profile, reset it to global, and check the passage.
 
-## Independent margin port
+## Independent margins
 
-The pinned CrossInk RC has separate horizontal and vertical margins, including
-values outside this fork's old 5–40-pixel common-margin control. The viewport
-primitive now accepts both axes and reserves top/bottom bars against the
-vertical margin. The existing one-margin signature delegates with equal axes,
-so current callers retain their layout. It adds no stored state or allocation.
+Horizontal and vertical margins now use CrossInk's 5–150-pixel range with
+one-pixel steps. Both controls are available in Text Settings and the tabbed
+reader menu. They reuse the existing interval slider, including cancellation,
+touch dragging, and five-pixel side-button steps. No 146-entry option list is
+allocated. The tabbed menu keeps two four-byte labels for its live values.
 
-A5 remains partial until the settings, per-book ownership, menu/preview, and
-legacy import use the new axes. Do not mark that work complete based on the
-helper alone. Tests cover portrait/landscape dimensions, oriented insets,
-unequal margins up to 150 pixels, bar reservations, and single-margin
-compatibility. The focused layout/shortcut/menu run passed 29 checks in 0.60 s.
+The reader viewport and shared live preview use the two axes. Oriented panel
+insets remain reserved; top/bottom bars reserve the greater of their height
+and the vertical margin. Full-width progress bars retain their independent
+geometry. A large vertical margin can leave no text in the smaller preview
+pane; its caption remains visible. The preview does not simulate publisher
+CSS, images, or grayscale.
 
-The default X4 Pro build passed after this viewport-core change in 110.18
-seconds. The new axis overload is not yet called with separate saved values;
-this checkpoint does not expose new margin controls on the device.
+Global and per-book JSON use `screenMarginHorizontal` and
+`screenMarginVertical`. An old `screenMargin` initializes both axes only where
+an explicit axis is absent. New native book saves replace the old common key
+with the supported sparse axis keys. Horizontal keeps its existing mask bit 5;
+vertical uses bit 18, leaving font, dictionary, and indexing bits unchanged.
+Global saves retain a horizontal `screenMargin` alias for older clients, and
+legacy web writes still set both axes unless explicit axis keys are provided.
+A new-format load does not request a rewrite merely because the alias exists.
+
+Each axis has independent override ownership. Reset, book exit, and global
+reload use the existing preference scope. CrossInk binary imports now map each
+owned margin separately, including unequal values and values above 40. The
+explicit global import preserves native choices unless replacement is selected.
+Original CrossInk records remain unchanged. Safe Mode and unsupported fields
+remain migration work under G3.
+
+No cache structure changes: section cache validation already checks viewport
+width and height, so a changed text area rejects its old layout. Existing
+content-offset restoration handles layout changes. The old single-margin
+viewport overload remains available for unchanged callers.
+
+The X4 Pro ELF measures the preference snapshot at 81 bytes, the scope at 172,
+the tabbed menu at 5,272, and the reused interval picker at 1,156. The checked
+picker allocation coexists with its retained parent only while the dialog is
+open and is released through normal activity ownership. The Text Settings
+object is 2,296 bytes before its existing font/row vectors; it gains one margin
+row. No new task, network connection, framebuffer, or per-page allocation is
+added. Runtime heap and visual/input behavior remain device checks.
+
+For hardware QA, give one book margins of 7 horizontally and 33 vertically,
+then another book different margins. Reopen both and rotate the reader. Check
+that each retains its own layout and content position. Cancel a slider change,
+then reset one book to global defaults and confirm the other stays unchanged.
+
+Verification for this margin batch: 91 focused checks passed in 12.24 seconds.
+The cumulative 2,240-case run passed 2,239 cases in 242.39 seconds; its only
+failure was a web fixture missing the new settings fields. After updating that
+fixture, it and the two additional global/native migration checks passed in
+1.49 seconds. The binary decoder agrees with its reference on 3,192 records.
+The final default X4 Pro build passed in 65.85 seconds, with 113,124 bytes of
+static RAM and 5,654,298 bytes of flash. These are host/build results; no new
+firmware has been installed and no device acceptance is claimed.

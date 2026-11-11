@@ -42,10 +42,10 @@ code = r'''
 enum class StrId { __IDS__ };
 struct {const char* get(StrId){return "label";}} I18N;
 struct CrossPointSettings {
- enum {SLIDE_SWITCH_NIGHT_MODE,SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=40,SCREEN_MARGIN_STEP=5,
+ enum {SLIDE_SWITCH_NIGHT_MODE,SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=150,SCREEN_MARGIN_STEP=1,
  WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
  uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
- screenMargin=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
+ screenMargin=5,screenMarginVertical=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
  paragraphIndentSpaces=0,embeddedStyle=0,imageRendering=0;
 };
 constexpr StrId LINE_SPACING_IDS[7]{};

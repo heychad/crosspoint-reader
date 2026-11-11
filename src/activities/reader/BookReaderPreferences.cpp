@@ -53,6 +53,8 @@ bool readLegacyLocked(void* raw) {
   static_assert(ReaderPreferences::INDEXING_BIT == (1U << 17));
   context.settings.mask = preview.nativeMask & ~1U;
   context.settings.preferences.indexingMethod = preview.indexingMethod;
+  static_assert(ReaderPreferences::VERTICAL_MARGIN_BIT == (1U << 18));
+  context.settings.preferences.verticalMargin = preview.verticalMargin;
   for (size_t i = 0; i < ReaderPreferences::FIELD_COUNT; ++i)
     context.settings.preferences.values[i] = preview.values[i];
   context.result = LegacyLoad::Loaded;

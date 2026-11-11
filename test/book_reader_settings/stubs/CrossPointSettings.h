@@ -10,6 +10,7 @@ class CrossPointSettings {
   uint8_t characterSpacing = 2;
   uint8_t orientation = 0;
   uint8_t screenMargin = 10;
+  uint8_t screenMarginVertical = 10;
   uint8_t paragraphAlignment = 0;
   uint8_t extraParagraphSpacing = 1;
   uint8_t paragraphIndentSpaces = 2;

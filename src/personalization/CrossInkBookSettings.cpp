@@ -142,9 +142,14 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     result.unmappedMask &= ~(1UL << 3);
   }
   map(4, 4, 3);
-  if ((mask & (3UL << 5)) == (3UL << 5) && old[5] == old[6] && old[5] >= 5 && old[5] <= 40) {
-    set(result, 5, old[5]);
-    result.unmappedMask &= ~(3UL << 5);
+  if ((mask & (1UL << 5)) && old[5] >= 5 && old[5] <= 150) {
+    result.verticalMargin = old[5];
+    result.nativeMask |= 1U << 18;
+    result.unmappedMask &= ~(1UL << 5);
+  }
+  if ((mask & (1UL << 6)) && old[6] >= 5 && old[6] <= 150) {
+    set(result, 5, old[6]);
+    result.unmappedMask &= ~(1UL << 6);
   }
   map(8, 6, 4);
   map(9, 10, 1);

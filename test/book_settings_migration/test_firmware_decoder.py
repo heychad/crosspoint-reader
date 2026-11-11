@@ -8,7 +8,7 @@ import test_preview
 
 ROOT = Path(__file__).resolve().parents[2]
 module = test_preview.preview
-FIELDS = ('fontSize', 'lineHeight', 'wordSpacing', 'characterSpacing', 'orientation', 'screenMargin',
+FIELDS = ('fontSize', 'lineHeight', 'wordSpacing', 'characterSpacing', 'orientation', 'screenMarginHorizontal',
           'paragraphAlignment', 'extraParagraphSpacing', 'paragraphIndentSpaces', 'hyphenationEnabled',
           'embeddedStyle', 'textAntiAliasing', 'imageRendering', 'focusReadingEnabled', 'epubRenderMode')
 records = []
@@ -31,6 +31,15 @@ for version in range(2, 14):
             data = bytearray(test_preview.record(version, flags=flags, mask=0))
             data[4] = mode
             records.append(bytes(data))
+for version in (3, 7, 8, 10, 13):
+    for vertical in (0, 4, 5, 7, 40, 41, 150, 151, 255):
+        for horizontal in (0, 4, 5, 9, 40, 150, 151, 255):
+            for mask in (1 << 5, 1 << 6, 3 << 5):
+                data = bytearray(test_preview.record(version, mask=mask))
+                data[10] = vertical
+                if version >= 8:
+                    data[11] = horizontal
+                records.append(bytes(data))
 for value in range(12):
     records.append(test_preview.record(12, mask=1 << 20, character_spacing=value))
 for gray in range(3):
@@ -71,6 +80,8 @@ with tempfile.TemporaryDirectory() as directory:
                   if values[0] & (1 << position)}
         if values[0] & (1 << 17):
             actual['indexingMethod'] = values[18]
+        if values[0] & (1 << 18):
+            actual['screenMarginVertical'] = values[19]
         assert actual == expected, (index, actual, expected)
         version = data[0]
         fields = module.MASK_FIELDS
