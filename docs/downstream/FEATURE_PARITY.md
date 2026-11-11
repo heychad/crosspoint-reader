@@ -168,3 +168,19 @@ bindings. Legacy edge imports reject actions outside that edge's palette.
 Validation: all 1,781 host tests passed; the X4 Pro build passed in 144.32
 seconds. The original selected-feature rows remain partial where other actions
 or mappings are missing. Device validation and release review remain pending.
+
+## RC mapping follow-up
+
+Home-button bindings now also expose the existing Home/Reader, Rotate 180°,
+Cycle Auto Turn, Focus Reading, and Toggle Home Button actions. Native IDs are
+appended so older settings keep their meaning. CrossInk imports recognize the
+corresponding Home values and the additional side/power and chord values for
+Home, Rotate 180°, Select Chapter, and Cycle Auto Turn.
+
+Remaining shortcut gaps include the independent page-gesture toggle and direct
+network-mode entry points. Guide dots remain in the Later scope; Nearby stays
+skipped. This mapping update does not complete A2, A9, or G3.
+
+The mapping follow-up passed 41 focused input, navigation, and migration checks
+and the X4 Pro firmware build (120.34 seconds). It has not been tested on the
+reader or through the release-review process.

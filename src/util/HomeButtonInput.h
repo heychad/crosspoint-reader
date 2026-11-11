@@ -32,6 +32,11 @@ enum class HomeButtonAction : uint8_t {
   ToggleCompletion,
   CycleFontFamily,
   SelectChapter,
+  HomeReader,
+  RotateHalfTurn,
+  CycleAutoTurn,
+  ToggleFocus,
+  ToggleHomeButton,
   Count
 };
 

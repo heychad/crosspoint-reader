@@ -368,17 +368,25 @@ TEST(ReaderShortcuts, LegacySideMigrationUsesIndependentSideAndChordCatalogs) {
                               {29, A::ToggleTouch},      {30, A::QuickLock},
                               {31, A::PreviousPage},     {33, A::Library},
                               {36, A::HomeReader},       {38, A::SelectChapter},
-                              {64, A::PreviousChapter},  {65, A::NextChapter},
-                              {66, A::LargerText},       {67, A::SmallerText},
-                              {68, A::RotateBackward},   {69, A::Rotate},
-                              {70, A::RotateHalfTurn}};
-  constexpr Case chords[] = {
-      {0, A::Screenshot},      {1, A::QuickLock},        {4, A::Disabled},          {5, A::Sleep},
-      {6, A::NextPage},        {7, A::Bookmark},         {8, A::ReadingStatistics}, {9, A::ToggleCompletion},
-      {10, A::Refresh},        {11, A::CycleFontFamily}, {13, A::ToggleFocus},      {15, A::SyncProgress},
-      {16, A::FileTransfer},   {20, A::ToggleNight},     {21, A::Footnotes},        {22, A::FileBrowser},
-      {23, A::CreateClipping}, {24, A::Dictionary},      {25, A::ToggleHomeButton}, {27, A::ToggleFrontlight},
-      {28, A::ToggleTouch},    {29, A::PreviousPage},    {31, A::Library},          {32, A::HomeReader}};
+                              {12, A::CycleAutoTurn},    {37, A::Home},
+                              {39, A::RotateHalfTurn},   {64, A::PreviousChapter},
+                              {65, A::NextChapter},      {66, A::LargerText},
+                              {67, A::SmallerText},      {68, A::RotateBackward},
+                              {69, A::Rotate},           {70, A::RotateHalfTurn}};
+  constexpr Case chords[] = {{0, A::Screenshot},        {1, A::QuickLock},
+                             {4, A::Disabled},          {5, A::Sleep},
+                             {6, A::NextPage},          {7, A::Bookmark},
+                             {8, A::ReadingStatistics}, {9, A::ToggleCompletion},
+                             {10, A::Refresh},          {11, A::CycleFontFamily},
+                             {13, A::ToggleFocus},      {15, A::SyncProgress},
+                             {16, A::FileTransfer},     {20, A::ToggleNight},
+                             {21, A::Footnotes},        {22, A::FileBrowser},
+                             {23, A::CreateClipping},   {24, A::Dictionary},
+                             {25, A::ToggleHomeButton}, {27, A::ToggleFrontlight},
+                             {28, A::ToggleTouch},      {29, A::PreviousPage},
+                             {31, A::Library},          {32, A::HomeReader},
+                             {14, A::CycleAutoTurn},    {33, A::Home},
+                             {34, A::SelectChapter},    {35, A::RotateHalfTurn}};
   for (const auto& value : singles) {
     A actual = A::Default;
     ASSERT_TRUE(readershortcuts::readLegacySideAction(value.raw, false, actual));

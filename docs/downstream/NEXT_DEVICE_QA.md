@@ -257,3 +257,9 @@ After the next reviewed firmware is installed (not this WIP checkpoint):
 
 No book files, statistics formats, or saved action IDs are migrated by this
 feature. Existing bindings should continue to perform the same actions.
+
+For the RC mapping follow-up, verify Home/Reader returns between the reader and
+Home, Rotate 180° preserves the current content position, and toggling the Home
+button off can be reversed through Settings. Existing bindings must retain
+their actions after restart. Auto-turn and Focus actions reuse their existing
+behavior; their broader feature parity remains in the Later scope.

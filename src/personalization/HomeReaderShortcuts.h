@@ -31,6 +31,16 @@ inline readershortcuts::Action actionFor(HomeButtonAction action) {
       return Action::Sleep;
     case HomeButtonAction::ToggleCompletion:
       return Action::ToggleCompletion;
+    case HomeButtonAction::HomeReader:
+      return Action::HomeReader;
+    case HomeButtonAction::RotateHalfTurn:
+      return Action::RotateHalfTurn;
+    case HomeButtonAction::CycleAutoTurn:
+      return Action::CycleAutoTurn;
+    case HomeButtonAction::ToggleFocus:
+      return Action::ToggleFocus;
+    case HomeButtonAction::ToggleHomeButton:
+      return Action::ToggleHomeButton;
     case HomeButtonAction::SelectChapter:
       return Action::SelectChapter;
     case HomeButtonAction::CycleFontFamily:

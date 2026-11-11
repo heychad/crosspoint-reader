@@ -974,6 +974,11 @@ void EpubReaderActivity::loop() {
     case HomeButtonAction::ToggleTilt:
     case HomeButtonAction::Sleep:
     case HomeButtonAction::ToggleCompletion:
+    case HomeButtonAction::HomeReader:
+    case HomeButtonAction::RotateHalfTurn:
+    case HomeButtonAction::CycleAutoTurn:
+    case HomeButtonAction::ToggleFocus:
+    case HomeButtonAction::ToggleHomeButton:
     case HomeButtonAction::SelectChapter:
     case HomeButtonAction::CycleFontFamily:
       automaticPageTurnActive = false;
