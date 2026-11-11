@@ -26,6 +26,7 @@ inline int failTruncate = -1;
 inline int failRename = -1;
 inline int failAlloc = -1;
 inline bool failDirectorySeek = false;
+inline std::string failRemovePath;
 inline std::string failClosePath;
 inline std::string failOpenPath;
 inline std::string failNamePath;
@@ -62,6 +63,7 @@ inline void reset() {
   failRename = -1;
   failAlloc = -1;
   failDirectorySeek = false;
+  failRemovePath.clear();
   failClosePath.clear();
   failOpenPath.clear();
   failNamePath.clear();
@@ -273,7 +275,14 @@ class HalStorage {
   bool openFileForWrite(const char* module, const std::string& path, HalFile& file) {
     return openFileForWrite(module, path.c_str(), file);
   }
-  bool remove(const char* path) { return fake::files.erase(path) != 0; }
+  bool withStorageLock(bool (*operation)(void*), void* context) { return operation(context); }
+  bool remove(const char* path) {
+    if (fake::failRemovePath == path) {
+      fake::failRemovePath.clear();
+      return false;
+    }
+    return fake::files.erase(path) != 0;
+  }
   bool rename(const char* from, const char* to) {
     if (fake::fail(fake::failRename) || !exists(from) || exists(to)) return false;
     std::vector<std::pair<std::string, std::shared_ptr<fake::Node>>> moved;

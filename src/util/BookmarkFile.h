@@ -14,5 +14,7 @@ bool load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks);
 
 // Saves the bookmarks for bookPath, creating the bookmarks directory as needed.
 bool save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks);
+// Clear native and verified imported bookmarks. Failure can leave some files cleared.
+bool clearForBook(const std::string& bookPath);
 
 }  // namespace BookmarkFile

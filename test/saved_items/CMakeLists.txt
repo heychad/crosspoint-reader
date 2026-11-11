@@ -2,6 +2,7 @@ add_executable(SavedItemsTest
   SavedItemsTest.cpp
   ${REPO_ROOT}/src/util/SavedItems.cpp
   ${REPO_ROOT}/src/util/CrossInkBookmarks.cpp
+  ${REPO_ROOT}/src/util/BookmarkFileClear.cpp
   ${REPO_ROOT}/src/util/BookmarkUtil.cpp
   ${REPO_ROOT}/src/ClippingStore.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp

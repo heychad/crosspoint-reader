@@ -18,6 +18,9 @@ class CrossInkBookmarks {
     char snippet[64]{};
   };
   bool open(const std::string& bookPath);
+  // Caller holds the storage lock. Closes verified sources before removal.
+  // Each file is removed separately; false can leave an earlier source cleared.
+  static bool clearForBook(const std::string& bookPath);
   void close();
   uint16_t count() const { return entryCount; }
   bool unreadable() const { return invalidFile; }

@@ -45,6 +45,13 @@ or recorded explicitly; it cannot be relabeled green. Use the existing build
 cache. Preserve reading-state tests when writes, paths, formats, or migration
 change. Keep default and experimental build evidence distinct.
 
+Choose the build that compiles the changed code. A change outside feature flags
+needs the default X4 Pro build; add an experimental build when changed code is
+hidden behind its flags or changes their integration. Continue running the
+relevant host flag combinations. The next device candidate still needs a full
+build with its exact intended flags. Do not describe an older experimental
+build as validation of the current revision.
+
 For reader-menu changes, run `StatsReaderMenu`, `ReaderTabbedMenu`,
 `ReaderInlineTextMenu`, and `XtcReaderMenu` together before the full suite.
 Both the older menu fixture and the newer tabbed fixture exercise the same

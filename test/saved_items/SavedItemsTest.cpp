@@ -8,6 +8,7 @@
 #include <functional>
 #include <limits>
 
+#include "util/BookmarkFile.h"
 #include "util/BookmarkUtil.h"
 #include "util/CrossInkBookmarks.h"
 #include "util/SavedItems.h"
@@ -344,4 +345,86 @@ TEST(SavedItems, InterruptedRenameCanReadGuardWithoutMutatingFiles) {
     EXPECT_EQ(std::string(fake::files.at(guard)->bytes.begin(), fake::files.at(guard)->bytes.end()), original);
     EXPECT_TRUE(fake::writesByPath.empty());
   }
+}
+
+TEST(SavedItems, ClearBookBookmarksRemovesBothFormatsAndPreservesReadingState) {
+  for (uint8_t version = 2; version <= 5; ++version) {
+    fake::reset();
+    const auto native = BookmarkUtil::getBookmarkPath(BOOK);
+    fake::add(native, "{\"bookmarks\":[{}]}");
+    for (const bool crc : {true, false}) {
+      const auto path = legacyPath(crc);
+      fake::add(path, legacyData(version));
+      for (const auto* suffix : {".tmp", ".bak", ".bookmark-edit.bak", ".bookmark-edit.guard"})
+        fake::add(path + suffix, "old recovery bytes");
+    }
+    for (const auto* path : {"/.crosspoint/epub_123/progress.bin", "/.crosspoint/epub_123/stats_v5.bin",
+                             "/.crosspoint/epub_123/reader_settings.bin", "/.crosspoint/clippings/book.json",
+                             "/.crosspoint/bookmarks/other.json"})
+      fake::add(path, "keep");
+    ASSERT_TRUE(BookmarkFile::clearForBook(BOOK));
+    EXPECT_FALSE(Storage.exists(native.c_str()));
+    for (const bool crc : {true, false}) {
+      const auto path = legacyPath(crc);
+      for (const auto* suffix : {"", ".tmp", ".bak", ".bookmark-edit.bak", ".bookmark-edit.guard"})
+        EXPECT_FALSE(Storage.exists((path + suffix).c_str()));
+    }
+    EXPECT_TRUE(Storage.exists("/.crosspoint/epub_123/progress.bin"));
+    EXPECT_TRUE(Storage.exists("/.crosspoint/epub_123/stats_v5.bin"));
+    EXPECT_TRUE(Storage.exists("/.crosspoint/epub_123/reader_settings.bin"));
+    EXPECT_TRUE(Storage.exists("/.crosspoint/clippings/book.json"));
+    EXPECT_TRUE(Storage.exists("/.crosspoint/bookmarks/other.json"));
+    uint8_t kinds = 255;
+    EXPECT_TRUE(saveditems::inspect(BOOK, kinds));
+    EXPECT_EQ(kinds, 0U);
+    EXPECT_TRUE(BookmarkFile::clearForBook(BOOK));
+  }
+}
+
+TEST(SavedItems, ClearBookBookmarksRefusesForeignOrUnreadableImports) {
+  for (const bool foreign : {false, true}) {
+    fake::reset();
+    fake::add(legacyPath(), foreign ? legacyData(5, 2, "/other.epub") : "damaged");
+    const auto native = BookmarkUtil::getBookmarkPath(BOOK);
+    fake::add(native, "{\"bookmarks\":[{}]}");
+    EXPECT_FALSE(BookmarkFile::clearForBook(BOOK));
+    EXPECT_TRUE(Storage.exists(legacyPath().c_str()));
+    EXPECT_TRUE(Storage.exists(native.c_str()));
+  }
+}
+
+TEST(SavedItems, ClearBookBookmarksReportsCloseAndRemoveFailures) {
+  fake::reset();
+  fake::add(legacyPath(), legacyData(5));
+  const auto native = BookmarkUtil::getBookmarkPath(BOOK);
+  fake::add(native, "{\"bookmarks\":[{}]}");
+  fake::failClosePath = legacyPath();
+  EXPECT_FALSE(BookmarkFile::clearForBook(BOOK));
+  EXPECT_TRUE(Storage.exists(legacyPath().c_str()));
+  EXPECT_TRUE(Storage.exists(native.c_str()));
+  fake::failClosePath.clear();
+  fake::failRemovePath = native;
+  EXPECT_FALSE(BookmarkFile::clearForBook(BOOK));
+  EXPECT_FALSE(Storage.exists(legacyPath().c_str()));
+  EXPECT_TRUE(Storage.exists(native.c_str()));
+  EXPECT_TRUE(BookmarkFile::clearForBook(BOOK));
+  EXPECT_FALSE(Storage.exists(native.c_str()));
+}
+
+TEST(SavedItems, ClearBookBookmarksRefusesRecoveryOnlyAndLookupFailures) {
+  fake::reset();
+  fake::add(legacyPath() + ".bookmark-edit.guard", legacyData(5));
+  const auto native = BookmarkUtil::getBookmarkPath(BOOK);
+  fake::add(native, "{\"bookmarks\":[{}]}");
+  EXPECT_FALSE(BookmarkFile::clearForBook(BOOK));
+  EXPECT_TRUE(Storage.exists(native.c_str()));
+  EXPECT_TRUE(Storage.exists((legacyPath() + ".bookmark-edit.guard").c_str()));
+  fake::reset();
+  fake::add(native, "{\"bookmarks\":[{}]}");
+  fake::failOpenPath = legacyPath();
+  EXPECT_FALSE(BookmarkFile::clearForBook(BOOK));
+  EXPECT_TRUE(Storage.exists(native.c_str()));
+  fake::failOpenPath.clear();
+  EXPECT_TRUE(BookmarkFile::clearForBook(BOOK));
+  EXPECT_FALSE(BookmarkFile::clearForBook(""));
 }

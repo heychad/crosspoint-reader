@@ -13,7 +13,7 @@ more = reader_source[reader_source.index("void EpubReaderActivity::buildMoreActi
 start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::READING_STATISTICS:")
 end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", start + 10)
 action = reader_source[start:end]
-for extra_action in ("TRACK_BOOK_STATS", "RESET_BOOK_STATS", "RESET_READING_PACE"):
+for extra_action in ("TRACK_BOOK_STATS", "RESET_BOOK_STATS", "RESET_READING_PACE", "DELETE_BOOKMARKS"):
     extra_start = reader_source.index("    case EpubReaderMenuActivity::MenuAction::" + extra_action + ":")
     extra_end = reader_source.index("    case EpubReaderMenuActivity::MenuAction::", extra_start + 10)
     action += reader_source[extra_start:extra_end]
@@ -76,6 +76,7 @@ class EpubReaderActivity {public:
  ReaderStats readingStats;
  std::string bookPath="/book.epub";
  void handleCompletionAttempt(bool recovery,bool completed){assert(!recovery);attempted=true;target=completed;}
+ int bookmarkClearRequests=0;void confirmBookmarkClear(){++bookmarkClearRequests;}
  int trackingRequests=0,resetRequests=0;
  void openReadingStatistics(bool toggle){assert(toggle);++trackingRequests;}
  enum class StatisticsResetPrompt{Confirm,Retry,Recovery};
@@ -96,9 +97,9 @@ int main(){
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
  Menu::buildMenuItems(rows,true,true,true,true,false);
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
- assert(rows.size()==34);
+ assert(rows.size()==35);
 #else
- assert(rows.size()==32);
+ assert(rows.size()==33);
 #endif
  assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION && item.labelId==StrId::STR_MARK_FINISHED;})==1);
  Menu::buildMenuItems(rows,true,true,true,false,false);
@@ -156,6 +157,8 @@ int main(){
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::RENDER_MODE;})==1);
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::FILE_BROWSER;})==1);
  assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::FILE_TRANSFER;})==1);
+ reader.dispatch(MA::DELETE_BOOKMARKS);assert(reader.bookmarkClearRequests==1);
+ assert(std::count_if(reader.moreItems.begin(),reader.moreItems.end(),[](const auto& item){return item.action==MA::DELETE_BOOKMARKS;})==1);
  reader.dispatch(MA::READING_STATISTICS);assert(reader.opened);
  reader.dispatch(MA::TRACK_BOOK_STATS);assert(reader.trackingRequests==1);
  reader.dispatch(MA::RESET_BOOK_STATS);

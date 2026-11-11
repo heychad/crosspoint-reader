@@ -1410,6 +1410,39 @@ void EpubReaderActivity::openChapterSelection(bool returnToMenu) {
   });
 }
 
+void EpubReaderActivity::confirmBookmarkClear(bool retry) {
+  if (!epub) return;
+  auto prompt = makeUniqueNoThrow<ConfirmationActivity>(
+      renderer, mappedInput, retry ? tr(STR_BOOKMARK_CLEAR_FAILED) : tr(STR_DELETE_BOOKMARKS),
+      retry ? tr(STR_BOOKMARK_CLEAR_RETRY_BODY) : tr(STR_DELETE_BOOKMARKS_BODY), tr(STR_CANCEL),
+      retry ? tr(STR_RETRY) : tr(STR_DELETE));
+  if (!prompt) {
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(prompt), [this](const ActivityResult& result) {
+    if (result.isCancelled) {
+      openReaderMenu();
+      return;
+    }
+    bool cleared = false;
+    {
+      RenderLock lock;
+      cleared = BookmarkFile::clearForBook(bookPath);
+      // A failed clear leaves native entries intact unless absence is confirmed.
+      if (cleared ||
+          Storage.lookupPath(BookmarkUtil::getBookmarkPath(bookPath).c_str()) == HalStorage::PathStatus::Missing) {
+        cachedBookmarks.clear();
+        updateBookmarkFlag();
+      }
+    }
+    if (cleared)
+      requestUpdate();
+    else
+      confirmBookmarkClear(true);
+  });
+}
+
 void EpubReaderActivity::confirmCacheReset() {
   if (!epub) return;
   const bool inLink = footnoteDepth > 0;
@@ -1715,6 +1748,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       openClippings();
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::DELETE_BOOKMARKS:
+      confirmBookmarkClear();
+      break;
     case EpubReaderMenuActivity::MenuAction::TOGGLE_BOOKMARK: {
       addBookmark();
       break;

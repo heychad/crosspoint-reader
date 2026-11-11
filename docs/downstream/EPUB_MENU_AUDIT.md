@@ -8,7 +8,7 @@ selected first-release scope, not every option in the upstream font engine.
 | --- | --- |
 | Five menu tabs; font family/size; spacing; margins; alignment; images; hyphenation; paragraph spacing/indents; embedded style | Built. The fork retains its List and Toolbar modes alongside Tabbed. |
 | Chapter, percentage, orientation, footnotes, screenshot, QR, Home, sync progress | Built through existing reader actions. |
-| Bookmark toggle/view and clipping save/view | Built. Direct drawer deletion of all bookmarks remains to connect to the existing bookmark controls. |
+| Bookmark toggle/view and clipping save/view | Built, including confirmed deletion of all native and verified imported bookmarks for the open book. Partial failures offer Retry. |
 | Reading statistics and finished/unfinished | Built; completion remains behind its experimental flag. |
 | Per-book tracking and statistics deletion | Connected in this batch through the shared reader statistics flow; deletion remains behind the statistics-restore flag. |
 | Status bars, controls, render mode, reset book settings | Built. |
@@ -40,3 +40,20 @@ fixture was corrected, and all four menu checks then passed in 5.21 seconds.
 Default and enabled X4 Pro builds passed in 138.24 and 109.62 seconds. The
 menu object measures 4,932 bytes; `ReaderStats` remains 456 bytes. These are
 host/build checks; the new action has not been tested on the reader.
+
+Bookmark clearing verifies the imported file headers against the open book,
+closes their handles, and removes their recovery siblings before the primary
+files. Native JSON bookmarks are removed afterward. Progress, clippings,
+statistics, and settings are untouched. Unreadable or recovery-only imported
+files block clearing; a failure can leave earlier files cleared, and Retry
+continues from the remaining files. This action does not add individual editing
+of imported bookmarks. It creates no backup of intentionally deleted bookmarks.
+
+Bookmark-clear checkpoint validation: all 1,818 host tests passed in 62.66
+seconds; the four menu checks passed in 4.46 seconds. The default X4 Pro build
+passed in 132.50 seconds. A final test-only assertion confirmed that Saved Items
+no longer reports the cleared book; its four focused tests passed. The menu
+object is 4,992 bytes and the temporary imported-bookmark reader is 52 bytes,
+plus its normal file handles and path strings. No new code in this batch is
+behind an experimental flag; the existing host menu tests cover their flag
+combinations. The exact device-candidate build and hardware check remain.

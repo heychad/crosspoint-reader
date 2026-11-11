@@ -148,6 +148,7 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
       return Tab::More;
     case MenuAction::BOOKMARKS:
     case MenuAction::TOGGLE_BOOKMARK:
+    case MenuAction::DELETE_BOOKMARKS:
     case MenuAction::SAVE_CLIPPING:
     case MenuAction::VIEW_CLIPPINGS:
     case MenuAction::SAVED_ITEMS:
@@ -249,6 +250,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
     items.push_back({MenuAction::BOOKMARKS, StrId::STR_BOOKMARKS});
   }
   items.push_back({MenuAction::TOGGLE_BOOKMARK, StrId::STR_TOGGLE_BOOKMARK});
+  items.push_back({MenuAction::DELETE_BOOKMARKS, StrId::STR_DELETE_BOOKMARKS});
   items.push_back({MenuAction::SAVE_CLIPPING, StrId::STR_SAVE_CLIPPING});
   if (hasClippings) {
     items.push_back({MenuAction::VIEW_CLIPPINGS, StrId::STR_VIEW_CLIPPINGS});

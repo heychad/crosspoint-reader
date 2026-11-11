@@ -102,6 +102,35 @@ bool CrossInkBookmarks::open(const std::string& bookPath) {
   return found;
 }
 
+bool CrossInkBookmarks::clearForBook(const std::string& bookPath) {
+  if (bookPath.empty()) return false;
+  CrossInkBookmarks loaded;
+  loaded.open(bookPath);
+  if (loaded.unreadable()) return false;
+  std::array<bool, 2> present{};
+  bool closed = true;
+  for (size_t index = 0; index < loaded.sources.size(); ++index) {
+    auto& source = loaded.sources[index];
+    present[index] = static_cast<bool>(source.file);
+    if (source.file) closed = source.file.close() && closed;
+  }
+  if (!closed) return false;
+  const size_t keys[] = {credential_integrity::crc32(bookPath), std::hash<std::string>{}(bookPath)};
+  for (size_t index = 0; index < present.size(); ++index) {
+    if (!present[index]) continue;
+    const std::string path = "/.crosspoint/bookmarks/epub_" + std::to_string(keys[index]) + ".bin";
+    // Remove recovery siblings first so a cleared source cannot reappear on reopen.
+    for (const auto* suffix : {".bookmark-edit.bak", ".bookmark-edit.guard", ".tmp", ".bak", ""}) {
+      const auto target = path + suffix;
+      const auto status = Storage.lookupPath(target.c_str());
+      if (status == HalStorage::PathStatus::Failed ||
+          (status == HalStorage::PathStatus::Present && !Storage.remove(target.c_str())))
+        return false;
+    }
+  }
+  return true;
+}
+
 void CrossInkBookmarks::close() {
   for (auto& source : sources) {
     if (source.file) source.file.close();

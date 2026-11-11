@@ -1001,3 +1001,8 @@ STR_READER_LOCATION: "Location"
 
 STR_READING_PACE_RESET: "Reset reading pace"
 STR_READING_PACE_RESET_BODY: "Relearn this book's reading pace? Reading history, dates, and finished status stay. A backup will be kept."
+
+STR_DELETE_BOOKMARKS: "Delete book bookmarks"
+STR_DELETE_BOOKMARKS_BODY: "Delete this book's native and imported bookmarks? Reading position and highlights stay."
+STR_BOOKMARK_CLEAR_FAILED: "Bookmarks could not be cleared"
+STR_BOOKMARK_CLEAR_RETRY_BODY: "Some bookmark files may already be cleared. Retry to clear the rest. Unreadable imported files need recovery first."

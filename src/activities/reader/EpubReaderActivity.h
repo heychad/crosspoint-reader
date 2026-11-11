@@ -230,6 +230,7 @@ class EpubReaderActivity final : public ReaderActivity {
   int bookPercentFor(const ChapterPosition& position) const;
   void openReaderMenu() override;
   void confirmCacheReset();
+  void confirmBookmarkClear(bool retry = false);
   void openChapterSelection(bool returnToMenu);
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
