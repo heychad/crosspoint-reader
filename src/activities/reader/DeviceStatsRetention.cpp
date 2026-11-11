@@ -119,3 +119,51 @@ statsbackup::RetentionResult statsbackup::pruneAutomaticDeviceBackups(const char
   context->result.deferred = !Storage.withStorageLock(pruneUnlocked, context.get());
   return context->result;
 }
+
+namespace {
+struct SequenceContext {
+  char group;
+  uint32_t maximum = 0;
+  char latest[statsbackup::AutomaticBackupRetention::NAME_SIZE + 1]{};
+  static bool keepGoing(void*) { return true; }
+  static bool observe(void* raw, const wirecheck::DirectoryEntry& entry) {
+    auto& self = *static_cast<SequenceContext*>(raw);
+    if (entry.directory || statsbackup::AutomaticBackupRetention::group(entry.name) != self.group) return true;
+    uint32_t value = 0;
+    if (!statsbackup::AutomaticBackupRetention::sequence(entry.name, value)) return false;
+    if (value > self.maximum || (value == self.maximum && std::strcmp(entry.name, self.latest) > 0)) {
+      self.maximum = value;
+      std::memcpy(self.latest, entry.name, std::strlen(entry.name) + 1);
+    }
+    return true;
+  }
+};
+}  // namespace
+
+bool statsbackup::nextDeviceBackupSequence(char group, uint32_t& next, char* latest, size_t latestSize) {
+  if ((group != 'M' && group != 'U') || (latest && latestSize < AutomaticBackupRetention::NAME_SIZE + 1)) return false;
+  struct Context {
+    char group;
+    uint32_t next = 0;
+    char latest[AutomaticBackupRetention::NAME_SIZE + 1]{};
+  } context{group};
+  const auto scanLocked = [](void* raw) {
+    auto& output = *static_cast<Context*>(raw);
+    HalStorage::MutationSnapshot snapshot;
+    if (!Storage.beginMutationSnapshot(snapshot)) return false;
+    SequenceContext state{output.group};
+    auto scan = makeUniqueNoThrow<wirecheck::PathDirectoryScan>(
+        Storage, snapshot, DIRECTORY,
+        wirecheck::PathDirectoryScan::Callbacks{&state, SequenceContext::keepGoing, SequenceContext::observe});
+    if (!scan || !completeScan(*scan, millis()) || !Storage.mutationSnapshotUnchanged(snapshot) ||
+        state.maximum == UINT32_MAX)
+      return false;
+    output.next = state.maximum + 1;
+    std::memcpy(output.latest, state.latest, sizeof(output.latest));
+    return true;
+  };
+  if (!Storage.withStorageLock(scanLocked, &context)) return false;
+  next = context.next;
+  if (latest) std::memcpy(latest, context.latest, sizeof(context.latest));
+  return true;
+}
