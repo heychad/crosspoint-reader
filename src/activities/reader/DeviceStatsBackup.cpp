@@ -29,7 +29,9 @@ bool backupFilenameHash(const std::string& name, uint64_t& hash) {
   if (name.compare(0, 9, "stats_cp_") != 0) return false;
   const bool manual =
       name.size() == 58 && name.compare(19, 19, "_M_00000000_000000_") == 0 && name.compare(54, 4, ".bin") == 0;
-  const bool automatic = name.size() == 40 && name.compare(17, 3, "_A_") == 0 && name.compare(36, 4, ".bin") == 0;
+  const bool automatic =
+      name.size() == 40 && name.compare(36, 4, ".bin") == 0 &&
+      (name.compare(17, 3, "_A_") == 0 || (name.compare(17, 3, "_U_") == 0 && name.compare(9, 8, "00000000") == 0));
   if (!manual && !automatic) return false;
   for (size_t i = 9; i < (manual ? 19 : 17); ++i)
     if (name[i] < '0' || name[i] > '9') return false;
@@ -135,14 +137,15 @@ bool statsbackup::createDeviceBackup(const GlobalReadingStats& stats) {
   return Storage.withStorageLock(save, &input);
 }
 
-statsbackup::AutomaticBackupResult statsbackup::createDailyDeviceBackup(const ReadingStatsDate& date) {
+statsbackup::AutomaticBackupResult statsbackup::createAutomaticDeviceBackup(const ReadingStatsDate& date) {
   struct Context {
     const ReadingStatsDate& date;
     AutomaticBackupResult result = AutomaticBackupResult::Unavailable;
   } context{date};
   const auto backup = [](void* raw) {
     auto& input = *static_cast<Context*>(raw);
-    if (!input.date.isValid() || !readingstats::normalStatsAllowed() || StatsSessionLease::anyActive() ||
+    const bool undated = input.date.year == 0 && input.date.month == 0 && input.date.day == 0;
+    if ((!undated && !input.date.isValid()) || !readingstats::normalStatsAllowed() || StatsSessionLease::anyActive() ||
         Storage.lookupPath(DEVICE_STATS) != HalStorage::PathStatus::Present)
       return true;
     const auto current = GlobalReadingStats::loadReadOnly();
@@ -155,8 +158,8 @@ statsbackup::AutomaticBackupResult statsbackup::createDailyDeviceBackup(const Re
         (directory == HalStorage::PathStatus::Missing && !Storage.mkdir(DIRECTORY)))
       return true;
     char filename[64];
-    snprintf(filename, sizeof(filename), "stats_cp_%04u%02u%02u_A_%016llx.bin", static_cast<unsigned>(input.date.year),
-             static_cast<unsigned>(input.date.month), static_cast<unsigned>(input.date.day),
+    snprintf(filename, sizeof(filename), "stats_cp_%04u%02u%02u_%c_%016llx.bin", static_cast<unsigned>(input.date.year),
+             static_cast<unsigned>(input.date.month), static_cast<unsigned>(input.date.day), undated ? 'U' : 'A',
              static_cast<unsigned long long>(hashBytes(*bytes)));
     const std::string target = std::string(DIRECTORY) + "/" + filename;
     const auto status = Storage.lookupPath(target.c_str());

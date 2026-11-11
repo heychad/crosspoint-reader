@@ -1,32 +1,54 @@
-# Manual device statistics backup
+# Device statistics backups
 
-Reading statistics > This device > Back up device statistics writes the
-currently displayed device totals, time buckets, and history to
-`/.crossink-stats-backup/` on the SD card. It does not back up individual book
-statistics or reading positions. If the current reading-session snapshot could
-not be saved, or the primary device statistics file is missing or unreadable,
-the action does not create a backup.
+Reading statistics → This device → Back up device statistics saves the displayed
+device totals, time buckets, and history to `/.crossink-stats-backup/`. It does
+not back up individual book statistics or reading positions.
 
-The new file uses the versioned device-statistics format and a content hash in
-its filename. Creation writes a new file exclusively and verifies its contents. It never
-deliberately overwrites an existing backup.
-The numeric sequence is a collision-avoidance key, not a reliable creation
-date or chronological order across reboots. The displayed snapshot must still
-match the saved primary file when the backup starts.
-An interrupted or failed operation may leave an incomplete `.bin` file;
-its filename alone does not prove that it is a valid backup. The operation
-does not delete that file or intentionally write to the source statistics. A
-`.part` file from an older build is preserved. After a failed or interrupted older
-backup, its `.part` and `.bin` names can share storage; deleting either can
-damage the other. Preserve both until safely copied and checked. If the
-candidate name already exists, retry later. The filename format is proposed;
-this build does not include restore, reset, automatic backups, or a backup
-browser. Checked exFAT lookup can fail on directories with over 4,096 directory
-records; each file uses multiple records.
-The action shows a saving state but remains synchronous; SD latency and
-watchdog behavior are unmeasured.
+The current snapshot must match the saved primary. Missing or unreadable
+statistics do not produce an empty replacement backup. Creation uses a new,
+exclusive file and verifies the bytes before reporting success. Existing and
+incomplete files are preserved. A content hash detects corruption; it does not
+prove the SD card has committed the write to durable storage.
 
-Before depending on it, test on the X4 Pro with known statistics, verify a
-second backup leaves the first intact, check a failed or full SD card, and
-confirm reading progress and totals after sleep and reboot. Later restore work
-must validate the embedded hash and file format before applying a backup.
+## Automatic snapshots
+
+`CROSSPOINT_EXPERIMENTAL_STATS_BACKUP` enables the automatic-backup preference
+and sleep-time hook. Tracking and automatic backups must both be enabled.
+The hook runs after the reader's sleep transition, with no active statistics
+session. It uses the same source and storage-chain checks as dated backups.
+
+| Kind | Filename |
+| --- | --- |
+| Manual | `stats_cp_<sequence>_M_00000000_000000_<hash>.bin` |
+| Dated automatic | `stats_cp_YYYYMMDD_A_<hash>.bin` |
+| Undated automatic | `stats_cp_00000000_U_<hash>.bin` |
+
+Without a valid clock, automatic backups use the undated name. Identical
+statistics reuse a verified matching snapshot; changed statistics produce a
+new name. When the clock becomes valid, the next backup is dated. The manual
+sequence prevents collisions but is not a timestamp.
+
+The current retention selector recognizes only dated `A` snapshots. Manual and
+undated snapshots are separate. CrossInk keeps up to seven in each group; that
+three-group policy is not implemented here yet. Automatic deletion is not
+connected: retention still needs verified file ownership before removing
+candidates. Preserve
+incomplete files and older `.part` artifacts; interrupted renames can leave
+entries sharing storage.
+
+Restore and reset prototypes remain behind their separate experimental flags.
+Their successful operation replaces device totals, not book progress, and
+preserves a pre-operation backup. Native FAT/exFAT fault tests cover these
+storage paths; hardware validation is still required.
+
+## Device check
+
+On the next reviewed test build, create snapshots with and without a valid
+clock. Confirm that they are separate and can be read back, unchanged totals
+reuse the same automatic snapshot, and reading position and totals survive
+sleep/restart. Confirm that no older backup was removed.
+
+Validation: 31 focused checks passed, including native FAT/exFAT transient and
+fail-stop write tests for dated and undated creation. The X4 Pro build with
+`CROSSPOINT_EXPERIMENTAL_STATS_BACKUP=1` passed in 193.17 seconds. This is not
+a hardware-validation result.

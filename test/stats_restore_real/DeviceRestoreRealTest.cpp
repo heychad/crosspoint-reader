@@ -276,7 +276,7 @@ void exerciseReset(bool exfat, bool failStop) {
               failStop ? "fail-stop" : "transient", injected);
   assert(injected > 0);
 }
-void exerciseDaily(bool exfat, bool failStop) {
+void exerciseDaily(bool exfat, bool failStop, bool undated = false) {
   Disk baseline;
   uint8_t scratch[512];
   if (exfat) {
@@ -291,8 +291,8 @@ void exerciseDaily(bool exfat, bool failStop) {
   Bytes previous{};
   assert(prior.encode(previous));
   char filename[80];
-  snprintf(filename, sizeof(filename), "/.crossink-stats-backup/stats_cp_20261110_A_%016llx.bin",
-           (unsigned long long)hash(previous));
+  snprintf(filename, sizeof(filename), "/.crossink-stats-backup/stats_cp_%s_%c_%016llx.bin",
+           undated ? "00000000" : "20261110", undated ? 'U' : 'A', (unsigned long long)hash(previous));
   {
     FsVolume volume;
     assert(volume.begin(&baseline));
@@ -313,7 +313,8 @@ void exerciseDaily(bool exfat, bool failStop) {
       disk.writes = 0;
       disk.failAt = fault;
       disk.failStop = failStop;
-      saved = statsbackup::createDailyDeviceBackup({2026, 11, 10}) == statsbackup::AutomaticBackupResult::Saved;
+      saved = statsbackup::createAutomaticDeviceBackup(undated ? ReadingStatsDate{} : ReadingStatsDate{2026, 11, 10}) ==
+              statsbackup::AutomaticBackupResult::Saved;
     }
     if (fault >= 0 && !disk.injected) break;
     if (fault == -1) assert(saved);
@@ -347,5 +348,6 @@ int main() {
       exercise(exfat, failStop, true);
       exerciseReset(exfat, failStop);
       exerciseDaily(exfat, failStop);
+      exerciseDaily(exfat, failStop, true);
     }
 }

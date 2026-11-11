@@ -14,6 +14,7 @@ int main(){
  constexpr char current[]="stats_cp_20261110_A_0000000000000001.bin";
  AutomaticBackupRetention plan(current);
  plan.observe("stats_2020-01-01.bin");
+ plan.observe("stats_cp_00000000_U_0000000000000001.bin");
  plan.observe("stats_cp_0000000001_M_00000000_000000_0000000000000001.bin");
  plan.observe("stats_cp_20261110_A_000000000000000G.bin");
  assert(plan.count()==0 && !plan.candidate(true));
