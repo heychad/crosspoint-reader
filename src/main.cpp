@@ -729,11 +729,10 @@ void setup() {
 
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
-      // With Short Power Button Press = Sleep, a single click wakes on any
-      // device; otherwise the button must still be held (ghost-wake debounce).
+      // Sleep/Wake and Wake Only accept a click; other bindings require a hold
+      // through the early sample to reject unintended wakes.
       // Picco: plugging in USB pulses the wake line; power on, as stock does.
-      if (!wakeHoldVerified && SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP &&
-          !(FREEINK_DEVICE_PICCO && gpio.isUsbConnected())) {
+      if (!wakeHoldVerified && !SETTINGS.shortPowerPressWakes() && !(FREEINK_DEVICE_PICCO && gpio.isUsbConnected())) {
         LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
         Storage.prepareForDeepSleep();
         powerManager.startDeepSleep(gpio);

@@ -10,7 +10,7 @@ using Action = readershortcuts::Action;
 inline constexpr size_t SLOT_COUNT = 5;
 using Slots = std::array<uint8_t, SLOT_COUNT>;
 inline bool isSlotAction(uint8_t value) {
-  return value > static_cast<uint8_t>(Action::Disabled) && value < static_cast<uint8_t>(Action::Count) &&
+  return value > static_cast<uint8_t>(Action::Disabled) && value < readershortcuts::GENERAL_ACTION_COUNT &&
          value != static_cast<uint8_t>(Action::QuickActions) && value != static_cast<uint8_t>(Action::QuickLock);
 }
 inline void write(JsonDocument& doc, const Slots& slots) {

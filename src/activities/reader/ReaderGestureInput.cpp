@@ -15,6 +15,8 @@ using readershortcuts::Action;
 
 bool ReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger trigger) {
   switch (action) {
+    case Action::SleepOnly:
+    case Action::WakeOnly:
     case Action::TogglePageGestures:
     case Action::JoinNetwork:
     case Action::CreateHotspot:

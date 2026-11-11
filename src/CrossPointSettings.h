@@ -525,8 +525,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
 
-  uint16_t getPowerButtonDuration() const {
-    return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
+  uint16_t getPowerButtonDuration() const { return shortPowerPressWakes() ? 10 : 400; }
+  bool shortPowerPressWakes() const {
+    return readershortcuts::shortPowerPressWakes(powerTapAction,
+                                                 shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   }
   int getReaderFontId() const;
 

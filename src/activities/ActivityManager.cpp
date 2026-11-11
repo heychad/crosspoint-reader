@@ -705,11 +705,12 @@ bool ActivityManager::applyInputLock(bool locked, bool restoreLight) {
 bool ActivityManager::dispatchShortcut(readershortcuts::Action action, QuickLockTrigger trigger) {
   using Action = readershortcuts::Action;
   if (action == Action::Default || action == Action::Disabled) return false;
+  if (action == Action::WakeOnly) return true;
   if (action == Action::QuickLock) {
     requestInputLock(trigger);
     return true;
   }
-  if (action == Action::Sleep) {
+  if (action == Action::Sleep || action == Action::SleepOnly) {
     requestSleep();
     return true;
   }

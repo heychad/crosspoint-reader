@@ -81,6 +81,8 @@ bool EpubReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger tr
     case Action::QuickActions:
     case Action::QuickLock:
     case Action::Sleep:
+    case Action::SleepOnly:
+    case Action::WakeOnly:
     case Action::Home:
     case Action::HomeReader:
     case Action::FileBrowser:
@@ -296,6 +298,8 @@ bool EpubReaderActivity::supportsReaderShortcut(Action action) const {
     case Action::Disabled:
     case Action::QuickActions:
     case Action::QuickLock:
+    case Action::SleepOnly:
+    case Action::WakeOnly:
     case Action::Count:
       return false;
     case Action::PreviousPage:

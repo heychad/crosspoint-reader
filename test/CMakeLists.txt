@@ -185,6 +185,7 @@ add_test(NAME WirelessInventoryIdentityEndpoint COMMAND ${Python3_EXECUTABLE} ${
 add_test(NAME ReaderChapterTimeRollback COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/chapter_time/test_serialization.py ${arduinojson_SOURCE_DIR}/src)
 add_test(NAME EmbeddedEdgeMigration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/embedded_edge/test_settings_flow.py ${arduinojson_SOURCE_DIR}/src)
 add_test(NAME EdgeActionPicker COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/embedded_edge/test_picker.py ${arduinojson_SOURCE_DIR}/src)
+add_test(NAME PowerWakePolicy COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/quick_lock/test_power_wake.py)
 add_subdirectory(book_reading_stats_atomic)
 
 add_test(NAME ReadingStatsOverlay COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reading_stats_overlay.py)

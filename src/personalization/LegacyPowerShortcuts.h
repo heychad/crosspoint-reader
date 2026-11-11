@@ -13,7 +13,11 @@ inline bool readLegacyPowerAction(uint8_t raw, Action& action) {
   constexpr uint8_t LAST_POWER_ACTION = 40;
   if (raw > LAST_POWER_ACTION) return false;
   if (raw == 34) {
-    action = Action::Sleep;
+    action = Action::SleepOnly;
+    return true;
+  }
+  if (raw == 35) {
+    action = Action::WakeOnly;
     return true;
   }
   return readLegacySideAction(raw, false, action);

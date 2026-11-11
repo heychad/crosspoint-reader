@@ -462,7 +462,34 @@ TEST(ReaderShortcuts, LegacyPowerUsesDistinctCatalogsAndPreservesModernBindings)
   EXPECT_FALSE(apply());
   doc["longPwrBtn"] = 34;
   ASSERT_TRUE(apply());
-  EXPECT_EQ(values[0], static_cast<uint8_t>(readershortcuts::Action::Sleep));
+  EXPECT_EQ(values[0], static_cast<uint8_t>(readershortcuts::Action::SleepOnly));
+}
+
+TEST(ReaderShortcuts, PowerOnlyModesKeepDistinctImportAndWakeSemantics) {
+  using A = readershortcuts::Action;
+  for (const auto mapping :
+       {std::pair{uint8_t{1}, A::Sleep}, {uint8_t{34}, A::SleepOnly}, {uint8_t{35}, A::WakeOnly}}) {
+    JsonDocument source, current;
+    current.to<JsonObject>();
+    source["shortPwrBtn"] = mapping.first;
+    source["longPwrBtn"] = mapping.first;
+    ASSERT_TRUE(crossinkimport::stageControls(source, current, true, false));
+    EXPECT_EQ(current["powerTapAction"].as<uint8_t>(), static_cast<uint8_t>(mapping.second));
+    EXPECT_EQ(current["powerHoldAction"].as<uint8_t>(), static_cast<uint8_t>(mapping.second));
+    current["powerTapAction"] = static_cast<uint8_t>(A::QuickActions);
+    crossinkimport::stageControls(source, current, true, true);
+    EXPECT_EQ(current["powerTapAction"].as<uint8_t>(), static_cast<uint8_t>(A::QuickActions));
+  }
+  for (bool legacySleep : {false, true}) {
+    EXPECT_EQ(readershortcuts::shortPowerPressWakes(static_cast<uint8_t>(A::Default), legacySleep), legacySleep);
+    EXPECT_TRUE(readershortcuts::shortPowerPressWakes(static_cast<uint8_t>(A::Sleep), legacySleep));
+    EXPECT_TRUE(readershortcuts::shortPowerPressWakes(static_cast<uint8_t>(A::WakeOnly), legacySleep));
+    EXPECT_FALSE(readershortcuts::shortPowerPressWakes(static_cast<uint8_t>(A::SleepOnly), legacySleep));
+    EXPECT_FALSE(readershortcuts::shortPowerPressWakes(static_cast<uint8_t>(A::NextPage), legacySleep));
+  }
+  EXPECT_FALSE(readerquickactions::isSlotAction(static_cast<uint8_t>(A::SleepOnly)));
+  EXPECT_FALSE(readerquickactions::isSlotAction(static_cast<uint8_t>(A::WakeOnly)));
+  EXPECT_EQ(readershortcuts::GENERAL_ACTION_COUNT, 48);
 }
 
 TEST(ReaderShortcuts, ImportsTaggedRcPowerActionsWithoutOverwritingNativeSettings) {

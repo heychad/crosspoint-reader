@@ -4,6 +4,41 @@ This is the `2.0.0-chad.5` control stage, based on the preserved `chad.4`
 Quick Actions source. Host/build verification is complete; human acceptance and physical testing
 remain pending. No device has been flashed with this version.
 
+## RC power modes — November 11, 2026
+
+Power tap and Power hold now include Sleep Only and Wake Only. When assigned
+to Power tap, Sleep and Wake Only permit a short press to wake; Sleep Only and
+other explicit actions require the existing held-button wake check. Default
+retains the legacy Short Power setting's wake behavior.
+
+While awake, Sleep Only requests sleep and Wake Only consumes the press without
+opening a screen or requesting sleep. A Default Power hold still sleeps after
+400 ms when a custom tap is assigned. Assigning a mode to Power hold changes
+that hold action; wake policy follows Power tap. The wake gesture's release
+remains consumed by the existing main-loop guard.
+
+CrossInk RC values 34 and 35 import as distinct appended action IDs. Existing
+IDs 0–47 keep their meanings. These modes are absent from side/edge and Quick
+Actions pickers. A Sleep Only binding imported by older firmware as ordinary
+Sleep stays unchanged until explicitly reimported or edited.
+
+The change reuses settings fields, input ownership, and sleep requests; it adds
+no task, persistent file, or polling loop. The shared action enum adds two
+entries, including two bytes before alignment in the existing Quick Actions
+option array, although neither mode is selectable there. Hardware wake and
+release behavior still require the next reviewed device test.
+
+Device check: set Power tap to Wake Only, sleep through the menu, then wake
+with a short press. An awake short press must do nothing; a Default hold must
+still sleep. Repeat with Sleep Only: an awake tap sleeps, a quick wake tap must
+not resume, and a held press must wake without its release triggering another
+action. Restore the preferred binding afterward.
+
+This follow-up passed all 1,781 host tests and the default X4 Pro build
+(113.48 seconds). These checks cover the boot decision, awake dispatch,
+release guard, import, and compatibility paths. Physical wake timing remains
+unverified, and cumulative release review is still required before installation.
+
 ## Behavior
 
 Settings > Controls adds Power tap, Power hold (400 ms), Power + Up, and

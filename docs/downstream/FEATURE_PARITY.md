@@ -166,8 +166,13 @@ The RC edge follow-up adds Home/Reader, Select Chapter, and Toggle Page Gestures
 to all four edge bindings and accepts legacy values 10–12. The picker translates
 display indices while settings files retain existing Action IDs. It uses a
 scrolling list for all 37 options. Invalid stored IDs reset to Default; existing
-Quick Actions ownership is preserved. Device checks remain pending. Wake Only
-also remains unported.
+Quick Actions ownership is preserved. Device checks remain pending.
+
+Sleep Only and Wake Only now import as distinct power actions. The short-press
+wake policy follows the active Power tap binding, while Default preserves the
+legacy setting. Wake Only consumes an awake tap; Sleep Only requests sleep.
+These modes stay out of side, edge, and Quick Actions pickers. The remaining
+catalog audit, cumulative review, and physical wake tests are still open.
 
 Select Chapter is available in the reader action catalog, Quick Actions, Home
 button mappings, and two-finger swipes. EPUB uses the existing chapter picker;

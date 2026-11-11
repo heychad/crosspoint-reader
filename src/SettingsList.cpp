@@ -177,11 +177,12 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   }
   // --- Controls ---
   // Reader-only shortcuts preserve the standard controls when set to Default.
-  const auto& readerActions = readershortcuts::ACTION_LABELS;
-  emit(SettingInfo::StaticEnum(StrId::STR_POWER_TAP_BINDING, &CrossPointSettings::powerTapAction, readerActions,
-                               "powerTapAction", StrId::STR_CAT_CONTROLS));
-  emit(SettingInfo::StaticEnum(StrId::STR_POWER_HOLD_BINDING, &CrossPointSettings::powerHoldAction, readerActions,
-                               "powerHoldAction", StrId::STR_CAT_CONTROLS));
+  const auto readerActions =
+      std::span<const StrId>(readershortcuts::ACTION_LABELS).first(readershortcuts::GENERAL_ACTION_COUNT);
+  emit(SettingInfo::StaticEnum(StrId::STR_POWER_TAP_BINDING, &CrossPointSettings::powerTapAction,
+                               readershortcuts::ACTION_LABELS, "powerTapAction", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::StaticEnum(StrId::STR_POWER_HOLD_BINDING, &CrossPointSettings::powerHoldAction,
+                               readershortcuts::ACTION_LABELS, "powerHoldAction", StrId::STR_CAT_CONTROLS));
   emit(SettingInfo::StaticEnum(StrId::STR_POWER_UP_CHORD_BINDING, &CrossPointSettings::powerUpChordAction,
                                readerActions, "powerUpChordAction", StrId::STR_CAT_CONTROLS));
   if (!BoardConfig::hasTouch()) {

@@ -52,7 +52,9 @@ inline constexpr StrId ACTION_LABELS[] = {StrId::STR_SHORTCUT_DEFAULT,
                                           StrId::STR_DISABLE_PAGE_TURN_GESTURES,
                                           StrId::STR_JOIN_NETWORK,
                                           StrId::STR_CREATE_HOTSPOT,
-                                          StrId::STR_CALIBRE_WIRELESS};
+                                          StrId::STR_CALIBRE_WIRELESS,
+                                          StrId::STR_POWER_SLEEP_ONLY,
+                                          StrId::STR_POWER_WAKE_ONLY};
 static_assert(std::size(ACTION_LABELS) == static_cast<unsigned>(Action::Count));
 inline StrId label(Action action) {
   const auto index = static_cast<unsigned>(action);

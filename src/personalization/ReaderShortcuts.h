@@ -55,8 +55,15 @@ enum class Action : uint8_t {
   JoinNetwork,
   CreateHotspot,
   CalibreWireless,
+  SleepOnly,
+  WakeOnly,
   Count
 };
+inline constexpr uint8_t GENERAL_ACTION_COUNT = static_cast<uint8_t>(Action::SleepOnly);
+inline constexpr bool shortPowerPressWakes(uint8_t tapAction, bool legacySleep) {
+  if (tapAction == static_cast<uint8_t>(Action::Default)) return legacySleep;
+  return tapAction == static_cast<uint8_t>(Action::Sleep) || tapAction == static_cast<uint8_t>(Action::WakeOnly);
+}
 // Keep the original edge indices, then append RC actions without exposing the
 // intervening physical-button actions or changing their persisted IDs.
 inline constexpr uint8_t EDGE_ORIGINAL_ACTION_COUNT = static_cast<uint8_t>(Action::QuickLock);
