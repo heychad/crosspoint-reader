@@ -32,3 +32,14 @@ aggregate; device peak heap is not yet measured. The data is released after
 the render call. It adds no writer, network request, or
 background task. Layout checks cover portrait, landscape, short displays, and
 partial totals; physical display and latency checks remain pending.
+
+## X4 Pro comparison with the tagged RC
+
+CrossInk `v2.0.0-rc` (`b8feaec4d`) offers Minimal and Minimal Stats separately,
+but its `MinimalTheme::drawStatsOverlay` returns immediately on devices other
+than X3. Mapping both to this fork's Minimal book screen therefore preserves
+the X4 Pro behavior; an additional identical mode is unnecessary.
+
+The remaining Page Overlay work is separate: restore the reader page when the
+retained framebuffer no longer contains it, then validate the image-selection
+and state-save recovery paths. The existing prototype remains experimental.

@@ -76,8 +76,8 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     output = result;
     return true;
   }
-  uint8_t flags, ignored;
-  if (!in.byte(flags) || (flags & ~0x1f) || !in.skip(3)) return false;
+  uint8_t flags, ignored, renderMode;
+  if (!in.byte(flags) || (flags & ~0x1f) || !in.skip(2) || !in.byte(renderMode)) return false;
   uint8_t old[19]{};
   if (!in.byte(old[0]) || !in.byte(old[1]) || !in.byte(old[2])) return false;
   if (result.version >= 3 && !in.byte(old[3])) return false;
@@ -171,6 +171,10 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
   map(13, 7, 1);
   map(15, 13, 1);
   result.extraFlags = flags & ~1;
+  if ((flags & 4) && renderMode <= 2) {
+    set(result, 14, renderMode);
+    result.extraFlags &= ~4;
+  }
   output = result;
   return true;
 }

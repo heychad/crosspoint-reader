@@ -117,6 +117,20 @@ class DecodeTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 preview.decode(record(version, **kwargs))
 
+    def test_explicit_render_mode_is_independent_of_snapshot(self):
+        for version in range(2, 14):
+            for flags in (0, 1, 4, 5):
+                for mode in (0, 1, 2, 3, 255):
+                    data = bytearray(record(version, flags=flags, mask=0))
+                    data[4] = mode
+                    result = preview.decode(bytes(data))
+                    if flags & 4 and mode <= 2:
+                        self.assertEqual(result['preview']['epubRenderMode'], mode)
+                        self.assertNotIn('renderMode', result['unmapped'])
+                    else:
+                        self.assertNotIn('epubRenderMode', result['preview'])
+                        self.assertEqual('renderMode' in result['unmapped'], bool(flags & 4))
+
     def test_current_preferences_take_precedence(self):
         result = preview.decode(record(10, mask=(1 << 1) | (1 << 2) | (1 << 4)))
         self.assertEqual(preview.compare_current(result, None)['patch_for_missing_fields_only'], {})

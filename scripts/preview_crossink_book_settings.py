@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 # The order and version gates follow EpubReaderActivity::readReaderSettingsSnapshot
-# through CrossInk commit 1990a78f2cbe015ecda91030fe85aca30624d89c.
+# through CrossInk v2.0.0-rc, b8feaec4d10ecb484ed80e326f01f2a3ea949331.
 MASK_FIELDS = (
     'fontFamily', 'readerFontPointSize', 'lineHeightPercent', 'wordSpacing',
     'orientation', 'screenMarginVertical', 'screenMarginHorizontal',
@@ -154,7 +154,10 @@ def decode(data: bytes) -> dict:
     if flags & 2 and seconds:
         unmapped.append('autoPageTurnSeconds')
     if flags & 4:
-        unmapped.append('renderMode')
+        if render_mode <= 2:
+            preview['epubRenderMode'] = render_mode
+        else:
+            unmapped.append('renderMode')
     if flags & 8:
         unmapped.append('dictionaryFont')
     if flags & 16:

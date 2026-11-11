@@ -74,6 +74,13 @@ unmapped. The original CrossInk file is never rewritten. Existing native book
 preferences still take precedence, and CrossInk Safe Mode still prevents a
 partial import.
 
+An explicit Default, Balanced, or Light rendering-profile flag now imports
+independently of the layout mask. The snapshot's incidental profile does not
+create an override. Invalid profile values remain unmapped. Reset to global
+settings records the reset in native preferences and leaves the CrossInk
+source intact. Safe Mode is still excluded: it temporarily changes style,
+focus, and guide settings and retains their underlying values for later use.
+
 ## Per-book dictionary
 
 The reader menu and toolbar More open a scrolling dictionary picker. It owns
@@ -111,3 +118,11 @@ reader handoff test, and the four menu preflight checks passed. After correcting
 two source-extraction boundaries, the final full suite passed all 1,827 checks
 in 42.07 seconds. The final incremental X4 Pro build passed in 37.16 seconds
 (the initial build took 121.66 seconds). Hardware behavior remains unverified.
+
+Rendering-profile import checks: 95 affected host tests passed in 0.91 seconds.
+The firmware decoder matched 2,112 reference and malformed-record cases.
+The default X4 Pro firmware built in 67.14 seconds.
+No additional settings field, allocation, or persistent format was introduced.
+The existing native override and reset paths handle the imported profile.
+Device verification remains pending: open a book with a legacy Balanced or Light
+profile, confirm the selected profile, reset it to global, and check the passage.

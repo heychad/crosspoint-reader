@@ -25,6 +25,12 @@ for version in (11, 12, 13):
 records.append(test_preview.record(13, publisher_fonts=3))
 for method in (0, 1, 2, 255):
     records.append(test_preview.record(10, mask=1 << 17, indexing_method=method))
+for version in range(2, 14):
+    for flags in (0, 1, 4, 5, 0x14):
+        for mode in (0, 1, 2, 3, 255):
+            data = bytearray(test_preview.record(version, flags=flags, mask=0))
+            data[4] = mode
+            records.append(bytes(data))
 for value in range(12):
     records.append(test_preview.record(12, mask=1 << 20, character_spacing=value))
 for gray in range(3):
@@ -77,5 +83,7 @@ with tempfile.TemporaryDirectory() as directory:
         expected_unmapped = sum(1 << i for i, name in enumerate(fields) if name in report['unmapped'])
         assert values[16] == expected_unmapped, (index, values[16], expected_unmapped)
         expected_flags = (2 if report['autoPageTurnSeconds'] else 0) if version == 1 else data[1] & ~1
+        if 'epubRenderMode' in expected:
+            expected_flags &= ~4
         assert values[17] == expected_flags, (index, values[17], expected_flags)
 print(f'Firmware decoder agrees on {len(records)} reference, truncation, flag, and mask cases')

@@ -1362,3 +1362,31 @@ TEST(ReaderPreferences, InvalidIndexingModesAreRejected) {
     EXPECT_FALSE(prefs.read(doc.as<JsonObjectConst>(), mask));
   }
 }
+
+TEST_F(BookSettings, LegacyRenderProfileIsImportedAndResetWithoutChangingOriginal) {
+  auto original = crossInkV10();
+  original[1] = 4;  // The render-profile override is separate from the layout snapshot.
+  original[4] = 2;
+  const auto legacy = std::string(CACHE) + "/reader_settings.bin";
+  put(legacy, original);
+  BookReaderPreferences store;
+  BookReaderSettings imported;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", imported));
+  ASSERT_EQ(imported.mask, 1U << 14);
+  EXPECT_EQ(imported.preferences.values[14], 2U);
+  CrossPointSettings settings;
+  BookReaderSettingsScope scope;
+  scope.begin(settings, imported);
+  EXPECT_EQ(settings.epubRenderMode, 2U);
+  ASSERT_TRUE(store.save(imported));
+  EXPECT_FALSE(Storage.exists(PATH));
+  scope.reset(settings);
+  EXPECT_EQ(settings.epubRenderMode, 0U);
+  ASSERT_TRUE(store.save(scope.capture(settings)));
+  BookReaderPreferences reopened;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", imported));
+  EXPECT_EQ(imported.mask, 0U);
+  std::string after;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
+  EXPECT_EQ(after, original);
+}
