@@ -101,6 +101,7 @@ class HomeActivity final : public Activity {
   };
   MenuPage menuPage() const;
   int getMenuItemCount() const;
+  int homeCoverTileHeight() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image
   bool restoreCoverBuffer();  // Restore frame buffer from stored cover
   void freeCoverBuffer();     // Free the stored cover buffer

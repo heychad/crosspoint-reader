@@ -17,9 +17,13 @@ struct Layout {
   Box left;
   Box right;
 };
+inline int menuHeight(int labelHeight) { return std::max(64, 44 + labelHeight + 4); }
+inline int coverHeight(int requested, int screenHeight, int top, int footerHeight, int labelHeight) {
+  return std::max(0, std::min(requested, screenHeight - top - footerHeight - menuHeight(labelHeight) - 8));
+}
 inline Layout make(int x, int y, int width, int height, int titleHeight) {
-  const int centerWidth = std::min(300, std::max(1, width - 120));
   const int centerHeight = std::min(400, std::max(1, height - titleHeight * 4 - 46));
+  const int centerWidth = std::min({300, std::max(1, width - 120), std::max(1, centerHeight * 3 / 5)});
   const int centerX = x + (width - centerWidth) / 2;
   const int centerY = y + titleHeight * 2 + 4;
   const int sideWidth = std::max(1, (width - centerWidth) / 2 - 8);

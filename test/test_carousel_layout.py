@@ -9,6 +9,14 @@ PROGRAM = r'''
 #include "components/themes/lyra/CarouselLayout.h"
 int main() {
   using namespace carousellayout;
+  for (int screenHeight : {480, 800}) for (int line : {16, 32}) {
+    const int height = coverHeight(480, screenHeight, 56, 40, line);
+    const int menuY = screenHeight - 40 - menuHeight(line);
+    assert(56 + height + 8 <= menuY);
+    const auto adaptive = make(8, 56, screenHeight == 480 ? 784 : 464, height, line);
+    assert(adaptive.center.y + adaptive.center.height + 23 + line + 3 + 6 + line <= 56 + height);
+    assert(adaptive.center.width == adaptive.center.height * 3 / 5);
+  }
   auto layout = make(10, 56, 460, 480, 16);
   assert(layout.center.y + layout.center.height + 23 + 16 + 3 + 6 + 16 <= 56 + 480);
   int cx = layout.center.x + layout.center.width / 2;

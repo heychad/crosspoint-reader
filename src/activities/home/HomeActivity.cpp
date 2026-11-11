@@ -54,19 +54,30 @@ int HomeActivity::getMenuItemCount() const {
   return count;
 }
 
+int HomeActivity::homeCoverTileHeight() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL)
+    return carousellayout::coverHeight(metrics.homeCoverTileHeight, renderer.getScreenHeight(), metrics.homeTopPadding,
+                                       metrics.buttonHintsHeight, renderer.getLineHeight(SMALL_FONT_ID));
+#endif
+  return metrics.homeCoverTileHeight;
+}
+
 HomeActivity::MenuPage HomeActivity::menuPage() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int rowHeight = GUI.getMenuRowHeight(renderer);
   const int footerTop = renderer.getScreenHeight() - metrics.buttonHintsHeight;
   const int desiredTop =
-      metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset + GUI.getMenuTopInset();
+      metrics.homeTopPadding + homeCoverTileHeight() + metrics.homeMenuTopOffset + GUI.getMenuTopInset();
   const int top = std::min(desiredTop, std::max(0, footerTop - rowHeight));
   const int capacity = std::max(1, (footerTop - top + metrics.menuSpacing) / (rowHeight + metrics.menuSpacing));
   const int bookRows = metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
   const int total = getMenuItemCount() - bookRows;
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
   if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
-    return {std::max(0, footerTop - rowHeight), 0, total, total};
+    return {std::max(0, footerTop - carousellayout::menuHeight(renderer.getLineHeight(SMALL_FONT_ID))), 0, total,
+            total};
   }
 #endif
   const int selected = std::clamp(selectorIndex - bookRows, 0, total - 1);
@@ -548,7 +559,7 @@ void HomeActivity::loop() {
   int swipeY = 0;
   const auto swipe = mappedInput.wasSwipe(nullptr, &swipeY);
   if (carousel && carouselBooks > 1 && swipeY >= metrics.homeTopPadding &&
-      swipeY < metrics.homeTopPadding + metrics.homeCoverTileHeight &&
+      swipeY < metrics.homeTopPadding + homeCoverTileHeight() &&
       (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right)) {
     const int step = swipe == MappedInputManager::SwipeDir::Left ? 1 : -1;
     carouselCenterIndex = (carouselCenterIndex + carouselBooks + step) % carouselBooks;
@@ -634,8 +645,8 @@ void HomeActivity::loop() {
   if (carousel && carouselBooks > 0) {
     int touchX = 0, touchY = 0;
     const int titleHeight = renderer.getLineHeight(SMALL_FONT_ID);
-    const auto layout = carousellayout::make(content.x, metrics.homeTopPadding, content.width,
-                                             metrics.homeCoverTileHeight, titleHeight);
+    const auto layout =
+        carousellayout::make(content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight(), titleHeight);
     if (mappedInput.wasScreenTapped(touchX, touchY)) {
       const int target = carousellayout::hit(layout, touchX, touchY, carouselBooks, carouselCenterIndex);
       if (target >= 0) {
@@ -661,8 +672,7 @@ void HomeActivity::loop() {
   int touchedBook = -1;
   const auto coverTouch = mappedInput.colTouch(
       touchedBook, content.x + metrics.contentSidePadding, coverColumnWidth, recentCount, metrics.homeTopPadding,
-      std::min(metrics.homeTopPadding + metrics.homeCoverTileHeight, page.top - GUI.getMenuTopInset()),
-      coverColumnWidth);
+      std::min(metrics.homeTopPadding + homeCoverTileHeight(), page.top - GUI.getMenuTopInset()), coverColumnWidth);
   if (coverTouch != MappedInputManager::RowTouch::None) {
     if (coverTouch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedBook) {
@@ -682,7 +692,8 @@ void HomeActivity::loop() {
   if (carousel) {
     int touchX = 0, touchY = 0;
     if (mappedInput.wasScreenTapped(touchX, touchY)) {
-      const int target = carousellayout::menuHit(content.x, menuTop, content.width, GUI.getMenuRowHeight(renderer),
+      const int target = carousellayout::menuHit(content.x, menuTop, content.width,
+                                                 carousellayout::menuHeight(renderer.getLineHeight(SMALL_FONT_ID)),
                                                  page.count, touchX, touchY);
       if (target >= 0) {
         selectorIndex = page.first + target + static_cast<int>(recentBooks.size());
@@ -784,9 +795,9 @@ void HomeActivity::render(RenderLock&&) {
   coverRectX = content.x;
   coverRectY = metrics.homeTopPadding;
   coverRectW = content.width;
-  coverRectH = metrics.homeCoverTileHeight;
+  coverRectH = homeCoverTileHeight();
 
-  GUI.drawRecentBookCover(renderer, Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight},
+  GUI.drawRecentBookCover(renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()},
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
@@ -796,13 +807,13 @@ void HomeActivity::render(RenderLock&&) {
                            : carouselCenterIndex.load();
     if (center >= 0 && static_cast<size_t>(center) < carouselData.size())
       LyraCarouselTheme::drawReadingProgress(
-          renderer, Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight},
+          renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()},
           carouselData[center]);
   }
 #endif
   if (GUI.hasDashboardHome() && !recentBooks.empty()) {
     DashboardHomeTheme::drawReadingInfo(
-        renderer, Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight}, dashboardData);
+        renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()}, dashboardData);
   }
 
   // Build menu items dynamically
@@ -833,8 +844,9 @@ void HomeActivity::render(RenderLock&&) {
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
   if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
     LyraCarouselTheme::drawHomeMenu(
-        renderer, Rect{content.x, page.top, content.width, GUI.getMenuRowHeight(renderer)}, page.count,
-        selectorIndex - bookRows, [&menuItems](int index) { return std::string(menuItems[index]); },
+        renderer,
+        Rect{content.x, page.top, content.width, carousellayout::menuHeight(renderer.getLineHeight(SMALL_FONT_ID))},
+        page.count, selectorIndex - bookRows, [&menuItems](int index) { return std::string(menuItems[index]); },
         [&menuIcons](int index) { return menuIcons[index]; });
   } else
 #endif

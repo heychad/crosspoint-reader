@@ -35,9 +35,9 @@ int main(){
  d.hasStats=true;d.readingSeconds=120;LyraCarouselTheme::drawReadingProgress(r,area,d);
  assert(r.texts.size()==1 && r.texts[0]=="120s" && !r.tracks);
  r={};d.progress=42;LyraCarouselTheme::drawReadingProgress(r,area,d);
- assert(r.texts.size()==2 && r.texts[0]=="120s" && r.texts[1]=="42%" && r.tracks==1 && r.fills[0]==126);
+ assert(r.texts.size()==2 && r.texts[0]=="120s" && r.texts[1]=="42%" && r.tracks==1 && r.fills[0]==93);
  r={};d.hasStats=false;d.progress=150;LyraCarouselTheme::drawReadingProgress(r,area,d);
- assert(r.texts.size()==1 && r.texts[0]=="100%" && r.fills[0]==300);
+ assert(r.texts.size()==1 && r.texts[0]=="100%" && r.fills[0]==222);
  r={};d.progress=0;LyraCarouselTheme::drawReadingProgress(r,area,d);
  assert(r.texts.size()==1 && r.texts[0]=="0%" && r.tracks==1 && r.fills.empty());
 }

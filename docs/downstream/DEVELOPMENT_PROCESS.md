@@ -110,6 +110,7 @@ These are check durations, not coding speed or total development time.
 | Live book preview; shared layout changes | Full 1,833-test suite: 68.53 s | 127.59 s |
 | Four compatible preference imports | 10 affected checks: 2.23 s | 68.31 s |
 | Legacy book rendering profile | 95 affected checks: 0.91 s | 67.14 s |
+| Carousel geometry | 47 affected checks: 1.84 s initially; corrected fixture: 0.52 s | Carousel-enabled profile: 190.30 s, first-use setup included |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

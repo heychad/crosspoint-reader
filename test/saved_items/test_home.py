@@ -102,11 +102,12 @@ struct HomeActivity {
  void onFileTransferOpen(){opened="transfer";}
  void onSettingsOpen(){opened="settings";}
  int getMenuItemCount()const;
+ int homeCoverTileHeight()const;
  MenuPage menuPage()const;
  void loop();
 '''
 code+=method(header,'  static HomeMenuItem indexToMenuItem(')+'\n};\n'
-for signature in ['int HomeActivity::getMenuItemCount(', 'HomeActivity::MenuPage HomeActivity::menuPage(', 'void HomeActivity::loop(']:
+for signature in ['int HomeActivity::getMenuItemCount(', 'int HomeActivity::homeCoverTileHeight(', 'HomeActivity::MenuPage HomeActivity::menuPage(', 'void HomeActivity::loop(']:
     code+=method(source,signature)+'\n'
 code+=r'''
 int main(){
