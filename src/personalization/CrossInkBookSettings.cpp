@@ -69,7 +69,7 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
   if (!bytes || length == 0 || length > 256) return false;
   Cursor in{bytes, length};
   BookSettingsPreview result;
-  if (!in.byte(result.version) || result.version < 1 || result.version > 10) return false;
+  if (!in.byte(result.version) || result.version < 1 || result.version > 13) return false;
   if (result.version == 1) {
     if (!in.skip(2) || in.pos != length) return false;
     result.extraFlags = bytes[1] || bytes[2] ? 2 : 0;
@@ -103,8 +103,13 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
       if (!in.byte(octet)) return false;
       mask |= static_cast<uint32_t>(octet) << (8 * i);
     }
-    if (mask & ~ALL_OLD_BITS) return false;
+    const unsigned fieldCount = result.version < 11 ? 19 : result.version + 9;
+    if (mask & ~((1UL << fieldCount) - 1)) return false;
   }
+  uint8_t imageGrayscale = 1, characterSpacing = 5, publisherFonts = 0;
+  if (result.version >= 11 && (!in.byte(imageGrayscale) || imageGrayscale > 1)) return false;
+  if (result.version >= 12 && (!in.byte(characterSpacing) || characterSpacing > 10)) return false;
+  if (result.version >= 13 && (!in.byte(publisherFonts) || publisherFonts > 2)) return false;
   if (in.pos != length) return false;
   if (!(flags & 1)) mask = 0;
   // Early versions lacked these bytes and inherit their global values.
@@ -145,7 +150,19 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
   map(9, 10, 1);
   map(10, 9, 1);
   map(11, 11, 1);
-  map(12, 12, 2);
+  if (result.version < 11 || old[12] != 0) {
+    map(12, 12, 2);
+  } else if ((mask & ((1UL << 12) | (1UL << 18))) == ((1UL << 12) | (1UL << 18))) {
+    // Native image mode combines display and grayscale; require both owners.
+    set(result, 12, imageGrayscale ? 0 : 3);
+    result.unmappedMask &= ~((1UL << 12) | (1UL << 18));
+  }
+  if (result.version >= 12 && (mask & (1UL << 20)) && characterSpacing >= 1 && characterSpacing <= 9 &&
+      characterSpacing % 2 == 1) {
+    // CrossInk stores half-pixel steps around 5; native tracking uses whole pixels.
+    set(result, 3, (characterSpacing - 1) / 2);
+    result.unmappedMask &= ~(1UL << 20);
+  }
   map(13, 7, 1);
   map(15, 13, 1);
   result.extraFlags = flags & ~1;

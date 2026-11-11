@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect a CrossInk 1.6.1 per-book settings backup without changing it."""
+"""Inspect a CrossInk per-book settings backup without changing it."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 # The order and version gates follow EpubReaderActivity::readReaderSettingsSnapshot
-# at CrossInk commit 9914146eeae7b46b300f475a16c32426fc02ec1f.
+# through CrossInk commit 1990a78f2cbe015ecda91030fe85aca30624d89c.
 MASK_FIELDS = (
     'fontFamily', 'readerFontPointSize', 'lineHeightPercent', 'wordSpacing',
     'orientation', 'screenMarginVertical', 'screenMarginHorizontal',
@@ -65,7 +65,7 @@ def decode(data: bytes) -> dict:
         raise ValueError('invalid settings record size')
     reader = Reader(data)
     version = reader.u8()
-    if not 1 <= version <= 10:
+    if not 1 <= version <= 13:
         raise ValueError('unsupported settings record version')
     if version == 1:
         seconds = reader.integer(2)
@@ -99,15 +99,39 @@ def decode(data: bytes) -> dict:
     snap['sdFontFamilyName'] = reader.name()
     dictionary = reader.name() if version >= 5 else None
     dictionary_size = reader.u8() if version >= 7 else None
-    mask = reader.integer(4) if version >= 10 else (1 << len(MASK_FIELDS)) - 1
-    if mask & ~((1 << len(MASK_FIELDS)) - 1):
+    fields = MASK_FIELDS
+    if version >= 11:
+        fields = MASK_FIELDS[:18] + ('imageGrayscale', 'sdFontFamilyName')
+    if version >= 12:
+        fields += ('characterSpacing',)
+    if version >= 13:
+        fields += ('publisherFonts',)
+    mask = reader.integer(4) if version >= 10 else (1 << len(fields)) - 1
+    if mask & ~((1 << len(fields)) - 1):
         raise ValueError('unknown override bits')
+    for key, maximum in (('imageGrayscale', 1), ('characterSpacing', 10), ('publisherFonts', 2)):
+        minimum_version = {'imageGrayscale': 11, 'characterSpacing': 12, 'publisherFonts': 13}[key]
+        if version >= minimum_version:
+            snap[key] = reader.u8()
+            if snap[key] > maximum:
+                raise ValueError('invalid ' + key)
     if reader.pos != len(data):
         raise ValueError('unexpected trailing data')
-    overrides = {key: snap[key] for bit, key in enumerate(MASK_FIELDS)
+    overrides = {key: snap[key] for bit, key in enumerate(fields)
                  if flags & 1 and mask & (1 << bit) and key in snap}
     preview, unmapped = {}, []
+    image_pair = (version >= 11 and overrides.get('imageRendering') == 0
+                  and 'imageGrayscale' in overrides)
     for key, value in overrides.items():
+        if image_pair and key in ('imageRendering', 'imageGrayscale'):
+            preview['imageRendering'] = 0 if overrides['imageGrayscale'] else 3
+            continue
+        if version >= 11 and key == 'imageRendering' and value == 0:
+            unmapped.append(key)
+            continue
+        if key == 'characterSpacing' and 1 <= value <= 9 and value % 2:
+            preview['characterSpacing'] = (value - 1) // 2
+            continue
         if key == 'lineHeightPercent' and value in LINE_HEIGHTS:
             preview['lineHeight'] = LINE_HEIGHTS.index(value)
             continue

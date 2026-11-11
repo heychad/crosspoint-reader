@@ -49,7 +49,7 @@ inventory below records an earlier stage and is not the current status.
 | E4 Small/large UI scale | Built; display fit needs hardware checks. |
 | G1 Rendering controls and recovery | Manual Default, Balanced, and Light profiles built. Known chapter-build memory failures retry progressively with simpler profiles, then without embedded styling or focus mode, for the current session. Disabling styles can reveal text hidden by the publisher's CSS. The last known text offset is preserved when available. Other failures do not trigger this retry. The fallback, message, and device behavior need review and testing. |
 | G2 Silent next-chapter prefetch | Experimental scheduler builds the next EPUB section near the end of the current one, with input cancellation and heap/radio guards. It requires the experimental build flag; review, responsiveness measurements, and device validation remain. |
-| G3 Complete old-settings migration | Partial; embedded edge gestures, supported side-button bindings and orientation, long-power and Power+Up bindings, and compatible Quick Actions slots import when modern keys are absent. CrossInk font-switch bindings import as the fork's font cycle, which also includes usable installed fonts. Separate imports cover supported controls, touch gestures, library filters and layouts, compatible reading and sleep settings, and top and bottom bars; conflicting two-finger swipe groups stay unchanged. CrossInk chapter-time slots import when experimental chapter time is enabled; stable-page slots and chapter time in other builds are refused without changing current bars. Compatible per-book values can import when native book preferences are absent. Unsupported Quick Actions slots and triggers, other global settings, and remaining per-book fields need migration. |
+| G3 Complete old-settings migration | Partial; embedded edge gestures, supported side-button bindings and orientation, long-power and Power+Up bindings, and compatible Quick Actions slots import when modern keys are absent. CrossInk font-switch bindings import as the fork's font cycle, which also includes usable installed fonts. Separate imports cover supported controls, touch gestures, library filters and layouts, compatible reading and sleep settings, and top and bottom bars; conflicting two-finger swipe groups stay unchanged. CrossInk chapter-time slots import when experimental chapter time is enabled; stable-page slots and chapter time in other builds are refused without changing current bars. Compatible per-book values from CrossInk formats 1–13 can import when native book preferences are absent. Unsupported Quick Actions slots and triggers, other global settings, and remaining per-book fields need migration. |
 | G4 Personal automatic update channel | Fork release configuration prepared, but online checking and installation are disabled pending authentication. |
 | G5 Optional developer diagnostics | Read-only X4 Pro memory diagnostics built; hardware checks remain. |
 
@@ -214,3 +214,17 @@ normal frontlight action. Ordinary double-click actions do not claim ownership.
 
 The trigger fix passed 24 targeted checks and the X4 Pro build (77.76 seconds).
 Hardware and release review remain pending.
+
+## RC per-book decoder
+
+CrossInk per-book settings versions 11–13 are now decoded alongside versions
+1–10. Compatible owned fields import when native preferences are absent.
+The preview preserves unsupported fields, and the original source remains
+unchanged. Exact whole-pixel character spacing is supported. Image grayscale
+maps only with a matching explicit image-display override. Font migration,
+Safe Mode, half-pixel tracking, and other unsupported per-book fields remain
+open; this does not complete G3.
+
+The RC decoder passed 1,808 reference and malformed-record cases, 43 relevant
+host checks, and the X4 Pro build (69.94 seconds). Device validation remains
+pending.

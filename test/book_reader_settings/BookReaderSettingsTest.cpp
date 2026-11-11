@@ -1045,3 +1045,35 @@ TEST_F(BookSettings, CrossInkHomeOrderImportsOnlyWhenOldThemeUsedIt) {
   EXPECT_FALSE(crossinkimport::stageLibrary(source.as<JsonVariantConst>(), current, false));
   EXPECT_EQ(current["libraryFirstOnHome"].as<int>(), 0);
 }
+
+TEST_F(BookSettings, RcPerBookSettingsImportExactFieldsAndPreserveSource) {
+  auto source = crossInkV10();
+  source[0] = 13;
+  const uint32_t mask = (1U << 4) | (1U << 12) | (1U << 18) | (1U << 20) | (1U << 21);
+  for (unsigned i = 0; i < 4; ++i) source[source.size() - 4 + i] = static_cast<char>(mask >> (8 * i));
+  source.push_back(0);  // B/W image rendering
+  source.push_back(7);  // +1 px character spacing
+  source.push_back(2);  // Publisher fonts stay in the source, unsupported by this import.
+  const std::string legacy = std::string(CACHE) + "/reader_settings.bin";
+  put(legacy, source);
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, (1U << 4) | (1U << 12) | (1U << 3));
+  EXPECT_EQ(settings.preferences.values[4], 1);
+  EXPECT_EQ(settings.preferences.values[12], 3);
+  EXPECT_EQ(settings.preferences.values[3], 3);
+  ASSERT_TRUE(store.save(settings));
+  EXPECT_FALSE(Storage.exists(PATH));  // Opening alone does not create a native override file.
+  settings.preferences.values[4] = 2;
+  ASSERT_TRUE(store.save(settings));
+  EXPECT_TRUE(Storage.exists(PATH));
+  BookReaderPreferences reopened;
+  BookReaderSettings loaded;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", loaded));
+  EXPECT_EQ(loaded.preferences.values[4], 2);
+  EXPECT_EQ(loaded.mask, settings.mask);
+  std::string after;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
+  EXPECT_EQ(after, source);
+}

@@ -9,7 +9,9 @@ preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
 
 
-def record(version, flags=1, mask=(1 << 19) - 1):
+def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0):
+    if mask is None:
+        mask = (1 << (19 if version < 11 else version + 9)) - 1
     if version == 1:
         return bytes([1, 45, 0])
     data = bytearray([version, flags, 45, 0, 2, 3, 18, 110])
@@ -30,12 +32,18 @@ def record(version, flags=1, mask=(1 << 19) - 1):
         data.append(16)
     if version >= 10:
         data.extend(mask.to_bytes(4, 'little'))
+    if version >= 11:
+        data.append(image_grayscale)
+    if version >= 12:
+        data.append(character_spacing)
+    if version >= 13:
+        data.append(publisher_fonts)
     return bytes(data)
 
 
 class DecodeTest(unittest.TestCase):
     def test_all_versions_and_truncation(self):
-        for version in range(1, 11):
+        for version in range(1, 14):
             data = record(version)
             self.assertEqual(preview.decode(data)['version'], version)
             for length in range(len(data)):
@@ -84,9 +92,30 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual(preview.decode(bytes(data))['unmapped'], ['wordSpacing'])
 
     def test_rejects_unknown_version_flags_and_masks(self):
-        for data in (b'\x0b', record(10, flags=0x80), record(10, mask=1 << 20)):
+        for data in (b'\x0e', record(10, flags=0x80), record(10, mask=1 << 20)):
             with self.assertRaises(ValueError):
                 preview.decode(data)
+
+    def test_rc_masks_and_image_ownership(self):
+        both = (1 << 12) | (1 << 18)
+        for version in (11, 12, 13):
+            data = bytearray(record(version, mask=both, image_grayscale=0))
+            data[17] = 0  # image rendering field in versions with split margins and no dark-mode byte
+            self.assertEqual(preview.decode(bytes(data))['preview'], {'imageRendering': 3})
+            data = bytearray(record(version, mask=1 << 12))
+            data[17] = 0
+            self.assertEqual(preview.decode(bytes(data))['preview'], {})
+            self.assertEqual(preview.decode(record(version, mask=1 << 19))['unmapped'], ['sdFontFamilyName'])
+
+    def test_character_spacing_requires_exact_whole_pixels(self):
+        for value in range(11):
+            result = preview.decode(record(12, mask=1 << 20, character_spacing=value))
+            expected = {'characterSpacing': (value - 1) // 2} if value in (1, 3, 5, 7, 9) else {}
+            self.assertEqual(result['preview'], expected)
+        for version, kwargs in ((11, {'image_grayscale': 2}), (12, {'character_spacing': 11}),
+                                (13, {'publisher_fonts': 3})):
+            with self.assertRaises(ValueError):
+                preview.decode(record(version, **kwargs))
 
     def test_current_preferences_take_precedence(self):
         result = preview.decode(record(10, mask=(1 << 1) | (1 << 2) | (1 << 4)))
