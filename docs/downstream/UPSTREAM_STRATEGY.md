@@ -7,7 +7,8 @@ Checked November 11, 2026.
 - Personal fork: https://github.com/heychad/crosspoint-reader
 - Upstream: https://github.com/crosspoint-reader/crosspoint-reader
 - Feature reference: https://github.com/uxjulia/CrossInk
-- Working branch: `codex/x4pro-completion-integration`.
+- Pushed feature checkpoint: `codex/x4pro-completion-integration`, `9c98e395`.
+- Current upstream integration branch: `codex/x4pro-upstream-20261111`.
 - Stable baseline: CrossPoint 2.0.0, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - Current upstream development tip: `0333cbbe4`, 45 commits beyond the stable baseline.
 - Original CrossInk reference: v1.6.1, `9914146ee`.
@@ -33,7 +34,12 @@ Before the next feature batch:
 
 ## Ongoing maintenance
 
-- Check upstream at each integration milestone and before a firmware release.
+- Check both CrossPoint and CrossInk at each integration milestone and before a
+  firmware release. Compare stable releases, release candidates and subsequent
+  fixes; record the exact commits reviewed.
+- For each CrossInk change, check whether CrossPoint already includes it, whether
+  our port still needs it, and whether it belongs to the agreed Now or Later
+  scope. Fixes to already-ported features take priority over new features.
 - Prefer upstream fixes over maintaining equivalent custom patches.
 - Keep reader-specific policy and plugins separate where the existing APIs fit.
 - Preserve the SDK submodule pin; store necessary local SDK changes as reproducible
@@ -44,8 +50,28 @@ Before the next feature batch:
 
 ## Current limitations
 
-The integration worktree still contains substantial uncommitted experimental
-work. Its feature checklist is not proof of full CrossInk parity or release
-readiness. CrossInk's new release-candidate SDK submodule could not be fetched
+The feature checkpoint is committed and pushed. The upstream merge passed the X4 Pro build and all 1,779 host tests, including
+focused reruns of five corrected test fixtures. It is not a firmware release. Experimental features in the
+checkpoint remain incomplete or unverified. The feature checklist is not proof
+of full CrossInk parity or release readiness. CrossInk's new release-candidate SDK submodule could not be fetched
 from its referenced upstream object during this check; the top-level source was
 fetched successfully. Do not substitute another SDK revision without review.
+
+## CrossInk follow-up audit
+
+Compare `v2.0.0-rc` (`b8feaec4d`) and development `1990a78f2` after the
+CrossPoint update. Do not assume the old v1.6.1 parity inventory covers them.
+
+Priorities from the current source comparison:
+
+- Audit the IPC task-stack fix in `1990a78f2` against this fork's S3 build.
+  This fork still configures a 1 KiB IPC stack; CrossInk wraps task creation to
+  raise only IPC tasks to 2 KiB. The prebuilt SDK behavior needs checking before
+  choosing a fix. This is a candidate, not an integrated fix.
+- Compare sync error handling and position recovery before extending sync.
+- Compare fixes to dashboard covers, Carousel placement, and grouped EPUB
+  headings against equivalent CrossPoint changes to avoid duplicate patches.
+- Reconcile RC status-bar sizing, battery modes, screen calibration, and
+  chapter shortcuts with the selected feature inventory.
+- Keep later-scope fonts, dictionary additions, and nearby sync out of the next
+  release batch unless the human changes scope.

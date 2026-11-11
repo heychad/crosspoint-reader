@@ -49,7 +49,7 @@ struct ButtonNavigator {
  template<class F>void onPressAndContinuous(std::initializer_list<MappedInputManager::Button>,F){}
 };
 struct CoverGrid {int selectedAction(const MappedInputManager&){return -1;}};
-enum class HomeMenuItem {NONE,FILE_BROWSER,LIBRARY,SAVED_ITEMS,OPDS_BROWSER,FILE_TRANSFER,SETTINGS_MENU};
+enum class HomeMenuItem {NONE,FILE_BROWSER,LIBRARY,SAVED_ITEMS,PLUGINS,OPDS_BROWSER,FILE_TRANSFER,SETTINGS_MENU};
 std::string opened;
 struct {void goToSavedItems(){opened="saved";}void goHome(){opened="home";}} activityManager;
 struct ReadingStatsDate {};
@@ -93,6 +93,7 @@ struct HomeActivity {
  static void showDeferredMove(void* context){static_cast<HomeActivity*>(context)->deferredMoveOverlayShown=true;}
  std::atomic<int> carouselCenterIndex{0};
  bool hasLibrarySlot()const{return hasPlugins||hasOpdsServers;}
+ HomeMenuItem slotItem()const{return hasPlugins?HomeMenuItem::PLUGINS:hasOpdsServers?HomeMenuItem::OPDS_BROWSER:HomeMenuItem::NONE;}
  void requestUpdate(){++updates;}
  void onRecentBookSelected(const std::string& path){opened=path;}
  void onFileBrowserOpen(){opened="files";}

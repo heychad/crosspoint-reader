@@ -31,7 +31,7 @@ code = r'''
 #include <vector>
 #include "activities/ActivityResult.h"
 struct ReferencePageMap { struct Target {}; };
-enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, SAVED_ITEMS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, SAVED_ITEMS, PLUGINS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
 struct Metrics { int homeTopPadding,homeCoverTileHeight,homeMenuTopOffset,buttonHintsHeight,menuSpacing;bool homeContinueReadingInMenu; };
 struct Renderer {int height=800; int getScreenHeight()const{return height;}};
 struct Theme {int rowHeight=64,inset=0;int getMenuRowHeight(const Renderer&)const{return rowHeight;}int getMenuTopInset()const{return inset;}} GUI;
@@ -73,17 +73,17 @@ code += '\n}\n void resolve() {' + resolve + '\n}\n};\n'
 code += block(reader, 'void EpubReaderActivity::clearDeferredReposition(')
 code += r'''
 int main() {
-  for (bool extra : {false, true}) for (bool libraryFirst : {false, true}) {
+  for (auto slot : {HomeMenuItem::NONE, HomeMenuItem::PLUGINS, HomeMenuItem::OPDS_BROWSER}) for (bool libraryFirst : {false, true}) {
     const HomeMenuItem expected[] = {libraryFirst ? HomeMenuItem::LIBRARY : HomeMenuItem::FILE_BROWSER,
                                     libraryFirst ? HomeMenuItem::FILE_BROWSER : HomeMenuItem::LIBRARY, HomeMenuItem::SAVED_ITEMS,
-                                    HomeMenuItem::OPDS_BROWSER,HomeMenuItem::FILE_TRANSFER,HomeMenuItem::SETTINGS_MENU};
+                                    slot,HomeMenuItem::FILE_TRANSFER,HomeMenuItem::SETTINGS_MENU};
     int index=0;
     for (auto item : expected) {
-      if (!extra && item == HomeMenuItem::OPDS_BROWSER) continue;
-      assert(HomeActivity::menuItemToIndex(item,extra,libraryFirst)==index);
-      assert(HomeActivity::indexToMenuItem(index++,extra,libraryFirst)==item);
+      if (item == HomeMenuItem::NONE) continue;
+      assert(HomeActivity::menuItemToIndex(item,slot,libraryFirst)==index);
+      assert(HomeActivity::indexToMenuItem(index++,slot,libraryFirst)==item);
     }
-    assert(HomeActivity::indexToMenuItem(index,extra,libraryFirst)==HomeMenuItem::NONE);
+    assert(HomeActivity::indexToMenuItem(index,slot,libraryFirst)==HomeMenuItem::NONE);
   }
   HomeActivity home;
   for (int height : {320,480,792,800}) {

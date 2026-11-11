@@ -82,7 +82,7 @@ namespace {
 // v71: Focus split offsets follow the visual run order for RTL words.
 // v72: Make ruby rendering closer to how Chromium renders ruby by default.
 // v73: TrueType vector fonts load and advance .notdef for missing glyphs.
-// v78: Rendering mode is included in the header.
+// v78: Rendering mode is included; also invalidates pre-fix TrueType advances.
 constexpr uint8_t SECTION_FILE_VERSION = 78;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /

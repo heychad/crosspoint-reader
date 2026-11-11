@@ -31,10 +31,10 @@ constexpr int COVER_ROW_EXTRA_HEIGHT = 8;
 CoverGridHomeUi::CoverGridHomeUi(GfxRenderer& renderer)
     : UiAppHost(renderer), coverCache(renderer), renderer(renderer) {}
 
-void CoverGridHomeUi::begin(const std::vector<RecentBook>& recent, bool opds, bool continuing,
+void CoverGridHomeUi::begin(const std::vector<RecentBook>& recent, const SlotTab slot, bool continuing,
                             bool libraryFirstOnHome) {
   books = &recent;
-  hasOpds = opds;
+  slotTab = slot;
   libraryFirst = libraryFirstOnHome;
   hasContinueReading = continuing;
   if (!recent.empty()) coverCache.begin();
@@ -290,7 +290,7 @@ void CoverGridHomeUi::drawTabs(UiScreen& screen, fui::Rect rect) {
                                              BlocksIcon, TransferIcon, Settings2Icon};
   int count = 0;
   for (int i = 0; i < 6; ++i) {
-    if (i == 3 && !hasOpds) continue;
+    if (i == 3 && slotTab == SlotTab::NONE) continue;
     auto& tab = tabItems[count];
     tab.value = books->size() + count;
     tab.selected = selected == tab.value;
@@ -307,9 +307,10 @@ void CoverGridHomeUi::drawTabs(UiScreen& screen, fui::Rect rect) {
   tabs.iconPainter = [](fui::DrawTarget&, fui::Rect iconRect, const fui::TabItem& tab, uint8_t, void* user) {
     const auto& self = *static_cast<CoverGridHomeUi*>(user);
     const int index = tab.value - static_cast<int>(self.books->size());
-    int icon = !self.hasOpds && index >= 3 ? index + 1 : index;
+    int icon = self.slotTab == SlotTab::NONE && index >= 3 ? index + 1 : index;
     if (self.libraryFirst && icon < 2) icon = 1 - icon;
-    self.renderer.drawIcon(ICONS[icon], iconRect.x, iconRect.y, iconRect.width);
+    const uint8_t* bitmap = icon == 3 && self.slotTab == SlotTab::OPDS ? BookIcon : ICONS[icon];
+    self.renderer.drawIcon(bitmap, iconRect.x, iconRect.y, iconRect.width);
     return true;
   };
   // No pill fill; the underline marks the selected tab.

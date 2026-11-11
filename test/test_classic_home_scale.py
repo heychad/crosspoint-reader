@@ -21,7 +21,9 @@ struct GfxRenderer {
  std::vector<Draw> draws;
  int getLineHeight(int font)const{return font==UI_10_FONT_ID?10:12;}
  std::vector<std::string> wrappedText(int font,const char* title,int width,int max)const{
-  assert(font==uiScaleSpec().bodyFontId && width>0 && max==3);
+  assert(width>0 && max==3);
+  if(title[0]=='L') assert(font==uiScaleSpec().bodyFontId);
+  else assert(font==uiScaleSpec().bodyFontId || font==UI_10_FONT_ID || font==SMALL_FONT_ID);
   return title[0]=='L'?std::vector<std::string>{"Long","book","title"}:std::vector<std::string>{title};}
  std::string truncatedText(int,const char* s,int)const{return s;}
  int getTextWidth(int,const char* s)const{return static_cast<int>(std::string(s).size())*5;}

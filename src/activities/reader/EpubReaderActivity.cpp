@@ -230,6 +230,15 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
 // key only; on other boards a press stops the build once the loop has debounced it.
 bool buttonContactClosed() { return gpio.rawInputActive(); }
 
+// Only single-page selections can be restored: the reader moves to the end page
+// after a clipping, so a multi-page range can no longer be mapped back.
+ClipSelectionActivity::Selection lookupReturnSelectionFor(const ClippingResult& clipping) {
+  if (clipping.startPageOffset != clipping.endPageOffset) return {};
+  // The restored cursor lands on lastWord, so make that the end the user was extending.
+  if (clipping.cursorAtStart) return {0, 0, clipping.endWordIndex, clipping.startWordIndex, true};
+  return {0, 0, clipping.startWordIndex, clipping.endWordIndex, true};
+}
+
 }  // namespace
 
 EpubReaderActivity::~EpubReaderActivity() {
@@ -364,6 +373,7 @@ bool EpubReaderActivity::loadBook() {
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
   initializeCompletionPrompt();
 #endif
+  vocabularyMetadata.reset();
 
   ImageBlock::clearRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
@@ -565,6 +575,7 @@ void EpubReaderActivity::backgroundBuildTick() {
 
 void EpubReaderActivity::openDictionaryWordSelect() {
   if (SETTINGS.dictionaryName[0] == '\0') {
+    pendingLookupSelection = {};
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();
     requestUpdate();
@@ -575,6 +586,8 @@ void EpubReaderActivity::openDictionaryWordSelect() {
 
 void EpubReaderActivity::startClipSelection(const int initialX, const int initialY,
                                             const ClipSelectionActivity::Mode mode) {
+  const auto restoreSelection = pendingLookupSelection;
+  pendingLookupSelection = {};
   if (!section || !epub || section->currentPage < 0 || section->currentPage >= section->pageCount) return;
 
   const int pageNumber = section->currentPage;
@@ -627,6 +640,7 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
 
   auto activity = makeUniqueNoThrow<ClipSelectionActivity>(renderer, mappedInput, std::move(pages), marginLeft,
                                                            marginTop, initialX, initialY, mode);
+  if (activity && restoreSelection.valid) activity->setInitialSelection(restoreSelection);
   if (!activity) {
     LOG_ERR("CLIP", "Failed to allocate clipping selection activity");
     requestUpdate();
@@ -661,15 +675,44 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
         return;
       }
       const auto pageLayout = readerPageLayout();
-      auto lookup = makeUniqueNoThrow<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
-                                                                    pageLayout.left, pageLayout.top, clipping.text);
+      std::string chapter = chapterTitle;
+      if (section && currentSpineIndex == spineIndex) {
+        // TOC anchors are indexed by rendered page, not by the selected word's offset.
+        // Multiple chapter anchors on one page cannot be distinguished here.
+        const int selectedTocIndex = section->getTocIndexForPage(startPage);
+        if (selectedTocIndex >= 0) chapter = epub->getTocItem(selectedTocIndex).title;
+      }
+      VocabularyContext vocabulary;
+      vocabulary.title = std::move(bookTitle);
+      vocabulary.author = std::move(author);
+      vocabulary.chapter = std::move(chapter);
+      vocabulary.page = startPage + 1;
+      vocabulary.spine = spineIndex;
+      vocabulary.startOffset = clipping.startOffset;
+      if (SETTINGS.vocabularyHistoryEnabled && !vocabularyMetadata) {
+        auto metadata = makeUniqueNoThrow<Epub::SyncMetadata>();
+        if (metadata && epub->loadSyncMetadata(*metadata)) {
+          vocabularyMetadata = std::move(metadata);
+        }
+      }
+      if (vocabularyMetadata) {
+        vocabulary.series = vocabularyMetadata->series;
+        vocabulary.seriesIndex = vocabularyMetadata->seriesIndex;
+      }
+      auto lookup =
+          makeUniqueNoThrow<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page), pageLayout.left,
+                                                          pageLayout.top, clipping.text, std::move(vocabulary));
       if (!lookup) {
         LOG_ERR("CLIP", "OOM: dictionary lookup activity");
         requestUpdate();
         return;
       }
+      lookupReturnSelection = lookupReturnSelectionFor(clipping);
       startActivityForResult(std::move(lookup), [this](const ActivityResult& result) {
-        if (!result.isCancelled && !mappedInput.hasTouch()) openDictionaryWordSelect();
+        if (!result.isCancelled && !mappedInput.hasTouch()) {
+          pendingLookupSelection = lookupReturnSelection;
+          openDictionaryWordSelect();
+        }
       });
       return;
     }

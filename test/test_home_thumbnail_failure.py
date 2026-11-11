@@ -21,7 +21,8 @@ namespace FsHelpers {
 bool hasReflowableBookExtension(const std::string& p){return p=="book.epub";}
 bool hasXtcExtension(const std::string& p){return p=="book.xtc";}
 }
-struct Epub { Epub(const std::string&,const char*){} void load(bool,bool){} bool generateThumbBmp(int){return false;} };
+bool cacheLoads=true;
+struct Epub { Epub(const std::string&,const char*){} bool load(bool,bool){return cacheLoads;} bool generateThumbBmp(int){return false;} bool generateThumbBmpFromSource(int){return false;} };
 struct Xtc { Xtc(const std::string&,const char*){} bool load(){return true;} bool generateThumbBmp(int){return false;} };
 constexpr int STR_LOADING_POPUP=1; const char* tr(int){return "Loading";}
 struct Gui { template<class R> Rect drawPopup(R&,const char*){return{};} template<class R> void fillPopupProgress(R&,Rect,int){} } GUI;
@@ -35,7 +36,8 @@ struct HomeActivity {
 };
 ''' + function + r'''
 int main(){
- for(const auto* name : {"book.epub", "book.xtc"}){
+ for(bool loads : {false,true}) for(const auto* name : {"book.epub", "book.xtc"}){
+  cacheLoads=loads;
   RecentBook saved{name,"Title","Author","cover_[HEIGHT]"};
   HomeActivity minimal; minimal.recentBooks={saved}; minimal.loadRecentCovers(300);
   assert(minimal.recentsLoaded && !minimal.recentsLoading && minimal.recentBooks[0].coverBmpPath.empty());

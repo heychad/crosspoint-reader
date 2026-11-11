@@ -22,7 +22,16 @@ class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 enum class SavedItemKind : uint8_t;
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, SAVED_ITEMS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+enum class HomeMenuItem {
+  NONE,
+  FILE_BROWSER,
+  LIBRARY,
+  SAVED_ITEMS,
+  PLUGINS,
+  OPDS_BROWSER,
+  FILE_TRANSFER,
+  SETTINGS_MENU
+};
 
 /**
  * ActivityManager
@@ -143,7 +152,7 @@ class ActivityManager {
   void goToSavedItems();
   void goToSavedBook(std::string path, SavedItemKind kind);
   void goToBrowser();
-  void goToPlugins(bool showOpds);
+  void goToPlugins();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);
   void goToBoot();

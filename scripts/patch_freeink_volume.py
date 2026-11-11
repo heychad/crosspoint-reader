@@ -12,8 +12,8 @@ patcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patcher)
 TARGET = Path('libs/hardware/SDCardManager/include/SDCardManager.h')
 PATCH = Path('scripts/freeink_patches/0002-mounted-filesystem-type.patch')
-ORIGINAL_SHA256 = '4d6d5ced3b8763b645519baf74c34a4385b78478766cce6fa79d2c28accdfed2'
-PATCHED_SHA256 = '8398495e33f83aae0a3e8dba5ea85a4cdc01af245b60b6fcc3a6a29c92a1f876'
+ORIGINAL_SHA256 = '6ffa410d946317b135acb986372d6f6fc63dedaf8279c3ac3db67e4460afed9a'
+PATCHED_SHA256 = 'a871835efaacabc60e24e7cb88a93807e2e371086bff07d4074a703bfbd232a1'
 PATCH_SHA256 = 'bec67f3b83037b211d9e1252ace21d3fa6ed2d5516da02a934f3858d6f2a0feb'
 
 

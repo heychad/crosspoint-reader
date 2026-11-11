@@ -37,6 +37,9 @@ assert 'pio check -e x4pro' in ci
 assert 'python3 scripts/gen_i18n.py' in ci
 assert 'ctest --test-dir build/test --output-on-failure -j 1' in ci
 assert 'if: ${{ !github.event.release.prerelease }}' in release
+for step in ('Prepare license asset', 'Stage license asset'):
+    section = release.split(f'      - name: {step}\n', 1)[1].split('      - ', 1)[0]
+    assert '        if:' not in section, 'X4 Pro release must always include its license'
 validate = run_block(release, 'Validate release version')
 attach = run_block(release, 'Attach firmware assets')
 
@@ -56,6 +59,7 @@ with tempfile.TemporaryDirectory() as directory:
     (root / 'dist').mkdir()
     asset = root / 'dist/crosspoint-2.0.0-chad.4-x4pro.bin'
     asset.write_bytes(b'firmware fixture')
+    (root / 'dist/LICENSE').write_text('License fixture')
     bin_dir = root / 'bin'
     bin_dir.mkdir()
     gh = bin_dir / 'gh'
@@ -65,7 +69,7 @@ with tempfile.TemporaryDirectory() as directory:
     args = {'PATH': str(bin_dir) + os.pathsep + env['PATH'], 'GH_RECORD': str(record), 'GITHUB_REPOSITORY': 'heychad/crosspoint-reader'}
     assert run(attach, **args).returncode == 0
     called = record.read_text().splitlines()
-    assert called == ['release', 'upload', '2.0.0-chad.4', str(asset.relative_to(root)), '--repo', 'heychad/crosspoint-reader']
+    assert called == ['release', 'upload', '2.0.0-chad.4', str(asset.relative_to(root)), 'dist/LICENSE', '--repo', 'heychad/crosspoint-reader']
     record.unlink()
     (root / 'dist/crosspoint-2.0.0-chad.4-x4.bin').write_bytes(b'extra')
     assert run(attach, **args).returncode != 0 and not record.exists()

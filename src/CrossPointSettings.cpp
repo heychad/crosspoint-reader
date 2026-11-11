@@ -316,6 +316,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // display-index mapping and is skipped by the generic persistence loop.
   doc["longPressMenuFunction"] = longPressMenuFunction;
   doc["shortPwrBtn"] = shortPwrBtn;
+  doc["doublePwrBtn"] = doublePwrBtn;
+  doc["powerActionSchema"] = 1;
 
   // Language -- managed by LanguageSelectActivity, not in SettingsList.
   // Stored as ISO code string ("EN", "DE", ...) for stability across enum reorders.
@@ -420,6 +422,12 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   needsResave |= readerquickactions::read(doc, readerQuickActions);
   const bool importedLegacyQuickSlots = readershortcuts::readEmbeddedLegacyQuickSlots(doc, readerQuickActions);
 
+  // Keep landscape swapping opt-in when loading older settings.
+  if (doc["sideButtonFollowOrientation"].isNull()) {
+    sideButtonFollowOrientation = 0;
+    needsResave = true;
+  }
+
   // Plugin System did not exist in older settings files. Preserve the behavior
   // of users who already have SD plugins installed, while keeping the new
   // default disabled on clean installs.
@@ -492,6 +500,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Do not force a resave solely for this import: a normal settings save will
   // persist the modern binding, while loading leaves the legacy file intact.
   readershortcuts::migrateLegacyHomePowerTap(doc, BoardConfig::hasHomeKey(), powerTapAction);
+  doublePwrBtn =
+      clamp(doc["doublePwrBtn"] | (uint8_t)((doc["doubleClickPwrLight"] | (uint8_t)1) ? PWR_FRONTLIGHT : IGNORE),
+            (uint8_t)SHORT_PWRBTN_COUNT, (uint8_t)PWR_FRONTLIGHT);
+  if ((doc["powerActionSchema"] | 0) == 0 && doublePwrBtn == PWR_QUICK_ACTIONS) doublePwrBtn = PWR_FRONTLIGHT;
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync,       HomeButtonAction::Ignore,

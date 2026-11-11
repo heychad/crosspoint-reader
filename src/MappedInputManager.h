@@ -5,6 +5,7 @@
 #include <array>
 
 #include "util/HomeButtonInput.h"
+#include "util/PowerButtonInput.h"
 #include "util/RemoteButtonInput.h"
 #include "util/SideButtonPolicy.h"
 
@@ -55,11 +56,19 @@ class MappedInputManager {
     readerHomeBlocked = blocked;
     resetHomeButtonInput();
   }
-#if FREEINK_CAP_TOUCH
-  // X4 Pro delays a single power click until its frontlight double-click window
-  // expires. The main loop supplies that one-frame event here.
-  void setPowerConfirmClickFrame(const bool clicked) { powerConfirmClickFrame = clicked; }
-#endif
+  bool powerSleepClick() const { return powerSleepFrame; }
+  void setPowerShortcutOverride(bool enabled) {
+    if (powerShortcutOverride == enabled) return;
+    powerShortcutOverride = enabled;
+    resetPowerButtonInput();
+  }
+  bool wasPowerSingleClick() const { return powerSingleClickFrame || wasReleased(Button::Power); }
+  void resetPowerButtonInput() const {
+    powerButtonInput.reset();
+    powerSingleClickFrame = false;
+    powerSleepFrame = false;
+    deferredPowerSleepFrame = false;
+  }
   bool injectRemoteClick(RemoteButton button);
   bool hasRemoteClick() const { return remoteInput.button != RemoteButton::None; }
   bool wasPressed(Button button) const;
@@ -180,6 +189,7 @@ class MappedInputManager {
   const GfxRenderer& renderer;
 
   Button mapScreenDirection(Button button) const;
+  bool areSidePageButtonsSwapped() const;
   Labels mapFrontLabels(const char* back, const char* confirm, const char* left, const char* right) const;
   bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;
   // SDK edge classification (fui::edgeSwipe) + the shared decode/held-time
@@ -200,6 +210,11 @@ class MappedInputManager {
   mutable HomeButtonInput homeButtonInput;
   mutable HomeButtonInput::Gesture homeGesture = HomeButtonInput::Gesture::None;
   mutable HomeButtonInput::Gesture deferredHomeGesture = HomeButtonInput::Gesture::None;
+  mutable PowerButtonInput powerButtonInput;
+  bool powerShortcutOverride = false;
+  mutable bool powerSingleClickFrame = false;
+  mutable bool powerSleepFrame = false;
+  mutable bool deferredPowerSleepFrame = false;
   mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;
   mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
   bool readerHomeBlocked = false;
@@ -208,7 +223,4 @@ class MappedInputManager {
   mutable unsigned long touchHeldOverrideAt = 0;
   mutable uint16_t longPressFiredButtons = 0;
   mutable uint16_t suppressedReleaseButtons = 0;
-#if FREEINK_CAP_TOUCH
-  bool powerConfirmClickFrame = false;
-#endif
 };

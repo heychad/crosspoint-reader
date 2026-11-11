@@ -21,7 +21,7 @@ def function(signature):
 
 impl = source[source.index('class HalFile::Impl {'):source.index('\nHalFile::HalFile() = default;')]
 constructors = source[source.index('HalFile::HalFile() = default;'):source.index('\nHalStorage::SnapshotRead HalStorage::readDirectoryRecord(')]
-macro = source[source.index('#define HAL_STORAGE_MUTATION_CALL'):source.index('\n\nstd::vector<String>', source.index('#define HAL_STORAGE_MUTATION_CALL'))]
+macro = source[source.index('#define HAL_STORAGE_WRAPPED_CALL'):source.index('\n\nstd::vector<String>', source.index('#define HAL_STORAGE_MUTATION_CALL'))]
 signatures = [
     'bool HalStorage::beginMutationSnapshot(', 'bool HalStorage::mutationSnapshotUnchanged(',
     'HalStorage::SnapshotRead HalStorage::readDirectoryRecord(',
@@ -78,6 +78,7 @@ struct FsFile {
 };
 struct Card {
  bool mounted=true,failOpen=false,nextCloseOk=true,canDetach=true,failSdkWrite=false,pathExists=true,failMutation=false;
+ uint64_t sdTotalBytes(){return 4096;} bool sdUsedBytes(uint64_t& bytes){bytes=1024;return true;}
  bool ready()const{return mounted;}
  bool exists(const char*)const{return pathExists;}
  FsFile open(const char*,int flags){if(failOpen){failOpen=false;return{};}return {std::make_shared<FileState>(FileState{true,(flags&O_ACCMODE)!=O_RDONLY,nextCloseOk})};}
@@ -113,6 +114,7 @@ class HalStorage {
  class StorageLock {static std::recursive_mutex mutex;std::lock_guard<std::recursive_mutex> guard;
  public:StorageLock():guard(mutex){}};
  static HalStorage& getInstance(){static HalStorage value;return value;}
+ uint64_t sdTotalBytes();bool sdUsedBytes(uint64_t&);
  bool observedSdmmcHealthy() const {return SDCard.ready() && !monitorFault;}
  bool beginMutationSnapshot(MutationSnapshot&);bool mutationSnapshotUnchanged(const MutationSnapshot&);
  SnapshotRead readDirectoryRecord(HalFile&,const MutationSnapshot&,uint8_t*);

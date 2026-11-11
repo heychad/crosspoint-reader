@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 
-SDK_REVISION = '5e94fe7480f019c89fbf691aef87523eb1b46704'
+SDK_REVISION = '6a208c0c46cce99bafa334bc4f171f5e558c5195'
 TARGET = Path('libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp')
 PATCH = Path('scripts/freeink_patches/0001-x4pro-sync-io-monitor.patch')
 ORIGINAL_SHA256 = 'db88b2009b85e7fcffcf53a2b355d92c32178b743dd9fb4f08eb93ee05eebba5'
