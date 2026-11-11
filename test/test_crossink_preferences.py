@@ -11,7 +11,9 @@ program = r'''
 #include "personalization/CrossInkPreferencesImport.h"
 int main() {
   for (const auto& field : {std::tuple{"refreshFrequency",0,5}, {"screenInverted",0,1},
-                            {"hideBatteryPercentage",0,2}, {"sleepTimeoutMinutes",1,31}}) {
+                            {"hideBatteryPercentage",0,2}, {"sleepTimeoutMinutes",1,31},
+                            {"indexingMethod",0,1}, {"fadingFix",0,1},
+                            {"pwrBtnFootnoteBack",0,1}, {"frontlightRestoreOnWake",0,1}}) {
     const auto [key, low, high] = field;
     for (int value : {low,high}) {
       JsonDocument old,next; old[key]=value;next.to<JsonObject>();

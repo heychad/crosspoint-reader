@@ -25,7 +25,7 @@ A missing key is a discovery lead, not proof of a missing feature: renamed setti
 | `homeButtonInReaderEnabled` | Controls import maps the enable state while protecting an existing Home Quick Actions owner. |
 | `homeButtonLongPressAction` | Pending semantic comparison |
 | `homeButtonTapAction` | Pending semantic comparison |
-| `indexingMethod` | Pending semantic comparison |
+| `indexingMethod` | Global preferences and per-book imports preserve Incremental or Full chapter. |
 | `leftEdgeDown` | Embedded and separate-file controls imports map compatible values; device checks remain. |
 | `leftEdgeUp` | Embedded and separate-file controls imports map compatible values; device checks remain. |
 | `lineHeightPercent` | Preferences import maps exact matching line-height presets. Other values are skipped. |
@@ -71,3 +71,13 @@ A missing key is a discovery lead, not proof of a missing feature: renamed setti
 
 These use the existing explicit import, snapshot, and recovery flow. The
 historical list above is not a current feature-completion checklist.
+
+The preferences import also preserves the compatible `fadingFix`,
+`pwrBtnFootnoteBack`, and `frontlightRestoreOnWake` toggles. These and chapter
+indexing use the same numeric values in the pinned CrossInk RC and this fork.
+Missing values leave the current settings unchanged. Invalid values are ignored;
+existing native values retain priority unless replacement is explicitly chosen.
+
+Validation: the preference-import harness passed in default, statistics-backup,
+and page-overlay configurations. Ten affected host checks passed in 2.23 seconds;
+the default X4 Pro build passed in 68.31 seconds. Device behavior is unverified.

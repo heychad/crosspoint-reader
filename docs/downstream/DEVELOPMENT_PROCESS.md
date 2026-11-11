@@ -100,3 +100,17 @@ for a perfectly complete feature before testing useful work.
 
 Update the progress Page once per meaningful milestone. Distinguish built,
 reviewed, device-tested, and deferred. Never turn unknown into complete.
+
+## Measured checkpoints
+
+These are check durations, not coding speed or total development time.
+
+| November 11 batch | Host checks | Default X4 Pro build |
+| --- | --- | --- |
+| Live book preview; shared layout changes | Full 1,833-test suite: 68.53 s | 127.59 s |
+| Four compatible preference imports | 10 affected checks: 2.23 s | 68.31 s |
+
+The import batch reused the existing transaction and validation paths. Its scope
+did not justify repeating the full suite or an experimental firmware build.
+The next cumulative device candidate still requires its exact enabled profile
+and full-suite results.
