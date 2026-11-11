@@ -505,8 +505,9 @@ void enterDeepSleep(bool fromTimeout = false) {
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
   if (SETTINGS.trackReadingStats && SETTINGS.autoBackupStats) {
     ReadingStatsDateTime now;
-    if (getCurrentLocalReadingStatsDateTime(now) &&
-        statsbackup::createDailyDeviceBackup(now.date) == statsbackup::AutomaticBackupResult::Unavailable)
+    const bool dated = getCurrentLocalReadingStatsDateTime(now);
+    if (statsbackup::createAutomaticDeviceBackup(dated ? now.date : ReadingStatsDate{}) ==
+        statsbackup::AutomaticBackupResult::Unavailable)
       LOG_ERR("SLP", "Automatic reading statistics backup failed");
   }
 #endif

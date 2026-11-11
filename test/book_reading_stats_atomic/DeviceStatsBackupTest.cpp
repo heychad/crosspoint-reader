@@ -284,8 +284,8 @@ TEST_F(DeviceStatsBackupTest, ResetWriteFailureKeepsBackupAndUncertainTemp) {
 
 TEST_F(DeviceStatsBackupTest, DailyBackupsPreserveChangesAndDeduplicateIdenticalSnapshots) {
   const ReadingStatsDate date{2026, 11, 10};
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::AlreadyPresent);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::AlreadyPresent);
   ASSERT_EQ(names().size(), 1U);
   GlobalReadingStats backup;
   EXPECT_EQ(statsbackup::inspectDeviceBackup(names().at(0), backup), statsbackup::BackupIntegrity::Checked);
@@ -293,32 +293,33 @@ TEST_F(DeviceStatsBackupTest, DailyBackupsPreserveChangesAndDeduplicateIdentical
   auto changed = fixture();
   changed.totalReadingSeconds = 2000;
   ASSERT_TRUE(changed.save());
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
   EXPECT_EQ(names().size(), 2U);
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup({2026, 11, 11}), statsbackup::AutomaticBackupResult::Saved);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({2026, 11, 11}), statsbackup::AutomaticBackupResult::Saved);
   EXPECT_EQ(names().size(), 3U);
 }
 
 TEST_F(DeviceStatsBackupTest, DailyBackupRefusesInvalidDateAndActiveReader) {
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup({2026, 2, 30}), statsbackup::AutomaticBackupResult::Unavailable);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({2026, 2, 30}), statsbackup::AutomaticBackupResult::Unavailable);
   {
     StatsSessionLease lease;
     ASSERT_TRUE(lease.acquire());
-    EXPECT_EQ(statsbackup::createDailyDeviceBackup({2026, 11, 10}), statsbackup::AutomaticBackupResult::Unavailable);
+    EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({2026, 11, 10}),
+              statsbackup::AutomaticBackupResult::Unavailable);
   }
   EXPECT_TRUE(names().empty());
 }
 
 TEST_F(DeviceStatsBackupTest, DailyBackupDoesNotReplaceDamagedExistingSnapshot) {
   const ReadingStatsDate date{2026, 11, 10};
-  ASSERT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
+  ASSERT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
   const auto name = names().at(0);
   const auto path = std::string(DIRECTORY) + "/" + name;
   HalFile file;
   ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
   ASSERT_EQ(file.write(uint8_t{42}), 1U);
   ASSERT_TRUE(file.close());
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::Unavailable);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::Unavailable);
   ASSERT_TRUE(Storage.openFileForRead("TEST", path, file));
   EXPECT_EQ(file.fileSize(), 1U);
   EXPECT_TRUE(file.close());
@@ -326,9 +327,9 @@ TEST_F(DeviceStatsBackupTest, DailyBackupDoesNotReplaceDamagedExistingSnapshot) 
 
 TEST_F(DeviceStatsBackupTest, DailyBackupRequiresDistinctVerifiedStorageChains) {
   const ReadingStatsDate date{2026, 11, 10};
-  ASSERT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
+  ASSERT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::Saved);
   Storage.failSettingsIdentity();
-  EXPECT_EQ(statsbackup::createDailyDeviceBackup(date), statsbackup::AutomaticBackupResult::Unavailable);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup(date), statsbackup::AutomaticBackupResult::Unavailable);
   EXPECT_EQ(names().size(), 1U);
   EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 1234U);
 }
@@ -430,4 +431,25 @@ TEST_F(DeviceStatsBackupTest, FailedTargetClosePreservesFileAndPreventsOverwrite
   ++testMillis;
   EXPECT_TRUE(statsbackup::createDeviceBackup(fixture()));
   EXPECT_EQ(names().size(), 2U);
+}
+
+TEST_F(DeviceStatsBackupTest, UndatedSnapshotsAreSeparateVerifiedAndDeduplicated) {
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({}), statsbackup::AutomaticBackupResult::Saved);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({}), statsbackup::AutomaticBackupResult::AlreadyPresent);
+  auto files = names();
+  ASSERT_EQ(files.size(), 1U);
+  EXPECT_TRUE(files[0].starts_with("stats_cp_00000000_U_"));
+  GlobalReadingStats backup;
+  EXPECT_EQ(statsbackup::inspectDeviceBackup(files[0], backup), statsbackup::BackupIntegrity::Checked);
+  EXPECT_EQ(backup.totalReadingSeconds, 1234U);
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({2026, 11, 11}), statsbackup::AutomaticBackupResult::Saved);
+  EXPECT_TRUE(statsbackup::createDeviceBackup(fixture()));
+  EXPECT_EQ(names().size(), 3U);
+  auto changed = fixture();
+  changed.totalReadingSeconds = 2222;
+  ASSERT_TRUE(changed.save());
+  EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({}), statsbackup::AutomaticBackupResult::Saved);
+  EXPECT_EQ(names().size(), 4U);
+  EXPECT_EQ(statsbackup::inspectDeviceBackup(files[0], backup), statsbackup::BackupIntegrity::Checked);
+  EXPECT_EQ(backup.totalReadingSeconds, 1234U);
 }
