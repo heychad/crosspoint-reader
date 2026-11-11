@@ -16,7 +16,7 @@ struct LegacySideMapping {
 };
 
 inline bool readLegacySideAction(uint8_t value, bool chord, Action& result) {
-  static constexpr std::array<LegacySideMapping, 32> single = {{LegacySideMapping{0, Action::Disabled},
+  static constexpr std::array<LegacySideMapping, 33> single = {{LegacySideMapping{0, Action::Disabled},
                                                                 {1, Action::Sleep},
                                                                 {2, Action::NextPage},
                                                                 {3, Action::Refresh},
@@ -41,6 +41,7 @@ inline bool readLegacySideAction(uint8_t value, bool chord, Action& result) {
                                                                 {31, Action::PreviousPage},
                                                                 {33, Action::Library},
                                                                 {36, Action::HomeReader},
+                                                                {38, Action::SelectChapter},
                                                                 {64, Action::PreviousChapter},
                                                                 {65, Action::NextChapter},
                                                                 {66, Action::LargerText},

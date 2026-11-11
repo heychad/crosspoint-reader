@@ -31,6 +31,8 @@ class XtcReaderActivity final : public ReaderActivity {
   std::string getBookAuthor() const override { return xtc ? xtc->getAuthor() : ""; }
   std::string getBookThumbBmpPath() const override { return xtc ? xtc->getThumbBmpPath() : ""; }
   bool handleFormatInput() override;
+  bool supportsReaderShortcut(readershortcuts::Action action) const override;
+  bool handleReaderShortcut(readershortcuts::Action action, QuickLockTrigger trigger = QuickLockTrigger::None) override;
   void renderBook() override;
   void applyInitialOrientation() override;
 

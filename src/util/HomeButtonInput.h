@@ -31,6 +31,7 @@ enum class HomeButtonAction : uint8_t {
   Sleep,
   ToggleCompletion,
   CycleFontFamily,
+  SelectChapter,
   Count
 };
 

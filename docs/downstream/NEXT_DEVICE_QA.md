@@ -242,3 +242,18 @@ Using a disposable book, edit a date in Library statistics and immediately exit
 or sleep. Reopen statistics and the book to check the date and reading position.
 Record exit and sleep latency, watchdog behavior, task stack high-water marks,
 and free and largest internal and PSRAM blocks.
+
+## Next candidate: chapter shortcuts
+
+After the next reviewed firmware is installed (not this WIP checkpoint):
+
+1. Assign Select Chapter to a Quick Actions slot or Home-button gesture. In an
+   EPUB, open it and cancel. The book should return to its previous position;
+   opening the same picker from the reader menu should return to that menu.
+2. Select a named chapter. Confirm its opening text and that sleep/reopen
+   preserves the new position. Repeat with a configured two-finger swipe.
+3. In an XTC with a table of contents, the shortcut should open its chapter
+   picker. The Quick Actions picker should hide it for an XTC without chapters.
+
+No book files, statistics formats, or saved action IDs are migrated by this
+feature. Existing bindings should continue to perform the same actions.

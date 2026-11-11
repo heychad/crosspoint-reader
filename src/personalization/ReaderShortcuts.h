@@ -50,6 +50,7 @@ enum class Action : uint8_t {
   ToggleHomeButton,
   ToggleCompletion,
   HomeReader,
+  SelectChapter,
   Count
 };
 // The existing edge palette ends before physical-only lock/sleep actions.

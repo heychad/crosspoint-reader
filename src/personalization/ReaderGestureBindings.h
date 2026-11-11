@@ -18,6 +18,9 @@ enum class Binding : uint8_t {
   PreviousChapter,
   LargerText,
   SmallerText,
+  Home,
+  HomeReader,
+  SelectChapter,
   Count
 };
 inline constexpr std::array<const char*, 4> KEYS = {"twoFingerSwipeUp", "twoFingerSwipeDown", "twoFingerSwipeLeft",
@@ -25,8 +28,9 @@ inline constexpr std::array<const char*, 4> KEYS = {"twoFingerSwipeUp", "twoFing
 
 inline readershortcuts::Action actionFor(uint8_t value) {
   using A = readershortcuts::Action;
-  static constexpr std::array actions = {A::Default,     A::Brighter,        A::Dimmer,     A::Warmer,     A::Cooler,
-                                         A::NextChapter, A::PreviousChapter, A::LargerText, A::SmallerText};
+  static constexpr std::array actions = {A::Default,     A::Brighter,    A::Dimmer,          A::Warmer,
+                                         A::Cooler,      A::NextChapter, A::PreviousChapter, A::LargerText,
+                                         A::SmallerText, A::Home,        A::HomeReader,      A::SelectChapter};
   return value < actions.size() ? actions[value] : A::Default;
 }
 

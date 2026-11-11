@@ -1,15 +1,18 @@
 # CrossInk feature parity
 
-Target: bring CrossInk v1.6.1 features into this CrossPoint 2.0.0-based fork for
+Target: bring the selected CrossInk features, including reviewed RC updates, into
+this CrossPoint-based fork for
 the Xteink X4 Pro. Preserve CrossPoint's EPUB engine, plugin/protected-book
 interfaces, and current book-cache identities. Neither a source import nor a
 successful build alone establishes device-level feature parity.
 
 Source revisions:
 
-- CrossPoint: `42d58daaabcf469a2e5e1ba871714fb9dcf51d29` (2.0.0).
-- CrossInk: `9914146eeae7b46b300f475a16c32426fc02ec1f` (v1.6.1).
-- FreeInk SDK: `5e94fe7480f019c89fbf691aef87523eb1b46704` (CrossPoint pin).
+- CrossPoint stable base: `42d58daaabcf469a2e5e1ba871714fb9dcf51d29` (2.0.0).
+- CrossPoint development integrated through `0333cbbe4` in merge `6bea3810`.
+- Original CrossInk reference: `9914146eeae7b46b300f475a16c32426fc02ec1f` (v1.6.1).
+- CrossInk RC reference: `b8feaec4d` (2.0.0-rc); follow-up audit through `1990a78f2`.
+- FreeInk SDK: `6a208c0c46cce99bafa334bc4f171f5e558c5195` (updated CrossPoint pin).
 
 ## Selected first-release scope: current source snapshot
 
@@ -150,3 +153,18 @@ must be completed before relying on it to maintain this downstream firmware.
 The next checkpoint, `2.0.0-chad.3`, integrates gestures on top of that combined
 source. See [GESTURES.md](GESTURES.md) for exact behavior, review coverage,
 resource accounting and the physical verification pending at that stage.
+
+## RC shortcut update
+
+Select Chapter is available in the reader action catalog, Quick Actions, Home
+button mappings, and two-finger swipes. EPUB uses the existing chapter picker;
+cancelling a direct shortcut returns to the book, while cancelling a menu entry
+returns to the reader menu. XTC offers the action only for books with chapters.
+Existing persisted action IDs remain unchanged; new two-finger Home,
+Home/Reader, and Select Chapter values match CrossInk's 9, 10, and 11.
+CrossInk raw Select Chapter value 38 imports for Home and ordinary side/power
+bindings. Legacy edge imports reject actions outside that edge's palette.
+
+Validation: all 1,781 host tests passed; the X4 Pro build passed in 144.32
+seconds. The original selected-feature rows remain partial where other actions
+or mappings are missing. Device validation and release review remain pending.
