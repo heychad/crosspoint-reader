@@ -329,6 +329,15 @@ void ActivityManager::goToFileTransfer() {
   replaceActivity(std::move(activity));
 }
 
+void ActivityManager::goToFileTransferMode(NetworkMode mode) {
+  auto activity = makeUniqueNoThrow<CrossPointWebServerActivity>(renderer, mappedInput, false, mode);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: file transfer activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
+}
+
 void ActivityManager::goToJoinNetwork() {
   // Post heap-defrag reboot: enter the web-server activity straight in Join
   // Network mode (skips mode selection, does not reboot again).
@@ -706,6 +715,34 @@ bool ActivityManager::dispatchShortcut(readershortcuts::Action action, QuickLock
   }
   if (isInputLocked()) return false;
   if (action == Action::HomeReader) return handleHomeReaderShortcut();
+  if (action == Action::TogglePageGestures) {
+    const uint8_t previous = SETTINGS.disablePageTurnGestures;
+    {
+      RenderLock lock;
+      SETTINGS.disablePageTurnGestures = previous ? 0 : 1;
+    }
+    if (!SETTINGS.saveToFile()) {
+      RenderLock lock;
+      SETTINGS.disablePageTurnGestures = previous;
+      LOG_ERR("ACT", "Failed to save page gesture setting");
+    }
+    if (mappedInput.hasTouch()) mappedInput.suppressTouchContact();
+    requestUpdate();
+    return true;
+  }
+  switch (action) {
+    case Action::JoinNetwork:
+      goToFileTransferMode(NetworkMode::JOIN_NETWORK);
+      return true;
+    case Action::CreateHotspot:
+      goToFileTransferMode(NetworkMode::CREATE_HOTSPOT);
+      return true;
+    case Action::CalibreWireless:
+      goToFileTransferMode(NetworkMode::CONNECT_CALIBRE);
+      return true;
+    default:
+      break;
+  }
   if (isForegroundReader()) return currentActivity->bookReader()->handleReaderShortcut(action, trigger);
   switch (action) {
     case Action::Home:

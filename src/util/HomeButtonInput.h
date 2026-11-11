@@ -37,6 +37,10 @@ enum class HomeButtonAction : uint8_t {
   CycleAutoTurn,
   ToggleFocus,
   ToggleHomeButton,
+  TogglePageGestures,
+  JoinNetwork,
+  CreateHotspot,
+  CalibreWireless,
   Count
 };
 

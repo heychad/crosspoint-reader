@@ -31,6 +31,14 @@ inline readershortcuts::Action actionFor(HomeButtonAction action) {
       return Action::Sleep;
     case HomeButtonAction::ToggleCompletion:
       return Action::ToggleCompletion;
+    case HomeButtonAction::TogglePageGestures:
+      return Action::TogglePageGestures;
+    case HomeButtonAction::JoinNetwork:
+      return Action::JoinNetwork;
+    case HomeButtonAction::CreateHotspot:
+      return Action::CreateHotspot;
+    case HomeButtonAction::CalibreWireless:
+      return Action::CalibreWireless;
     case HomeButtonAction::HomeReader:
       return Action::HomeReader;
     case HomeButtonAction::RotateHalfTurn:

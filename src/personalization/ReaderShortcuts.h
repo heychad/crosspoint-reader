@@ -51,6 +51,10 @@ enum class Action : uint8_t {
   ToggleCompletion,
   HomeReader,
   SelectChapter,
+  TogglePageGestures,
+  JoinNetwork,
+  CreateHotspot,
+  CalibreWireless,
   Count
 };
 // The existing edge palette ends before physical-only lock/sleep actions.

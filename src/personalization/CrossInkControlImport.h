@@ -34,7 +34,7 @@ inline bool stageGestureControls(JsonVariantConst legacy, JsonDocument& proposed
       }
     }
   }
-  for (const char* key : {"pinchFontResizeEnabled", "twoFingerRotationEnabled"}) {
+  for (const char* key : {"pinchFontResizeEnabled", "twoFingerRotationEnabled", "disablePageTurnGestures"}) {
     const auto source = legacy[key];
     const auto current = proposed[key];
     if (!source.is<uint8_t>() || source.as<uint8_t>() > 1 || (!replaceExisting && !current.isUnbound())) continue;

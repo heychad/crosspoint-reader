@@ -91,6 +91,10 @@ bool EpubReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger tr
     case Action::ToggleNight:
     case Action::ToggleTouch:
     case Action::ToggleTilt:
+    case Action::TogglePageGestures:
+    case Action::JoinNetwork:
+    case Action::CreateHotspot:
+    case Action::CalibreWireless:
     case Action::ToggleHomeButton:
       return ReaderActivity::handleReaderShortcut(action, trigger);
     case Action::Screenshot: {
@@ -282,6 +286,10 @@ bool EpubReaderActivity::supportsReaderShortcut(Action action) const {
     case Action::ToggleNight:
     case Action::ToggleTouch:
     case Action::ToggleTilt:
+    case Action::TogglePageGestures:
+    case Action::JoinNetwork:
+    case Action::CreateHotspot:
+    case Action::CalibreWireless:
     case Action::ToggleHomeButton:
       return ReaderActivity::supportsReaderShortcut(action);
     case Action::Default:

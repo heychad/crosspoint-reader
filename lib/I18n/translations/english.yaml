@@ -985,3 +985,6 @@ STR_COMPLETION_RETRY_BODY: "Try saving the finished status again?"
 STR_MARK_FINISHED: "Mark finished"
 STR_TOGGLE_COMPLETION: "Toggle finished status"
 STR_MARK_UNFINISHED: "Mark unfinished"
+
+STR_DISABLE_PAGE_TURN_GESTURES: "Disable page-turn gestures"
+

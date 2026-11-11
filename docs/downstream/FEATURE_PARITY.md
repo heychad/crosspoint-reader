@@ -177,10 +177,30 @@ appended so older settings keep their meaning. CrossInk imports recognize the
 corresponding Home values and the additional side/power and chord values for
 Home, Rotate 180°, Select Chapter, and Cycle Auto Turn.
 
-Remaining shortcut gaps include the independent page-gesture toggle and direct
-network-mode entry points. Guide dots remain in the Later scope; Nearby stays
-skipped. This mapping update does not complete A2, A9, or G3.
+The subsequent batch adds the independent page-gesture toggle and direct
+network-mode entry points described below. Guide dots remain in the Later
+scope; Nearby stays skipped. The overall A2, A9, and G3 audit remains open.
 
 The mapping follow-up passed 41 focused input, navigation, and migration checks
 and the X4 Pro firmware build (120.34 seconds). It has not been tested on the
 reader or through the release-review process.
+
+## Page gestures and direct network entry
+
+The independent Disable page-turn gestures setting blocks page-turn taps and
+swipes without changing their configured modes or disabling reader menus,
+links, selection, or custom gestures. It persists under CrossInk's
+`disablePageTurnGestures` key. Its shortcut restores the previous value if
+saving fails and consumes the current touch contact.
+
+Join Network, Create Hotspot, and Calibre Wireless shortcuts select the matching
+existing File Transfer mode. They retain the normal Wi-Fi selection, startup,
+shutdown, and reading-state lifecycle. The general File Transfer shortcut still
+opens the mode picker. Quick Actions and Home/side/power mappings expose the new
+actions; CrossInk's corresponding raw values import. The page-gesture toggle is
+also available as a two-finger action with CrossInk value 12.
+
+No device has been updated with this batch; physical validation remains open.
+
+This batch passed all 1,784 host tests and the X4 Pro firmware build
+(143.98 seconds). Release review and hardware validation remain pending.
