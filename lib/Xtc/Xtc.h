@@ -44,6 +44,8 @@ class Xtc {
    * @return true on success
    */
   bool clearCache() const;
+  // Remove generated images while preserving reader state and unknown files.
+  bool clearImageCache() const;
 
   /**
    * Setup cache directory

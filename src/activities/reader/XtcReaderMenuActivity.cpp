@@ -23,6 +23,7 @@ size_t XtcReaderMenuActivity::buildItems(std::array<MenuItem, MAX_ITEMS>& items,
   items[count++] = {MenuAction::Controls, StrId::STR_CAT_CONTROLS};
   items[count++] = {MenuAction::Library, StrId::STR_LIBRARY};
   items[count++] = {MenuAction::Home, StrId::STR_GO_HOME_BUTTON};
+  items[count++] = {MenuAction::ClearCache, StrId::STR_DELETE_CACHE};
   if (hasTouch) items[count++] = {MenuAction::Touch, StrId::STR_TOUCH_READER_CONTROLS};
   return count;
 }

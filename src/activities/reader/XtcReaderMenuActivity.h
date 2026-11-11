@@ -17,13 +17,14 @@ class XtcReaderMenuActivity final : public UiListActivity {
     Home,
     Touch,
     Tracking,
-    Completion
+    Completion,
+    ClearCache
   };
   struct MenuItem {
     MenuAction action;
     StrId label;
   };
-  static constexpr size_t MAX_ITEMS = 10;
+  static constexpr size_t MAX_ITEMS = 11;
   static size_t buildItems(std::array<MenuItem, MAX_ITEMS>& items, bool hasChapters, bool hasTouch,
                            bool completionKnown = false, bool completed = false);
   XtcReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& input, std::string title, bool hasChapters,

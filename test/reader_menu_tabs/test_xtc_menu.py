@@ -25,12 +25,12 @@ menu_methods = "\n".join(method(menu, signature) for signature in (
     "void XtcReaderMenuActivity::activateIndex("))
 reader_methods = "\n".join(method(reader, signature) for signature in (
     "void XtcReaderActivity::openChapterSelection(", "void XtcReaderActivity::openPercentSelection()",
-    "void XtcReaderActivity::openReaderMenu()", "bool XtcReaderActivity::handleFormatInput()"))
+    "void XtcReaderActivity::openReaderMenu()", "void XtcReaderActivity::confirmCacheReset(", "bool XtcReaderActivity::handleFormatInput()"))
 reader_methods += "\n#if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)\n" + "\n".join(
     method(reader, signature) for signature in (
         "bool XtcReaderActivity::completionActionAvailable(", "void XtcReaderActivity::toggleCompletion()")) + "\n#endif\n"
 actions = re.search(r'enum class MenuAction\s*\{(.*?)\};', header, re.S).group(1)
-ids = sorted(set(re.findall(r'StrId::(STR_[A-Z0-9_]+)', menu_methods)))
+ids = sorted(set(re.findall(r"STR_[A-Z0-9_]+", menu_methods + reader_methods)))
 code = r'''
 #include <array>
 #include <atomic>
@@ -46,6 +46,7 @@ code = r'''
 #include "personalization/ReaderShortcuts.h"
 #define LOG_ERR(...) ((void)0)
 enum class StrId {__IDS__};
+#define tr(key) StrId::key
 struct MenuResult {int action=-1;};struct PercentResult{int percent;};struct PageResult{uint32_t page;};
 struct ActivityResult {bool isCancelled=false;std::variant<std::monostate,MenuResult,PercentResult,PageResult>data;};
 struct RenderLock {};
@@ -56,7 +57,7 @@ namespace ReaderUtils {bool touch=false;bool isTouchMenuGesture(int&,Input&){ret
 namespace haptic_feedback {int events=0;void touchAction(){++events;}}
 struct {uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;int saves=0;void saveToFile(){++saves;}}SETTINGS;
 struct XtcReaderMenuActivity {
- static constexpr int kind=1,MAX_ITEMS=10;
+ static constexpr int kind=1,MAX_ITEMS=11;
  enum class MenuAction {__ACTIONS__};struct MenuItem{MenuAction action;StrId label;};
  std::array<MenuItem,MAX_ITEMS>items{};size_t count=0;bool finished=false;int updates=0;
  struct {int selected=0;}nav;Input mappedInput;struct {void clearTapFlash(){}}app;
@@ -68,13 +69,14 @@ struct XtcReaderMenuActivity {
  void cancel();bool handleHomeGesture();bool handleButtons();void activateIndex(int);
 };
 ''' + menu_methods + r'''
-struct FakeXtc {uint32_t pages=100;bool chapters=true;uint32_t getPageCount(){return pages;}
+struct FakeXtc {bool clearOk=true;int clears=0;bool clearImageCache(){++clears;return clearOk;}uint32_t pages=100;bool chapters=true;uint32_t getPageCount(){return pages;}
  bool hasChapters(){return chapters;}std::vector<int>getChapters(){return chapters?std::vector<int>{0}:std::vector<int>{};}
  std::string getTitle(){return "Book";}};
 struct XtcReaderChapterSelectionActivity {static constexpr int kind=2;template<class...T>XtcReaderChapterSelectionActivity(T&&...){}};
 struct EpubReaderPercentSelectionActivity {static constexpr int kind=3;template<class...T>EpubReaderPercentSelectionActivity(T&&...){}};
 enum class SettingsSection{Controls};
 struct SettingsActivity {static constexpr int kind=4;template<class...T>SettingsActivity(T&&...){}};
+struct ConfirmationActivity {static constexpr int kind=5;template<class...T>ConfirmationActivity(T&&...){}};
 int failKind=0;
 template<class T,class...A>std::unique_ptr<T>makeUniqueNoThrow(A&&...args){
  if(failKind==T::kind)return nullptr;return std::make_unique<T>(std::forward<A>(args)...);
@@ -95,6 +97,7 @@ struct XtcReaderActivity {
  void openQuickActions(){++quick;}void onGoHome(){++home;}
  template<class T,class F>void startActivityForResult(std::unique_ptr<T>,F f){lastKind=T::kind;callback=std::move(f);}
  void complete(ActivityResult result){auto done=callback;done(result);}
+ void confirmCacheReset(bool retry=false);
  void openChapterSelection(bool returnToMenu=false);void openPercentSelection();void openReaderMenu();bool handleFormatInput();
 };
 ''' + reader_methods + r'''
@@ -102,7 +105,7 @@ int main(){
  using M=XtcReaderMenuActivity;using A=M::MenuAction;
  int r=0;Input in;
  for(bool chapters:{false,true})for(bool touch:{false,true}){
-  M menu(r,in,"Book",chapters,touch);assert(menu.count==7+int(chapters)+int(touch));
+  M menu(r,in,"Book",chapters,touch);assert(menu.count==8+int(chapters)+int(touch));
   bool hasChapter=false;for(size_t i=0;i<menu.count;++i)hasChapter|=menu.items[i].action==A::Chapters;
   assert(hasChapter==chapters);menu.activateIndex(-1);menu.activateIndex(menu.count);assert(!menu.finished);
   if(touch){menu.activateIndex(menu.count-1);assert(!menu.finished&&menu.updates==1);}
@@ -130,13 +133,23 @@ int main(){
  failKind=2;reader.openChapterSelection(true);assert(reader.lastKind==1);
  failKind=4;reader.complete({false,MenuResult{int(A::Controls)}});assert(reader.lastKind==1);
  failKind=1;const int updates=reader.updates;reader.openReaderMenu();assert(reader.updates==updates+1);
+ failKind=0;reader.openReaderMenu();reader.complete({false,MenuResult{int(A::ClearCache)}});
+ assert(reader.lastKind==5&&reader.xtc->clears==0);
+ reader.complete({true,{}});assert(reader.lastKind==1&&reader.xtc->clears==0);
+ reader.complete({false,MenuResult{int(A::ClearCache)}});reader.complete({false,{}});
+ assert(reader.xtc->clears==1&&reader.currentPage==17);
+ reader.xtc->clearOk=false;reader.confirmCacheReset();reader.complete({false,{}});
+ assert(reader.xtc->clears==2&&reader.lastKind==5);
+ reader.xtc->clearOk=true;reader.complete({false,{}});assert(reader.xtc->clears==3);
+ failKind=5;int beforeFailure=reader.updates;reader.confirmCacheReset();
+ assert(reader.updates==beforeFailure+1&&reader.xtc->clears==3);failKind=0;
  for(uint32_t pages:{1u,2u,3u,101u,UINT32_MAX}){
   uint32_t previous=0;
   for(int p=0;p<=100;++p){auto page=xtcPageForPercent(p,pages);assert(page<pages&&page>=previous);previous=page;}
   assert(xtcPageForPercent(-1,pages)==0&&xtcPageForPercent(INT_MAX,pages)==pages-1);
  }
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
- M completionMenu(r,in,"Book",true,true,true,false);assert(completionMenu.count==10);
+ M completionMenu(r,in,"Book",true,true,true,false);assert(completionMenu.count==11);
  bool found=false;for(size_t i=0;i<completionMenu.count;++i)if(completionMenu.items[i].action==A::Completion){
   found=true;assert(completionMenu.items[i].label==StrId::STR_MARK_FINISHED);}
  assert(found);

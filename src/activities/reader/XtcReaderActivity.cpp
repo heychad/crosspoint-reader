@@ -17,6 +17,7 @@
 #include "XtcReaderMenuActivity.h"
 #include "XtcReaderNavigation.h"
 #include "activities/settings/SettingsActivity.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ReadFolder.h"
@@ -129,9 +130,39 @@ void XtcReaderActivity::openReaderMenu() {
       case M::Home:
         onGoHome();
         break;
+      case M::ClearCache:
+        confirmCacheReset();
+        break;
       case M::Touch:
         break;
     }
+  });
+}
+
+void XtcReaderActivity::confirmCacheReset(bool retry) {
+  if (!xtc) return;
+  auto prompt = makeUniqueNoThrow<ConfirmationActivity>(
+      renderer, mappedInput, retry ? tr(STR_CLEAR_CACHE_FAILED) : tr(STR_DELETE_CACHE), tr(STR_XTC_CLEAR_IMAGES_BODY),
+      tr(STR_CANCEL), retry ? tr(STR_RETRY) : tr(STR_DELETE));
+  if (!prompt) {
+    LOG_ERR("XTR", "OOM: cache reset confirmation");
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(prompt), [this](const ActivityResult& result) {
+    if (result.isCancelled) {
+      openReaderMenu();
+      return;
+    }
+    bool cleared = false;
+    {
+      RenderLock lock;
+      cleared = xtc && xtc->clearImageCache();
+    }
+    if (cleared)
+      requestUpdate();
+    else
+      confirmCacheReset(true);
   });
 }
 

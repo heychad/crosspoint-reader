@@ -22,6 +22,7 @@ class XtcReaderActivity final : public ReaderActivity {
   void openChapterSelection(bool returnToMenu = false);
   void openReaderMenu();
   void openPercentSelection();
+  void confirmCacheReset(bool retry = false);
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION)
   bool completionActionAvailable(bool& completed) const;
   void toggleCompletion();

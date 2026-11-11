@@ -37,8 +37,9 @@ list. Names that cannot fit the existing saved font-name field are disabled
 instead of truncated. The panes do not add a live book-text preview.
 
 Other RC drawer features remain unfinished. The separate [XTC menu](XTC_READER_MENU.md)
-now includes navigation and shared-action entry points; its tracking,
-completion, and reset controls remain unfinished. Later-scope dictionary/font-engine
+now includes navigation, live tracking, completion-gated finished status, and
+state-preserving image-cache reset; statistics deletion remains unfinished.
+Later-scope dictionary/font-engine
 features are not added.
 
 Root rows reuse fixed storage for at most 44 actions with a 44-byte index array.

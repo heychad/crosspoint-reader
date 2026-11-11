@@ -12,6 +12,9 @@
 #include <Logging.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <strings.h>
+
+#include <cstring>
 
 namespace {
 void yieldDuringThumbnail(uint8_t& rowsSinceYield) {
@@ -59,6 +62,45 @@ bool Xtc::clearCache() const {
 
   LOG_DBG("XTC", "Cache cleared successfully");
   return true;
+}
+
+bool Xtc::clearImageCache() const {
+  struct Context {
+    const std::string& path;
+  } context{cachePath};
+  const auto clear = [](void* context) {
+    const auto& cache = static_cast<Context*>(context)->path;
+    const auto status = Storage.lookupPath(cache.c_str());
+    if (status == HalStorage::PathStatus::Missing) return true;
+    if (status == HalStorage::PathStatus::Failed) return false;
+    auto directory = Storage.open(cache.c_str());
+    if (!directory || !directory.isDirectory()) return false;
+    bool ok = true;
+    char name[64];
+    for (auto entry = directory.openNextFile(); entry; entry = directory.openNextFile()) {
+      const auto length = entry.getName(name, sizeof(name));
+      const bool isDirectory = entry.isDirectory();
+      if (!entry.close()) {
+        ok = false;
+        continue;
+      }
+      if (isDirectory || length >= sizeof(name) - 1) continue;
+      if (length == 0) {
+        ok = false;
+        continue;
+      }
+      bool image = strcasecmp(name, "cover.bmp") == 0;
+      if (length > 10 && strncasecmp(name, "thumb_", 6) == 0 && strcasecmp(name + length - 4, ".bmp") == 0) {
+        image = true;
+        for (size_t i = 6; i < length - 4; ++i)
+          if (name[i] < '0' || name[i] > '9') image = false;
+      }
+      if (image && !Storage.remove((cache + "/" + name).c_str())) ok = false;
+    }
+    return directory.close() && ok;
+  };
+  // The storage callback is synchronous; the path remains owned by this book.
+  return Storage.withStorageLock(clear, &context);
 }
 
 void Xtc::setupCacheDir() const {
