@@ -453,3 +453,15 @@ TEST_F(DeviceStatsBackupTest, UndatedSnapshotsAreSeparateVerifiedAndDeduplicated
   EXPECT_EQ(statsbackup::inspectDeviceBackup(files[0], backup), statsbackup::BackupIntegrity::Checked);
   EXPECT_EQ(backup.totalReadingSeconds, 1234U);
 }
+
+TEST_F(DeviceStatsBackupTest, ReadsSequencedUndatedSnapshotWithChecksum) {
+  ASSERT_TRUE(statsbackup::createDeviceBackup(fixture()));
+  const auto original = names().at(0);
+  auto sequenced = original;
+  sequenced[20] = 'U';
+  ASSERT_TRUE(Storage.rename((std::string(DIRECTORY) + "/" + original).c_str(),
+                             (std::string(DIRECTORY) + "/" + sequenced).c_str()));
+  GlobalReadingStats decoded;
+  EXPECT_EQ(statsbackup::inspectDeviceBackup(sequenced, decoded), statsbackup::BackupIntegrity::Checked);
+  EXPECT_EQ(decoded.totalReadingSeconds, fixture().totalReadingSeconds);
+}

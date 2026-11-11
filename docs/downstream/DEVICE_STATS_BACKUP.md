@@ -21,19 +21,24 @@ session. It uses the same source and storage-chain checks as dated backups.
 | --- | --- |
 | Manual | `stats_cp_<sequence>_M_00000000_000000_<hash>.bin` |
 | Dated automatic | `stats_cp_YYYYMMDD_A_<hash>.bin` |
-| Undated automatic | `stats_cp_00000000_U_<hash>.bin` |
+| Undated automatic, numbered | `stats_cp_<sequence>_U_00000000_000000_<hash>.bin` |
+| Legacy undated automatic, readable | `stats_cp_00000000_U_<hash>.bin` |
 
 Without a valid clock, automatic backups use the undated name. Identical
 statistics reuse a verified matching snapshot; changed statistics produce a
-new name. When the clock becomes valid, the next backup is dated. The manual
-sequence prevents collisions but is not a timestamp.
+new name. When the clock becomes valid, the next backup is dated. With experimental backups enabled, manual and undated snapshots use a sequence
+one greater than the largest stored number in their own group. A complete,
+unchanged directory scan is required. This survives reboot and avoids relying
+on uptime as a timestamp; overflow or scan failure stops creation. The default
+manual-only configuration retains its existing uptime naming behavior.
+Legacy undated snapshots remain readable and are not automatically deleted.
 
-After a verified automatic backup, dated `A` snapshots are pruned to seven.
-The current snapshot is always retained; other same-day files sort by hash,
-not creation time. Each sleep removes at most eight files and stops starting
+After a verified backup, its recognized group is pruned to seven: dated `A`,
+manual `M`, or numbered undated `U`. Groups are independent. The current
+snapshot is always retained; dated files sort by date and then hash, and
+numbered files sort by their sequence and then hash. Each sleep removes at most eight files and stops starting
 new scan work after 1.5 seconds; an individual storage operation can take
-longer. A backlog continues on later sleeps. Manual and undated snapshots are
-preserved. CrossInk's separate retention for those two groups remains open.
+longer. A backlog continues on later sleeps. Other groups and legacy hash-only undated snapshots are preserved.
 
 Before deletion, the candidate and current snapshot must pass checksum/format
 inspection. Two complete directory scans and an unchanged mutation snapshot
@@ -75,3 +80,18 @@ filesystem behavior; checksum/format decoding is covered by the separate
 device-backup tests. The X4 Pro build with automatic backups enabled passed
 in 71.99 seconds. These host results do not establish physical SD power-loss
 behavior or device latency.
+
+## Group retention
+
+The numbered manual and clockless policy follows CrossInk development
+`1990a78f2`'s independent group retention and on-card maximum-plus-one naming.
+The fork keeps checksummed filenames and exclusive writes. Existing manual
+numbers may represent uptime, so their numeric order is not proof of historical
+creation order. New manual numbers continue above that existing maximum.
+
+All 34 existing focused checks and four new enabled-feature tests passed
+after extending retention to these groups, including checked decoding of the
+new undated name and the writer's deduplication and failure paths. The FAT/exFAT fixture also
+checks independent manual/undated pruning and deriving the next sequence.
+The X4 Pro build with backups enabled passed in 69.98 seconds. Release review
+and device validation are still required.

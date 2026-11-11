@@ -33,6 +33,18 @@ int main(){
  AutomaticBackupRetention underLimit(current);
  underLimit.observe(current);
  assert(!underLimit.candidate(true));
+ for(char group : {'M','U'}) {
+  char latest[59];std::snprintf(latest,sizeof(latest),"stats_cp_0000000010_%c_00000000_000000_0000000000000001.bin",group);
+  AutomaticBackupRetention grouped(latest);
+  grouped.observe(current);
+  grouped.observe("stats_cp_00000000_U_0000000000000001.bin");
+  for(int n=1;n<=10;++n){char name[59];std::snprintf(name,sizeof(name),"stats_cp_%010d_%c_00000000_000000_0000000000000001.bin",n,group);grouped.observe(name);}
+  assert(grouped.count()==10 && grouped.candidate(true));
+  uint32_t next=0;assert(AutomaticBackupRetention::sequence(grouped.candidate(true),next) && next==1);
+ }
+ uint32_t untouched=99;
+ assert(!AutomaticBackupRetention::sequence("stats_cp_9999999999_U_00000000_000000_0000000000000001.bin",untouched));
+ assert(untouched==99);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
@@ -41,4 +53,4 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I',
                     str(root / 'src/activities/reader'), str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
-print('Retention selection preserves manual and current snapshots and requires a complete scan')
+print('Grouped retention protects the current snapshot and requires a complete scan')

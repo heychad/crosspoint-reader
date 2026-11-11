@@ -69,3 +69,21 @@ target_link_libraries(BookReadingStatsAtomicTest PRIVATE
 )
 
 gtest_discover_tests(BookReadingStatsAtomicTest)
+
+add_executable(DeviceStatsEnabledBackupTest
+  DeviceStatsEnabledBackupTest.cpp
+  ${REPO_ROOT}/src/activities/reader/DeviceStatsBackup.cpp
+  ${REPO_ROOT}/src/activities/reader/GlobalReadingStats.cpp
+  ${REPO_ROOT}/src/activities/reader/ReadingStatsUtils.cpp
+  ${REPO_ROOT}/src/activities/reader/StatsSafeReplace.cpp
+  ${REPO_ROOT}/src/activities/reader/StatsSessionLease.cpp
+)
+target_include_directories(DeviceStatsEnabledBackupTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/src/activities/reader
+  ${REPO_ROOT}/lib/Serialization
+)
+target_compile_definitions(DeviceStatsEnabledBackupTest PRIVATE CROSSPOINT_EXPERIMENTAL_STATS_BACKUP=1)
+target_link_libraries(DeviceStatsEnabledBackupTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(DeviceStatsEnabledBackupTest)

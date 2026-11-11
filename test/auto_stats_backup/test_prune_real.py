@@ -40,16 +40,21 @@ production = (ROOT / 'src/activities/reader/DeviceStatsRetention.cpp').read_text
 production = '\n'.join(line for line in production.splitlines() if not line.startswith('#include'))
 code += production
 code += r'''
-constexpr char current[]="stats_cp_20261110_A_0000000000000001.bin";
+char current[59]="stats_cp_20261110_A_0000000000000001.bin";
+char group=0;
 constexpr char primary[]="/.crosspoint/global_stats.bin";
 std::string dated(int day){char path[100];std::snprintf(path,sizeof(path),
- "/.crossink-stats-backup/stats_cp_202611%02d_A_0000000000000001.bin",day);return path;}
+ "/.crossink-stats-backup/stats_cp_202611%02d_A_0000000000000001.bin",day);if(group)std::snprintf(path,sizeof(path),"/.crossink-stats-backup/stats_cp_%010d_%c_00000000_000000_0000000000000001.bin",day,group);
+ return path;}
 void put(FsVolume& volume,const char* path,uint8_t value=1){auto file=volume.open(path,O_CREAT|O_EXCL|O_WRONLY);
  assert(file && file.write(value)==1 && file.sync() && file.close());}
 void verify(FsVolume& volume,const char* path,uint8_t value){auto file=volume.open(path,O_RDONLY);uint8_t read=0;
  assert(file && file.read(&read,1)==1 && read==value && file.close());}
 int main(int argc,char** argv){
  assert(argc==4);bool exfat=std::string(argv[1])=="exfat";std::string scenario=argv[2];int fault=std::stoi(argv[3]);
+ if(scenario=="manual")group='M';
+ if(scenario=="undated")group='U';
+ if(group)std::snprintf(current,sizeof(current),"stats_cp_0000000010_%c_00000000_000000_0000000000000001.bin",group);
  Disk disk;uint8_t scratch[512];
  if(exfat){ExFatFormatter formatter;assert(formatter.format(&disk,scratch));}
  else {FatFormatter formatter;assert(formatter.format(&disk,scratch));}
@@ -67,8 +72,14 @@ int main(int argc,char** argv){
  disk.writes=0;disk.failAt=(scenario=="writefault" || scenario=="writefault-stop")?fault:-1;
  disk.failStop=scenario=="writefault-stop";
  disk.failReadAt=scenario=="readfault"?disk.reads+fault:-1;
+ if(group){
+  uint32_t next=0;char latest[59]{};
+  assert(statsbackup::nextDeviceBackupSequence(group,next,latest,sizeof(latest)) && next==11 && std::strcmp(latest,current)==0);
+  // Overflow is preserved instead of wrapping to an existing filename.
+  uint32_t untouched=98;assert(!statsbackup::nextDeviceBackupSequence('X',untouched) && untouched==98);
+ }
  auto result=statsbackup::pruneAutomaticDeviceBackups(current);
- if(scenario=="normal")assert(result.removed==3 && !result.deferred);
+ if(scenario=="normal" || group)assert(result.removed==3 && !result.deferred);
  if(scenario=="directory" || scenario=="corrupt")assert(result.removed==0 && result.deferred && disk.writes==0);
  bool injected=disk.injected || disk.injectedRead;
  if(injected)assert(result.deferred);
@@ -97,8 +108,8 @@ with tempfile.TemporaryDirectory() as temporary:
                *map(str, harness.files), '-o', str(temp / 'test')]
     subprocess.run(command, check=True)
     for filesystem in ('fat', 'exfat'):
-        for scenario in ('normal', 'directory', 'corrupt', 'writefault', 'writefault-stop', 'readfault'):
+        for scenario in ('normal', 'manual', 'undated', 'directory', 'corrupt', 'writefault', 'writefault-stop', 'readfault'):
             faults = range(12) if scenario in ('writefault', 'writefault-stop', 'readfault') else (-1,)
             for fault in faults:
                 subprocess.run([str(temp / 'test'), filesystem, scenario, str(fault)], check=True)
-print('Production retention preserved current/manual/undated snapshots and primary totals on FAT/exFAT')
+print('Grouped retention preserved current, unrelated, and legacy snapshots and primary totals on FAT/exFAT')

@@ -33,7 +33,9 @@ uint64_t hashBytes(const std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SI
 bool backupFilenameHash(const std::string& name, uint64_t& hash) {
   if (name.compare(0, 9, "stats_cp_") != 0) return false;
   const bool manual =
-      name.size() == 58 && name.compare(19, 19, "_M_00000000_000000_") == 0 && name.compare(54, 4, ".bin") == 0;
+      name.size() == 58 &&
+      (name.compare(19, 19, "_M_00000000_000000_") == 0 || name.compare(19, 19, "_U_00000000_000000_") == 0) &&
+      name.compare(54, 4, ".bin") == 0;
   const bool automatic =
       name.size() == 40 && name.compare(36, 4, ".bin") == 0 &&
       (name.compare(17, 3, "_A_") == 0 || (name.compare(17, 3, "_U_") == 0 && name.compare(9, 8, "00000000") == 0));
@@ -110,7 +112,10 @@ bool createDeviceBackupUnlocked(const GlobalReadingStats& stats, std::string* cr
   if (dir == HalStorage::PathStatus::Failed || (dir == HalStorage::PathStatus::Missing && !Storage.mkdir(DIRECTORY)))
     return false;
   const auto hash = hashBytes(*bytes);
-  const uint32_t sequence = millis() + 1;
+  uint32_t sequence = millis() + 1;
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+  if (!statsbackup::nextDeviceBackupSequence('M', sequence)) return false;
+#endif
   if (!sequence) return false;
   char filename[64];
   snprintf(filename, sizeof(filename), "stats_cp_%010lu_M_00000000_000000_%016llx.bin",
@@ -134,12 +139,24 @@ bool createDeviceBackupUnlocked(const GlobalReadingStats& stats, std::string* cr
 }  // namespace
 
 bool statsbackup::createDeviceBackup(const GlobalReadingStats& stats) {
+  struct Context {
+    const GlobalReadingStats& stats;
+    std::string path;
+  } context{stats, {}};
   const auto save = [](void* raw) {
-    const auto& input = **static_cast<const GlobalReadingStats**>(raw);
-    return readingstats::normalStatsAllowed() && createDeviceBackupUnlocked(input);
+    auto& input = *static_cast<Context*>(raw);
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+    return readingstats::normalStatsAllowed() && createDeviceBackupUnlocked(input.stats, &input.path);
+#else
+    return readingstats::normalStatsAllowed() && createDeviceBackupUnlocked(input.stats);
+#endif
   };
-  const GlobalReadingStats* input = &stats;
-  return Storage.withStorageLock(save, &input);
+  if (!Storage.withStorageLock(save, &context)) return false;
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+  const auto name = context.path.substr(context.path.find_last_of('/') + 1);
+  pruneAutomaticDeviceBackups(name.c_str());
+#endif
+  return true;
 }
 
 statsbackup::AutomaticBackupResult statsbackup::createAutomaticDeviceBackup(const ReadingStatsDate& date) {
@@ -167,6 +184,27 @@ statsbackup::AutomaticBackupResult statsbackup::createAutomaticDeviceBackup(cons
     snprintf(filename, sizeof(filename), "stats_cp_%04u%02u%02u_%c_%016llx.bin", static_cast<unsigned>(input.date.year),
              static_cast<unsigned>(input.date.month), static_cast<unsigned>(input.date.day), undated ? 'U' : 'A',
              static_cast<unsigned long long>(hashBytes(*bytes)));
+#if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
+    if (undated) {
+      uint32_t sequence = 0;
+      char latest[64]{};
+      if (!nextDeviceBackupSequence('U', sequence, latest, sizeof(latest))) return true;
+      if (latest[0]) {
+        auto previousStats = makeUniqueNoThrow<GlobalReadingStats>();
+        if (!previousStats || inspectDeviceBackup(latest, *previousStats) != BackupIntegrity::Checked) return true;
+        previousStats.reset();
+        const std::string previous = std::string(DIRECTORY) + "/" + latest;
+        if (verifiedFile(previous.c_str(), *bytes) && Storage.settingsChainEligible(previous.c_str()) &&
+            Storage.distinctSettingsChains(DEVICE_STATS, previous.c_str())) {
+          snprintf(filename, sizeof(filename), "%s", latest);
+          input.result = AutomaticBackupResult::AlreadyPresent;
+          return true;
+        }
+      }
+      snprintf(filename, sizeof(filename), "stats_cp_%010lu_U_00000000_000000_%016llx.bin",
+               static_cast<unsigned long>(sequence), static_cast<unsigned long long>(hashBytes(*bytes)));
+    }
+#endif
     const std::string target = std::string(DIRECTORY) + "/" + filename;
     const auto status = Storage.lookupPath(target.c_str());
     if (status == HalStorage::PathStatus::Present) {
