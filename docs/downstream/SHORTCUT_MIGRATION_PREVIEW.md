@@ -60,10 +60,13 @@ source used CrossInk's Minimal or Dashboard home, where that preference applied.
 
 **Import CrossInk preferences** under Settings > Reader imports UI scale,
 statistics tracking, the reading idle threshold, refresh frequency, night mode,
-battery-percentage visibility, sleep timeout, supported sleep settings, and compatible reading layout
+battery-percentage visibility, sleep timeout, supported sleep settings, frontlight brightness, warmth, and on/off state, and compatible reading layout
 settings. Line spacing imports only when it matches a supported preset; margins
 import when both axes match and fit the supported range. Only the default word
-spacing maps directly. Dark, Light, Custom, Cover, Blank, Cover Custom, and Quick
+spacing maps directly. RC character spacing imports when it represents an
+exact whole-pixel value. Image display and its separate grayscale toggle map
+together to the native grayscale or black-and-white mode; invalid combinations
+are skipped. Dark, Light, Custom, Cover, Blank, Cover Custom, and Quick
 Resume sleep screens map to their counterparts. CrossInk Minimal maps to the
 fork's Minimal book screen, and Dashboard maps to Book dashboard. Reading Stats
 maps to the fork's reading-statistics screen. On X4 Pro, Minimal Stats uses the
@@ -84,3 +87,7 @@ conflicts can differ and need device checks.
 The parser rejects duplicate keys, malformed JSON, and files over 1 MiB. The
 report contains selected shortcut values only; unrelated settings and
 credentials are never included. It does not perform any network operation.
+
+The controls import also carries the Home-button enabled state. It never
+disables Home while that button owns the current Quick Actions shortcut.
+Existing native values remain unless the import explicitly replaces them.

@@ -187,12 +187,27 @@ inline bool stageControls(JsonVariantConst legacy, JsonDocument& proposed, bool 
     proposed[powerKeys[i]] = power[i];
     changed = true;
   }
+  static constexpr std::array<const char*, 3> homeKeys = {"homeButtonTapAction", "homeButtonLongPressAction",
+                                                          "homeButtonDoubleTapAction"};
   const auto sourceHomeEnabled = legacy["homeButtonInReaderEnabled"];
   const auto currentHomeEnabled = proposed["homeButtonInReaderEnabled"];
+  bool homeOwnsQuickActions = false;
+  for (const auto* key : homeKeys) {
+    const auto action = proposed[key];
+    homeOwnsQuickActions |=
+        action.is<uint8_t>() && action.as<uint8_t>() == static_cast<uint8_t>(HomeButtonAction::QuickActions);
+  }
+  if (sourceHomeEnabled.is<uint8_t>() && sourceHomeEnabled.as<uint8_t>() <= 1 &&
+      (replaceExisting || currentHomeEnabled.isUnbound()) &&
+      (sourceHomeEnabled.as<uint8_t>() != 0 || !homeOwnsQuickActions) &&
+      (!currentHomeEnabled.is<uint8_t>() || currentHomeEnabled.as<uint8_t>() != sourceHomeEnabled.as<uint8_t>())) {
+    proposed["homeButtonInReaderEnabled"] = sourceHomeEnabled.as<uint8_t>();
+    changed = true;
+  }
+  const auto effectiveHomeEnabled = proposed["homeButtonInReaderEnabled"];
   if (sourceHomeEnabled.is<uint8_t>() && sourceHomeEnabled.as<uint8_t>() == 1 &&
-      (currentHomeEnabled.isUnbound() || (currentHomeEnabled.is<uint8_t>() && currentHomeEnabled.as<uint8_t>() == 1))) {
-    static constexpr std::array<const char*, 3> homeKeys = {"homeButtonTapAction", "homeButtonLongPressAction",
-                                                            "homeButtonDoubleTapAction"};
+      (effectiveHomeEnabled.isUnbound() ||
+       (effectiveHomeEnabled.is<uint8_t>() && effectiveHomeEnabled.as<uint8_t>() == 1))) {
     for (size_t i = 0; i < homeKeys.size(); ++i) {
       const auto source = legacy[homeKeys[i]];
       const auto current = proposed[homeKeys[i]];
