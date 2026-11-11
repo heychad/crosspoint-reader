@@ -149,21 +149,26 @@ bool statsbackup::readBookBackup(const std::string& cachePath, const std::string
   return Storage.withStorageLock(read, &context);
 }
 
-statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string& cachePath, const std::string& bookPath,
-                                                              const std::string& filename,
-                                                              const uint8_t* expectedCurrent,
-                                                              size_t expectedCurrentSize, const uint8_t* expectedBackup,
-                                                              size_t expectedBackupSize) {
+namespace {
+using statsbackup::BookRestoreResult;
+enum class ReplacementSource { Backup, Empty };
+
+BookRestoreResult replaceBookStats(const std::string& cachePath, const std::string& bookPath,
+                                   const std::string& filename, ReplacementSource source,
+                                   const uint8_t* expectedCurrent, size_t expectedCurrentSize,
+                                   const uint8_t* expectedBackup, size_t expectedBackupSize) {
   struct Context {
     const std::string& cachePath;
     const std::string& bookPath;
     const std::string& filename;
+    ReplacementSource source;
     const uint8_t* expectedCurrent;
     size_t expectedCurrentSize;
     const uint8_t* expectedBackup;
     size_t expectedBackupSize;
     BookRestoreResult result = BookRestoreResult::Unavailable;
-  } context{cachePath, bookPath, filename, expectedCurrent, expectedCurrentSize, expectedBackup, expectedBackupSize};
+  } context{cachePath,           bookPath,       filename,          source, expectedCurrent,
+            expectedCurrentSize, expectedBackup, expectedBackupSize};
   const auto restore = [](void* raw) {
     auto& input = *static_cast<Context*>(raw);
     if (!readingstats::normalStatsAllowed()) return true;
@@ -180,7 +185,8 @@ statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string&
     const std::string directory = readingstats::bookDirectory(input.cachePath);
     const std::string primary = directory + "/stats_v5.bin";
     const std::string oldBackup = primary + ".bak";
-    const std::string source = std::string(BOOKS) + "/" + leaf + "/" + input.filename;
+    const bool fromBackup = input.source == ReplacementSource::Backup;
+    const std::string source = fromBackup ? std::string(BOOKS) + "/" + leaf + "/" + input.filename : "";
     const auto oldBackupStatus = Storage.lookupPath(oldBackup.c_str());
     if (Storage.lookupPath(primary.c_str()) != HalStorage::PathStatus::Present ||
         oldBackupStatus == HalStorage::PathStatus::Failed)
@@ -189,7 +195,7 @@ statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string&
     BookReadingStats replacement;
     Bytes currentBytes{}, replacementBytes{};
     if (!current.writable || !current.encode(currentBytes.data(), currentBytes.size()) ||
-        !readBookBackup(input.cachePath, input.filename, replacement) ||
+        (fromBackup && !statsbackup::readBookBackup(input.cachePath, input.filename, replacement)) ||
         !replacement.encode(replacementBytes.data(), replacementBytes.size()))
       return true;
     if ((input.expectedCurrent && (input.expectedCurrentSize != currentBytes.size() ||
@@ -200,18 +206,23 @@ statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string&
           memcmp(input.expectedBackup, replacementBytes.data(), replacementBytes.size()) != 0)) ||
         (!input.expectedBackup && input.expectedBackupSize))
       return true;
-    if (!Storage.settingsChainEligible(primary.c_str()) || !Storage.settingsChainEligible(source.c_str()) ||
-        !Storage.distinctSettingsChains(primary.c_str(), source.c_str()) ||
+    if (!fromBackup && currentBytes == replacementBytes) {
+      input.result = BookRestoreResult::Restored;
+      return true;
+    }
+    if (!Storage.settingsChainEligible(primary.c_str()) ||
+        (fromBackup && (!Storage.settingsChainEligible(source.c_str()) ||
+                        !Storage.distinctSettingsChains(primary.c_str(), source.c_str()))) ||
         (oldBackupStatus == HalStorage::PathStatus::Present &&
          (!Storage.settingsChainEligible(oldBackup.c_str()) ||
           !Storage.distinctSettingsChains(primary.c_str(), oldBackup.c_str()) ||
-          !Storage.distinctSettingsChains(source.c_str(), oldBackup.c_str()))))
+          (fromBackup && !Storage.distinctSettingsChains(source.c_str(), oldBackup.c_str())))))
       return true;
     std::string before;
     if (!createBookBackupUnlocked(input.cachePath, current, &before) ||
         !Storage.settingsChainEligible(before.c_str()) ||
         !Storage.distinctSettingsChains(primary.c_str(), before.c_str()) ||
-        !Storage.distinctSettingsChains(source.c_str(), before.c_str()) ||
+        (fromBackup && !Storage.distinctSettingsChains(source.c_str(), before.c_str())) ||
         (oldBackupStatus == HalStorage::PathStatus::Present &&
          !Storage.distinctSettingsChains(oldBackup.c_str(), before.c_str()))) {
       input.result = BookRestoreResult::BackupFailed;
@@ -237,4 +248,22 @@ statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string&
   };
   if (!Storage.withStorageLock(restore, &context)) return BookRestoreResult::Unavailable;
   return context.result;
+}
+}  // namespace
+
+statsbackup::BookRestoreResult statsbackup::restoreBookBackup(const std::string& cachePath, const std::string& bookPath,
+                                                              const std::string& filename,
+                                                              const uint8_t* expectedCurrent,
+                                                              size_t expectedCurrentSize, const uint8_t* expectedBackup,
+                                                              size_t expectedBackupSize) {
+  return replaceBookStats(cachePath, bookPath, filename, ReplacementSource::Backup, expectedCurrent,
+                          expectedCurrentSize, expectedBackup, expectedBackupSize);
+}
+
+statsbackup::BookRestoreResult statsbackup::resetBookStatistics(const std::string& cachePath,
+                                                                const std::string& bookPath,
+                                                                const uint8_t* expectedCurrent,
+                                                                size_t expectedCurrentSize) {
+  return replaceBookStats(cachePath, bookPath, {}, ReplacementSource::Empty, expectedCurrent, expectedCurrentSize,
+                          nullptr, 0);
 }

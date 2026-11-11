@@ -18,4 +18,9 @@ BookRestoreResult restoreBookBackup(const std::string& cachePath, const std::str
                                     const std::string& filename, const uint8_t* expectedCurrent = nullptr,
                                     size_t expectedCurrentSize = 0, const uint8_t* expectedBackup = nullptr,
                                     size_t expectedBackupSize = 0);
+// Reset a closed book after preserving its exact current snapshot. Historical
+// device time remains; a cleared completion flag adjusts the completed count.
+// Uses the same success/failure and journal recovery contract as restore.
+BookRestoreResult resetBookStatistics(const std::string& cachePath, const std::string& bookPath,
+                                      const uint8_t* expectedCurrent = nullptr, size_t expectedCurrentSize = 0);
 }  // namespace statsbackup

@@ -69,6 +69,129 @@ TEST_F(BookStatsBackupTest, CreatesExactVerifiedBookSnapshotWithoutOverwrite) {
   EXPECT_EQ(names().size(), 2U);
 }
 
+TEST_F(BookStatsBackupTest, ResetKeepsBookStateAndVerifiedPreviousStatistics) {
+  for (const auto* name : {"/progress.bin", "/bookmarks.bin", "/reader_settings.bin", "/reading_stats_off"}) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", CACHE + name, file));
+    ASSERT_EQ(file.write(uint8_t{42}), 1U);
+    ASSERT_TRUE(file.close());
+  }
+  ASSERT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Restored);
+  const auto reset = BookReadingStats::load(readingstats::bookDirectory(CACHE));
+  EXPECT_EQ(reset.totalReadingSeconds, 0U);
+  EXPECT_EQ(reset.sessionCount, 0U);
+  EXPECT_FALSE(reset.startDate.isValid());
+  EXPECT_FALSE(reset.startDateManual);
+  EXPECT_FALSE(reset.isCompleted);
+  ASSERT_EQ(names().size(), 1U);
+  BookReadingStats previous;
+  ASSERT_TRUE(statsbackup::readBookBackup(CACHE, names().front(), previous));
+  EXPECT_EQ(previous.totalReadingSeconds, 1234U);
+  EXPECT_TRUE(previous.startDateManual);
+  for (const auto* name : {"/progress.bin", "/bookmarks.bin", "/reader_settings.bin", "/reading_stats_off"}) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForRead("TEST", CACHE + name, file));
+    uint8_t value = 0;
+    EXPECT_EQ(file.read(&value, 1), 1);
+    EXPECT_EQ(value, 42);
+    EXPECT_TRUE(file.close());
+  }
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Restored);
+  EXPECT_EQ(names().size(), 1U);
+}
+
+TEST_F(BookStatsBackupTest, ResetCompletedBookAdjustsCountWithoutDeletingDeviceHistory) {
+  auto current = fixture();
+  current.isCompleted = true;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(CACHE), current));
+  GlobalReadingStats global;
+  global.totalReadingSeconds = 5000;
+  global.totalPagesTurned = 120;
+  global.completedBooks = 4;
+  ASSERT_TRUE(global.save());
+  ASSERT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Restored);
+  const auto updated = GlobalReadingStats::loadReadOnly();
+  EXPECT_EQ(updated.completedBooks, 3U);
+  EXPECT_EQ(updated.totalReadingSeconds, 5000U);
+  EXPECT_EQ(updated.totalPagesTurned, 120U);
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(CACHE)).totalReadingSeconds, 0U);
+}
+
+TEST_F(BookStatsBackupTest, ResetRefusesLiveReaderAndStaleConfirmation) {
+  {
+    StatsSessionLease lease;
+    ASSERT_TRUE(lease.acquire());
+    EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Busy);
+  }
+  std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE> expected{};
+  auto stale = fixture();
+  ++stale.totalReadingSeconds;
+  ASSERT_TRUE(stale.encode(expected.data(), expected.size()));
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH, expected.data(), expected.size()),
+            statsbackup::BookRestoreResult::Unavailable);
+  EXPECT_TRUE(names().empty());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(CACHE)).totalReadingSeconds, 1234U);
+}
+
+TEST_F(BookStatsBackupTest, ResetRefusesFailedBackupAndRetainsHistory) {
+  const auto bytes = fixture();
+  ASSERT_TRUE(statsbackup::createBookBackup(CACHE, bytes));
+  // The same timestamp and payload collide with a prior backup; never overwrite it.
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::BackupFailed);
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(CACHE)).totalReadingSeconds, 1234U);
+  ++testMillis;
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Restored);
+}
+
+TEST_F(BookStatsBackupTest, ResetWriteFailureKeepsIndependentBackup) {
+  Storage.failNextRenameFrom(readingstats::bookDirectory(CACHE) + "/stats_v5.bin.tmp");
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::WriteUncertain);
+  ASSERT_EQ(names().size(), 1U);
+  BookReadingStats previous;
+  ASSERT_TRUE(statsbackup::readBookBackup(CACHE, names().front(), previous));
+  EXPECT_EQ(previous.totalReadingSeconds, 1234U);
+}
+
+TEST_F(BookStatsBackupTest, ResetSupportsXtcCacheIdentity) {
+  const std::string path = "/books/example.xtc";
+  const std::string cache = "/.crosspoint/xtc_" + std::to_string(std::hash<std::string>{}(path));
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+  ASSERT_TRUE(file.close());
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(cache), fixture()));
+  ASSERT_EQ(statsbackup::resetBookStatistics(cache, path), statsbackup::BookRestoreResult::Restored);
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 0U);
+}
+
+TEST_F(BookStatsBackupTest, AmbiguousCompletedResetRetainsJournalAndBackupForReview) {
+  auto current = fixture();
+  current.isCompleted = true;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(CACHE), current));
+  GlobalReadingStats global;
+  global.completedBooks = 1;
+  ASSERT_TRUE(global.save());
+  Storage.failNextRenameFrom("/.crosspoint/global_stats.bin.tmp");
+  ASSERT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::RecoveryRequired);
+  bool target = true;
+  ASSERT_EQ(readingstats::probeClosedBookCompletion(BOOK_PATH, target), readingstats::CompletionProbeResult::Matching);
+  EXPECT_FALSE(target);
+  ASSERT_EQ(readingstats::recoverClosedBookCompletionStats(BOOK_PATH, false),
+            readingstats::CompletionRecoveryResult::ManualReview);
+  EXPECT_TRUE(Storage.exists("/.crosspoint/global_stats.bin.tmp"));
+  EXPECT_TRUE(Storage.exists("/.completion-journal/.completion-00"));
+  ASSERT_EQ(names().size(), 1U);
+  // The preserved backup remains byte-for-byte available even while normal
+  // statistics reads are fenced by the unresolved journal.
+  HalFile backup;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", BACKUPS + "/" + names().front(), backup));
+  std::array<uint8_t, BookReadingStats::CURRENT_FILE_SIZE> expected{}, actual{};
+  ASSERT_TRUE(current.encode(expected.data(), expected.size()));
+  ASSERT_EQ(backup.read(actual.data(), actual.size()), static_cast<int>(actual.size()));
+  EXPECT_EQ(actual, expected);
+  EXPECT_TRUE(backup.close());
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Unavailable);
+}
+
 TEST_F(BookStatsBackupTest, ReadsVerifiedSnapshotForSelectedBook) {
   ASSERT_TRUE(statsbackup::createBookBackup(CACHE, fixture()));
   const auto name = names().at(0);

@@ -58,7 +58,8 @@ The cache scan uses a 64-byte filename buffer and the existing HAL file handles.
 ## Remaining parity
 
 Statistics deletion is not yet included. It needs the fork's existing guarded
-save and recovery paths. Nearby transfer remains
+save and recovery paths. The [reset backend](BOOK_STATS_RESET.md) is implemented;
+reader-session coordination and the confirmation flow remain. Nearby transfer remains
 excluded by Chad's scope. This stage does not complete B7 or establish device
 readiness.
 
