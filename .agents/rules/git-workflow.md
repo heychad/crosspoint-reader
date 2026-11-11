@@ -19,8 +19,8 @@ than assuming `origin` is a fork or that an `upstream` remote exists.
 
 ### Branch Naming Convention
 
-Use `<type>/<short-description>`, where type is `feat`, `fix`, `refactor`,
-`docs`, `test`, `chore`, or `perf`, matching PR title prefixes.
+Use `codex/<short-description>` for agent development branches. Preserve existing
+branch names; do not rename them just to match this convention.
 
 ### Commit Message Format
 
@@ -37,7 +37,7 @@ generated build outputs or unrelated work. Push requires human authorization.
 
 Releases and merges to the supported branch require completed work, passing
 checks, and [firmware-handoff](../skills/firmware-handoff/SKILL.md), including its
-four independent reviews. A checkpoint does not satisfy this release gate.
+risk-based independent review. A checkpoint does not satisfy this release gate.
 
 Hardware testing is required before a PR, not before an approved local commit.
 The human owns hardware results and PR prose/publication.
