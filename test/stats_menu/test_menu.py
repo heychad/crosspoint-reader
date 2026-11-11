@@ -49,7 +49,7 @@ class EpubReaderMenuActivity {public:
  enum class MenuAction {''' + ",".join(actions) + r'''};
  struct MenuItem {MenuAction action;StrId labelId;};
  static constexpr int MAX_MENU_ITEMS=''' + str(capacity) + r''';
- static void buildMenuItems(std::vector<MenuItem>&,bool,bool,bool,bool=false,bool=false,bool=false);
+ static void buildMenuItems(std::vector<MenuItem>&,bool,bool,bool,bool=false,bool=false,bool=false,bool=false);
 };
 ''' + menu + r'''
 namespace readershortcuts {enum class Action {ReadingStatistics,Library,QuickActions};}
@@ -77,7 +77,7 @@ int main(){
  assert(rows.size()<=Menu::MAX_MENU_ITEMS);
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
  Menu::buildMenuItems(rows,true,true,true,true,false);
- assert(rows.size()==Menu::MAX_MENU_ITEMS);
+ assert(rows.size()==Menu::MAX_MENU_ITEMS-3);
  assert(std::count_if(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION && item.labelId==StrId::STR_MARK_FINISHED;})==1);
  Menu::buildMenuItems(rows,true,true,true,false,false);
  assert(std::none_of(rows.begin(),rows.end(),[](const auto& item){return item.action==MA::TOGGLE_COMPLETION;}));

@@ -149,8 +149,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          {StrId::STR_RENDER_DEFAULT, StrId::STR_RENDER_BALANCED, StrId::STR_RENDER_LIGHT},
                          "epubRenderMode", StrId::STR_CAT_READER));
   emit(SettingInfo::Enum(StrId::STR_READER_MENU_STYLE, &CrossPointSettings::readerMenuStyle,
-                         {StrId::STR_MENU_STYLE_LIST, StrId::STR_MENU_STYLE_TOOLBAR}, "readerMenuStyle",
-                         StrId::STR_CAT_READER));
+                         {StrId::STR_MENU_STYLE_LIST, StrId::STR_MENU_STYLE_TOOLBAR, StrId::STR_MENU_STYLE_TABBED},
+                         "readerMenuStyle", StrId::STR_CAT_READER));
   if (BoardConfig::hasTouch()) {
     emit(SettingInfo::Toggle(StrId::STR_PINCH_FONT_RESIZE, &CrossPointSettings::pinchFontResizeEnabled,
                              "pinchFontResizeEnabled", StrId::STR_CAT_CONTROLS));

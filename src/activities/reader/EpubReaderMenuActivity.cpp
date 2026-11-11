@@ -23,42 +23,136 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
                                                const bool hasClippings, MenuAction& selectedAction,
                                                const bool completionKnown, const bool completed,
                                                const bool alreadyInReadFolder)
-    : UiListActivity("EpubReaderMenu", renderer, mappedInput),
+    : UiTabListActivity("EpubReaderMenu", renderer, mappedInput),
+      tabbed(SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TABBED),
       selectedAction(selectedAction),
       title(title),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
-  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, hasClippings, completionKnown, completed, alreadyInReadFolder);
-  buildMenuRowItems();
+  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, hasClippings, completionKnown, completed, alreadyInReadFolder,
+                 tabbed);
+  if (tabbed) tab = tabForAction(selectedAction);
+  rebuildVisibleItems();
 }
 
 void EpubReaderMenuActivity::onEnter() {
   RenderLock lock;
-  UiListActivity::onEnter();
-  for (size_t i = 0; i < menuItems.size(); ++i) {
-    if (menuItems[i].action == selectedAction) {
-      nav.reset(static_cast<int>(i));
+  if (tabbed)
+    UiTabListActivity::onEnter();
+  else
+    UiListActivity::onEnter();
+  for (int i = 0; i < visibleCount; ++i) {
+    if (visibleAction(i) == selectedAction) {
+      activeNav().reset(i + (tabbed ? 1 : 0));
       break;
     }
   }
 }
 
 void EpubReaderMenuActivity::onExit() {
-  if (nav.selected >= 0 && nav.selected < static_cast<int>(menuItems.size())) {
-    selectedAction = menuItems[nav.selected].action;
-  }
+  const int row = activeNav().selected - (tabbed ? 1 : 0);
+  if (row >= 0 && row < visibleCount) selectedAction = visibleAction(row);
   UiListActivity::onExit();
 }
 
-// Populates menuRowItems's labels/actionValue from menuItems. Called once
-// here since menuItems (and thus which rows exist) never changes after
-// construction; buildScreen() only touches the two rows with a live value.
+EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction action) {
+  switch (action) {
+    case MenuAction::TEXT_SETTINGS:
+    case MenuAction::FONT_SIZE:
+      return Tab::Font;
+    case MenuAction::LAYOUT_SETTINGS:
+    case MenuAction::STYLE_SETTINGS:
+    case MenuAction::ROTATE_SCREEN:
+    case MenuAction::RENDER_MODE:
+      return Tab::Layout;
+    case MenuAction::SELECT_CHAPTER:
+    case MenuAction::FOOTNOTES:
+    case MenuAction::GO_TO_PERCENT:
+    case MenuAction::AUTO_PAGE_TURN:
+    case MenuAction::DICTIONARY:
+      return Tab::More;
+    case MenuAction::BOOKMARKS:
+    case MenuAction::TOGGLE_BOOKMARK:
+    case MenuAction::SAVE_CLIPPING:
+    case MenuAction::VIEW_CLIPPINGS:
+    case MenuAction::SAVED_ITEMS:
+    case MenuAction::SCREENSHOT:
+    case MenuAction::DISPLAY_QR:
+      return Tab::Location;
+    case MenuAction::NIGHT_MODE:
+    case MenuAction::FRONTLIGHT:
+    case MenuAction::BLUETOOTH:
+    case MenuAction::GO_HOME:
+    case MenuAction::SYNC:
+    case MenuAction::DELETE_CACHE:
+    case MenuAction::READING_STATISTICS:
+    case MenuAction::READER_BARS:
+    case MenuAction::LIBRARY:
+    case MenuAction::FILE_BROWSER:
+    case MenuAction::FILE_TRANSFER:
+    case MenuAction::HOME_BUTTON:
+    case MenuAction::CONTROLS:
+    case MenuAction::QUICK_ACTIONS:
+    case MenuAction::TOGGLE_COMPLETION:
+    case MenuAction::RESET_BOOK_SETTINGS:
+      return Tab::Settings;
+  }
+  return Tab::Settings;
+}
+
+const char* EpubReaderMenuActivity::tabLabel(int index) const {
+  static constexpr StrId labels[] = {StrId::STR_FONT, StrId::STR_LAYOUT, StrId::STR_TOOL_MORE,
+                                     StrId::STR_READER_LOCATION, StrId::STR_SETTINGS_TITLE};
+  return I18N.get(labels[index]);
+}
+
+void EpubReaderMenuActivity::rebuildVisibleItems() {
+  visibleCount = 0;
+  for (size_t i = 0; i < menuItems.size() && visibleCount < static_cast<int>(MAX_MENU_ITEMS); ++i) {
+    if (!tabbed || tabForAction(menuItems[i].action) == tab) visibleIndexes[visibleCount++] = static_cast<uint8_t>(i);
+  }
+  buildMenuRowItems();
+}
+
+void EpubReaderMenuActivity::onTabAction(int index) {
+  if (!tabbed || optionPopup.isActive() || index < 0 || index >= tabCount()) return;
+  RenderLock lock(*this);
+  app.clearTapFlash();
+  if (index == activeTab()) return;
+  tab = static_cast<Tab>(index);
+  rebuildVisibleItems();
+  activeNav().followOnBuild = true;
+  requestUpdate();
+}
+
+void EpubReaderMenuActivity::stepTab(int direction) {
+  if (tabbed) onTabAction((activeTab() + (direction > 0 ? 1 : tabCount() - 1)) % tabCount());
+}
+
+fui::ListNav& EpubReaderMenuActivity::activeNav() {
+  return tabbed ? UiTabListActivity::activeNav() : UiListActivity::activeNav();
+}
+void EpubReaderMenuActivity::onRowAction(const fui::ActionEvent& event) {
+  if (tabbed)
+    UiTabListActivity::onRowAction(event);
+  else
+    UiListActivity::onRowAction(event);
+}
+void EpubReaderMenuActivity::navigateButtons() {
+  if (tabbed)
+    UiTabListActivity::navigateButtons();
+  else
+    UiListActivity::navigateButtons();
+}
+
+// Rebuild labels and row indices at construction and tab changes.
+// Repaints refresh only the live row values.
 void EpubReaderMenuActivity::buildMenuRowItems() {
-  for (size_t i = 0; i < menuItems.size() && i < MAX_MENU_ITEMS; i++) {
+  for (int i = 0; i < visibleCount; ++i) {
     fui::ListItem item;
-    item.label = I18N.get(menuItems[i].labelId);
+    item.label = I18N.get(menuItems[visibleIndexes[i]].labelId);
     item.actionValue = static_cast<int16_t>(i);
     menuRowItems[i] = item;
   }
@@ -67,7 +161,7 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
 void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const bool hasFootnotes,
                                             const bool hasBookmarks, const bool hasClippings,
                                             const bool completionKnown, const bool completed,
-                                            const bool alreadyInReadFolder) {
+                                            const bool alreadyInReadFolder, const bool tabbed) {
   items.clear();
   items.reserve(MAX_MENU_ITEMS);
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
@@ -131,7 +225,12 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
     items.push_back({MenuAction::SYNC, StrId::STR_SYNC_PROGRESS});
   }
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
-  items.push_back({MenuAction::TEXT_SETTINGS, StrId::STR_TEXT_SETTINGS});
+  items.push_back({MenuAction::TEXT_SETTINGS, tabbed ? StrId::STR_FONT_FAMILY : StrId::STR_TEXT_SETTINGS});
+  if (tabbed) {
+    items.push_back({MenuAction::FONT_SIZE, StrId::STR_FONT_SIZE});
+    items.push_back({MenuAction::LAYOUT_SETTINGS, StrId::STR_LAYOUT});
+    items.push_back({MenuAction::STYLE_SETTINGS, StrId::STR_STYLE});
+  }
   items.push_back({MenuAction::RENDER_MODE, StrId::STR_EPUB_RENDER_MODE});
   items.push_back({MenuAction::RESET_BOOK_SETTINGS, StrId::STR_RESET_BOOK_SETTINGS});
 }
@@ -159,13 +258,13 @@ bool EpubReaderMenuActivity::handleHomeGesture() {
 }
 
 void EpubReaderMenuActivity::activateIndex(const int index) {
-  if (optionPopup.isActive()) return;
+  if (optionPopup.isActive() || index < 0 || index >= visibleCount) return;
   // The activated row leaves this screen (popup or finish); a lingering flash
   // would gray an unrelated element on the next render.
   app.clearTapFlash();
-  nav.selected = index;
+  activeNav().selected = index + (tabbed ? 1 : 0);
 
-  const auto selectedAction = menuItems[index].action;
+  const auto selectedAction = visibleAction(index);
   if (selectedAction == MenuAction::ROTATE_SCREEN) {
     optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
                      pendingOrientation, [this](int idx) {
@@ -228,7 +327,10 @@ bool EpubReaderMenuActivity::handleButtons() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    activateIndex(nav.selected);
+    if (tabbed && ringPos() == 0)
+      stepTab(1);
+    else
+      activateIndex(activeNav().selected - (tabbed ? 1 : 0));
     return true;
   }
 
@@ -244,6 +346,8 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
+  if (tabbed) buildTabBar(screen);
+
   // Progress summary where the old sub-header band sat.
   std::string progressLine;
   if (totalPages > 0) {
@@ -258,8 +362,8 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 
   // menuRowItems's labels/actionValue were set once in the constructor (see
   // buildMenuRowItems()); only rows with live values need refreshing here.
-  for (size_t i = 0; i < menuItems.size(); i++) {
-    const auto action = menuItems[i].action;
+  for (int i = 0; i < visibleCount; ++i) {
+    const auto action = visibleAction(i);
     if (action == MenuAction::ROTATE_SCREEN) {
       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
     } else if (action == MenuAction::AUTO_PAGE_TURN) {
@@ -279,7 +383,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 
   fui::ListProps props;
   props.items = menuRowItems;
-  props.count = static_cast<uint16_t>(menuItems.size());
+  props.count = static_cast<uint16_t>(visibleCount);
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
@@ -287,7 +391,10 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
   props.labelText = screen.theme().smallText;
   props.labelText.maxLines = 2;
-  syncListViewport(screen, props);
+  if (tabbed)
+    syncTabListViewport(screen, props);
+  else
+    syncListViewport(screen, props);
   screen.list(props);
 }
 

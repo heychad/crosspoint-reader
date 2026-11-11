@@ -255,10 +255,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     IMAGE_RENDERING_COUNT
   };
 
-  // How Select opens the reader menu: the classic full-screen list, or a toolbar
-  // overlay (top/bottom bars with Contents / Text / More bottom-sheet panels)
-  // painted over the page.
-  enum READER_MENU_STYLE { READER_MENU_LIST = 0, READER_MENU_TOOLBAR = 1, READER_MENU_STYLE_COUNT };
+  // Reader menu choices: the full-screen list, an over-page toolbar, or
+  // categorized tabs using the same action handlers.
+  enum READER_MENU_STYLE {
+    READER_MENU_LIST = 0,
+    READER_MENU_TOOLBAR = 1,
+    READER_MENU_TABBED = 2,
+    READER_MENU_STYLE_COUNT
+  };
 
   enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_NVERTED = 2, TILT_PAGE_TURN_COUNT };
   enum VIBRATION { VIBRATION_TOUCH = 0, VIBRATION_TOUCH_PAGE = 1, VIBRATION_OFF = 2 };

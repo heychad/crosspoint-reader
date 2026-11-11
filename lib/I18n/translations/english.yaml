@@ -997,3 +997,6 @@ STR_PAGE_TURN_LONG_PRESS: "Page turn long press"
 STR_POWER_DOUBLE_CLICK: "Double click"
 
 STR_DISABLE_PAGE_TURN_GESTURES: "Disable page-turn gestures"
+
+STR_MENU_STYLE_TABBED: "Tabbed"
+STR_READER_LOCATION: "Location"
