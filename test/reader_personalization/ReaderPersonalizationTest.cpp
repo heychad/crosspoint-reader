@@ -465,6 +465,42 @@ TEST(ReaderShortcuts, LegacyPowerUsesDistinctCatalogsAndPreservesModernBindings)
   EXPECT_EQ(values[0], static_cast<uint8_t>(readershortcuts::Action::Sleep));
 }
 
+TEST(ReaderShortcuts, ImportsTaggedRcPowerActionsWithoutOverwritingNativeSettings) {
+  const std::array<readershortcuts::Action, 4> expected = {
+      readershortcuts::Action::Home, readershortcuts::Action::SelectChapter, readershortcuts::Action::RotateHalfTurn,
+      readershortcuts::Action::TogglePageGestures};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    JsonDocument doc;
+    doc["shortPwrBtn"] = 37 + i;
+    doc["longPwrBtn"] = 37 + i;
+    readershortcuts::Action tap = readershortcuts::Action::Default;
+    ASSERT_TRUE(readershortcuts::readLegacyPowerTap(doc.as<JsonVariantConst>(), tap));
+    EXPECT_EQ(tap, expected[i]);
+    std::array<uint8_t, 2> values{};
+    ASSERT_TRUE(readershortcuts::readEmbeddedLegacyPower(doc.as<JsonVariantConst>(), {&values[0], &values[1]}));
+    EXPECT_EQ(values[0], static_cast<uint8_t>(expected[i]));
+    EXPECT_EQ(values[1], 0);
+    doc["powerHoldAction"] = nullptr;
+    values[0] = static_cast<uint8_t>(readershortcuts::Action::Bookmark);
+    EXPECT_FALSE(readershortcuts::readEmbeddedLegacyPower(doc.as<JsonVariantConst>(), {&values[0], &values[1]}));
+    EXPECT_EQ(values[0], static_cast<uint8_t>(readershortcuts::Action::Bookmark));
+  }
+}
+
+TEST(ReaderShortcuts, RejectsPowerValuesOutsideTaggedCatalogWithoutChangingBindings) {
+  for (unsigned raw = 41; raw <= 255; ++raw) {
+    JsonDocument doc;
+    doc["shortPwrBtn"] = raw;
+    doc["longPwrBtn"] = raw;
+    readershortcuts::Action tap = readershortcuts::Action::Bookmark;
+    EXPECT_FALSE(readershortcuts::readLegacyPowerTap(doc.as<JsonVariantConst>(), tap));
+    EXPECT_EQ(tap, readershortcuts::Action::Bookmark);
+    std::array<uint8_t, 2> values = {static_cast<uint8_t>(readershortcuts::Action::Bookmark), 0};
+    EXPECT_FALSE(readershortcuts::readEmbeddedLegacyPower(doc.as<JsonVariantConst>(), {&values[0], &values[1]}));
+    EXPECT_EQ(values[0], static_cast<uint8_t>(readershortcuts::Action::Bookmark));
+  }
+}
+
 TEST(ReaderShortcuts, LegacyQuickActionsImportOnlyOneUnclaimedPowerTrigger) {
   constexpr const char* legacy[] = {"shortPwrBtn", "longPwrBtn", "powerChordAction"};
   constexpr const char* current[] = {"powerTapAction", "powerHoldAction", "powerUpChordAction"};

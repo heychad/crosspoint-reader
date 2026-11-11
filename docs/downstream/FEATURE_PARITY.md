@@ -156,6 +156,17 @@ resource accounting and the physical verification pending at that stage.
 
 ## RC shortcut update
 
+November 11 follow-up: the power importer now accepts RC actions 37–40
+(Home, Select Chapter, Rotate 180°, and Toggle Page Gestures). Its older cutoff
+had rejected these values despite their presence in the shared mapper. Unknown
+power values and side-only extensions remain rejected; existing native hold
+bindings retain precedence. All 34 focused shortcut/import checks pass.
+
+Remaining RC edge gap: legacy edge values 10–12 are mapped by the gesture
+catalog but rejected by the edge palette limit. Extend the settings UI and
+saved-value validation together before accepting these imports; changing only
+the import would lose them on reload. Wake Only also remains unported.
+
 Select Chapter is available in the reader action catalog, Quick Actions, Home
 button mappings, and two-finger swipes. EPUB uses the existing chapter picker;
 cancelling a direct shortcut returns to the book, while cancelling a menu entry

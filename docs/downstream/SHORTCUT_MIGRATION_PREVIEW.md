@@ -91,3 +91,10 @@ credentials are never included. It does not perform any network operation.
 The controls import also carries the Home-button enabled state. It never
 disables Home while that button owns the current Quick Actions shortcut.
 Existing native values remain unless the import explicitly replaces them.
+
+The firmware importer accepts tagged CrossInk 2.0 RC power actions 37–40:
+Home, Select Chapter, Rotate 180°, and Toggle Page Gestures. Both short and long
+power bindings use the same catalog. Side-only values 64–70 are rejected for
+power bindings. Wake Only remains unsupported, and Quick Actions still uses
+the separate ownership check. These import changes need the next device check;
+the read-only Python preview above has its own narrower scope.
