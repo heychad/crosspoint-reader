@@ -9,7 +9,7 @@ struct Binding {
   uint8_t fallback;
 };
 inline constexpr uint8_t QUICK = static_cast<uint8_t>(Action::QuickActions);
-inline constexpr std::array<Binding, 20> BINDINGS = {
+inline constexpr std::array<Binding, 19> BINDINGS = {
     {{&CrossPointSettings::powerTapAction, QUICK, 0},
      {&CrossPointSettings::powerHoldAction, QUICK, 0},
      {&CrossPointSettings::powerUpChordAction, QUICK, 0},
@@ -31,7 +31,6 @@ inline constexpr std::array<Binding, 20> BINDINGS = {
      {&CrossPointSettings::homeButtonLongPressAction, static_cast<uint8_t>(HomeButtonAction::QuickActions),
       static_cast<uint8_t>(HomeButtonAction::ReaderMenu)},
      {&CrossPointSettings::shortPwrBtn, CrossPointSettings::PWR_QUICK_ACTIONS, CrossPointSettings::IGNORE},
-     {&CrossPointSettings::doublePwrBtn, CrossPointSettings::PWR_QUICK_ACTIONS, CrossPointSettings::PWR_FRONTLIGHT},
      {&CrossPointSettings::longPressMenuFunction, CrossPointSettings::LP_MENU_QUICK_ACTIONS,
       CrossPointSettings::LP_MENU_DISABLED}}};
 inline auto bindingValues(const CrossPointSettings& settings) {

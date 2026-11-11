@@ -543,15 +543,16 @@ TEST(CrossInkControlImport, ImportsAdditionalHomeReaderActionsByMeaning) {
   }
 }
 
-TEST(CrossInkControlImport, MapsHomeActionsOnlyWhenReaderHomeIsEnabled) {
+TEST(CrossInkControlImport, PreservesDisabledHomeUnlessReplacementRequested) {
   JsonDocument source, target;
   ASSERT_FALSE(deserializeJson(source, R"({"homeButtonInReaderEnabled":1,"homeButtonTapAction":23,
       "homeButtonLongPressAction":7,"homeButtonDoubleTapAction":24})"));
   ASSERT_FALSE(deserializeJson(target, R"({"homeButtonInReaderEnabled":0,"homeButtonTapAction":1,
       "homeButtonLongPressAction":1,"homeButtonDoubleTapAction":1})"));
-  EXPECT_FALSE(crossinkimport::stageControls(source.as<JsonVariantConst>(), target, true, false));
-  target["homeButtonInReaderEnabled"] = 1;
+  EXPECT_FALSE(crossinkimport::stageControls(source.as<JsonVariantConst>(), target, false, false));
+  EXPECT_EQ(target["homeButtonInReaderEnabled"].as<uint8_t>(), 0);
   ASSERT_TRUE(crossinkimport::stageControls(source.as<JsonVariantConst>(), target, true, false));
+  EXPECT_EQ(target["homeButtonInReaderEnabled"].as<uint8_t>(), 1);
   EXPECT_EQ(target["homeButtonTapAction"].as<uint8_t>(), static_cast<uint8_t>(HomeButtonAction::Home));
   EXPECT_EQ(target["homeButtonLongPressAction"].as<uint8_t>(), static_cast<uint8_t>(HomeButtonAction::Bookmark));
   EXPECT_EQ(target["homeButtonDoubleTapAction"].as<uint8_t>(),
@@ -567,12 +568,14 @@ TEST(CrossInkControlImport, ImportsHomeActionsWhenNativeDefaultsAreImplicit) {
   EXPECT_EQ(target["homeButtonTapAction"].as<uint8_t>(), static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight));
   EXPECT_EQ(target["homeButtonDoubleTapAction"].as<uint8_t>(), static_cast<uint8_t>(HomeButtonAction::QuickLock));
   EXPECT_EQ(target["homeButtonLongPressAction"].as<uint8_t>(), static_cast<uint8_t>(HomeButtonAction::Bookmark));
-  EXPECT_TRUE(target["homeButtonInReaderEnabled"].isUnbound());
+  EXPECT_EQ(target["homeButtonInReaderEnabled"].as<uint8_t>(), 1);
 
   JsonDocument nullEnabled;
   ASSERT_FALSE(deserializeJson(nullEnabled, R"({"homeButtonInReaderEnabled":null})"));
-  EXPECT_FALSE(crossinkimport::stageControls(source.as<JsonVariantConst>(), nullEnabled, true, false));
+  EXPECT_FALSE(crossinkimport::stageControls(source.as<JsonVariantConst>(), nullEnabled, false, false));
   EXPECT_TRUE(nullEnabled["homeButtonTapAction"].isUnbound());
+  EXPECT_TRUE(crossinkimport::stageControls(source.as<JsonVariantConst>(), nullEnabled, true, false));
+  EXPECT_EQ(nullEnabled["homeButtonInReaderEnabled"].as<uint8_t>(), 1);
 }
 
 TEST(CrossInkBarImport, MapsItemsByMeaningAndKeepsOtherSettings) {

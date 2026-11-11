@@ -9,10 +9,10 @@ successful build alone establishes device-level feature parity.
 Source revisions:
 
 - CrossPoint stable base: `42d58daaabcf469a2e5e1ba871714fb9dcf51d29` (2.0.0).
-- CrossPoint development integrated through `0333cbbe4` in merge `6bea3810`.
+- This candidate excludes CrossPoint development merge `6bea3810`; the original branch preserves it.
 - Original CrossInk reference: `9914146eeae7b46b300f475a16c32426fc02ec1f` (v1.6.1).
 - CrossInk RC reference: `b8feaec4d` (2.0.0-rc); follow-up audit through `1990a78f2`.
-- FreeInk SDK: `6a208c0c46cce99bafa334bc4f171f5e558c5195` (updated CrossPoint pin).
+- FreeInk SDK: `5e94fe7480f019c89fbf691aef87523eb1b46704` (CrossPoint 2.0.0 stable pin).
 
 ## Selected first-release scope: current source snapshot
 
@@ -205,7 +205,10 @@ No device has been updated with this batch; physical validation remains open.
 This batch passed all 1,784 host tests and the X4 Pro firmware build
 (143.98 seconds). Release review and hardware validation remain pending.
 
-## Quick Actions trigger audit
+## Historical Quick Actions trigger audit
+
+This development-only addition is excluded from the release-baseline candidate;
+Home double-tap remains supported. The following records its earlier checks.
 
 The power double-click action introduced by the upstream update now participates
 in the existing single-trigger rule. Assigning Quick Actions there clears the

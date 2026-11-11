@@ -25,8 +25,8 @@ decision, not a general invitation to follow development.
 The existing branch already contains 45 CrossPoint development commits merged
 at `6bea3810`, plus selected work compared with CrossInk development. This policy
 does not erase that history or establish a release-only baseline retroactively.
-Before the next supported release, reconcile that delta against the chosen
-release tag and preserve the custom work in the process. Do not reset or rewrite
+The new working branch excludes that development series and replays our later
+work. Passing build and test coverage is recorded in RELEASE_BASELINE.md. Do not reset or rewrite
 the current branch to hide the discrepancy.
 
 ## Repositories and baseline
@@ -35,7 +35,8 @@ the current branch to hide the discrepancy.
 - Upstream: https://github.com/crosspoint-reader/crosspoint-reader
 - Feature reference: https://github.com/uxjulia/CrossInk
 - Pushed feature checkpoint: `codex/x4pro-completion-integration`, `9c98e395`.
-- Current upstream integration branch: `codex/x4pro-upstream-20261111`.
+- Preserved development-based branch: `codex/x4pro-upstream-20261111`.
+- Current working branch: `codex/x4pro-release-baseline-20261111`; see [reconciliation](RELEASE_BASELINE.md).
 - Stable baseline: CrossPoint 2.0.0, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - Previously integrated upstream development tip: `0333cbbe4`, 45 commits beyond the stable baseline.
 - Original CrossInk reference: v1.6.1, `9914146ee`.
@@ -112,7 +113,7 @@ Priorities from the current source comparison:
 
 ## Per-book settings format audit
 
-CrossInk development `1990a78f2` writes per-book reader-settings version 13.
+CrossInk release candidate `v2.0.0-rc` (`b8feaec4d`) writes per-book reader-settings version 13.
 The decoder now accepts versions 1–13. Versions 11–13 add image
 grayscale, character spacing, and publisher-font fields after the override mask;
 the SD font mask bit also moves from 18 to 19 in version 11. The update follows
