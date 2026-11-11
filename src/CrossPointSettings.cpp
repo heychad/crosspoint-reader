@@ -415,6 +415,8 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     // A normal settings save later persists imported values under modern keys.
     readergestures::readEmbeddedLegacyEdges(
         doc, {&readerLeftEdgeUp, &readerLeftEdgeDown, &readerRightEdgeUp, &readerRightEdgeDown});
+    for (auto* value : {&readerLeftEdgeUp, &readerLeftEdgeDown, &readerRightEdgeUp, &readerRightEdgeDown})
+      needsResave |= readershortcuts::normalizeEdgeAction(*value);
   }
   needsResave |= readergestures::readBindings(doc, twoFingerActions);
   needsResave |= readerquickactions::read(doc, readerQuickActions);

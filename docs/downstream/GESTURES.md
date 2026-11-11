@@ -6,6 +6,31 @@ It implements CrossInk's pinch sizing, two-finger rotation and directional
 bindings, continuous edge light adjustment, plus warmth/text/half-turn shortcuts.
 It does not complete the full CrossInk feature-parity goal.
 
+## RC edge-action follow-up — November 11, 2026
+
+All four edge directions now offer Home/Reader, Select Chapter, and Toggle Page
+Gestures. The importer accepts CrossInk RC values 10–12. Saved native IDs stay
+unchanged; a separate 37-entry picker maps its indices to supported IDs, skipping
+the physical-only actions. Invalid native IDs reset to Default on load. The web
+settings form uses the same display mapping; saved JSON uses the raw IDs.
+
+The long picker reuses `EnumSelectionActivity`, including its checked allocation
+and existing parent/child lifecycle. It borrows static labels and retains the
+parent settings while open. New immutable tables hold 37 Action values and 37
+StrId labels; no per-row vectors, task, framebuffer, or gesture-loop allocation
+was added. Device heap measurements and behavior remain unverified.
+
+For the next device check, select each addition from the bottom of an edge
+picker, use it in a book, then restart and check the selection. Repeat in all
+four orientations. Canceling the picker must preserve the previous binding;
+assigning Quick Actions must still clear its previous owner.
+
+Validation: the 1,779-test host run passed 1,778 tests. One older test still
+expected Select Chapter edge import to be rejected; after correcting that
+expectation, all 49 affected gesture/import checks passed. The default X4 Pro
+build passed in 128.04 seconds, using 113,060 bytes static RAM and 5,630,358
+bytes program flash. Release review and hardware validation remain pending.
+
 ## Ownership and compatibility
 
 The pinned FreeInk SDK owns hardware polling and completed multi-touch events.

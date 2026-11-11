@@ -21,8 +21,29 @@
 #include "ReaderLineSpacing.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
+#include "personalization/ReaderShortcutLabels.h"
 #include "util/DictionaryRegistry.h"
 #include "util/SlideSwitch.h"
+
+inline void configureReaderEdgePicker(SettingInfo& info) {
+  const auto field = info.valuePtr;
+  if (field != &CrossPointSettings::readerLeftEdgeUp && field != &CrossPointSettings::readerLeftEdgeDown &&
+      field != &CrossPointSettings::readerRightEdgeUp && field != &CrossPointSettings::readerRightEdgeDown)
+    return;
+  static constexpr auto labels = [] {
+    std::array<StrId, readershortcuts::EDGE_ACTIONS.size()> values{};
+    for (size_t i = 0; i < values.size(); ++i)
+      values[i] = readershortcuts::ACTION_LABELS[static_cast<uint8_t>(readershortcuts::EDGE_ACTIONS[i])];
+    return values;
+  }();
+  info.staticEnumValues = labels;
+  info.valuePtr = nullptr;
+  info.valueGetter = [field] { return readershortcuts::edgeActionIndex(SETTINGS.*field); };
+  info.valueSetter = [field](uint8_t index) {
+    if (index < readershortcuts::EDGE_ACTIONS.size())
+      SETTINGS.*field = static_cast<uint8_t>(readershortcuts::EDGE_ACTIONS[index]);
+  };
+}
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
@@ -306,6 +327,7 @@ std::vector<SettingInfo> getBaseSettingsList(size_t extraCapacity = 0);
 inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* registry = nullptr,
                                                 const std::vector<DictionaryEntry>* dictionaries = nullptr) {
   auto v = getBaseSettingsList(dictionaries && !dictionaries->empty() ? 1 : 0);
+  for (auto& info : v) configureReaderEdgePicker(info);
   if (!UITheme::supportsCoverGrid()) {
     v.erase(std::remove_if(v.begin(), v.end(),
                            [](const SettingInfo& info) {

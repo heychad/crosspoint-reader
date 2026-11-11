@@ -57,8 +57,33 @@ enum class Action : uint8_t {
   CalibreWireless,
   Count
 };
-// The existing edge palette ends before physical-only lock/sleep actions.
-inline constexpr uint8_t EDGE_ACTION_COUNT = static_cast<uint8_t>(Action::QuickLock);
+// Keep the original edge indices, then append RC actions without exposing the
+// intervening physical-button actions or changing their persisted IDs.
+inline constexpr uint8_t EDGE_ORIGINAL_ACTION_COUNT = static_cast<uint8_t>(Action::QuickLock);
+inline constexpr auto EDGE_ACTIONS = [] {
+  std::array<Action, EDGE_ORIGINAL_ACTION_COUNT + 3> actions{};
+  for (size_t i = 0; i < EDGE_ORIGINAL_ACTION_COUNT; ++i) actions[i] = static_cast<Action>(i);
+  actions[EDGE_ORIGINAL_ACTION_COUNT] = Action::HomeReader;
+  actions[EDGE_ORIGINAL_ACTION_COUNT + 1] = Action::SelectChapter;
+  actions[EDGE_ORIGINAL_ACTION_COUNT + 2] = Action::TogglePageGestures;
+  return actions;
+}();
+inline constexpr uint8_t EDGE_STORED_VALUE_COUNT = static_cast<uint8_t>(Action::TogglePageGestures) + 1;
+inline constexpr bool isEdgeAction(uint8_t value) {
+  for (auto action : EDGE_ACTIONS)
+    if (static_cast<uint8_t>(action) == value) return true;
+  return false;
+}
+inline constexpr uint8_t edgeActionIndex(uint8_t value) {
+  for (size_t i = 0; i < EDGE_ACTIONS.size(); ++i)
+    if (static_cast<uint8_t>(EDGE_ACTIONS[i]) == value) return static_cast<uint8_t>(i);
+  return 0;
+}
+inline constexpr bool normalizeEdgeAction(uint8_t& value) {
+  if (isEdgeAction(value)) return false;
+  value = 0;
+  return true;
+}
 enum class Trigger : uint8_t { None, UpTap, UpHold, DownTap, DownHold, Chord };
 inline bool swapSideBindings(bool followsOrientation, uint8_t orientation) {
   return followsOrientation && orientation != 0;

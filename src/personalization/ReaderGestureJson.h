@@ -18,7 +18,7 @@ inline bool readEmbeddedLegacyEdges(JsonVariantConst doc, const std::array<uint8
     const uint8_t raw = value.as<uint8_t>();
     if (raw >= static_cast<uint8_t>(Binding::Count)) continue;
     const auto mapped = static_cast<uint8_t>(actionFor(raw));
-    if (mapped >= readershortcuts::EDGE_ACTION_COUNT) continue;
+    if (!readershortcuts::isEdgeAction(mapped)) continue;
     *destinations[i] = mapped;
     imported = true;
   }

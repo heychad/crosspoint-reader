@@ -518,7 +518,8 @@ void SettingsActivity::toggleSelectedSetting() {
     const uint8_t cur = setting.valueGetter();
     if (totalValues > 2) {
       const auto valueSetter = setting.valueSetter;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valueSetter, totalValues, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+        if (idx < 0 || idx >= totalValues) return;
         const auto bindingsBefore = readerquickactions::bindingValues(SETTINGS);
         valueSetter(idx);
         readerquickactions::normalizeChangedBindings(SETTINGS, bindingsBefore);
@@ -530,6 +531,19 @@ void SettingsActivity::toggleSelectedSetting() {
         optionPopup.show(setting.nameId, setting.enumStringValues, cur, std::move(onSelect));
       } else {
         const auto enumLabels = setting.enumLabels();
+        if (enumLabels.size() > static_cast<size_t>(OptionPopup::maxOptions())) {
+          auto picker =
+              makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, setting.nameId, enumLabels, cur);
+          if (!picker) {
+            LOG_ERR("SETTINGS", "OOM: enum selection");
+            return;
+          }
+          startActivityForResult(std::move(picker), [onSelect = std::move(onSelect)](const ActivityResult& result) {
+            const auto* selected = std::get_if<MenuResult>(&result.data);
+            if (!result.isCancelled && selected) onSelect(selected->action);
+          });
+          return;
+        }
         optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), cur,
                          std::move(onSelect));
       }

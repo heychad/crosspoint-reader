@@ -25,9 +25,19 @@ void ready(Controller& c) { c.update(frame(), enabled()); }
 }  // namespace
 
 TEST(ReaderGestureMigration, ImportsEmbeddedLegacyActionsIntoEachEdge) {
-  constexpr std::array<Action, 10> expected = {
-      Action::Default,     Action::Brighter,        Action::Dimmer,     Action::Warmer,      Action::Cooler,
-      Action::NextChapter, Action::PreviousChapter, Action::LargerText, Action::SmallerText, Action::Home};
+  constexpr std::array<Action, 13> expected = {Action::Default,
+                                               Action::Brighter,
+                                               Action::Dimmer,
+                                               Action::Warmer,
+                                               Action::Cooler,
+                                               Action::NextChapter,
+                                               Action::PreviousChapter,
+                                               Action::LargerText,
+                                               Action::SmallerText,
+                                               Action::Home,
+                                               Action::HomeReader,
+                                               Action::SelectChapter,
+                                               Action::TogglePageGestures};
   for (uint8_t value = 0; value < expected.size(); ++value) {
     JsonDocument doc;
     doc["leftEdgeUp"] = value;
@@ -37,6 +47,22 @@ TEST(ReaderGestureMigration, ImportsEmbeddedLegacyActionsIntoEachEdge) {
     std::array<uint8_t, 4> fields{99, 99, 99, 99};
     EXPECT_TRUE(readEmbeddedLegacyEdges(doc, {&fields[0], &fields[1], &fields[2], &fields[3]}));
     for (auto field : fields) EXPECT_EQ(field, static_cast<uint8_t>(expected[value]));
+  }
+}
+
+TEST(ReaderGestureMigration, EdgePaletteRetainsIdsAndExcludesPhysicalOnlyActions) {
+  ASSERT_EQ(readershortcuts::EDGE_ACTIONS.size(), 37);
+  for (unsigned raw = 0; raw <= 255; ++raw) {
+    const bool supported = raw < 34 || raw == 42 || raw == 43 || raw == 44;
+    EXPECT_EQ(readershortcuts::isEdgeAction(static_cast<uint8_t>(raw)), supported);
+    auto normalized = static_cast<uint8_t>(raw);
+    EXPECT_EQ(readershortcuts::normalizeEdgeAction(normalized), !supported);
+    EXPECT_EQ(normalized, supported ? raw : 0);
+    if (supported) {
+      const auto index = readershortcuts::edgeActionIndex(static_cast<uint8_t>(raw));
+      ASSERT_LT(index, readershortcuts::EDGE_ACTIONS.size());
+      EXPECT_EQ(static_cast<uint8_t>(readershortcuts::EDGE_ACTIONS[index]), raw);
+    }
   }
 }
 
@@ -446,6 +472,6 @@ TEST(ReaderGestureBindings, ChapterAndHomeActionsKeepCrossInkIds) {
   EXPECT_EQ(bindings[0], 11);
   doc["leftEdgeUp"] = 11;
   std::array<uint8_t, 4> edges{0, 0, 0, 0};
-  EXPECT_FALSE(readEmbeddedLegacyEdges(doc, {&edges[0], &edges[1], &edges[2], &edges[3]}));
-  EXPECT_EQ(edges[0], 0);
+  EXPECT_TRUE(readEmbeddedLegacyEdges(doc, {&edges[0], &edges[1], &edges[2], &edges[3]}));
+  EXPECT_EQ(edges[0], static_cast<uint8_t>(Action::SelectChapter));
 }

@@ -162,10 +162,12 @@ had rejected these values despite their presence in the shared mapper. Unknown
 power values and side-only extensions remain rejected; existing native hold
 bindings retain precedence. All 34 focused shortcut/import checks pass.
 
-Remaining RC edge gap: legacy edge values 10–12 are mapped by the gesture
-catalog but rejected by the edge palette limit. Extend the settings UI and
-saved-value validation together before accepting these imports; changing only
-the import would lose them on reload. Wake Only also remains unported.
+The RC edge follow-up adds Home/Reader, Select Chapter, and Toggle Page Gestures
+to all four edge bindings and accepts legacy values 10–12. The picker translates
+display indices while settings files retain existing Action IDs. It uses a
+scrolling list for all 37 options. Invalid stored IDs reset to Default; existing
+Quick Actions ownership is preserved. Device checks remain pending. Wake Only
+also remains unported.
 
 Select Chapter is available in the reader action catalog, Quick Actions, Home
 button mappings, and two-finger swipes. EPUB uses the existing chapter picker;

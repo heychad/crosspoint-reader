@@ -19,6 +19,7 @@ namespace BoardConfig {bool touch=true;bool hasTouch(){return touch;}}
 struct Settings {
  uint8_t readerLeftEdgeUp=0, readerLeftEdgeDown=0, readerRightEdgeUp=0, readerRightEdgeDown=0;
  void load(JsonVariantConst doc) {
+  bool needsResave=false;
   auto visit=[&] {
    readerLeftEdgeUp=doc["readerLeftEdgeUp"] | readerLeftEdgeUp;
    readerLeftEdgeDown=doc["readerLeftEdgeDown"] | readerLeftEdgeDown;
@@ -39,6 +40,20 @@ int main(){
  saved["readerRightEdgeDown"]=first.readerRightEdgeDown;saved["leftEdgeUp"]=2;
  Settings reboot;reboot.load(saved.as<JsonVariantConst>());
  assert(reboot.readerLeftEdgeUp==first.readerLeftEdgeUp && reboot.readerRightEdgeDown==first.readerRightEdgeDown);
+ for (unsigned legacy=10;legacy<=12;++legacy) {
+   JsonDocument source;source["leftEdgeUp"]=legacy;
+   Settings imported;imported.load(source.as<JsonVariantConst>());
+   const auto expected=static_cast<uint8_t>(readergestures::actionFor(legacy));
+   assert(imported.readerLeftEdgeUp==expected);
+   JsonDocument saved;saved["readerLeftEdgeUp"]=imported.readerLeftEdgeUp;
+   Settings reloaded;reloaded.load(saved.as<JsonVariantConst>());
+   assert(reloaded.readerLeftEdgeUp==expected);
+ }
+ for (unsigned raw=34;raw<42;++raw) {
+   JsonDocument invalid;invalid["readerLeftEdgeUp"]=raw;
+   Settings checked;checked.load(invalid.as<JsonVariantConst>());
+   assert(checked.readerLeftEdgeUp==0);
+ }
  BoardConfig::touch=false;Settings unsupported;unsupported.load(old.as<JsonVariantConst>());
  assert(unsupported.readerLeftEdgeUp==0 && unsupported.readerRightEdgeDown==0);
 }

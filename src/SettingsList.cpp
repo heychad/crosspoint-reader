@@ -205,7 +205,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_CHORD, &CrossPointSettings::readerSideChord, readerActions,
                                "readerSideChord", StrId::STR_CAT_CONTROLS));
   if (BoardConfig::hasTouch()) {
-    const auto edgeActions = std::span<const StrId>(readerActions).first(readershortcuts::EDGE_ACTION_COUNT);
+    // Persistence uses raw Action IDs; the UI replaces these with a sparse picker.
+    const auto edgeActions = std::span<const StrId>(readerActions).first(readershortcuts::EDGE_STORED_VALUE_COUNT);
     emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_LEFT_UP, &CrossPointSettings::readerLeftEdgeUp, edgeActions,
                                  "readerLeftEdgeUp", StrId::STR_CAT_CONTROLS));
     emit(SettingInfo::StaticEnum(StrId::STR_SHORTCUT_LEFT_DOWN, &CrossPointSettings::readerLeftEdgeDown, edgeActions,

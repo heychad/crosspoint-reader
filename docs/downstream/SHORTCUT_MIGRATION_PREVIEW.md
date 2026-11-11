@@ -98,3 +98,10 @@ power bindings use the same catalog. Side-only values 64–70 are rejected for
 power bindings. Wake Only remains unsupported, and Quick Actions still uses
 the separate ownership check. These import changes need the next device check;
 the read-only Python preview above has its own narrower scope.
+
+RC edge values 10–12 also import: Home/Reader, Select Chapter, and Toggle Page
+Gestures. The four edge pickers now scroll through all supported actions.
+Their display indices differ from stored Action IDs for the three additions;
+the Web Settings API uses display indices, while settings files retain raw IDs.
+Existing indices 0–33 are unchanged. Verify these bindings after restarting the
+reader during the next device check.
