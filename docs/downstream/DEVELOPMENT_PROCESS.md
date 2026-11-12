@@ -108,7 +108,7 @@ reviewed, device-tested, and deferred. Never turn unknown into complete.
 
 These are check durations, not coding speed or total development time.
 
-| November 11 batch | Host checks | Default X4 Pro build |
+| Batch | Host checks | Default X4 Pro build |
 | --- | --- | --- |
 | Live book preview; shared layout changes | Full 1,833-test suite: 68.53 s | 127.59 s |
 | Four compatible preference imports | 10 affected checks: 2.23 s | 68.31 s |
@@ -116,6 +116,9 @@ These are check durations, not coding speed or total development time.
 | Carousel geometry | 47 affected checks: 1.84 s initially; corrected fixture: 0.52 s | Carousel-enabled profile: 190.30 s, first-use setup included |
 | Daily recorder and shared preview | 410 focused: 0.67 s; cumulative 2,227 cases: 47.90 s, one fixture corrected in 0.65 s | Enabled profile: 80.00 s final; initial 178.74 s preceded stack correction |
 | Independent margin settings and migration | 91 focused: 12.24 s; cumulative 2,240 cases: 242.39 s, one web fixture corrected alongside two added checks in 1.49 s | 65.85 s final; initial 112.27 s preceded resave correction |
+| November 12 named font migration | 79 focused checks: 4.16 s, including 3,343 decoder records | 76.98 s |
+| November 12 Safe Mode preservation | Cumulative 2,256 checks: 78.40 s; two additional ownership/profile checks: 0.07 s | 141.06 s |
+| November 12 sleep transition | Cumulative 2,259 checks: 82.37 s; stale-input regression checked with and without Page Overlay | 134.95 s |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

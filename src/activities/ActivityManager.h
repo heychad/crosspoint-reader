@@ -63,6 +63,7 @@ class ActivityManager {
   PendingAction pendingAction = PendingAction::None;
   Activity* pendingHomeReaderTarget = nullptr;
   bool continueHomeReaderUnwind();
+  void processPendingActivities();
 
   // Task to render and display the activity
   TaskHandle_t renderTaskHandle = nullptr;

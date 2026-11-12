@@ -173,3 +173,37 @@ confirmed selection, saving, saved-content navigation, cancellation in each
 orientation, page turns, Quick Lock, and sleep/resume. Resume the E2 comparison
 and unavailable-layout work here. Saved Items first-load latency and its brief
 page flash are recorded in the performance backlog.
+
+## Sleep transition input guard
+
+The RC2 sleep fix now has a downstream implementation. `goToSleep()` processes
+the queued activity transition directly, without polling the outgoing reader
+or consuming another input frame. Normal navigation uses the same transition
+helper. Reader teardown still saves its state, and SleepActivity enters before
+the caller powers down the display. This adapts Julia Nguyen's
+[CrossInk fix](https://github.com/uxjulia/CrossInk/commit/bb63d8f191aefd684f6a839d331fb58f590405b6).
+
+The fork keeps its exclusive USB-storage guard in both the normal loop and the
+transition helper. Sleep requests cannot replace USB Drive while the host owns
+the card. A failed SleepActivity allocation keeps the current activity and
+frame; the main sleep path has already called its existing state-save hook.
+The change adds no activity fields, buffer, or persistent format.
+
+The host regression runs the production manager methods with stale shortcuts,
+suppressed releases, Quick Lock, retained reader parents, allocation failure,
+and exclusive USB storage. It checks normal push/pop navigation too. The old
+implementation fails because it dispatches stale reader input; the revised one
+passes with Page Overlay compiled both in and out.
+
+The cumulative host suite passed all 2,259 checks in 82.37 seconds. The
+pre-change implementation exits the regression with the stale-input failure;
+the corrected implementation passes both configurations with address and
+undefined-behavior sanitizers enabled.
+The default X4 Pro build passed in 134.95 seconds, using 113,132 bytes of static
+RAM and 5,656,834 bytes of flash. The pre-existing local SDK edits remain
+unchanged and outside this checkpoint.
+
+For the next device batch, sleep from an open book and from Quick Lock. The
+chosen sleep screen should appear without another shortcut or menu, and wake
+should restore the reading position. Timeout sleep should follow the same path.
+This change is not installed or device-accepted yet.

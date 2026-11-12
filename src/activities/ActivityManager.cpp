@@ -187,6 +187,12 @@ void ActivityManager::loop() {
     currentActivity->loop();
   }
 
+  processPendingActivities();
+}
+
+void ActivityManager::processPendingActivities() {
+  // The USB host owns raw storage until the exclusive activity restarts.
+  if (requiresExclusiveStorageLoop()) return;
   while (pendingAction != PendingAction::None) {
     // The page turner's radio gives its heap back before the next screen allocates. Its teardown
     // can span loop passes and runs outside the render lock.
@@ -445,9 +451,20 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
 }
 
 void ActivityManager::goToSleep(bool fromTimeout) {
-  replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
+  if (requiresExclusiveStorageLoop()) {
+    LOG_ERR("ACT", "Cannot enter sleep while USB owns storage");
+    return;
+  }
+  auto activity = makeUniqueNoThrow<SleepActivity>(renderer, mappedInput, fromTimeout);
+  if (!activity) {
+    LOG_ERR("ACT", "Failed to allocate sleep activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
   if (pendingAction == PendingAction::Replace) pendingAction = PendingAction::ReplaceForSleep;
-  loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
+  // Input capture has stopped. Finish the transition without replaying the
+  // outgoing reader's held buttons or gestures before the device powers down.
+  processPendingActivities();
 }
 
 void ActivityManager::goToBoot() { replaceActivity(std::make_unique<BootActivity>(renderer, mappedInput)); }

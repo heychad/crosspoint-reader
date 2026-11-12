@@ -14,7 +14,7 @@ changes remain separate and uncommitted.
 
 | Change | Fork assessment and next action |
 | --- | --- |
-| Sleep transition, `bb63d8f1` | Next fix. The fork's `goToSleep()` calls `loop()`, which polls the outgoing reader before processing its pending replacement. Process the transition without another input poll. Preserve the native exclusive-storage guard and synchronous sleep rendering. |
+| Sleep transition, `bb63d8f1` | Implemented as a checked WIP. The fork processes the pending transition without another input poll, retains its exclusive-storage guard, and enters the sleep activity synchronously. Regression checks cover both Page Overlay configurations; cumulative review and device checks remain. |
 | Clipping anchors, `6ec5bc96` | Review before another clipping release. RC2 adds stable source-word identities across layout changes and changes parser, page, clipping, and sync formats. Compare with our existing layout-signature guard; do not copy the new storage format without migration and preservation tests. |
 | Carousel spacing, `83ce9237` | Compare against our responsive layout, which already sizes covers and menus together. Its fixed vertical-lift change is not a direct patch for this fork. |
 | Custom sleep-image fit/crop, `e36b25b1` | Review in the E2 batch. It adds BMP scaling and changes sleep rendering; existing transparent-overlay and grayscale behavior must remain covered. |
