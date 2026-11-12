@@ -94,17 +94,43 @@ void HomeActivity::showCompactMenu() {
   if (SETTINGS.trackReadingStats) options[count++] = tr(STR_READING_STATISTICS);
   popup.show(tr(STR_MENU), options, count, 0, [this, menuCount](int index) {
     if (index == menuCount) {
-      auto activity = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput);
-      if (activity)
-        activityManager.replaceActivity(std::move(activity));
-      else
-        LOG_ERR("HOME", "OOM: ReadingStatsActivity");
+      openCompactStatistics();
       return;
     }
     selectorIndex = static_cast<int>(recentBooks.size()) + index;
     activateSelection();
   });
   requestUpdate();
+}
+
+void HomeActivity::openCompactStatistics() {
+  auto screen = recentBooks.empty() ? makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput)
+                                    : ReadingStatsActivity::forClosedBook(
+                                          renderer, mappedInput, recentBooks.front().path, recentBooks.front().title);
+  if (!screen) {
+    LOG_ERR("HOME", "Cannot open reading statistics");
+    statisticsOpenFailed = true;
+    requestUpdate();
+    return;
+  }
+  {
+    RenderLock lock;
+    freeCoverBuffer();
+    coverRendered = false;
+  }
+  startActivityForResult(std::move(screen), [this](const ActivityResult&) {
+    RenderLock lock;
+    const auto& stored = RECENT_BOOKS.getBooks();
+    if (!recentBooks.empty() && (RecentBooksStore::isMissing(recentBooks.front()) ||
+                                 std::find(stored.begin(), stored.end(), recentBooks.front()) == stored.end())) {
+      loadRecentBooks(1);
+      hasContinueReading = !recentBooks.empty();
+    }
+    selectorIndex = 0;
+    recentsLoaded = false;
+    if (GUI.hasDashboardHome()) loadDashboardData();
+    requestUpdate();
+  });
 }
 
 void HomeActivity::showNextCompactBook() {
@@ -566,6 +592,13 @@ void HomeActivity::freeCoverBuffer() {
 
 void HomeActivity::loop() {
   if (!popup.isActive()) {
+    if (statisticsOpenFailed) {
+      statisticsOpenFailed = false;
+      const char* options[] = {tr(STR_OK_BUTTON)};
+      popup.showMessage(tr(STR_READING_STATISTICS), tr(STR_LIBRARY_STATS_OPEN_ERROR), options, 1, 0, [](int) {});
+      requestUpdate();
+      return;
+    }
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
     if (deferredMoveRetryPending && static_cast<int32_t>(millis() - deferredMoveRetryAt) >= 0) {
       deferredMoveRetryPending = false;

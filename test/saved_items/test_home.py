@@ -59,9 +59,17 @@ struct ButtonNavigator {
 struct CoverGrid {int selectedAction(const MappedInputManager&){return -1;}};
 enum class HomeMenuItem {NONE,FILE_BROWSER,LIBRARY,SAVED_ITEMS,OPDS_BROWSER,FILE_TRANSFER,SETTINGS_MENU};
 std::string opened;
-struct ReadingStatsActivity {ReadingStatsActivity(Renderer&,MappedInputManager&){} };
+struct ActivityResult {};
+struct ReadingStatsActivity {
+ std::string path,title;
+ ReadingStatsActivity(Renderer&,MappedInputManager&){}
+ static std::unique_ptr<ReadingStatsActivity> forClosedBook(Renderer&,MappedInputManager&,const std::string&,const std::string&);
+};
 bool allocationFails=false;
 template<class T,class... A>std::unique_ptr<T> makeUniqueNoThrow(A&&... a){if(allocationFails)return {};return std::make_unique<T>(static_cast<A&&>(a)...);}
+std::unique_ptr<ReadingStatsActivity> ReadingStatsActivity::forClosedBook(Renderer& r,MappedInputManager& m,const std::string& p,const std::string& t){
+ auto screen=makeUniqueNoThrow<ReadingStatsActivity>(r,m);if(screen){screen->path=p;screen->title=t;}return screen;
+}
 struct {void replaceActivity(std::unique_ptr<ReadingStatsActivity>){opened="statistics";}void goToSavedItems(){opened="saved";}void goHome(){opened="home";}} activityManager;
 struct ReadingStatsDate {};
 struct ReadingStatsDateTime {ReadingStatsDate date;};
@@ -76,7 +84,7 @@ namespace readingstats::deferredcompletion {
  }
 }
 namespace haptic_feedback {void touchAction(){}}
-enum { STR_OK_BUTTON, STR_READING_STATISTICS, STR_READER_STATS_SAVE_FAILED, STR_RETRY, STR_SETTINGS_TITLE, STR_SETTINGS_RECOVERY_DETAILS, STR_FINISHED_MOVE_REVIEW, STR_MENU, STR_BROWSE_FILES, STR_LIBRARY, STR_SAVED_ITEMS, STR_FILE_TRANSFER, STR_PLUGINS, STR_OPDS_BROWSER };
+enum { STR_OK_BUTTON, STR_READING_STATISTICS, STR_READER_STATS_SAVE_FAILED, STR_RETRY, STR_SETTINGS_TITLE, STR_SETTINGS_RECOVERY_DETAILS, STR_FINISHED_MOVE_REVIEW, STR_MENU, STR_BROWSE_FILES, STR_LIBRARY, STR_SAVED_ITEMS, STR_FILE_TRANSFER, STR_PLUGINS, STR_OPDS_BROWSER, STR_LIBRARY_STATS_OPEN_ERROR };
 const char* tr(int id) {static std::string labels[30];labels[id]=std::to_string(id);return labels[id].c_str();}
 struct Notice { uint32_t pending() const {return 0;} void acknowledge(uint32_t) {} };
 Notice& statsSaveNotice(){static Notice notice;return notice;}
@@ -94,7 +102,7 @@ struct Popup {
 bool renderLocked=false;int errors=0;
 #define LOG_ERR(...) (++errors)
 struct RenderLock {RenderLock(){assert(!renderLocked);renderLocked=true;}~RenderLock(){renderLocked=false;}};
-struct Book {std::string path;bool missing=false;bool operator==(const Book& other)const{return path==other.path;}};
+struct Book {std::string path;bool missing=false;std::string title="Book title";bool operator==(const Book& other)const{return path==other.path;}};
 struct RecentBooksStore {static bool isMissing(const Book& b){return b.missing;}};
 struct {std::vector<Book> books;const auto& getBooks()const{return books;}} RECENT_BOOKS;
 struct MinimalHomeTheme {static Rect coverRect(Rect);};
@@ -103,9 +111,14 @@ namespace MinimalHomeMetrics {struct M {int homeCoverHeight=300;};constexpr M va
 
 struct HomeActivity {
  bool libraryFirstOnHome = false;
+ bool statisticsOpenFailed=false;
+ std::unique_ptr<ReadingStatsActivity> child;std::function<void(const ActivityResult&)> returned;
+ void startActivityForResult(std::unique_ptr<ReadingStatsActivity> screen,std::function<void(const ActivityResult&)> callback){assert(!renderLocked);opened="statistics";child=std::move(screen);returned=std::move(callback);}
+ void loadRecentBooks(int max){assert(renderLocked);recentBooks.clear();for(const auto& b:RECENT_BOOKS.books)if(!b.missing){recentBooks.push_back(b);if(int(recentBooks.size())==max)break;}}
+ void openCompactStatistics();
  bool coverRendered=true,recentsLoaded=true;int frees=0,dataLoads=0;std::string dataPath;
  void freeCoverBuffer(){assert(renderLocked);++frees;}
- void loadDashboardData(){assert(renderLocked);++dataLoads;dataPath=recentBooks.front().path;}
+ void loadDashboardData(){assert(renderLocked);++dataLoads;dataPath=recentBooks.empty()?"":recentBooks.front().path;}
  void activateSelection();void showCompactMenu();void showNextCompactBook();bool handleCompactHome();
  struct MenuPage {int top,first,count,capacity;};
  Renderer renderer;MappedInputManager mappedInput;ButtonNavigator buttonNavigator;Popup popup;
@@ -136,7 +149,7 @@ code+=method(header,'  static HomeMenuItem indexToMenuItem(')+'\n};\n'
 code+=method(source,'bool usesCompactHome(')+'\n'
 for file,signature in [('MinimalHomeTheme.cpp','Rect MinimalHomeTheme::coverRect('),('DashboardHomeTheme.cpp','Rect DashboardHomeTheme::coverRect(')]:
     code+=method((ROOT/'src/components/themes/minimal'/file).read_text(),signature)+'\n'
-for signature in ['void HomeActivity::activateSelection(', 'void HomeActivity::showCompactMenu(', 'void HomeActivity::showNextCompactBook(', 'bool HomeActivity::handleCompactHome(', 'int HomeActivity::getMenuItemCount(', 'int HomeActivity::homeCoverTileHeight(', 'HomeActivity::MenuPage HomeActivity::menuPage(', 'void HomeActivity::loop(']:
+for signature in ['void HomeActivity::activateSelection(', 'void HomeActivity::showCompactMenu(', 'void HomeActivity::openCompactStatistics(', 'void HomeActivity::showNextCompactBook(', 'bool HomeActivity::handleCompactHome(', 'int HomeActivity::getMenuItemCount(', 'int HomeActivity::homeCoverTileHeight(', 'HomeActivity::MenuPage HomeActivity::menuPage(', 'void HomeActivity::loop(']:
     code+=method(source,signature)+'\n'
 code+=r'''
 int main(){
@@ -219,7 +232,28 @@ int main(){
     assert(opened==(index==normal?"statistics":expected[index]));
    }
   }
+  // Closing statistics preserves the preview, then reconciles removed/moved books.
   SETTINGS.trackReadingStats=true;
+  for(bool removed:{false,true})for(bool missing:{false,true}){
+   HomeActivity stats;stats.recentBooks={{"/preview.epub",false,"Preview title"}};
+   RECENT_BOOKS.books={{"/preview.epub"},{"/fallback.epub"}};
+   stats.openCompactStatistics();assert(stats.child&&stats.child->path=="/preview.epub"&&stats.child->title=="Preview title");
+   assert(stats.frees==1&&!stats.coverRendered&&!renderLocked);
+   if(removed)RECENT_BOOKS.books.erase(RECENT_BOOKS.books.begin());
+   stats.recentBooks.front().missing=missing;
+   for(auto& b:RECENT_BOOKS.books)if(b.path=="/preview.epub")b.missing=missing;
+   stats.returned({});
+   assert(stats.recentBooks.front().path==((removed||missing)?"/fallback.epub":"/preview.epub"));
+   assert(!stats.recentsLoaded&&!renderLocked);
+  }
+  HomeActivity removedLast;RECENT_BOOKS.books={{"/book.epub"}};removedLast.openCompactStatistics();
+  RECENT_BOOKS.books.clear();removedLast.returned({});
+  assert(removedLast.recentBooks.empty()&&!removedLast.hasContinueReading&&!removedLast.recentsLoaded);
+  HomeActivity emptyStats;emptyStats.recentBooks.clear();emptyStats.openCompactStatistics();
+  assert(emptyStats.child&&emptyStats.child->path.empty());
+  HomeActivity noStats;allocationFails=true;noStats.openCompactStatistics();allocationFails=false;
+  assert(noStats.statisticsOpenFailed&&!noStats.child&&noStats.frees==0);
+  noStats.loop();assert(!noStats.statisticsOpenFailed&&noStats.popup.shown);
   HomeActivity minimal;minimal.selectorIndex=0;minimal.mappedInput.released=MappedInputManager::Button::Left;
   RECENT_BOOKS.books={{"/book.epub"},{"/missing.epub",true},{"/next.epub"}};
   const auto original=RECENT_BOOKS.books;

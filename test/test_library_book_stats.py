@@ -8,8 +8,16 @@ source = (root / 'src/activities/library/LibraryListActivity.cpp').read_text()
 start = source.index('void LibraryListActivity::openBookStatistics(')
 end = source.index('\n#if FREEINK_CAP_TOUCH', start)
 functions = source[start:end]
-assert 'GlobalReadingStats::loadReadOnly()' in functions
-assert 'BookReadingStats::LoadMode::ReadOnly' in functions
+stats_source = (root / 'src/activities/settings/ReadingStatsActivityClosedBook.cpp').read_text()
+factory_start = stats_source.index('std::unique_ptr<ReadingStatsActivity> ReadingStatsActivity::forClosedBook(')
+factory_end = stats_source.index('{', factory_start) + 1
+factory_depth = 1
+while factory_depth:
+    factory_depth += (stats_source[factory_end] == '{') - (stats_source[factory_end] == '}')
+    factory_end += 1
+factory = stats_source[factory_start:factory_end]
+assert 'GlobalReadingStats::loadReadOnly()' in factory
+assert 'BookReadingStats::LoadMode::ReadOnly' in factory
 menu = source[source.index('void LibraryListActivity::showRecentBookOptions('):start]
 assert 'isStoreRow ? 5 : 4' in menu
 assert 'case 3:' in menu and 'case 4:' in menu and menu.count('openBookStatistics(path, title)') == 2
@@ -23,8 +31,10 @@ code = r'''
 #include <string>
 #include <utility>
 #define LOG_ERR(...) ((void)0)
+using GfxRenderer=int;using MappedInputManager=int;
 struct BookReadingStats {enum class LoadMode{ReadOnly};bool writable=true;};
-struct GlobalReadingStats {bool writable=true;static GlobalReadingStats loadReadOnly(){return {};}};
+bool globalWritable=true;
+struct GlobalReadingStats {bool writable=true;static GlobalReadingStats loadReadOnly(){return {globalWritable};}};
 struct ActivityResult{};
 struct HalStorage {enum class PathStatus{Present,Missing,Failed};};
 struct StorageType {HalStorage::PathStatus status=HalStorage::PathStatus::Present;HalStorage::PathStatus lookupPath(const char*){return status;}} Storage;
@@ -34,9 +44,9 @@ constexpr int STR_LIBRARY_REBUILDING=1;
 int tr(int value){return value;}
 struct Gui {void drawPopup(int&,int){}} GUI;
 namespace FsHelpers {
-bool hasReflowableBookExtension(const std::string& p){return p=="book.epub" || p=="book.md";}
+bool hasReflowableBookExtension(const std::string& p){return p=="book.epub" || p=="book.md" || p=="book.txt";}
 bool hasEpubExtension(const std::string& p){return p=="book.epub";}
-bool hasXtcExtension(const std::string& p){return p=="book.xtc";}
+bool hasXtcExtension(const std::string& p){return p=="book.xtc" || p=="book.xtch";}
 }
 struct Epub {static std::string cachePathForFilePath(const std::string&,const char*){return "epub-cache";}};
 struct Xtc {Xtc(const std::string&,const char*){} std::string getCachePath(){return "xtc-cache";}};
@@ -47,9 +57,10 @@ BookReadingStats loadBook(const std::string&,const std::string&,bool& tracking,b
 }
 int progressCalls=0;int loadBookProgress(const std::string&){++progressCalls;return 42;}
 struct ReadingStatsActivity {
- bool bookWritable;int progress;bool tracking;std::string cache,path;
- ReadingStatsActivity(int&,int&,const std::string&,const BookReadingStats& book,const GlobalReadingStats&,int p,bool t,bool saved,const std::string& c,const std::string& b,void* live,bool closedDateEdit)
- :bookWritable(book.writable),progress(p),tracking(t),cache(c),path(b){assert(saved && live==nullptr && closedDateEdit);}
+ static std::unique_ptr<ReadingStatsActivity> forClosedBook(int&,int&,const std::string&,const std::string&);
+ bool bookWritable,globalWritable;int progress;bool tracking;std::string cache,path;
+ ReadingStatsActivity(int&,int&,const std::string&,const BookReadingStats& book,const GlobalReadingStats& global,int p,bool t,bool saved,const std::string& c,const std::string& b,void* live,bool closedDateEdit)
+ :bookWritable(book.writable),globalWritable(global.writable),progress(p),tracking(t),cache(c),path(b){assert(saved && live==nullptr && closedDateEdit);}
 };
 int allocation=0,failAt=0;
 template<class T,class... Args>std::unique_ptr<T> makeUniqueNoThrow(Args&&... args){
@@ -65,13 +76,17 @@ struct LibraryListActivity {
  void startActivityForResult(std::unique_ptr<ReadingStatsActivity> activity,std::function<void(const ActivityResult&)> cb){assert(!locked);++pushes;child=std::move(activity);callback=std::move(cb);}
  void openBookStatistics(const std::string&,const std::string&);void restoreIndexAfterStatistics(bool);
 };
-''' + functions + r'''
+''' + factory + '\n' + functions + r'''
 int main(){
  LibraryListActivity ok;allocation=0;ok.openBookStatistics("book.epub","Title");
  assert(ok.pushes==1 && !ok.index.isOpen() && ok.child->bookWritable && ok.child->progress==4200 && ok.child->tracking);
  ok.callback({});assert(ok.index.isOpen() && ok.releases==1 && !ok.filterFailed);
  LibraryListActivity missing;Storage.status=HalStorage::PathStatus::Missing;missing.openBookStatistics("book.epub","Title");
  assert(missing.pushes==0 && missing.index.isOpen() && missing.statisticsOpenFailed);Storage.status=HalStorage::PathStatus::Present;
+ LibraryListActivity unreadable;Storage.status=HalStorage::PathStatus::Failed;unreadable.openBookStatistics("book.epub","Title");
+ assert(!unreadable.child&&unreadable.statisticsOpenFailed&&unreadable.index.isOpen());Storage.status=HalStorage::PathStatus::Present;
+ LibraryListActivity guarded;globalWritable=false;guarded.openBookStatistics("book.epub","Title");
+ assert(guarded.child&&!guarded.child->globalWritable);globalWritable=true;
  LibraryListActivity unsupported;allocation=0;unsupported.openBookStatistics("book.pdf","Title");
  assert(unsupported.pushes==0 && unsupported.index.isOpen() && unsupported.statisticsOpenFailed);
  for(int failure : {1,2}) {LibraryListActivity oom;allocation=0;failAt=failure;oom.openBookStatistics("book.epub","Title");
@@ -84,6 +99,10 @@ int main(){
  assert(text.pushes==1 && text.child->progress==-1 && progressCalls==before);
  LibraryListActivity xtc;allocation=0;xtc.openBookStatistics("book.xtc","Title");
  assert(xtc.pushes==1 && xtc.child->cache=="xtc-cache" && xtc.child->progress==4200);
+ LibraryListActivity textPlain;allocation=0;before=progressCalls;textPlain.openBookStatistics("book.txt","Text");
+ assert(textPlain.child&&textPlain.child->progress==-1&&progressCalls==before);
+ LibraryListActivity xtch;allocation=0;xtch.openBookStatistics("book.xtch","XTC-H");
+ assert(xtch.child&&xtch.child->cache=="xtc-cache"&&xtch.child->progress==4200);
  LibraryListActivity xtcOom;allocation=0;failAt=1;xtcOom.openBookStatistics("book.xtc","Title");
  assert(xtcOom.pushes==0 && xtcOom.index.isOpen() && xtcOom.statisticsOpenFailed);failAt=0;
  LibraryListActivity noIndex;noIndex.index.opened=false;allocation=0;noIndex.openBookStatistics("book.epub","Title");

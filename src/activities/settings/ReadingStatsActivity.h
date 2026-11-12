@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "activities/UiTabListActivity.h"
@@ -13,6 +14,9 @@ class ReaderStats;
 
 class ReadingStatsActivity final : public UiTabListActivity {
  public:
+  // Read-only loading; edits use the existing closed-book save and recovery flow.
+  static std::unique_ptr<ReadingStatsActivity> forClosedBook(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                                             const std::string& path, const std::string& title);
   ReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
   ReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                        const BookReadingStats& book, const GlobalReadingStats& global, int progress, bool tracking,

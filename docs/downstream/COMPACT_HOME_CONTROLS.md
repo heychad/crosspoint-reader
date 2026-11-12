@@ -19,9 +19,11 @@ four-front-button bindings from other CrossInk boards.
 Menu reuses the existing option popup and its input-publication handshake,
 remapped navigation, Confirm/Back handling, and outside-tap dismissal. Both
 browsers, Saved Items, transfer, settings, and the existing plugins/OPDS entry
-remain available. Reading statistics opens the existing Device/All Devices
-screen when tracking is enabled. Current-book statistics from Home and the
-richer Minimal/Dashboard presentation remain separate parity work.
+remain available. Reading statistics opens the previewed book's Book tab, with Device and
+All Devices still available. With no previewed book it opens the device view.
+The normal closed-book date, tracking, completion, backup, and recovery controls
+retain their existing build flags and availability guards. Richer
+Minimal/Dashboard presentation remains separate parity work.
 
 ## Reading state and resources
 
@@ -39,12 +41,23 @@ network connection. The reused popup holds at most seven option strings; its
 local pointer array is 28 bytes on the X4 Pro. Normal string capacity and the
 existing popup interaction storage remain in use.
 
-Opening statistics uses checked allocation of the existing activity. Applying
-the replacement releases Home and its cover cache before statistics loads data.
-Allocation failure logs an error and leaves Home available. The standard X4 Pro
-ELF reports 892 bytes for HomeActivity, 684 for its included OptionPopup, 1,940
+Home and Library now share `ReadingStatsActivity::forClosedBook`. It checks the
+book's presence, uses read-only book/global loading, and retains the existing
+closed-book edit and recovery flow. Missing or unknown tracking data disables
+book writes. EPUB and XTC-family progress use the saved cache; TXT/Markdown
+progress remains unavailable because its validator can delete stale layouts.
+No repair or migration is introduced by this loader.
+
+Opening statistics uses checked allocation of the existing activity and a
+bounded temporary snapshot. Home releases its cover cache, then stays on the
+activity stack so Back returns to the preview. If that book was removed from
+Recents, moved, or deleted through statistics, Home reloads the available list.
+Dashboard data refreshes read-only. Failed loading or allocation leaves Home
+available and opens the existing book-statistics error message on the next
+input pass, without reentering the popup's selection callback. The earlier compact-controls X4 Pro
+ELF reported 892 bytes for HomeActivity, 684 for its included OptionPopup, 1,940
 for ReadingStatsActivity, and 24 per std::string. Seven option slots therefore
-use 168 bytes plus label storage. No Home data member was added. These are
+use 168 bytes plus label storage. The book-statistics stage adds a failure-notice flag without increasing the 892-byte Home object. Its temporary book/global snapshot is 244 bytes (80 + 164), bounded to 512 bytes by a compile-time check. These are
 object sizes, not peak-heap measurements; the Home cover cache and existing
 renderer/UI owners also coexist during allocation. Runtime heap, latency, and
 physical gesture behavior remain unmeasured.
@@ -60,15 +73,30 @@ hit bounds in portrait/landscape, empty books, and statistics allocation failure
 The normal Home and Carousel configurations remain covered.
 
 Minimal and Dashboard rendering still use the existing cover-cache and fallback
-checks. The shared cover rectangles now drive both drawing and touch. All 2,284 host checks passed in 41.31 seconds. The expanded input checks also
+checks. The shared cover rectangles now drive both drawing and touch. The compact-controls checkpoint passed all 2,284 host checks in 41.31 seconds. The expanded input checks also
 passed with Carousel and deferred completion enabled under AddressSanitizer and
 UndefinedBehaviorSanitizer. The standard X4 Pro build passed in 108.55 seconds;
 the Carousel profile passed in 99.98 seconds. Device acceptance and cumulative
 release review remain open.
 
+The book-statistics stage's full run passed 2,277/2,284 checks. Seven UI fixtures
+lacked the new loader's XTC dependency. Moving the unchanged loader into
+`ReadingStatsActivityClosedBook.cpp` restored the original drawing source and
+kept file-loading dependencies separate. The eight affected UI/Home checks then
+passed in 1.84 seconds; the shared factory/Library check passed directly. Final
+Home checks also cover returning after removal of the last recent book under
+ASan/UBSan. Final standard X4 Pro build: 71.41 seconds, 113,132 bytes static RAM,
+5,660,466 bytes application flash. The combined X4 Pro profile passed in 79.96
+seconds: 113,060 bytes RAM and 5,741,942 bytes flash. It enables Carousel,
+completion/moves/prompt, statistics restore/daily recording, and Page Overlay;
+it does not claim coverage of every experimental flag. In that ELF, Home is
+944 bytes and ReadingStatsActivity is 2,452 bytes; the snapshot remains 244
+bytes. Physical behavior and peak heap still need device checks.
+
 Next device check: in each theme, try the four swipe directions, open one menu
 entry, tap the previewed cover, and confirm reading position. Repeat cover taps
-in all four orientations. Keep richer artwork, progress, Dashboard statistics,
-and current-book statistics open in the parity tracker.
+in all four orientations. Also open statistics for a previewed book, return to Home, and confirm that the
+preview and saved position are retained. Keep richer artwork, progress, and
+Dashboard statistics open in the parity tracker.
 
 Source: CrossInk [v2.0.0-rc2 Home](https://github.com/uxjulia/CrossInk/blob/v2.0.0-rc2/src/activities/home/HomeActivity.cpp).

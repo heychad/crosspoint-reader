@@ -24,6 +24,7 @@ class HomeActivity final : public Activity {
   std::atomic<int> carouselCenterIndex{0};
   std::array<HomeDashboardData, 3> carouselData{};
 #endif
+  bool statisticsOpenFailed = false;
   bool recentsLoading = false;
   bool recentsLoaded = false;
   bool firstRenderDone = false;
@@ -87,6 +88,7 @@ class HomeActivity final : public Activity {
   }
   void activateSelection();
   void showCompactMenu();
+  void openCompactStatistics();
   void showNextCompactBook();
   bool handleCompactHome();
   void onRecentBookSelected(const std::string& path);
