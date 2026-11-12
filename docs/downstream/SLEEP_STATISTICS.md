@@ -168,6 +168,8 @@ reading-session, and statistics-sleep checks passed in 1.64 seconds. The enabled
 X4 Pro build passed in 73.21 seconds, with 113,052 bytes static RAM and
 5,708,326 bytes flash. These changes are not installed or device-accepted.
 
-Feature work is suspended while investigating Chad's reported clipping crash.
-The next priority is device evidence, a targeted fix, and a five-minute device
-regression/feature check. Unavailable-layout reconstruction remains E2 work.
+The clipping interruption is resolved in the tested clipfix2 baseline. Chad
+confirmed selection, saving, saved-content navigation, cancellation in each
+orientation, page turns, Quick Lock, and sleep/resume. Resume the E2 comparison
+and unavailable-layout work here. Saved Items first-load latency and its brief
+page flash are recorded in the performance backlog.

@@ -214,7 +214,17 @@ text matches the `My Clippings.txt` export. Both files matched a second remote
 read. Private copies and the verification receipt are in
 `.cache/clipfix2-device-check-20261112/`; the book text is not copied into Git.
 
-The reported long-press crash and save path pass this device check. The rest of
-the short regression remains open: Saved Items display and navigation,
-selection cancellation in all four orientations, page turns, Quick Lock,
-and sleep/resume. These results do not mark the full checklist complete.
+The reported long-press crash and save path pass this device check. Chad also
+confirmed that Saved Items shows the expected text and reaches the correct
+passage, that selection cancellation works in each orientation, and that page
+turns, Quick Lock, and sleep/wake preserve his reading position. Home now opens
+directly to the covers. These are user-observed checks on clipfix2, not a claim
+that later development features have been tested.
+
+Saved Items took more than 30 seconds on its first open only. It currently groups
+saved content by book: opening a book leads to its clipping list, then a clipping
+action menu. The brief page flash before that list and first-load latency are
+recorded as follow-up polish. The reader intentionally waits for a page render
+before opening the saved-content list; that explains the flash. The catalog scans
+the library for saved metadata, and can rebuild a stale index, but this check did
+not measure which operation caused the first-load delay.

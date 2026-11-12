@@ -17,9 +17,10 @@ Source revisions:
 ## Selected first-release scope: current source snapshot
 
 The table describes the current local candidate. “Built” means implemented with
-local checks, not accepted on the X4 Pro. Chad installed test58 and confirmed
-several basic reader and library behaviors. Subsequent work is not installed or
-physically tested. The historical
+local checks, not accepted on the X4 Pro. Chad installed the test58-based
+clipfix2 and confirmed clipping, saved-content navigation, cancellation across
+orientations, page turns, Quick Lock, sleep/resume, and direct Home covers.
+Subsequent feature work is not installed or physically tested. The historical
 inventory below records an earlier stage and is not the current status.
 
 | Choice | Current state |
@@ -35,7 +36,7 @@ inventory below records an earlier stage and is not the current status.
 | B3 Browse by genre and series | Built from EPUB metadata; hardware checks remain. |
 | B4 Recent-books cover grid | Built; hardware checks remain. An optional Title shelf grid is also available independently. |
 | B5 Mark finished and organize completed books | Finished status can be read for filtering. Experimental reader menus can mark finished or unfinished and apply Recents removal. A separately flagged prototype records a deferred move for an open EPUB and attempts it when Home opens. It disables the old unjournaled end-of-book move and needs lifecycle, recovery, storage ownership, and device checks before use. Journal rollover is prototyped. |
-| B6 Unified Saved Items | Built with reader-menu, button, and Quick Actions entry. Older CrossInk bookmarks are read-only in Saved Items; the reader can clear all verified bookmarks for its open book. |
+| B6 Unified Saved Items | Built with reader-menu, button, and Quick Actions entry. Saved clipping text and navigation passed on clipfix2. First-open latency and the page flash before the list remain polish follow-ups. Older CrossInk bookmarks are read-only in Saved Items; the reader can clear all verified bookmarks for its open book. |
 | B7 Full CrossInk menu and navigation parity | Built; the five-tab EPUB menu has 12 inline text/layout controls, font panes, per-book tracking, gated statistics and reading-pace reset, confirmed cache reset that preserves reader state, confirmed bookmark clearing, per-book dictionary selection, and chapter-indexing controls. List and toolbar remain available. Both reader formats share statistics-reset handling. The [RC menu audit](EPUB_MENU_AUDIT.md) records the controls and bounded live text preview. Cumulative review and device validation remain. |
 | C1 Reading statistics and time-left | Built for supported tracking data; book, device, and All Devices views show page-turn pace, and reader bars estimate book and current-section time. An experimental table-of-contents chapter estimate is available behind a build flag; ambiguous boundaries show no estimate. It needs review and device checks. |
 | C2 Edit dates and per-book tracking | Dates and tracking are available for an actively tracked book. Library statistics can edit dates and tracking for a closed book with readable existing statistics; device checks remain. |
