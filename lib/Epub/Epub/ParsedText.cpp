@@ -314,23 +314,106 @@ uint32_t ParsedText::visibleOffsetAt(const size_t wordIndex) const {
   return visibleOffsetBaseAt(wordIndex) + wordVisibleOffsetDeltas[wordIndex];
 }
 
-uint32_t ParsedText::sourceOffsetAfter(const uint32_t start, const uint32_t renderedLength) const {
+uint32_t ParsedText::sourceOffsetAfter(const uint32_t start, const uint32_t renderedLength,
+                                       const bool includeTrailingHidden) const {
+  if (renderedLength > UINT32_MAX - start) return UINT32_MAX;
   uint32_t end = start + renderedLength;
   const auto* chunk =
       absorbedSourceCursor && start >= absorbedSourceCursorStart ? absorbedSourceCursor : absorbedSourceHead.get();
   while (chunk && chunk->base + chunk->deltas[chunk->count - 1] <= start) chunk = chunk->next.get();
   absorbedSourceCursor = chunk;
   absorbedSourceCursorStart = start;
-  for (; chunk; chunk = chunk->next.get()) {
-    const auto* first = chunk->deltas + chunk->begin;
-    const auto* last = chunk->deltas + chunk->count;
-    if (start >= chunk->base) first = std::upper_bound(first, last, start - chunk->base);
-    for (; first != last; ++first) {
-      if (chunk->base + *first > end) return end;
+  size_t index = chunk ? chunk->begin : 0;
+  auto* hidden = hiddenSourceHead.get();
+  size_t hiddenIndex = hidden ? hidden->begin : 0;
+  while (chunk && chunk->base + chunk->deltas[index] <= start) {
+    if (++index == chunk->count) {
+      chunk = chunk->next.get();
+      index = chunk ? chunk->begin : 0;
+    }
+  }
+  while (hidden && hidden->gaps[hiddenIndex].start + hidden->gaps[hiddenIndex].length <= start) {
+    if (++hiddenIndex == hidden->count) {
+      hidden = hidden->next.get();
+      hiddenIndex = hidden ? hidden->begin : 0;
+    }
+  }
+  while (chunk || hidden) {
+    const uint32_t absorbedAt = chunk ? chunk->base + chunk->deltas[index] : UINT32_MAX;
+    const uint32_t hiddenAt = hidden ? hidden->gaps[hiddenIndex].start : UINT32_MAX;
+    if (std::min(absorbedAt, hiddenAt) > end) break;
+    if (chunk && absorbedAt <= hiddenAt) {
+      if (end == UINT32_MAX) return UINT32_MAX;
       ++end;
+      if (++index == chunk->count) {
+        chunk = chunk->next.get();
+        index = chunk ? chunk->begin : 0;
+      }
+    } else if (hidden) {
+      // Range ends exclude trailing hidden text; fragment starts skip it.
+      if (!includeTrailingHidden && hiddenAt == end) break;
+      const uint32_t length = hidden->gaps[hiddenIndex].length;
+      if (length > UINT32_MAX - end) return UINT32_MAX;
+      end += length;
+      if (++hiddenIndex == hidden->count) {
+        hidden = hidden->next.get();
+        hiddenIndex = hidden ? hidden->begin : 0;
+      }
     }
   }
   return end;
+}
+
+uint32_t ParsedText::sourceOffsetBeforeNormalization(const uint32_t start, const uint32_t length) const {
+  if (length > UINT32_MAX - start) return UINT32_MAX;
+  uint32_t end = start + length;
+  for (const auto* chunk = hiddenSourceHead.get(); chunk; chunk = chunk->next.get()) {
+    for (uint8_t i = chunk->begin; i < chunk->count; ++i) {
+      const auto& gap = chunk->gaps[i];
+      if (gap.start + gap.length <= start) continue;
+      if (gap.start > end) return end;
+      if (gap.length > UINT32_MAX - end) return UINT32_MAX;
+      end += gap.length;
+    }
+  }
+  return end;
+}
+
+bool ParsedText::recordHiddenSourceGap(const uint32_t start, const uint32_t length) {
+  if (!length) return true;
+  if (length > UINT32_MAX - start) {
+    LOG_ERR("PTX", "Hidden source range exceeds chapter offsets");
+    droppedWords = true;
+    return false;
+  }
+  if (hiddenSourceTail) {
+    auto& last = hiddenSourceTail->gaps[hiddenSourceTail->count - 1];
+    if (last.start + last.length > start) {
+      LOG_ERR("PTX", "Hidden source ranges are out of order");
+      droppedWords = true;
+      return false;
+    }
+    if (last.start + last.length == start) {
+      last.length += length;
+      return true;
+    }
+  }
+  if (!hiddenSourceTail || hiddenSourceTail->count == 8) {
+    auto chunk = makeUniqueNoThrow<HiddenSourceChunk>();
+    if (!chunk) {
+      LOG_ERR("PTX", "OOM: hidden source offsets (%u bytes)", static_cast<unsigned>(sizeof(HiddenSourceChunk)));
+      droppedWords = true;
+      return false;
+    }
+    auto* tail = chunk.get();
+    if (hiddenSourceTail)
+      hiddenSourceTail->next = std::move(chunk);
+    else
+      hiddenSourceHead = std::move(chunk);
+    hiddenSourceTail = tail;
+  }
+  hiddenSourceTail->gaps[hiddenSourceTail->count++] = {start, length};
+  return true;
 }
 
 bool ParsedText::recordAbsorbedSourceOffset(const uint32_t offset) {
@@ -371,6 +454,16 @@ void ParsedText::retireAbsorbedSourceOffsets(const uint32_t remainingStart) {
                          remainingStart - absorbedSourceHead->base) -
         absorbedSourceHead->deltas;
   }
+  while (hiddenSourceHead) {
+    auto& chunk = *hiddenSourceHead;
+    while (chunk.begin < chunk.count &&
+           chunk.gaps[chunk.begin].start + chunk.gaps[chunk.begin].length <= remainingStart)
+      ++chunk.begin;
+    if (chunk.begin < chunk.count) break;
+    auto retired = std::move(hiddenSourceHead);
+    hiddenSourceHead = std::move(retired->next);
+  }
+  if (!hiddenSourceHead) hiddenSourceTail = nullptr;
 }
 
 void ParsedText::pushVisibleOffset(const uint32_t offset) {
@@ -457,7 +550,8 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
       word,
       [](const uint32_t offset, void* context) {
         const auto& source = *static_cast<SourceContext*>(context);
-        return source.text->recordAbsorbedSourceOffset(source.start + offset);
+        return source.text->recordAbsorbedSourceOffset(
+            source.text->sourceOffsetBeforeNormalization(source.start, offset));
       },
       &sourceContext);
   if (word.empty()) return;
@@ -1869,7 +1963,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     if (!paragraphStartEmitted && logical == 0) paragraphStartWord = static_cast<uint16_t>(i);
     const uint32_t start = visibleOffsetAt(logical);
     const bool discretionaryHyphen = (wordStyles[logical] & TextBlock::DISCRETIONARY_HYPHEN_FLAG) != 0;
-    uint32_t end = sourceOffsetAfter(start, countCodepoints(wordAt(logical)) - discretionaryHyphen);
+    uint32_t end = sourceOffsetAfter(start, countCodepoints(wordAt(logical)) - discretionaryHyphen, false);
     if (discretionaryHyphen) {
       lineWordStyles[i] = static_cast<EpdFontFamily::Style>(lineWordStyles[i] | TextBlock::DISCRETIONARY_HYPHEN_FLAG);
     }

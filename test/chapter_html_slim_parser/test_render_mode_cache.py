@@ -21,7 +21,7 @@ def method(signature):
 
 header = re.search(r'constexpr uint32_t HEADER_SIZE\s*=\s*.*?;', source, re.S).group()
 version = int(re.search(r'constexpr uint8_t SECTION_FILE_VERSION = (\d+);', source).group(1))
-assert version == 78
+assert 28 < version < 0xFE
 code = r'''
 #include <cassert>
 #include <cstdint>
@@ -31,7 +31,7 @@ code = r'''
 #include "Epub/ReaderRenderSpec.h"
 #define LOG_DBG(...) ((void)0)
 #define LOG_ERR(...) ((void)0)
-constexpr uint8_t SECTION_FILE_VERSION = 78;
+constexpr uint8_t SECTION_FILE_VERSION = CACHE_VERSION_TOKEN;
 constexpr uint8_t SECTION_FILE_INCOMPLETE_VERSION = 0;
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 28);
 struct File {
@@ -72,7 +72,9 @@ int main() {
     ReaderRenderSpec other=spec;other.renderMode=mode==EpubRenderMode::Light?EpubRenderMode::Default:EpubRenderMode::Light;
     Section mismatch;assert(!mismatch.loadSectionFile(other));assert(!mismatch.cleared);
     if(mode!=EpubRenderMode::Default) assert(readerRenderSpecSignature(spec)!=signature);
-    Storage.saved[0]=73;Section old;assert(!old.loadSectionFile(spec));assert(old.cleared);
+    Storage.saved[0]=SECTION_FILE_VERSION-1;Section old;assert(!old.loadSectionFile(spec));assert(old.cleared);
+    Storage.saved[0]=0xFE - (SECTION_FILE_VERSION-1-28);Section oldPartial;
+    assert(!oldPartial.loadSectionFile(spec));assert(oldPartial.cleared);
     Storage.saved[0]=SECTION_FILE_PARTIAL_VERSION;
     const uint32_t li=HEADER_SIZE, visible=HEADER_SIZE+4, consumed=200, total=400;
     memcpy(Storage.saved.data()+HEADER_SIZE-8,&li,4);memcpy(Storage.saved.data()+HEADER_SIZE-4,&visible,4);
@@ -83,6 +85,7 @@ int main() {
   }
 }
 '''
+code = code.replace('CACHE_VERSION_TOKEN', str(version))
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(code)

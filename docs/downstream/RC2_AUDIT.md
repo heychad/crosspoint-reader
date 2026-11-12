@@ -15,7 +15,7 @@ changes remain separate and uncommitted.
 | Change | Fork assessment and next action |
 | --- | --- |
 | Sleep transition, `bb63d8f1` | Implemented as a checked WIP. The fork processes the pending transition without another input poll, retains its exclusive-storage guard, and enters the sleep activity synchronously. Regression checks cover both Page Overlay configurations; cumulative review and device checks remain. |
-| Clipping anchors, `6ec5bc96` | Review before another clipping release. RC2 adds stable source-word identities across layout changes and changes parser, page, clipping, and sync formats. Compare with our existing layout-signature guard; do not copy the new storage format without migration and preservation tests. |
+| Clipping anchors, `6ec5bc96` | The fork already retains source ranges across layout changes. A skipped-text accounting defect is fixed in WIP without changing clipping files or reading coordinates; see [clipping anchors](CLIPPING_ANCHORS.md). Synthetic text, split words, and old-data compatibility still need comparison. |
 | Carousel spacing, `83ce9237` | Compare against our responsive layout, which already sizes covers and menus together. Its fixed vertical-lift change is not a direct patch for this fork. |
 | Custom sleep-image fit/crop, `e36b25b1` | Review in the E2 batch. It adds BMP scaling and changes sleep rendering; existing transparent-overlay and grayscale behavior must remain covered. |
 | Statistics across firmware switches, `6f0eb316`, `0ddaa267`, `c551ceb9` | Compare with our checked stores, reset behavior, and device identity. Retain existing reading data; do not replace the storage model wholesale. |

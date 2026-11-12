@@ -124,6 +124,36 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
     std::filesystem::remove(cachePath);
     return selected;
   }
+
+  void checkHiddenWord(const std::string& prefix, const std::string& hiddenText, const std::string& suffix,
+                       const std::string& expectedText, uint32_t expectedStart, uint32_t expectedEnd) {
+    parser.beginParse();
+    ChapterHtmlSlimParser::startElement(&parser, "body", nullptr);
+    ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+    ChapterHtmlSlimParser::characterData(&parser, prefix.data(), static_cast<int>(prefix.size()));
+    const XML_Char* hidden[] = {"hidden", "hidden", nullptr};
+    ChapterHtmlSlimParser::startElement(&parser, "span", hidden);
+    ChapterHtmlSlimParser::characterData(&parser, hiddenText.data(), static_cast<int>(hiddenText.size()));
+    ChapterHtmlSlimParser::endElement(&parser, "span");
+    ChapterHtmlSlimParser::characterData(&parser, suffix.data(), static_cast<int>(suffix.size()));
+    ChapterHtmlSlimParser::endElement(&parser, "p");
+    parser.makePages();
+    ASSERT_NE(parser.currentPage, nullptr);
+    std::string selected;
+    uint32_t firstStart = UINT32_MAX, lastEnd = 0;
+    for (const auto& element : parser.currentPage->elements) {
+      if (element->getTag() != TAG_PageLine) continue;
+      const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+      for (uint16_t i = 0; i < block.wordCount(); ++i) {
+        selected += block.wordText(i);
+        firstStart = std::min(firstStart, block.wordSourceRange(i).start);
+        lastEnd = block.wordSourceRange(i).end;
+      }
+    }
+    EXPECT_EQ(selected, expectedText);
+    EXPECT_EQ(firstStart, expectedStart);
+    EXPECT_EQ(lastEnd, expectedEnd);
+  }
 };
 
 TEST_F(ChapterHtmlSlimParserTest, LayoutLossReportsOutOfMemoryWithoutParsing) {
@@ -2172,6 +2202,84 @@ TEST_F(ChapterHtmlSlimParserTest, NfdWordAcrossInlineStyleKeepsSourceRange) {
   }
   EXPECT_EQ(words, 2u);
   EXPECT_EQ(selected, "Caf\xC3\xA9s");
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ClippingWordAcrossHiddenTextRetainsItsSourceEnd) {
+  checkHiddenWord("co", "XYZ", "operate", "cooperate", 0, 12);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, HiddenWordGapAfterNfcCompositionKeepsRawCoordinates) {
+  checkHiddenWord("Cafe\xCC\x81", "XYZ", "s", "Caf\xC3\xA9s", 0, 9);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, HiddenWordGapBeforeNfcCompositionKeepsRawCoordinates) {
+  checkHiddenWord("co", "XYZ", "e\xCC\x81", "co\xC3\xA9", 0, 7);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, HiddenWordGapCanExceedCompactOffsetRange) {
+  checkHiddenWord("co", std::string(70000, 'x'), "e\xCC\x81", "co\xC3\xA9", 0, 70004);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, HiddenWordGapCountsCodepointsRatherThanBytes) {
+  checkHiddenWord("co", "\xE6\xBC\xA2\xC3\xA9", "operate", "cooperate", 0, 11);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, TrailingHiddenTextStaysOutsideClippingRange) {
+  checkHiddenWord("word", "XYZ", "", "word", 0, 4);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, LeadingHiddenTextStaysOutsideClippingRange) {
+  checkHiddenWord("", "XYZ", "word", "word", 3, 7);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, HiddenSourceChunksSurviveLineConsumption) {
+  parser.beginParse();
+  ChapterHtmlSlimParser::startElement(&parser, "body", nullptr);
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  const XML_Char* hidden[] = {"hidden", "hidden", nullptr};
+  for (unsigned i = 0; i < 40; ++i) {
+    ChapterHtmlSlimParser::characterData(&parser, "a", 1);
+    ChapterHtmlSlimParser::startElement(&parser, "span", hidden);
+    ChapterHtmlSlimParser::characterData(&parser, "X", 1);
+    ChapterHtmlSlimParser::endElement(&parser, "span");
+    ChapterHtmlSlimParser::characterData(&parser, "b ", 2);
+  }
+  ChapterHtmlSlimParser::endElement(&parser, "p");
+  parser.makePages();
+  ASSERT_NE(parser.currentPage, nullptr);
+  unsigned word = 0;
+  for (const auto& element : parser.currentPage->elements) {
+    if (element->getTag() != TAG_PageLine) continue;
+    const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+    for (uint16_t i = 0; i < block.wordCount(); ++i, ++word) {
+      EXPECT_STREQ(block.wordText(i), "ab");
+      EXPECT_EQ(block.wordSourceRange(i).start, word * 4);
+      EXPECT_EQ(block.wordSourceRange(i).end, word * 4 + 3);
+    }
+  }
+  EXPECT_EQ(word, 40U);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, BomInsideWordKeepsItsSourceRange) {
+  parser.beginParse();
+  ChapterHtmlSlimParser::startElement(&parser, "body", nullptr);
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  const std::string word = "co\xEF\xBB\xBFoperate";
+  ChapterHtmlSlimParser::characterData(&parser, word.data(), static_cast<int>(word.size()));
+  ChapterHtmlSlimParser::endElement(&parser, "p");
+  parser.makePages();
+  ASSERT_NE(parser.currentPage, nullptr);
+  unsigned count = 0;
+  for (const auto& element : parser.currentPage->elements) {
+    if (element->getTag() != TAG_PageLine) continue;
+    const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+    for (uint16_t i = 0; i < block.wordCount(); ++i, ++count) {
+      EXPECT_STREQ(block.wordText(i), "cooperate");
+      EXPECT_EQ(block.wordSourceRange(i).start, 0U);
+      EXPECT_EQ(block.wordSourceRange(i).end, 10U);
+    }
+  }
+  EXPECT_EQ(count, 1U);
 }
 
 class ClippingParagraphTest : public ChapterHtmlSlimParserTest {};

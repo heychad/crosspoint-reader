@@ -83,7 +83,8 @@ namespace {
 // v72: Make ruby rendering closer to how Chromium renders ruby by default.
 // v73: TrueType vector fonts load and advance .notdef for missing glyphs.
 // v78: Rendering mode is included in the header.
-constexpr uint8_t SECTION_FILE_VERSION = 78;
+// v79: Preserve clipping source ranges across hidden text inside a word.
+constexpr uint8_t SECTION_FILE_VERSION = 79;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

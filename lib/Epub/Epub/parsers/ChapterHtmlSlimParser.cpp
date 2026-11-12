@@ -2390,6 +2390,10 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
 
   // Middle of skip
   if (self->skipUntilDepth < self->depth) {
+    if (countVisibleOffsets && self->partWordBufferIndex > 0 && self->currentTextBlock &&
+        !self->currentTextBlock->recordHiddenSourceGap(callbackVisibleOffset,
+                                                       self->visibleTextOffset - callbackVisibleOffset))
+      self->layoutOom = true;
     return;
   }
 
@@ -2578,6 +2582,11 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     if (s[i] == FEFF_BYTE_1) {
       // Check if the next two bytes complete the 3-byte sequence
       if ((i + 2 < len) && (s[i + 1] == FEFF_BYTE_2) && (s[i + 2] == FEFF_BYTE_3)) {
+        if (countVisibleOffsets && self->partWordBufferIndex > 0 &&
+            !self->currentTextBlock->recordHiddenSourceGap(codepointOffset, 1)) {
+          self->layoutOom = true;
+          return;
+        }
         // Sequence 0xEF 0xBB 0xBF found!
         i += 2;    // Skip the next two bytes
         continue;  // Move to the next iteration

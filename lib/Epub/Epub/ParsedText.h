@@ -85,6 +85,26 @@ class ParsedText {
   AbsorbedSourceChunk* absorbedSourceTail = nullptr;
   mutable const AbsorbedSourceChunk* absorbedSourceCursor = nullptr;
   mutable uint32_t absorbedSourceCursorStart = 0;
+  // Hidden spans arrive before NFC normalization; keep their lengths separately
+  // instead of allocating one correction per hidden codepoint.
+  struct HiddenSourceChunk {
+    struct Gap {
+      uint32_t start;
+      uint32_t length;
+    };
+    std::unique_ptr<HiddenSourceChunk> next;
+    Gap gaps[8]{};
+    uint8_t begin = 0;
+    uint8_t count = 0;
+    ~HiddenSourceChunk() {
+      while (next) {
+        auto retired = std::move(next);
+        next = std::move(retired->next);
+      }
+    }
+  };
+  std::unique_ptr<HiddenSourceChunk> hiddenSourceHead;
+  HiddenSourceChunk* hiddenSourceTail = nullptr;
   std::deque<std::string> rubyTexts;
   BlockStyle blockStyle;
   uint8_t wordSpacingPercent = 100;
@@ -111,7 +131,8 @@ class ParsedText {
   bool storeWord(std::string_view text, WordStore::StoredWord& out);
   uint32_t visibleOffsetBaseAt(size_t wordIndex) const;
   uint32_t visibleOffsetAt(size_t wordIndex) const;
-  uint32_t sourceOffsetAfter(uint32_t start, uint32_t renderedLength) const;
+  uint32_t sourceOffsetAfter(uint32_t start, uint32_t renderedLength, bool includeTrailingHidden = true) const;
+  uint32_t sourceOffsetBeforeNormalization(uint32_t start, uint32_t length) const;
   bool recordAbsorbedSourceOffset(uint32_t offset);
   void retireAbsorbedSourceOffsets(uint32_t remainingStart);
   void pushVisibleOffset(uint32_t offset);
@@ -149,6 +170,7 @@ class ParsedText {
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
                uint32_t visibleTextOffset = 0, uint8_t linkId = 0, uint8_t sizeSlot = 0, bool noSpaceBefore = false);
+  bool recordHiddenSourceGap(uint32_t start, uint32_t length);
   uint8_t addLinkTarget(const char* href);
   bool linkTargetMatches(uint8_t linkId, const char* href) const;
   void setRubyForWordAt(size_t index, const std::string& ruby);
