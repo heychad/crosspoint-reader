@@ -160,3 +160,31 @@ and SHA-256 after download, and the three source paths are absent. The receipt
 and private copies are in `.cache/zdev-migration-20261112/`. Future manually
 staged firmware and development files use `/zDev/`; runtime reading-state paths
 remain unchanged.
+
+## Clipfix2 reviewed handoff
+
+The reviewed source is `8b52deb14532c4582a4edf2c4446cd54de325514`, with
+SDK `5e94fe7480f019c89fbf691aef87523eb1b46704` and the local version override
+`2.0.0-chad.3-test58-clipfix2`. The final X4 Pro build passed in 105.27
+seconds. Static RAM remains 112,868 bytes; flash is 5,576,326 bytes. GDB confirms
+unchanged object sizes: Activity 120, ReaderActivity 896, and ClipSelectionActivity
+964 bytes. The matching-build log is `/tmp/x4-clipfix2-aligned-final-build.log`.
+
+All four release reviews cover the typed boundary. Correctness and architecture
+also checked the final accessor-name alignment with the existing development
+branch. Both aligned tests pass; the other cumulative host results remain valid.
+The 240-file reading-state backup was read twice and hash-verified before staging.
+Its receipt is in `.cache/clipping-state-before-clipfix2-20261112/`.
+
+`/zDev/CLIPFIX2.BIN` and `/zDev/CLIPFIX2.sha256` are uploaded and readback-verified.
+The image is 5,581,584 bytes, SHA-256
+`0c94ac316af89ff06878993a631c47bae9df9204945273c5e825c7dde5aca6e3`.
+The archived matching ELF has SHA-256
+`e655a576ae9d6cb0ecfd0fee2dcd8f4f690eaa3a7a8b7671b18c23d42c1cd716`.
+The private image, ELF, readback, and manifest are in
+`.cache/clipping-hotfix2-20261112/`.
+
+The device owner has the installation and long-press check. No clipfix2 device
+success is claimed yet. If the selection opens normally, continue the five-minute
+check; if it crashes, preserve the new report against this matching ELF. Other
+feature work remains on hold.
