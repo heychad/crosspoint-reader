@@ -3,6 +3,11 @@
 Run after installing the reviewed clipping repair candidate. Keep this check at
 five minutes. Report the failed step, book, and action; a pass is `Passed 1–6`.
 
+The reviewed candidate is `CLIPFIX1.BIN`, with version
+`2.0.0-chad.3-test58-clipfix1-x4pro`. Leave File Transfer and install it from
+**Settings → System → SD Card Firmware Update**. Keep the reader powered through
+the restart, then start the timer.
+
 | Time | Check | Pass |
 | --- | --- | --- |
 | 0:00–0:30 | Check About, then reopen your in-progress book. | Repair version is shown; the passage matches where you stopped. |

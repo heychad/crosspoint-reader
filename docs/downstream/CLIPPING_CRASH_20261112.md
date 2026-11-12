@@ -58,8 +58,35 @@ writer is added.
 
 Logs are in `/tmp/x4-clip-hotfix-{build,full-tests}.log` and
 `/tmp/x4-clip-{ready-before,ready-after,panic-tests}.log` on the build Mac.
-Independent release review, the final build, a fresh state backup, and device
-verification are pending. No repair firmware has been uploaded or installed.
+## Reviewed device candidate
+
+All four independent reviews of `75b95f7e4f518366e479ccf702258bdcc242e028` are
+clear: correctness, architecture, embedded constraints, and i18n/documentation.
+They requested no changes. The reviewers confirmed that the pinned ESP-IDF
+stalls other cores and reports their captured frames sequentially, so the panic
+register mask does not add a concurrent writer in that path.
+
+The final `pio run -e x4pro` passed in 47.28 seconds, reusing valid build-cache
+outputs. RAM and flash totals match the earlier build. The copied binary's
+CrossPoint version strings identify `2.0.0-chad.3-test58-clipfix1-x4pro`; its
+embedded ELF digest matches the archived ELF. The ESP app descriptor's separate
+version field is `ee57070`, not the displayed CrossPoint version.
+
+Wi-Fi backup verified 241 state files, 426,697 bytes. It includes reading
+positions, per-book preferences, settings, bookmarks, statistics, and the legacy
+statistics backup. Every copied file matched a second remote read and local
+SHA-256 verification. Credentials, plugins, and derived caches are excluded.
+It is not an atomic SD snapshot. The receipt is in the ignored
+`.cache/clipping-state-backup-20261112/backup-receipt.json`.
+
+`CLIPFIX1.BIN` was uploaded to a new SD path and downloaded back. Both copies
+are 5,581,264 bytes with SHA-256
+`055f72f889bc1ed0341138d0fc22daf46db452e9543f706d0132692eb2d4a59f`.
+The matching ELF has SHA-256
+`92b61f101c92b92876b921e20ab28e8d6bbe34dd6646a309a470a72158ae3410`.
+The ignored `.cache/clipping-hotfix-20261112/` bundle retains the image, ELF,
+readback, checksums, and manifest. No repair firmware has been installed yet;
+the device crash remains unconfirmed as fixed. Feature work stays paused.
 
 Run the [five-minute device check](FIVE_MINUTE_DEVICE_QA.md) after the reviewed
 candidate is installed. If it reboots, preserve the new report and decode it
