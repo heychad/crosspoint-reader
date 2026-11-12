@@ -1397,7 +1397,7 @@ void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, co
   display.drawImage(bitmap, rotatedX, rotatedY, width, height);
 }
 
-void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int size) const {
+void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int size, const bool state) const {
   // Plot the icon pixel-by-pixel through drawPixel (which applies the orientation
   // transform) instead of the byte-aligned framebuffer blit. The blit snaps the
   // icon's position to 8px (one byte) along the rotated axis, which prevents it
@@ -1411,7 +1411,7 @@ void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, con
       const uint8_t byte = bitmap[row * rowBytes + (col >> 3)];
       const bool ink = ((byte >> (7 - (col & 7))) & 1) == 0;
       if (ink) {
-        drawPixel(x + (size - 1 - row), y + col, true);
+        drawPixel(x + (size - 1 - row), y + col, state);
       }
     }
   }
@@ -1598,6 +1598,55 @@ bool GfxRenderer::drawBitmap1Bit(const Bitmap& bitmap, const int x, const int y,
   const int renderedHeight =
       isScaled ? static_cast<int>(std::floor((bitmap.getHeight() - 1) * scale)) + 1 : bitmap.getHeight();
   preserveImagePolarity(x, y, renderedWidth, renderedHeight);
+  return true;
+}
+
+bool GfxRenderer::drawPerspectiveBitmap(const Bitmap& bitmap, const int x, const int y, const int width,
+                                        const int leftHeight, const int rightHeight) const {
+  if (fontCacheManager_ && fontCacheManager_->isScanning()) return false;
+  const int sourceWidth = bitmap.getWidth();
+  const int sourceHeight = bitmap.getHeight();
+  if (width <= 0 || leftHeight <= 0 || rightHeight <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return false;
+
+  const int maxHeight = std::max(leftHeight, rightHeight);
+  const size_t outputSize = (sourceWidth + 3) / 4;
+  const size_t scratchSize = outputSize + bitmap.getRowBytes();
+  auto scratch = makeUniqueNoThrow<uint8_t[]>(scratchSize);
+  if (!scratch) {
+    LOG_ERR("GFX", "Failed to allocate %u perspective row bytes", static_cast<unsigned>(scratchSize));
+    return false;
+  }
+  auto* outputRow = scratch.get();
+  auto* rowBytes = outputRow + outputSize;
+  for (int row = 0; row < sourceHeight; ++row) {
+    if (bitmap.readNextRow(outputRow, rowBytes) != BmpReaderError::Ok) {
+      LOG_ERR("GFX", "Failed to read perspective bitmap row %d", row);
+      return false;
+    }
+    const int sourceY = bitmap.isTopDown() ? row : sourceHeight - 1 - row;
+    for (int dx = 0; dx < width; ++dx) {
+      const int screenX = x + dx;
+      if (screenX < 0 || screenX >= getScreenWidth()) continue;
+      const int height = width == 1 ? leftHeight : leftHeight + (rightHeight - leftHeight) * dx / (width - 1);
+      const int top = y + (maxHeight - height) / 2;
+      const int sourceX = dx * sourceWidth / width;
+      const uint8_t level = (outputRow[sourceX / 4] >> (6 - (sourceX % 4) * 2)) & 3;
+      const int start = std::max(0, top + sourceY * height / sourceHeight);
+      const int end = std::min(getScreenHeight(), top + (sourceY + 1) * height / sourceHeight);
+      for (int screenY = start; screenY < end; ++screenY) {
+        if (renderMode == BW) {
+          if (level < 3) drawPixel(screenX, screenY, true);
+        } else if (renderMode == GRAYSCALE_MSB || renderMode == GRAYSCALE_LSB) {
+          const auto pixel = grayPlanePixel(level, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
+          if (pixel.write) drawPixel(screenX, screenY, pixel.black);
+        }
+      }
+    }
+  }
+  for (int dx = 0; dx < width; ++dx) {
+    const int height = width == 1 ? leftHeight : leftHeight + (rightHeight - leftHeight) * dx / (width - 1);
+    preserveImagePolarity(x + dx, y + (maxHeight - height) / 2, 1, height);
+  }
   return true;
 }
 

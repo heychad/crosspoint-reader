@@ -36,6 +36,8 @@ struct MappedInputManager {
  SwipeDir swipe=SwipeDir::None;int tapRow=-1;Button released=Button::Left;int swipeY=0,tapX=-1,tapY=-1;
  SwipeDir wasSwipe(int* x=nullptr,int* y=nullptr)const{if(x)*x=0;if(y)*y=swipeY;return swipe;}
  bool wasScreenTapped(int& x,int& y)const{x=tapX;y=tapY;return tapX>=0;}
+ Button pressed=Button::Back;
+ bool wasPressed(Button b)const{return b==pressed;}
  bool wasReleased(Button b)const{return b==released;}
  RowTouch colTouch(int&,int,int,int,int,int,int)const{return RowTouch::None;}
  RowTouch rowTouch(int& row,int,int,int count,int,int,int)const{if(tapRow<0||tapRow>=count)return RowTouch::None;row=tapRow;return RowTouch::Tap;}
@@ -46,7 +48,9 @@ struct ButtonNavigator {
  static int previousIndex(int index,int count){return (index+count-1)%count;}
  template<class F>void onNext(F f){if(direction==1)f();}
  template<class F>void onPrevious(F f){if(direction==-1)f();}
- template<class F>void onPressAndContinuous(std::initializer_list<MappedInputManager::Button>,F){}
+ MappedInputManager::Button pressed=MappedInputManager::Button::Back;
+ template<class F>void onPressAndContinuous(std::initializer_list<MappedInputManager::Button> buttons,F f){
+  if(std::find(buttons.begin(),buttons.end(),pressed)!=buttons.end())f();}
 };
 struct CoverGrid {int selectedAction(const MappedInputManager&){return -1;}};
 enum class HomeMenuItem {NONE,FILE_BROWSER,LIBRARY,SAVED_ITEMS,OPDS_BROWSER,FILE_TRANSFER,SETTINGS_MENU};
@@ -190,6 +194,25 @@ int main(){
  carousel.mappedInput.tapX=covers.center.x+1;
  carousel.mappedInput.tapY=covers.center.y+1;
  carousel.loop();assert(opened=="/three.epub");
+ // Buttons stay within their row, and Up/Down restore the highlighted cover.
+ carousel.mappedInput.tapX=-1;
+ carousel.selectorIndex=2;
+ carousel.buttonNavigator.pressed=MappedInputManager::Button::Right;
+ carousel.loop();assert(carousel.selectorIndex==0 && carousel.carouselCenterIndex==0);
+ carousel.buttonNavigator.pressed=MappedInputManager::Button::Left;
+ carousel.loop();assert(carousel.selectorIndex==2 && carousel.carouselCenterIndex==2);
+ carousel.buttonNavigator.pressed=MappedInputManager::Button::Back;
+ carousel.mappedInput.pressed=MappedInputManager::Button::Down;
+ carousel.loop();assert(carousel.selectorIndex==3);
+ carousel.mappedInput.pressed=MappedInputManager::Button::Back;
+ carousel.buttonNavigator.pressed=MappedInputManager::Button::Left;
+ carousel.loop();assert(carousel.selectorIndex==8 && carousel.carouselCenterIndex==2);
+ carousel.buttonNavigator.pressed=MappedInputManager::Button::Back;
+ carousel.mappedInput.pressed=MappedInputManager::Button::Up;
+ carousel.loop();assert(carousel.selectorIndex==2);
+ carousel.mappedInput.pressed=MappedInputManager::Button::Back;
+ carousel.mappedInput.released=MappedInputManager::Button::Confirm;
+ opened.clear();carousel.loop();assert(opened=="/three.epub");
  HomeActivity empty;
  empty.recentBooks.clear();empty.selectorIndex=0;
  empty.mappedInput.tapX=479;empty.mappedInput.tapY=710;

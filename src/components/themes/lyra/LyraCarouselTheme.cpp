@@ -49,13 +49,14 @@ void LyraCarouselTheme::drawHomeMenu(GfxRenderer& renderer, Rect rect, int count
         break;
     }
     const int iconX = tile.x + (tile.width - 32) / 2;
-    if (bitmap) renderer.drawIcon(bitmap, iconX, tile.y + 5, 32);
-    if (i == selected) {
-      renderer.drawRoundedRect(iconX - 4, tile.y + 1, 40, 40, 1, 5, true);
-      const auto text = renderer.truncatedText(SMALL_FONT_ID, label(i).c_str(), tile.width);
-      renderer.drawText(SMALL_FONT_ID, tile.x + (tile.width - renderer.getTextWidth(SMALL_FONT_ID, text.c_str())) / 2,
-                        tile.y + 44, text.c_str(), true);
-    }
+    const int iconY = tile.y + renderer.getLineHeight(SMALL_FONT_ID) + 11;
+    if (i == selected) renderer.fillRoundedRect(iconX - 7, iconY - 7, 46, 46, 6, Color::Black);
+    if (bitmap) renderer.drawIcon(bitmap, iconX, iconY, 32, i != selected);
+  }
+  if (selected >= 0 && selected < count) {
+    const auto text = renderer.truncatedText(SMALL_FONT_ID, label(selected).c_str(), std::max(0, rect.width - 40));
+    renderer.drawText(SMALL_FONT_ID, rect.x + (rect.width - renderer.getTextWidth(SMALL_FONT_ID, text.c_str())) / 2,
+                      rect.y + 2, text.c_str(), true);
   }
 }
 
@@ -109,7 +110,8 @@ void LyraCarouselTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect,
   const Rect center{layout.center.x, layout.center.y, layout.center.width, layout.center.height};
   if (!coverRendered || !bufferRestored) {
     renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
-    const auto drawCover = [&](int index, Rect slot) {
+    const auto drawCover = [&](int index, Rect slot, int leftHeight, int rightHeight) {
+      const bool perspective = leftHeight != rightHeight;
       bool drawn = false;
       const auto& book = recentBooks[index];
       if (!book.coverBmpPath.empty()) {
@@ -117,25 +119,54 @@ void LyraCarouselTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect,
         HalFile file;
         if (Storage.openFileForRead("HOME", path, file)) {
           Bitmap bitmap(file);
-          if (bitmap.parseHeaders() == BmpReaderError::Ok) drawn = drawCoverThumbFill(renderer, bitmap, slot);
-          file.close();
+          if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+            drawn = perspective
+                        ? renderer.drawPerspectiveBitmap(bitmap, slot.x, slot.y, slot.width, leftHeight, rightHeight)
+                        : drawCoverThumbFill(renderer, bitmap, slot);
+          }
         }
       }
-      if (!drawn) renderer.drawIcon(CoverIcon, slot.x + 8, slot.y + 8, 32);
-      renderer.drawRect(slot.x, slot.y, slot.width, slot.height, true);
+      if (perspective) {
+        if (!drawn) {
+          renderer.fillRect(slot.x, slot.y, slot.width, slot.height, false);
+          for (int dx = 0; dx < slot.width; ++dx) {
+            const int height =
+                slot.width == 1 ? leftHeight : leftHeight + (rightHeight - leftHeight) * dx / (slot.width - 1);
+            renderer.fillRect(slot.x + dx, slot.y + (slot.height - height) / 2, 1, height, true);
+          }
+        }
+        const int leftTop = slot.y + (slot.height - leftHeight) / 2;
+        const int rightTop = slot.y + (slot.height - rightHeight) / 2;
+        renderer.drawLine(slot.x, leftTop, slot.x + slot.width - 1, rightTop, 2, true);
+        renderer.drawLine(slot.x, leftTop + leftHeight - 1, slot.x + slot.width - 1, rightTop + rightHeight - 1, 2,
+                          true);
+        renderer.fillRect(slot.x, leftTop, 2, leftHeight, true);
+        renderer.fillRect(slot.x + slot.width - 2, rightTop, 2, rightHeight, true);
+      } else {
+        if (!drawn) {
+          renderer.fillRect(slot.x, slot.y, slot.width, slot.height, false);
+          drawCoverPlaceholder(renderer, slot);
+        }
+        renderer.maskRoundedRectOutsideCorners(slot.x, slot.y, slot.width, slot.height, 6, Color::White);
+        renderer.drawRoundedRect(slot.x, slot.y, slot.width, slot.height, 1, 6, true);
+      }
     };
+    const int outerHeight = center.height * 82 / 100;
     if (count > 1)
       drawCover((centerIndex + count - 1) % count,
-                Rect{layout.left.x, layout.left.y, layout.left.width, layout.left.height});
+                Rect{layout.left.x, layout.left.y, layout.left.width, layout.left.height}, layout.left.height,
+                outerHeight);
     if (count > 2)
       drawCover((centerIndex + 1) % count,
-                Rect{layout.right.x, layout.right.y, layout.right.width, layout.right.height});
-    drawCover(centerIndex, center);
-    const auto lines = renderer.wrappedText(SMALL_FONT_ID, recentBooks[centerIndex].title.c_str(), rect.width, 2);
-    int titleY = rect.y;
+                Rect{layout.right.x, layout.right.y, layout.right.width, layout.right.height}, outerHeight,
+                layout.right.height);
+    drawCover(centerIndex, center, center.height, center.height);
+    const auto lines = renderer.wrappedText(SMALL_FONT_ID, recentBooks[centerIndex].title.c_str(),
+                                            std::min(rect.width - 16, center.width + 40), 2, EpdFontFamily::BOLD);
+    int titleY = rect.y + (2 - static_cast<int>(lines.size())) * titleHeight / 2;
     for (const auto& line : lines) {
-      const int x = rect.x + (rect.width - renderer.getTextWidth(SMALL_FONT_ID, line.c_str())) / 2;
-      renderer.drawText(SMALL_FONT_ID, x, titleY, line.c_str(), true);
+      const int x = rect.x + (rect.width - renderer.getTextWidth(SMALL_FONT_ID, line.c_str(), EpdFontFamily::BOLD)) / 2;
+      renderer.drawText(SMALL_FONT_ID, x, titleY, line.c_str(), true, EpdFontFamily::BOLD);
       titleY += titleHeight;
     }
     const int dotsY = center.y + center.height + 8;
@@ -151,5 +182,5 @@ void LyraCarouselTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect,
     cachedIndex = centerIndex;
   }
   if (selectorIndex == centerIndex)
-    renderer.drawRect(center.x - 2, center.y - 2, center.width + 4, center.height + 4, true);
+    renderer.drawRoundedRect(center.x, center.y, center.width, center.height, 3, 6, true);
 }

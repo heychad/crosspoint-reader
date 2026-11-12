@@ -316,6 +316,7 @@ add_test(NAME BookDictionaryPicker COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT
 add_test(NAME ReaderIndexingPolicy COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_indexing.py)
 add_test(NAME ReaderLivePreview COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_live_preview.py)
 add_test(NAME ReaderPreviewLayout COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_text_settings_layout.py)
+add_test(NAME PerspectiveBitmap COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_perspective_bitmap.py)
 add_test(NAME CarouselRenderBounds COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_carousel_render.py)
 add_test(NAME DailyReadingStatsCodec COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/daily_reading_stats/test_codec.py)
 add_subdirectory(daily_reading_stats)

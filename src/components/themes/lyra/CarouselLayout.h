@@ -17,7 +17,7 @@ struct Layout {
   Box left;
   Box right;
 };
-inline int menuHeight(int labelHeight) { return std::max(64, 44 + labelHeight + 4); }
+inline int menuHeight(int labelHeight) { return std::max(64, 54 + labelHeight); }
 inline int coverHeight(int requested, int screenHeight, int top, int footerHeight, int labelHeight) {
   return std::max(0, std::min(requested, screenHeight - top - footerHeight - menuHeight(labelHeight) - 8));
 }
@@ -26,12 +26,12 @@ inline Layout make(int x, int y, int width, int height, int titleHeight) {
   const int centerWidth = std::min({300, std::max(1, width - 120), std::max(1, centerHeight * 3 / 5)});
   const int centerX = x + (width - centerWidth) / 2;
   const int centerY = y + titleHeight * 2 + 4;
-  const int sideWidth = std::max(1, (width - centerWidth) / 2 - 8);
-  const int sideHeight = centerHeight * 3 / 4;
+  const int sideWidth = std::max(1, std::min((width - centerWidth) / 2 - 8, centerWidth * 26 / 100));
+  const int sideHeight = centerHeight * 90 / 100;
   const int sideY = centerY + (centerHeight - sideHeight) / 2;
   return {{centerX, centerY, centerWidth, centerHeight},
-          {x, sideY, sideWidth, sideHeight},
-          {x + width - sideWidth, sideY, sideWidth, sideHeight}};
+          {centerX - sideWidth - 8, sideY, sideWidth, sideHeight},
+          {centerX + centerWidth + 8, sideY, sideWidth, sideHeight}};
 }
 inline int hit(const Layout& layout, int x, int y, int count, int center) {
   if (count <= 0 || center < 0 || center >= count) return -1;

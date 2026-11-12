@@ -543,7 +543,31 @@ void HomeActivity::loop() {
 
   // Cover grid home splits navigation by button group (see below); the flat
   // next/previous cycle is for the classic list home only.
-  if (!coverGridUi) {
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+  if (carousel) {
+    const auto move = [this, carouselBooks, menuCount](int step) {
+      const bool inBooks = selectorIndex < carouselBooks;
+      const int base = inBooks ? 0 : carouselBooks;
+      const int count = inBooks ? carouselBooks : menuCount - carouselBooks;
+      if (count <= 0) return;
+      selectorIndex = base + (selectorIndex - base + count + step) % count;
+      if (inBooks) carouselCenterIndex = selectorIndex;
+      requestUpdate();
+    };
+    buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [&move] { move(-1); });
+    buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [&move] { move(1); });
+    if (carouselBooks > 0 && (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
+                              mappedInput.wasPressed(MappedInputManager::Button::Down))) {
+      selectorIndex = selectorIndex < carouselBooks ? carouselBooks : carouselCenterIndex.load();
+      requestUpdate();
+    }
+  }
+#endif
+  if (!coverGridUi
+#if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
+      && !carousel
+#endif
+  ) {
     buttonNavigator.onNext([this, menuCount] {
       selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
       requestUpdate();
@@ -653,10 +677,12 @@ void HomeActivity::loop() {
         const bool open = target == carouselCenterIndex && selectorIndex == target;
         carouselCenterIndex = target;
         selectorIndex = target;
-        if (open)
+        if (open) {
+          haptic_feedback::touchAction();
           activateSelection();
-        else
+        } else {
           requestUpdate();
+        }
         return;
       }
     }
