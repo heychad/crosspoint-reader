@@ -13,6 +13,8 @@
 #include "RenderLock.h"
 #include "util/ScreenshotInfo.h"
 
+class ReaderActivity;
+
 class Activity {
   friend class ActivityManager;
 
@@ -51,6 +53,8 @@ class Activity {
   // transitions so no filesystem code races a raw SD-card owner.
   virtual bool requiresExclusiveStorageLoop() const { return false; }
   virtual bool isReaderActivity() const { return false; }
+  // Reading-context children do not own ReaderActivity's gestures or session state.
+  virtual ReaderActivity* asReaderActivity() { return nullptr; }
   virtual bool isReaderPage() const { return false; }
   virtual bool acceptsRemoteInput() const { return false; }
   // Returns true when the activity schedules its own forced refresh.
