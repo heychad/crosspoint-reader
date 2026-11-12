@@ -124,7 +124,7 @@ void ActivityManager::loop() {
   }
 
   bool readerGestureHandled = false;
-  if (auto* reader = currentActivity ? currentActivity->asReaderActivity() : nullptr) {
+  if (auto* reader = currentActivity ? currentActivity->bookReader() : nullptr) {
     if (mappedInput.homeButtonAction() == HomeButtonAction::QuickActions) {
       reader->finishReaderGestures();
       reader->handleReaderShortcut(readershortcuts::Action::QuickActions);
@@ -234,7 +234,7 @@ void ActivityManager::loop() {
           stackActivities.pop_back();
         }
       } else if (pendingAction == PendingAction::Push) {
-        if (auto* reader = currentActivity ? currentActivity->asReaderActivity() : nullptr) {
+        if (auto* reader = currentActivity ? currentActivity->bookReader() : nullptr) {
           reader->readingStats.pause();
           reader->finishReaderGestures();
         }
@@ -465,7 +465,7 @@ bool ActivityManager::isReaderActivity() const {
 }
 
 bool ActivityManager::isForegroundReader() const {
-  return pendingAction == PendingAction::None && currentActivity && currentActivity->asReaderActivity();
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->bookReader();
 }
 
 bool ActivityManager::isForegroundReaderPage() const {
@@ -490,7 +490,7 @@ bool ActivityManager::isForegroundHomeShown() const {
 bool ActivityManager::remoteShortcut(const bool readerMenu) {
   if (isInputLocked()) return false;
   if (!isForegroundReader()) return false;
-  auto* reader = currentActivity->asReaderActivity();
+  auto* reader = currentActivity->bookReader();
   if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
                           reader->inputOverPage())) {
     return false;
@@ -501,7 +501,7 @@ bool ActivityManager::remoteShortcut(const bool readerMenu) {
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
   if (isInputLocked()) return false;
   if (!isRemoteReaderContext() || mappedInput.hasRemoteClick()) return false;
-  auto* reader = isForegroundReader() ? currentActivity->asReaderActivity() : nullptr;
+  auto* reader = isForegroundReader() ? currentActivity->bookReader() : nullptr;
   if (!reader || reader->inputOverPage()) {
     return !chapter && remoteClick(forward ? RemoteButton::Next : RemoteButton::Previous);
   }
@@ -658,7 +658,7 @@ bool ActivityManager::dispatchShortcut(readershortcuts::Action action, QuickLock
     return true;
   }
   if (isInputLocked()) return false;
-  if (isForegroundReader()) return currentActivity->asReaderActivity()->handleReaderShortcut(action, trigger);
+  if (isForegroundReader()) return currentActivity->bookReader()->handleReaderShortcut(action, trigger);
   switch (action) {
     case Action::Home:
       goHome();

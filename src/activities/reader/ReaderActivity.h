@@ -136,7 +136,7 @@ class ReaderActivity : public Activity {
   void render(RenderLock&& lock) override;
 
   bool isReaderActivity() const final { return true; }
-  ReaderActivity* asReaderActivity() final { return this; }
+  ReaderActivity* bookReader() final { return this; }
   bool isReaderPage() const final { return !inputOverPage(); }
   bool acceptsRemoteInput() const final { return pageRendered.load(std::memory_order_acquire); }
   bool handleForcedRefresh() final;

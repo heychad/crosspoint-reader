@@ -47,7 +47,7 @@ struct Input { HomeButtonAction action=HomeButtonAction::Ignore;HomeButtonAction
 class Activity {
  public:
   virtual ~Activity()=default;
-''' + declaration(activity, "virtual bool isReaderActivity()") + "\n" + declaration(activity, "asReaderActivity()") + r'''
+''' + declaration(activity, "virtual bool isReaderActivity()") + "\n" + declaration(activity, "bookReader()") + r'''
 };
 class ReaderActivity: public Activity {
  public:
@@ -56,7 +56,7 @@ class ReaderActivity: public Activity {
   bool handleReaderGestureInput(){++gestures;return true;}
   void finishReaderGestures(){++finishes;}
   void handleReaderShortcut(readershortcuts::Action){++shortcuts;}
-''' + declaration(reader, "bool isReaderActivity()") + "\n" + declaration(reader, "asReaderActivity()") + r'''
+''' + declaration(reader, "bool isReaderActivity()") + "\n" + declaration(reader, "bookReader()") + r'''
 };
 class ClipSelectionActivity: public Activity {
  public:
