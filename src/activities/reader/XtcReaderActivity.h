@@ -51,7 +51,7 @@ class XtcReaderActivity final : public ReaderActivity {
   ~XtcReaderActivity() override = default;
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
-  bool restorePageForSleep() override;
+  bool restorePageForSleep(SleepPageTarget target) override;
 #endif
   bool pageTurn(bool isForward) override;
   bool skipPages(int amount) override;

@@ -59,23 +59,29 @@ struct ImageBlock{static void clearRenderFailures(){}static void releaseRenderCa
 struct Page{void render(GfxRenderer&r,int font,int x,int y){assert(font==2&&x==7&&y==33);assert(r.mode==GfxRenderer::BW);++draws;}};
 struct Section{bool building=false,readable=true;int currentPage=1,pageCount=3,loads=0;
  bool isBuilding()const{return building;}std::unique_ptr<Page>loadPage(int page){assert(page==currentPage);++loads;return readable?std::make_unique<Page>():nullptr;}};
-struct ReaderActivity{virtual~ReaderActivity()=default;virtual bool restorePageForSleep()=0;};
+struct ReaderActivity{virtual~ReaderActivity()=default;enum class SleepPageTarget{Buffer,Display};virtual bool restorePageForSleep(SleepPageTarget)=0;};
 uint32_t readerRenderSpecSignature(int value){return 100+value;}
 struct EpubReaderActivity:ReaderActivity{
  GfxRenderer&renderer;bool epub=true;std::unique_ptr<Section>section=std::make_unique<Section>();
- int buildViewportWidth=466,buildViewportHeight=734,status=0,currentSpineIndex=0,specVersion=0;
+ int buildViewportWidth=466,buildViewportHeight=734,status=0,currentSpineIndex=0,specVersion=0,fullPaints=0;
  uint32_t renderedSleepLayout=0;uint32_t sleepPageLayoutSignature()const;
  int effectiveRenderSpec(int,int,int)const{return specVersion;}
- struct Layout{int left,top,width,height;};
- Layout readerPageLayout()const{return{7,33,renderer.getScreenWidth()-14,renderer.getScreenHeight()-66};}
+ struct Layout{int left,top,right,bottom,width,height;};
+ Layout readerPageLayout()const{return{7,33,7,33,renderer.getScreenWidth()-14,renderer.getScreenHeight()-66};}
  void settleOverlayRefresh(){++settles;}void discardOverlayPage(){++discards;}
  void renderStatusBar(){++status;}void drawClippingHighlights(Page&,int,int top,int left){assert(top==33&&left==7);}
- explicit EpubReaderActivity(GfxRenderer&r):renderer(r){renderedSleepLayout=sleepPageLayoutSignature();}bool restorePageForSleep()override;
+ void renderContents(std::unique_ptr<Page>p,int t,int r,int b,int l){assert(p&&t==33&&r==7&&b==33&&l==7);++fullPaints;}
+ explicit EpubReaderActivity(GfxRenderer&r):renderer(r){renderedSleepLayout=sleepPageLayoutSignature();}bool restorePageForSleep(SleepPageTarget target)override;
 };
+enum class PageOverlayArt{None,Available,Unavailable};PageOverlayArt art=PageOverlayArt::Available;
+PageOverlayArt findPageOverlayArt(){return art;}
 struct Activity{void onEnter(){}};
 struct{bool inverted=true;void setInverted(bool b){inverted=b;}}display;
 struct SleepActivity:Activity{
- GfxRenderer&renderer;bool fromTimeout=false,pageOverlayBackgroundReady=true;
+ GfxRenderer&renderer;bool fromTimeout=false;
+ enum class PageOverlayBackground{RetainedScreen,PreparedPage,DisplayedPage,Unavailable};
+ PageOverlayBackground pageOverlayBackground=PageOverlayBackground::RetainedScreen;
+ bool backgroundReady()const{return pageOverlayBackground!=PageOverlayBackground::Unavailable;}
  int quickPaints=0,defaults=0,otherPaints=0;
  void renderLastScreenSleepScreen(){++quickPaints;}void renderDefaultSleepScreen(){++defaults;}
  void onEnter();
@@ -89,36 +95,42 @@ int main(){
   reader.buildViewportHeight=(orientation%2?480:800)-66;
   SleepActivity sleep(r);const auto clip=r.clip;const auto mode=r.mode;const auto direction=r.orientation;
   sleep.prepareReaderPageBackground(&reader);
-  assert(sleep.pageOverlayBackgroundReady&&reader.section->currentPage==1&&reader.section->loads==1);
+  assert(sleep.backgroundReady()&&reader.section->currentPage==1&&reader.section->loads==1);
   assert(reader.status==2&&r.clip==clip&&r.mode==mode&&r.orientation==direction&&!r.dither);
  }
  GfxRenderer r;EpubReaderActivity reader(r);SETTINGS.orientation=0;SleepActivity sleep(r);
  auto savedSignature=reader.renderedSleepLayout;reader.renderedSleepLayout=0;
- sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady&&reader.section->loads==0);
+ sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady()&&reader.section->loads==0);
  reader.renderedSleepLayout=savedSignature;
- SETTINGS.fontPointSize=18;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady&&reader.section->loads==0);SETTINGS.fontPointSize=14;
- SETTINGS.fontFamily=1;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);SETTINGS.fontFamily=0;
- reader.section->building=true;sleep.prepareReaderPageBackground(&reader);assert(sleep.pageOverlayBackgroundReady&&reader.section->loads==1);
- reader.specVersion=1;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady&&reader.section->loads==1);reader.specVersion=0;
- SETTINGS.paragraphIndentSpaces=3;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);SETTINGS.paragraphIndentSpaces=2;
- strcpy(SETTINGS.sdFontFamilyName,"Other");sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);SETTINGS.sdFontFamilyName[0]=0;
- reader.section->building=false;reader.section->readable=false;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);
- reader.section->readable=true;r.hasFonts=false;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);r.hasFonts=true;
- reader.buildViewportWidth=1;int before=reader.section->loads;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady&&reader.section->loads==before);
- reader.buildViewportWidth=466;r.buffer=false;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);r.buffer=true;
- for(int page:{-1,3,4}){reader.section->currentPage=page;sleep.prepareReaderPageBackground(&reader);assert(!sleep.pageOverlayBackgroundReady);}
+ SETTINGS.fontPointSize=18;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady()&&reader.section->loads==0);SETTINGS.fontPointSize=14;
+ SETTINGS.fontFamily=1;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());SETTINGS.fontFamily=0;
+ reader.section->building=true;sleep.prepareReaderPageBackground(&reader);assert(sleep.backgroundReady()&&reader.section->loads==1);
+ reader.specVersion=1;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady()&&reader.section->loads==1);reader.specVersion=0;
+ SETTINGS.paragraphIndentSpaces=3;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());SETTINGS.paragraphIndentSpaces=2;
+ strcpy(SETTINGS.sdFontFamilyName,"Other");sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());SETTINGS.sdFontFamilyName[0]=0;
+ reader.section->building=false;reader.section->readable=false;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());
+ reader.section->readable=true;r.hasFonts=false;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());r.hasFonts=true;
+ reader.buildViewportWidth=1;int before=reader.section->loads;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady()&&reader.section->loads==before);
+ reader.buildViewportWidth=466;r.buffer=false;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());r.buffer=true;
+ for(int page:{-1,3,4}){reader.section->currentPage=page;sleep.prepareReaderPageBackground(&reader);assert(!sleep.backgroundReady());}
  reader.section->currentPage=1;
  before=reader.section->loads;SETTINGS.sleepScreen=0;sleep.prepareReaderPageBackground(&reader);assert(reader.section->loads==before);
  SETTINGS.sleepScreen=14;sleep.fromTimeout=true;SETTINGS.quickResumeSleepScreen=1;sleep.prepareReaderPageBackground(&reader);assert(reader.section->loads==before);
  SETTINGS.quickResumeSleepScreen=0;sleep.prepareReaderPageBackground(nullptr);assert(reader.section->loads==before);
  assert(imagesReleased==5&&settles==5&&discards==5&&draws==10&&scans==5);
- SleepActivity unavailable(r);unavailable.pageOverlayBackgroundReady=false;SETTINGS.sleepScreen=14;
+ SleepActivity unavailable(r);unavailable.pageOverlayBackground=SleepActivity::PageOverlayBackground::Unavailable;SETTINGS.sleepScreen=14;
  unavailable.onEnter();assert(unavailable.defaults==1&&unavailable.otherPaints==0&&!display.inverted);
  unavailable.fromTimeout=true;SETTINGS.quickResumeSleepScreen=1;display.inverted=true;
  unavailable.onEnter();assert(unavailable.quickPaints==1&&unavailable.defaults==1&&display.inverted);
  SETTINGS.quickResumeSleepScreen=0;SETTINGS.sleepScreen=7;
  unavailable.onEnter();assert(unavailable.quickPaints==2&&unavailable.defaults==1);
  SETTINGS.sleepScreen=0;unavailable.onEnter();assert(unavailable.otherPaints==1);
+ SETTINGS.sleepScreen=14;SleepActivity gray(r);art=PageOverlayArt::None;
+ gray.prepareReaderPageBackground(&reader);assert(gray.pageOverlayBackground==SleepActivity::PageOverlayBackground::DisplayedPage&&reader.fullPaints==1);
+ display.inverted=true;gray.onEnter();assert(gray.defaults==0&&gray.otherPaints==0&&display.inverted);
+ art=PageOverlayArt::Unavailable;const int reads=reader.section->loads;
+ gray.prepareReaderPageBackground(&reader);assert(!gray.backgroundReady()&&reader.section->loads==reads);
+
 
 }
 '''

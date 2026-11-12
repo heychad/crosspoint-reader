@@ -148,7 +148,8 @@ class ReaderActivity : public Activity {
   void prepareForSleep() override;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   // Repaints only the current page into the framebuffer, with the render lock held.
-  virtual bool restorePageForSleep() { return false; }
+  enum class SleepPageTarget { Buffer, Display };
+  virtual bool restorePageForSleep(SleepPageTarget) { return false; }
 #endif
   void onInputLockChanged(bool locked) override;
   void loop() override;

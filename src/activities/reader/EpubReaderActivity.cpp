@@ -322,7 +322,7 @@ uint32_t EpubReaderActivity::sleepPageLayoutSignature() const {
   return signature ? signature : 1U;
 }
 
-bool EpubReaderActivity::restorePageForSleep() {
+bool EpubReaderActivity::restorePageForSleep(SleepPageTarget target) {
   if (!epub || !section || !renderer.hasFrameBuffer() || section->currentPage < 0 ||
       section->currentPage >= static_cast<int>(section->pageCount))
     return false;
@@ -336,6 +336,11 @@ bool EpubReaderActivity::restorePageForSleep() {
   if (!page || !fonts) return false;
   settleOverlayRefresh();
   discardOverlayPage();
+  if (target == SleepPageTarget::Display) {
+    renderer.clearScreen();
+    renderContents(std::move(page), layout.top, layout.right, layout.bottom, layout.left);
+    return true;
+  }
   ImageBlock::clearRenderFailures();
   struct ImageCacheRelease {
     ~ImageCacheRelease() { ImageBlock::releaseRenderCache(); }

@@ -694,6 +694,37 @@ void releaseSdFontCachesForDecode(const GfxRenderer& renderer) {
   }
 }
 
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+enum class PageOverlayArt { None, Available, Unavailable };
+
+PageOverlayArt findPageOverlayArt() {
+  const auto& favorite = APP_STATE.favoriteSleepImagePath;
+  if (!favorite.empty() && (FsHelpers::hasBmpExtension(favorite) || FsHelpers::hasPngExtension(favorite)) &&
+      Storage.exists(favorite.c_str()))
+    return PageOverlayArt::Available;
+  auto name = makeUniqueNoThrow<char[]>(MAX_SLEEP_FILE_NAME_LEN);
+  if (!name) {
+    LOG_ERR("SLP", "Could not allocate sleep-art probe (%u bytes)", static_cast<unsigned>(MAX_SLEEP_FILE_NAME_LEN));
+    return PageOverlayArt::Unavailable;
+  }
+  const auto& preferred = APP_STATE.preferredSleepFolderPath;
+  auto preferredDir = preferred.empty() ? HalFile{} : Storage.open(preferred.c_str());
+  if (preferredDir && preferredDir.isDirectory()) {
+    if (findNextValidSleepImage(preferredDir, SleepRecentKind::Overlay, name.get())) return PageOverlayArt::Available;
+    preferredDir.close();
+  } else {
+    if (preferredDir) preferredDir.close();
+    for (const char* path : {"/.sleep", "/sleep"}) {
+      auto dir = Storage.open(path);
+      if (dir && dir.isDirectory() && findNextValidSleepImage(dir, SleepRecentKind::Overlay, name.get()))
+        return PageOverlayArt::Available;
+    }
+  }
+  return Storage.exists("/sleep.bmp") || Storage.exists("/sleep.png") ? PageOverlayArt::Available
+                                                                      : PageOverlayArt::None;
+}
+#endif
+
 }  // namespace
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
@@ -701,17 +732,28 @@ void SleepActivity::prepareReaderPageBackground(ReaderActivity* reader) {
   if (!reader || SETTINGS.sleepScreen != CrossPointSettings::PAGE_OVERLAY_SLEEP ||
       (fromTimeout && SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_AFTER_TIMEOUT))
     return;
+  const auto art = findPageOverlayArt();
+  if (art == PageOverlayArt::Unavailable) {
+    pageOverlayBackground = PageOverlayBackground::Unavailable;
+    return;
+  }
   const auto orientation = renderer.getOrientation();
   const auto clip = renderer.getClipRect();
   const auto mode = renderer.getRenderMode();
   const int extent = std::max(renderer.getScreenWidth(), renderer.getScreenHeight());
   renderer.setRenderMode(GfxRenderer::BW);
   renderer.setClipRect(0, 0, extent, extent);
-  pageOverlayBackgroundReady = reader->restorePageForSleep();
+  const bool displayed = art == PageOverlayArt::None;
+  const auto target = displayed ? ReaderActivity::SleepPageTarget::Display : ReaderActivity::SleepPageTarget::Buffer;
+  if (reader->restorePageForSleep(target))
+    pageOverlayBackground = displayed ? PageOverlayBackground::DisplayedPage : PageOverlayBackground::PreparedPage;
+  else
+    pageOverlayBackground = PageOverlayBackground::Unavailable;
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);
   renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
-  if (!pageOverlayBackgroundReady) LOG_ERR("SLP", "Reader page unavailable for sleep overlay");
+  if (pageOverlayBackground == PageOverlayBackground::Unavailable)
+    LOG_ERR("SLP", "Reader page unavailable for sleep overlay");
 }
 #endif
 
@@ -731,7 +773,11 @@ void SleepActivity::onEnter() {
   }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
-  if (SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP && !pageOverlayBackgroundReady) {
+  if (SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP &&
+      pageOverlayBackground == PageOverlayBackground::DisplayedPage)
+    return;
+  if (SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP &&
+      pageOverlayBackground == PageOverlayBackground::Unavailable) {
     display.setInverted(false);
     return renderDefaultSleepScreen();
   }

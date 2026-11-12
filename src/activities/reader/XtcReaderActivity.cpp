@@ -469,10 +469,10 @@ bool XtcReaderActivity::renderPage(PageRenderTarget target) {
 }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
-bool XtcReaderActivity::restorePageForSleep() {
+bool XtcReaderActivity::restorePageForSleep(SleepPageTarget target) {
   if (!renderer.hasFrameBuffer()) return false;
   renderer.setOrientation(GfxRenderer::Portrait);
-  return renderPage(PageRenderTarget::Buffer);
+  return renderPage(target == SleepPageTarget::Display ? PageRenderTarget::Display : PageRenderTarget::Buffer);
 }
 #endif
 

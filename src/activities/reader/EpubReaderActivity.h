@@ -331,7 +331,7 @@ class EpubReaderActivity final : public ReaderActivity {
 #endif
   void prepareForSleep() override;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
-  bool restorePageForSleep() override;
+  bool restorePageForSleep(SleepPageTarget target) override;
 #endif
   void loop() override;
   void render(RenderLock&& lock) override;

@@ -31,7 +31,8 @@ class SleepActivity final : public Activity {
   void renderTransparentCustomSleepScreen() const;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   void renderPageOverlaySleepScreen() const;
-  bool pageOverlayBackgroundReady = true;
+  enum class PageOverlayBackground { RetainedScreen, PreparedPage, DisplayedPage, Unavailable };
+  PageOverlayBackground pageOverlayBackground = PageOverlayBackground::RetainedScreen;
 #endif
   void renderBlankSleepScreen() const;
 

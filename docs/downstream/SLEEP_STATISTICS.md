@@ -145,3 +145,29 @@ build passed in 72.67 seconds with 113,052 bytes of static RAM and 5,707,010
 bytes of flash. Its ELF sizes are 3,264 bytes for the EPUB reader, 1,168 for the
 XTC reader, and 132 for SleepActivity, excluding their owned allocations.
 These are build/host results. No new firmware was installed.
+
+## No-art grayscale path
+
+The next checked WIP batch probes whether Page Overlay art is available without
+selecting an image or advancing its rotation. The probe reuses the existing
+256-byte checked filename buffer and image-header validation, then releases
+its files and buffer before reader rendering. Source priority stays favorite,
+preferred folder or default folders, then root images.
+
+With art available, the reader prepares the existing B/W composition base.
+With no art, it displays the current page using its normal EPUB or XTC render
+path before teardown. That reuses anti-aliasing, image grayscale, and normal
+allocation fallbacks. SleepActivity then leaves that displayed page alone,
+including night-mode polarity. No extra reading observation or progress save
+is requested. An unavailable probe or reader falls back to the default sleep
+screen. No extra full-screen buffer, task, network request, or persistent
+format is added.
+
+Nine affected sleep checks passed in 5.87 seconds; 18 native grayscale,
+reading-session, and statistics-sleep checks passed in 1.64 seconds. The enabled
+X4 Pro build passed in 73.21 seconds, with 113,052 bytes static RAM and
+5,708,326 bytes flash. These changes are not installed or device-accepted.
+
+Feature work is suspended while investigating Chad's reported clipping crash.
+The next priority is device evidence, a targeted fix, and a five-minute device
+regression/feature check. Unavailable-layout reconstruction remains E2 work.

@@ -23,6 +23,8 @@ program=r'''
 enum{UI_12_FONT_ID};struct EpdFontFamily{enum{BOLD};};
 struct HalDisplay{enum{HALF_REFRESH,FAST_REFRESH};enum class GrayscaleBase{Combined,Other};};
 struct Renderer{
+ enum Orientation{Portrait,Landscape};Orientation orientation=Landscape;bool buffer=true;
+ bool hasFrameBuffer()const{return buffer;}void setOrientation(Orientation o){orientation=o;}
  struct Capability{HalDisplay::GrayscaleBase base=HalDisplay::GrayscaleBase::Other;};
  int width=8,height=9,displays=0,marked=0;std::vector<bool>pixels=std::vector<bool>(72,false);
  void clearScreen(int fill=255){pixels.assign(72,fill==0);}void drawPixel(int x,int y,bool black){assert(x>=0&&x<width&&y>=0&&y<height);pixels[y*width+x]=black;}
@@ -45,13 +47,16 @@ struct Xtc{
  size_t loadPage(uint32_t page,uint8_t*out,size_t size){assert(page==2);++loads;if(fail)return 0;
   assert(size==data.size());std::copy(data.begin(),data.end(),out);return shortRead?size-1:size;}
 };
+using GfxRenderer=Renderer;
 struct XtcReaderActivity{
+ enum class SleepPageTarget{Buffer,Display};
+ bool restorePageForSleep(SleepPageTarget target);
  enum class PageRenderTarget{Display,Buffer};enum class StatusBarOverlayPosition{Top,Bottom};
  std::unique_ptr<Xtc>xtc=std::make_unique<Xtc>();uint32_t currentPage=2;int pagesUntilFullRefresh=7,status=0,marks=0;Renderer renderer;
  void renderStatusBarOverlay(Renderer&,StatusBarOverlayPosition){++status;}void markPageRendered(){++marks;}
  bool renderPage(PageRenderTarget target=PageRenderTarget::Display);
 };
-''' + method('bool XtcReaderActivity::renderPage(') + r'''
+''' + method('bool XtcReaderActivity::renderPage(') + '\n' + method('bool XtcReaderActivity::restorePageForSleep(') + r'''
 int main(){
  using Target=XtcReaderActivity::PageRenderTarget;
  for(int depth:{1,2})for(int display:{0,1}){
@@ -69,6 +74,13 @@ int main(){
   if(display){assert(reader.renderer.displays>0&&reader.marks==1&&reader.pagesUntilFullRefresh==6);}
   else{assert(reader.renderer.displays==0&&reader.marks==0&&reader.pagesUntilFullRefresh==7);}
   assert(reader.status==(depth==1?1:0));
+ }
+ for(int output=0;output<2;++output){XtcReaderActivity reader;reader.xtc->data.assign(9,255);
+  reader.renderer.buffer=false;assert(!reader.restorePageForSleep(XtcReaderActivity::SleepPageTarget::Buffer));assert(reader.xtc->loads==0);
+  reader.renderer.buffer=true;
+  assert(reader.restorePageForSleep(output?XtcReaderActivity::SleepPageTarget::Display:XtcReaderActivity::SleepPageTarget::Buffer));
+  assert(reader.renderer.orientation==Renderer::Portrait);
+  assert(reader.renderer.displays==(output?1:0));
  }
  for(int failure=0;failure<6;++failure){
   XtcReaderActivity reader;reader.xtc->data.assign(9,255);
