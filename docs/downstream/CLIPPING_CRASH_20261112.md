@@ -184,7 +184,21 @@ The archived matching ELF has SHA-256
 The private image, ELF, readback, and manifest are in
 `.cache/clipping-hotfix2-20261112/`.
 
-The device owner has the installation and long-press check. No clipfix2 device
-success is claimed yet. If the selection opens normally, continue the five-minute
-check; if it crashes, preserve the new report against this matching ELF. Other
-feature work remains on hold.
+At this handoff, the installation and long-press checks were pending. The
+observed device results are recorded below.
+
+## Clipfix2 device result
+
+Chad confirmed that selection controls open normally and that a clipping saved.
+The live reader reports `2.0.0-chad.3-test58-clipfix2-x4pro`.
+
+The SD check found one complete v4 clipping record: 36 words, 206 UTF-8 bytes,
+with its book metadata, source range, and page 4 location intact. The selected
+text matches the `My Clippings.txt` export. Both files matched a second remote
+read. Private copies and the verification receipt are in
+`.cache/clipfix2-device-check-20261112/`; the book text is not copied into Git.
+
+The reported long-press crash and save path pass this device check. The rest of
+the short regression remains open: Saved Items display and navigation,
+selection cancellation in all four orientations, page turns, Quick Lock,
+and sleep/resume. These results do not mark the full checklist complete.
