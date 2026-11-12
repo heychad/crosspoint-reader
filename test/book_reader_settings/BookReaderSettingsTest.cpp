@@ -797,15 +797,187 @@ TEST_F(BookSettings, InvalidLegacyAndRecoveryArtifactsBlockWrites) {
   }
 }
 
-TEST_F(BookSettings, LegacySafeModeIsNotPartiallyApplied) {
+TEST_F(BookSettings, LegacySafeModeKeepsUnderlyingSettingsAndSource) {
   auto record = crossInkV10();
   record[1] |= 0x10;
-  put(std::string(CACHE) + "/reader_settings.bin", record);
+  const std::string path = std::string(CACHE) + "/reader_settings.bin";
+  put(path, record);
   BookReaderPreferences store;
   BookReaderSettings settings;
-  EXPECT_FALSE(store.load(CACHE, "/book.epub", settings));
-  EXPECT_EQ(settings.mask, 0U);
-  EXPECT_FALSE(store.save(sizeOverride()));
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_TRUE(settings.safeMode);
+  EXPECT_EQ(settings.mask, 1U << 4);
+  CrossPointSettings effective;
+  effective.focusReadingEnabled = 1;
+  BookReaderSettingsScope scope;
+  scope.begin(effective, settings);
+  EXPECT_EQ(effective.embeddedStyle, 0);
+  EXPECT_EQ(effective.focusReadingEnabled, 0);
+  EXPECT_TRUE(scope.capture(effective).safeMode);
+  ASSERT_TRUE(store.save(scope.capture(effective)));
+  EXPECT_FALSE(Storage.exists(PATH));
+  effective.fontPointSize = 20;
+  ASSERT_TRUE(store.save(scope.capture(effective)));
+  BookReaderSettings saved;
+  BookReaderPreferences reopened;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", saved));
+  EXPECT_TRUE(saved.safeMode);
+  EXPECT_EQ(saved.preferences.values[0], 20);
+  ASSERT_TRUE(reopened.save({}));
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", saved));
+  EXPECT_FALSE(saved.safeMode);
+  EXPECT_EQ(saved.mask, 0U);
+  std::string original;
+  ASSERT_TRUE(Storage.readFileToString("TEST", path, 256, original));
+  EXPECT_EQ(original, record);
+}
+
+TEST_F(BookSettings, NativeSafeModeWithoutOtherOverridesPersistsAndValidates) {
+  BookReaderSettings settings;
+  settings.safeMode = true;
+  BookReaderPreferences store;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  settings.safeMode = true;
+  ASSERT_TRUE(store.save(settings));
+  BookReaderSettings restored;
+  BookReaderPreferences reopened;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", restored));
+  EXPECT_TRUE(restored.safeMode);
+  EXPECT_EQ(restored.mask, 0U);
+  for (const char* value : {"null", "1", "\"true\"", "{}"}) {
+    put(PATH, std::string("{\"version\":1,\"overrides\":{},\"safeMode\":") + value + "}");
+    BookReaderPreferences invalid;
+    EXPECT_FALSE(invalid.load(CACHE, "/book.epub", restored));
+    EXPECT_FALSE(invalid.save({}));
+  }
+}
+
+TEST(ReaderPreferenceScope, SafeModeRetainsUnderlyingValuesAndUnrelatedEdits) {
+  CrossPointSettings settings;
+  settings.focusReadingEnabled = 1;
+  BookReaderSettings book;
+  book.safeMode = true;
+  book.preferences = ReaderPreferences::capture(settings);
+  book.mask = (1U << 10) | (1U << 13);
+  BookReaderSettingsScope scope;
+  scope.begin(settings, book);
+  EXPECT_EQ(settings.embeddedStyle, 0);
+  EXPECT_EQ(settings.focusReadingEnabled, 0);
+  settings.fontPointSize = 20;
+  auto saved = scope.capture(settings);
+  EXPECT_TRUE(saved.safeMode);
+  EXPECT_EQ(saved.preferences.values[10], 1);
+  EXPECT_EQ(saved.preferences.values[13], 1);
+  EXPECT_EQ(saved.preferences.values[0], 20);
+  EXPECT_EQ(saved.mask, book.mask | 1U);
+  JsonDocument global;
+  scope.writeGlobal(global.to<JsonObject>());
+  EXPECT_EQ(global["embeddedStyle"].as<int>(), 1);
+  EXPECT_EQ(global["focusReadingEnabled"].as<int>(), 1);
+  scope.end(settings);
+  EXPECT_EQ(settings.embeddedStyle, 1);
+  EXPECT_EQ(settings.focusReadingEnabled, 1);
+  EXPECT_EQ(settings.fontPointSize, 14);
+}
+
+TEST(ReaderPreferenceScope, SafeModeExitRestoresOnlyUneditedControls) {
+  for (bool changeRenderMode : {false, true}) {
+    CrossPointSettings settings;
+    settings.focusReadingEnabled = 1;
+    BookReaderSettings book;
+    book.safeMode = true;
+    book.preferences = ReaderPreferences::capture(settings);
+    book.preferences.values[10] = 0;
+    book.mask = 1U << 10;
+    BookReaderSettingsScope scope;
+    scope.begin(settings, book);
+    if (changeRenderMode)
+      settings.epubRenderMode = 1;
+    else
+      settings.embeddedStyle = 1;
+    const auto saved = scope.capture(settings);
+    EXPECT_FALSE(saved.safeMode);
+    EXPECT_EQ(settings.embeddedStyle, changeRenderMode ? 0 : 1);
+    EXPECT_EQ(settings.focusReadingEnabled, 1);
+    EXPECT_EQ(saved.mask & (1U << 10), changeRenderMode ? 1U << 10 : 0U);
+    EXPECT_EQ(scope.capture(settings).preferences.difference(saved.preferences), 0U);
+  }
+}
+
+TEST(ReaderPreferenceScope, SafeModeUpdatesInheritedDefaultsAndResetClearsIt) {
+  CrossPointSettings settings;
+  BookReaderSettings book;
+  book.safeMode = true;
+  BookReaderSettingsScope scope;
+  scope.begin(settings, book);
+  scope.beforeGlobalLoad(settings);
+  settings.embeddedStyle = 0;
+  settings.focusReadingEnabled = 1;
+  scope.afterGlobalLoad(settings);
+  EXPECT_EQ(settings.embeddedStyle, 0);
+  EXPECT_EQ(settings.focusReadingEnabled, 0);
+  const auto saved = scope.capture(settings);
+  EXPECT_TRUE(saved.safeMode);
+  EXPECT_EQ(saved.mask, 0U);
+  EXPECT_EQ(saved.preferences.values[10], 0);
+  EXPECT_EQ(saved.preferences.values[13], 1);
+  scope.reset(settings);
+  EXPECT_FALSE(scope.capture(settings).safeMode);
+  EXPECT_EQ(settings.embeddedStyle, 0);
+  EXPECT_EQ(settings.focusReadingEnabled, 1);
+}
+
+TEST(ReaderPreferenceScope, SafeModeOwnershipAndExitMatrix) {
+  for (unsigned owned = 0; owned < 4; ++owned) {
+    for (unsigned choices = 0; choices < 4; ++choices) {
+      for (unsigned edit = 1; edit < 8; ++edit) {
+        CrossPointSettings settings;
+        settings.focusReadingEnabled = 1;
+        BookReaderSettings book;
+        book.safeMode = true;
+        book.preferences = ReaderPreferences::capture(settings);
+        book.preferences.values[10] = choices & 1;
+        book.preferences.values[13] = (choices >> 1) & 1;
+        book.mask = ((owned & 1) ? 1U << 10 : 0U) | ((owned & 2) ? 1U << 13 : 0U);
+        const unsigned underlyingStyle = (owned & 1) ? book.preferences.values[10] : 1;
+        const unsigned underlyingFocus = (owned & 2) ? book.preferences.values[13] : 1;
+        BookReaderSettingsScope scope;
+        scope.begin(settings, book);
+        if (edit & 1) settings.embeddedStyle = 1;
+        if (edit & 2) settings.focusReadingEnabled = 1;
+        if (edit & 4) settings.epubRenderMode = 1;
+        const auto saved = scope.capture(settings);
+        EXPECT_FALSE(saved.safeMode);
+        EXPECT_EQ(settings.embeddedStyle, (edit & 1) ? 1 : underlyingStyle);
+        EXPECT_EQ(settings.focusReadingEnabled, (edit & 2) ? 1 : underlyingFocus);
+        uint32_t expectedMask = book.mask;
+        if (edit & 1) expectedMask &= ~(1U << 10);
+        if (edit & 2) expectedMask &= ~(1U << 13);
+        if (edit & 4) expectedMask |= 1U << 14;
+        EXPECT_EQ(saved.mask, expectedMask);
+        EXPECT_EQ(saved.preferences.values[10], settings.embeddedStyle);
+        EXPECT_EQ(saved.preferences.values[13], settings.focusReadingEnabled);
+      }
+    }
+  }
+}
+
+TEST(ReaderPreferenceScope, SafeModeHonorsIndependentRenderProfile) {
+  for (uint8_t profile = 0; profile < EPUB_RENDER_MODE_COUNT; ++profile) {
+    CrossPointSettings settings;
+    BookReaderSettings book;
+    book.safeMode = true;
+    book.mask = 1U << 14;
+    book.preferences.values[14] = profile;
+    BookReaderSettingsScope scope;
+    scope.begin(settings, book);
+    EXPECT_EQ(settings.epubRenderMode, profile);
+    EXPECT_EQ(scope.capture(settings).preferences.values[14], profile);
+    EXPECT_TRUE(scope.capture(settings).safeMode);
+    settings.epubRenderMode = (profile + 1) % EPUB_RENDER_MODE_COUNT;
+    EXPECT_FALSE(scope.capture(settings).safeMode);
+    EXPECT_EQ(settings.embeddedStyle, 1);
+  }
 }
 
 TEST_F(BookSettings, LegacyFontSizeDoesNotChangeOrTriggerSaveDuringFontFallback) {

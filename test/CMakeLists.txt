@@ -216,6 +216,7 @@ add_subdirectory(book_reader_settings)
 add_subdirectory(settings_recovery_plan)
 
 add_test(NAME BookFontFallback COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_book_font_fallback.py)
+add_test(NAME BookSettingsCaptureLock COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_book_settings_capture_lock.py)
 add_test(NAME LibraryFilters COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/library_filters/test_library_filters.py)
 add_test(NAME FileBrowserViewPreferences COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/library_filters/test_browser_rows.py)
 add_test(NAME LibraryEpubMetadataFallback COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/library_metadata/test_epub_metadata.py)

@@ -36,8 +36,9 @@ struct BookDictionarySelectActivity:UiListActivity{
  void setResult(BookDictionaryResult r){result=std::move(r);}void finish(){finished=true;}
 };
 struct ReaderPreferences{static constexpr unsigned DICTIONARY_BIT=1U<<16;};
+struct BookReaderSettings{unsigned mask=0;};
 struct{char dictionaryName[32]="English";unsigned mask=0;bool accepts=true,global=false;int changes=0;
- struct Capture{unsigned mask;};Capture captureBookReaderSettings(){return{mask};}
+ BookReaderSettings captureBookReaderSettings(){return{mask};}
  bool setBookDictionary(const char*name){++changes;global=!name;if(name)strcpy(dictionaryName,name);return accepts;}
 }SETTINGS;
 struct RenderLock{template<class T>explicit RenderLock(T&){} RenderLock()=default;};bool failAllocation=false;
@@ -47,7 +48,7 @@ struct EpubReaderActivity{
  int renderer=0,mappedInput=0,saves=0,menus=0,updates=0,page=123;Flag pendingBookSettingsSaveError;
  std::unique_ptr<BookDictionarySelectActivity>child;std::function<void(const ActivityResult&)>callback;
  void openBookDictionary();void requestUpdate(){++updates;}void openReaderMenu(){++menus;}
- void saveBookReaderSettings(){++saves;}
+ void saveBookReaderSettingsLocked(){++saves;}
  template<class F>void startActivityForResult(std::unique_ptr<BookDictionarySelectActivity>p,F f){child=std::move(p);callback=f;}
  void complete(ActivityResult result){auto f=callback;child.reset();f(result);}
 };

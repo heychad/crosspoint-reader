@@ -303,6 +303,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool bookSettingsActive = false;
   void prepareReaderSettings() override;
   bool saveBookReaderSettings();
+  // Lifecycle and input callbacks that already own RenderLock use this entry.
+  bool saveBookReaderSettingsLocked();
+  bool persistBookReaderSettings(const BookReaderSettings& settings);
   void resetBookReaderSettings();
   bool loadBook() override;
   const std::string& getBookCachePath() const override { return epub->getCachePath(); }

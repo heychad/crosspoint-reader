@@ -30,7 +30,7 @@ When no native preferences exist, the reader can load compatible values from a
 CrossInk `reader_settings.bin` in the current or legacy FNV cache. Existing
 native preferences take precedence. An unchanged import remains read-only; an
 edit or reset saves native preferences, while preserving the original binary.
-Safe Mode, unreadable records, and recovery artifacts block writes. A named SD
+Unreadable records and recovery artifacts block writes. A named SD
 font can import with its point size when the book owns both fields. Without a
 compatible owned font name, the size stays in the original record. Finished-book
 moves are blocked while a legacy settings file remains at the old path. Other
@@ -45,7 +45,7 @@ a patch or apply a migration.
 
 ## Resource budget
 
-Each preference snapshot is 81 bytes; the scope is 172 bytes, including its two snapshots, masks, and flag. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
+Each preference snapshot is 81 bytes; the scope is 176 bytes, including its two snapshots, masks, Safe Mode flag, and two underlying values. A complete book setting is 92 bytes. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
 
 ## Hardware checks
 
@@ -70,15 +70,13 @@ Display or Display (B&W) choice only when both fields are owned by the book.
 Whole-pixel character spacing within the native -2 to +2 range maps exactly;
 half-pixel values, wider spacing, built-in fonts, and publisher-font choices remain
 unmapped. The original CrossInk file is never rewritten. Existing native book
-preferences still take precedence, and CrossInk Safe Mode still prevents a
-partial import.
+preferences still take precedence.
 
 An explicit Default, Balanced, or Light rendering-profile flag now imports
 independently of the layout mask. The snapshot's incidental profile does not
 create an override. Invalid profile values remain unmapped. Reset to global
 settings records the reset in native preferences and leaves the CrossInk
-source intact. Safe Mode is still excluded: it temporarily changes style,
-focus, and guide settings and retains their underlying values for later use.
+source intact. Safe Mode imports separately from the rendering-profile flag.
 
 ## Named font migration
 
@@ -114,6 +112,39 @@ For the next device batch, reopen a backed-up book whose legacy settings name
 an installed SD font. Check its family, size, reading position, and the global
 font after closing it. A book requesting an unavailable font should still open
 through the native fallback without replacing its saved preference.
+
+## Safe Mode migration
+
+CrossInk's per-book Safe Mode flag now imports without discarding the saved
+layout. It temporarily disables embedded styles and Focus Reading while
+retaining their underlying values. The rendering profile remains the record's
+independent choice. CrossInk's guide setting has no active counterpart in this
+build and remains unmapped.
+
+Changing an unrelated setting, such as font size, keeps Safe Mode active and
+saves the underlying style choices. Changing embedded styles, Focus Reading,
+or rendering profile leaves Safe Mode and restores the other underlying
+choices. Reset to global defaults clears it. Global settings reloads update
+inherited choices without replacing the book's explicit overrides.
+
+Native version-1 preference files gain an optional Boolean `safeMode` field.
+Older files default to false; older firmware ignores the field. An unchanged
+legacy import stays read-only. Subsequent edits use the existing checked native
+writer and preserve the original binary. Invalid Boolean values block writes.
+The reader captures settings under RenderLock before saving; lifecycle callers
+reuse their existing lock. No worker or per-page allocation is added.
+
+The cumulative host suite passed 2,256 checks in 78.40 seconds. Two further
+tests passed for 112 ownership/edit combinations and all three rendering
+profiles. The X4 Pro build passed in 141.06 seconds with 113,132 bytes of static
+RAM and 5,656,646 bytes of flash. This WIP retains the same uncommitted SDK
+changes noted above. Independent storage review and device checks remain for
+the cumulative firmware candidate.
+
+The next device check should open a backed-up Safe Mode book, change its font
+size, and reopen it. Then change its rendering profile: the underlying style
+choices should return. Reset should restore global defaults and the reading
+position should remain intact throughout.
 
 ## Per-book dictionary
 

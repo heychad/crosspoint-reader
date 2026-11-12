@@ -91,3 +91,11 @@ Existing native choices and original CrossInk files retain their protections.
 See [named font migration](BOOK_SETTINGS.md#named-font-migration) for fallback
 behavior and resource limits. This does not add the deferred CrossInk font pack
 or complete G3.
+
+## Safe Mode mapping added November 12
+
+The per-book Safe Mode flag now imports separately from the saved rendering
+profile. The scope retains underlying embedded-style and Focus Reading values
+while disabling them temporarily. A relevant layout edit or reset exits Safe
+Mode; unrelated edits preserve it. [The migration notes](BOOK_SETTINGS.md#safe-mode-migration)
+describe the optional native field and the remaining guide-setting gap.

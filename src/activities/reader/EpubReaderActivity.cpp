@@ -266,7 +266,21 @@ void EpubReaderActivity::prepareReaderSettings() {
 }
 
 bool EpubReaderActivity::saveBookReaderSettings() {
-  const bool saved = !bookSettingsActive || bookPreferences.save(SETTINGS.captureBookReaderSettings());
+  if (!bookSettingsActive) return true;
+  BookReaderSettings settings;
+  {
+    RenderLock lock;
+    settings = SETTINGS.captureBookReaderSettings();
+  }
+  return persistBookReaderSettings(settings);
+}
+
+bool EpubReaderActivity::saveBookReaderSettingsLocked() {
+  return !bookSettingsActive || persistBookReaderSettings(SETTINGS.captureBookReaderSettings());
+}
+
+bool EpubReaderActivity::persistBookReaderSettings(const BookReaderSettings& settings) {
+  const bool saved = bookPreferences.save(settings);
   if (!saved) pendingBookSettingsSaveError.store(true);
   return saved;
 }
@@ -299,14 +313,14 @@ bool EpubReaderActivity::tryRenderRecovery() {
 }
 
 void EpubReaderActivity::onExit() {
-  if (!saveBookReaderSettings()) LOG_ERR("ERS", "Book preferences were not saved on exit");
+  if (!saveBookReaderSettingsLocked()) LOG_ERR("ERS", "Book preferences were not saved on exit");
   ReaderActivity::onExit();
   if (bookSettingsActive) SETTINGS.endBookReaderSettings();
   bookSettingsActive = false;
 }
 
 void EpubReaderActivity::prepareForSleep() {
-  if (!saveBookReaderSettings()) LOG_ERR("ERS", "Book preferences were not saved before sleep");
+  if (!saveBookReaderSettingsLocked()) LOG_ERR("ERS", "Book preferences were not saved before sleep");
   ReaderActivity::prepareForSleep();
 }
 
@@ -627,7 +641,11 @@ void EpubReaderActivity::backgroundBuildTick() {
 }
 
 void EpubReaderActivity::openBookDictionary() {
-  const auto settings = SETTINGS.captureBookReaderSettings();
+  BookReaderSettings settings;
+  {
+    RenderLock lock;
+    settings = SETTINGS.captureBookReaderSettings();
+  }
   auto picker = makeUniqueNoThrow<BookDictionarySelectActivity>(
       renderer, mappedInput, (settings.mask & ReaderPreferences::DICTIONARY_BIT) == 0, SETTINGS.dictionaryName);
   if (!picker) {
@@ -639,7 +657,7 @@ void EpubReaderActivity::openBookDictionary() {
       if (const auto* selected = std::get_if<BookDictionaryResult>(&result.data)) {
         RenderLock lock;
         if (SETTINGS.setBookDictionary(selected->useGlobal ? nullptr : selected->name.c_str()))
-          saveBookReaderSettings();
+          saveBookReaderSettingsLocked();
         else
           pendingBookSettingsSaveError.store(true);
       }
@@ -1607,7 +1625,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
             selected->action < CrossPointSettings::INDEXING_METHOD_COUNT) {
           RenderLock lock;
           SETTINGS.indexingMethod = static_cast<uint8_t>(selected->action);
-          saveBookReaderSettings();
+          saveBookReaderSettingsLocked();
         }
         openReaderMenu();
       });
@@ -1962,7 +1980,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
 
   if (SETTINGS.orientation != orientation) {
     SETTINGS.orientation = orientation;
-    if (!saveBookReaderSettings()) LOG_ERR("ERS", "Book orientation was not saved");
+    if (!saveBookReaderSettingsLocked()) LOG_ERR("ERS", "Book orientation was not saved");
   }
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   appliedOrientation = orientation;

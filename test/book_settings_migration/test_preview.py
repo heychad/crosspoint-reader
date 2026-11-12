@@ -156,10 +156,13 @@ class DecodeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             preview.unique_object([('fontSize', 14), ('fontSize', 16)])
 
-    def test_safe_mode_never_proposes_a_patch(self):
+    def test_safe_mode_is_recognized_without_overwriting_native_preferences(self):
         result = preview.decode(record(10, flags=0x11))
         comparison = preview.compare_current(result, {'version': 1, 'overrides': {}})
-        self.assertEqual(comparison['status'], 'safe_mode_requires_review')
+        self.assertTrue(result['safeMode'])
+        self.assertNotIn('safeMode', result['unmapped'])
+        self.assertEqual(comparison['status'], 'native_file_takes_precedence')
+        self.assertEqual(comparison['fields']['safeMode'], 'existing_value_preserved')
         self.assertEqual(comparison['patch_for_missing_fields_only'], {})
 
     def test_unterminated_name_is_rejected(self):

@@ -45,8 +45,8 @@ bool readLegacyLocked(void* raw) {
   const bool read = size > 0 && size <= 256 && file.read(bytes.get(), size) == static_cast<int>(size);
   const bool closed = file.close();
   crossink::BookSettingsPreview preview;
-  if (!read || !closed || !crossink::decodeBookSettings(bytes.get(), size, preview) || (preview.extraFlags & 0x10))
-    return false;  // CrossInk Safe Mode changes effective settings beyond the saved snapshot.
+  if (!read || !closed || !crossink::decodeBookSettings(bytes.get(), size, preview)) return false;
+  context.settings.safeMode = (preview.extraFlags & 0x10) != 0;
   static_assert(ReaderPreferences::FIELD_COUNT == 15);
   // A point size without its font could select a different built-in size.
   static_assert(ReaderPreferences::FONT_BIT == (1U << 15));
@@ -140,6 +140,9 @@ bool readPreferences(const std::string& path, JsonDocument& document, BookReader
       !document["version"].is<unsigned>() || document["version"].as<unsigned>() != 1 ||
       !document["overrides"].is<JsonObjectConst>())
     return false;
+  const auto safeMode = document["safeMode"];
+  if (!safeMode.isUnbound() && !safeMode.is<bool>()) return false;
+  settings.safeMode = safeMode | false;
   return settings.preferences.read(document["overrides"].as<JsonObjectConst>(), settings.mask);
 }
 }  // namespace
@@ -197,7 +200,8 @@ bool BookReaderPreferences::save(const BookReaderSettings& settings) {
   std::string current;
   if (!existingDocument(destination, current)) return false;
   if (!current.empty()) source = current;
-  if (legacyLoaded && source.empty() && settings.mask == legacySettings.mask &&
+  if (legacyLoaded && source.empty() && settings.safeMode == legacySettings.safeMode &&
+      settings.mask == legacySettings.mask &&
       (settings.preferences.difference(legacySettings.preferences) & settings.mask) == 0)
     return true;
   if (!source.empty()) {
@@ -207,7 +211,7 @@ bool BookReaderPreferences::save(const BookReaderSettings& settings) {
       LOG_ERR("PREFS", "Keeping changed or unreadable book preferences at %s", source.c_str());
       return false;
     }
-  } else if (settings.mask == 0 && !legacyLoaded) {
+  } else if (settings.mask == 0 && !settings.safeMode && !legacyLoaded) {
     return true;
   }
   // A recovered temp may be the only valid copy. Preserve it before reusing staging.
@@ -216,6 +220,7 @@ bool BookReaderPreferences::save(const BookReaderSettings& settings) {
     source = destination;
   }
   document["version"] = 1;
+  document["safeMode"] = settings.safeMode;
   auto overrides = document["overrides"].is<JsonObject>() ? document["overrides"].as<JsonObject>()
                                                           : document["overrides"].to<JsonObject>();
   settings.preferences.write(overrides, settings.mask);

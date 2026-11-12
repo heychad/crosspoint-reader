@@ -164,9 +164,8 @@ def decode(data: bytes) -> dict:
             unmapped.append('renderMode')
     if flags & 8:
         unmapped.append('dictionaryFont')
-    if flags & 16:
-        unmapped.append('safeMode')
     return {'version': version, 'flags': flags, 'autoPageTurnSeconds': seconds,
+            'safeMode': bool(flags & 16),
             'renderMode': render_mode, 'dictionaryFont': dictionary,
             'dictionaryFontPointSize': dictionary_size, 'overrides': overrides,
             'preview': preview,
@@ -176,8 +175,6 @@ def decode(data: bytes) -> dict:
 
 def compare_current(report: dict, current: dict | None) -> dict:
     """Compare fields without proposing changes to an existing native file."""
-    if report.get('flags', 0) & 0x10:
-        return {'status': 'safe_mode_requires_review', 'fields': {}, 'patch_for_missing_fields_only': {}}
     if current is None:
         return {'status': 'needs_current_settings', 'fields': {}, 'patch_for_missing_fields_only': {}}
     if (not isinstance(current, dict) or type(current.get('version')) is not int
@@ -185,6 +182,8 @@ def compare_current(report: dict, current: dict | None) -> dict:
         raise ValueError('current settings must have version 1 and an overrides object')
     existing = current['overrides']
     fields = {}
+    if report.get('safeMode'):
+        fields['safeMode'] = 'already_matching' if current.get('safeMode') is True else 'existing_value_preserved'
     for key, value in report['preview'].items():
         if key not in existing:
             fields[key] = 'missing_requires_manual_review'

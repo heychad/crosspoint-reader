@@ -30,6 +30,7 @@ struct ReaderPreferences {
 struct BookReaderSettings {
   ReaderPreferences preferences;
   uint32_t mask = 0;
+  bool safeMode = false;
 };
 
 // Owns the temporary projection of book preferences onto the existing reader settings.
@@ -37,7 +38,8 @@ class BookReaderSettingsScope {
  public:
   bool active() const { return enabled; }
   void begin(CrossPointSettings& settings, const BookReaderSettings& book);
-  BookReaderSettings capture(const CrossPointSettings& settings);
+  // Capture can restore Safe Mode's temporary values when a layout control changes.
+  BookReaderSettings capture(CrossPointSettings& settings);
   void reset(CrossPointSettings& settings);
   // Null inherits the global choice; an empty string explicitly disables lookup.
   bool setDictionary(CrossPointSettings& settings, const char* name);
@@ -51,4 +53,8 @@ class BookReaderSettingsScope {
   uint32_t overrideMask = 0;
   ReaderPreferences defaults;
   ReaderPreferences lastEffective;
+  bool safeMode = false;
+  std::array<uint8_t, 2> safeModeUnderlying{};
+  void applySafeMode(CrossPointSettings& settings);
+  void restoreSafeModeUnderlying(ReaderPreferences& preferences) const;
 };

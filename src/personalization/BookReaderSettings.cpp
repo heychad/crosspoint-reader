@@ -32,6 +32,11 @@ constexpr std::array<Field, ReaderPreferences::FIELD_COUNT> FIELDS = {{
     {"focusReadingEnabled", &CrossPointSettings::focusReadingEnabled, 0, 1},
     {"epubRenderMode", &CrossPointSettings::epubRenderMode, 0, EPUB_RENDER_MODE_COUNT - 1},
 }};
+constexpr size_t EMBEDDED_STYLE = 10;
+constexpr size_t FOCUS_READING = 13;
+constexpr size_t RENDER_MODE = 14;
+constexpr uint32_t SAFE_MODE_FIELDS = (1U << EMBEDDED_STYLE) | (1U << FOCUS_READING);
+constexpr uint32_t SAFE_MODE_EXIT_FIELDS = SAFE_MODE_FIELDS | (1U << RENDER_MODE);
 }  // namespace
 
 ReaderPreferences ReaderPreferences::capture(const CrossPointSettings& settings) {
@@ -157,22 +162,48 @@ void BookReaderSettingsScope::begin(CrossPointSettings& settings, const BookRead
   defaults = ReaderPreferences::capture(settings);
   overrideMask = book.mask & ReaderPreferences::ALL_FIELDS;
   book.preferences.apply(settings, overrideMask);
+  safeMode = book.safeMode;
+  if (safeMode) applySafeMode(settings);
   lastEffective = ReaderPreferences::capture(settings);
   enabled = true;
 }
 
-BookReaderSettings BookReaderSettingsScope::capture(const CrossPointSettings& settings) {
-  const auto current = ReaderPreferences::capture(settings);
+void BookReaderSettingsScope::applySafeMode(CrossPointSettings& settings) {
+  safeModeUnderlying = {settings.embeddedStyle, settings.focusReadingEnabled};
+  settings.embeddedStyle = 0;
+  settings.focusReadingEnabled = 0;
+}
+
+void BookReaderSettingsScope::restoreSafeModeUnderlying(ReaderPreferences& preferences) const {
+  preferences.values[EMBEDDED_STYLE] = safeModeUnderlying[0];
+  preferences.values[FOCUS_READING] = safeModeUnderlying[1];
+}
+
+BookReaderSettings BookReaderSettingsScope::capture(CrossPointSettings& settings) {
+  auto current = ReaderPreferences::capture(settings);
   const uint32_t changed = current.difference(lastEffective);
+  lastEffective = current;
+  if (safeMode) {
+    if (changed & SAFE_MODE_EXIT_FIELDS) {
+      // An edited Safe Mode control wins; restore only its unedited companions.
+      if (!(changed & (1U << EMBEDDED_STYLE))) current.values[EMBEDDED_STYLE] = safeModeUnderlying[0];
+      if (!(changed & (1U << FOCUS_READING))) current.values[FOCUS_READING] = safeModeUnderlying[1];
+      current.apply(settings, SAFE_MODE_FIELDS & ~changed);
+      safeMode = false;
+      lastEffective = current;
+    } else {
+      restoreSafeModeUnderlying(current);
+    }
+  }
   // Unedited overrides stay pinned even when a new global default happens to match them.
   overrideMask = (overrideMask & ~changed) | (current.difference(defaults) & changed);
-  lastEffective = current;
-  return {current, overrideMask};
+  return {current, overrideMask, safeMode};
 }
 
 void BookReaderSettingsScope::reset(CrossPointSettings& settings) {
   if (!enabled) return;
   overrideMask = 0;
+  safeMode = false;
   defaults.apply(settings);
   lastEffective = defaults;
 }
@@ -182,6 +213,7 @@ void BookReaderSettingsScope::end(CrossPointSettings& settings) {
   defaults.apply(settings);
   enabled = false;
   overrideMask = 0;
+  safeMode = false;
 }
 
 void BookReaderSettingsScope::beforeGlobalLoad(CrossPointSettings& settings) {
@@ -193,7 +225,9 @@ void BookReaderSettingsScope::beforeGlobalLoad(CrossPointSettings& settings) {
 void BookReaderSettingsScope::afterGlobalLoad(CrossPointSettings& settings) {
   if (!enabled) return;
   defaults = ReaderPreferences::capture(settings);
+  if (safeMode) restoreSafeModeUnderlying(lastEffective);
   lastEffective.apply(settings, overrideMask);
+  if (safeMode) applySafeMode(settings);
   lastEffective = ReaderPreferences::capture(settings);
 }
 

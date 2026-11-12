@@ -40,7 +40,7 @@ struct Reader {
  std::unique_ptr<Section>section=std::make_unique<Section>();int renderer=0,mappedInput=0,renderSpec=0,pagesUntilFullRefresh=0,errors=0,roomCalls=0,menus=0,saves=0;
  bool room=true;std::function<void(const ActivityResult&)>callback;
  bool makeRoomForChapterBuild(){++roomCalls;return room;}bool tryRenderRecovery(){return false;}void showBuildError(int=0){++errors;}
- void openReaderMenu(){++menus;}void saveBookReaderSettings(){++saves;}
+ void openReaderMenu(){++menus;}void saveBookReaderSettingsLocked(){++saves;}
  template<class F>void startActivityForResult(std::unique_ptr<EnumSelectionActivity>,F f){callback=f;}
  void complete(bool cancel,int value){auto f=callback;f({cancel,MenuResult{value}});}
  void run(bool fullSectionIndexing){
