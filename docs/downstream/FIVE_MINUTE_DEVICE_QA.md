@@ -11,9 +11,9 @@ the restart, then start the timer.
 | Time | Check | Pass |
 | --- | --- | --- |
 | 0:00–0:30 | Check About, then reopen your in-progress book. | Repair version is shown; the passage matches where you stopped. |
-| 0:30–1:30 | Open clipping selection. Select a short phrase, extend and shrink it with the handles or buttons, then save. | No reboot or freeze; selection follows the controls; saving returns to the book. |
+| 0:30–1:30 | Open clipping selection. Drag each handle across several lines, extend and shrink the selection, then save. | No reboot or freeze; selection follows the handles; saving returns to the book. |
 | 1:30–2:15 | Open Saved Items and inspect the new clipping. | The expected words and book are present, without duplicates. |
-| 2:15–3:15 | Reopen the book. Open selection, adjust it, and cancel three times. | Each cancellation returns to the passage without saving or crashing. |
+| 2:15–3:15 | Reopen the book. Drag selection to the bottom and hold briefly to extend onto the next page, then cancel. Open, adjust, and cancel twice more. | Page extension and all three cancellations work without saving or crashing. |
 | 3:15–4:15 | Turn five pages forward and five back. Try Quick Lock and unlock. | Buttons and touch work; unlocking does not turn another page. |
 | 4:15–5:00 | Sleep, wake, and reopen the book. Then reopen Wi-Fi File Transfer. | The passage resumes correctly, and the web page is reachable. |
 

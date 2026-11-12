@@ -91,3 +91,19 @@ the device crash remains unconfirmed as fixed. Feature work stays paused.
 Run the [five-minute device check](FIVE_MINUTE_DEVICE_QA.md) after the reviewed
 candidate is installed. If it reboots, preserve the new report and decode it
 against this candidate's archived ELF before continuing feature work.
+
+## Dragging clarification
+
+Chad confirmed that the original crash occurred while moving or dragging the
+selection. The original touch loop already holds the render lock, so the
+initialization repair alone does not establish the cause of a mid-drag panic.
+No second concrete defect was found in the touch state transitions inspected.
+
+`ClipSelectionTouch` now runs the production drag loop and selection helpers
+under AddressSanitizer and UndefinedBehaviorSanitizer. It checks release after
+the initial long press, both handles crossing their opposite endpoint, page-end
+dwell through the 240-word boundary, Back after a held touch, and 8,000
+deterministic coordinate frames in portrait and landscape dimensions. The test
+passes. Rendering, font-cache behavior, physical touch input, and the actual
+device panic remain outside this host check. The device checklist now targets
+dragging first. This test/documentation addition does not change `CLIPFIX1.BIN`.
