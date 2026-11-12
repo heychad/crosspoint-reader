@@ -86,8 +86,8 @@ are 5,581,264 bytes with SHA-256
 The matching ELF has SHA-256
 `92b61f101c92b92876b921e20ab28e8d6bbe34dd6646a309a470a72158ae3410`.
 The ignored `.cache/clipping-hotfix-20261112/` bundle retains the image, ELF,
-readback, checksums, and manifest. No repair firmware has been installed yet;
-the device crash remains unconfirmed as fixed. Feature work stays paused.
+readback, checksums, and manifest. At that handoff, installation and device
+verification were pending. The later failed device check is recorded below.
 
 Run the [five-minute device check](FIVE_MINUTE_DEVICE_QA.md) after the reviewed
 candidate is installed. If it reboots, preserve the new report and decode it
@@ -119,3 +119,60 @@ deterministic coordinate frames in portrait and landscape dimensions. The test
 passes. Rendering, font-cache behavior, physical touch input, and the actual
 device panic remain outside this host check. The device checklist now targets
 dragging first. This test/documentation addition does not change `CLIPFIX1.BIN`.
+
+## Clipfix1 device failure and typed reader dispatch
+
+The device now reports `2.0.0-chad.3-test58-clipfix1-x4pro`. A long press on
+book text still crashes before the clipping controls appear. Stop the earlier
+QA checklist until the next reviewed candidate is available.
+
+The new report has SHA-256
+`ab48e1c012618a4d01c82006ba63f665068993902ffbb487f40af1f2649e2e6f`.
+It records PC `0x420BB38F`, cause `0x1C`, fault address `0xAC000004`, and return
+address `0x820BB3C8`. The matching archived ELF maps the fault to the vector
+access at the start of `renderBoxBackgrounds`, called by `Page::render`.
+The report, status, and reading state are preserved in the ignored
+`.cache/clipping-crash-clipfix1-20261112/` directory.
+
+ActivityManager used `isReaderActivity()` to cast a foreground activity to
+`ReaderActivity` and run gesture/session code. Clipping and interval-selection
+screens also report a reading context, but inherit directly from `Activity`.
+The cast therefore writes reader fields into unrelated child-screen storage.
+The device ELF puts `ReaderActivity::gestureController` at offset 120, where
+`ClipSelectionActivity` stores its page vector. This explains a concrete path
+to the invalid page pointer.
+
+`ReaderActivityCapability` exercises the production manager dispatch and pause
+branches. Before the fix, its clipping-page storage assertion fails. With the
+fix, clipping and interval-selection storage remain intact, while actual readers
+still receive gestures, Quick Actions, session pauses, and foreground routing.
+It runs with address and undefined-behavior sanitizers.
+
+The fix introduces `Activity::bookReader()`, which returns null by default.
+Only `ReaderActivity` returns `this`. Manager code uses that typed capability
+for reader-only state and controls. The broader reading-context flag stays
+unchanged for context and Bluetooth screen transitions. No instance field,
+heap allocation, task, reading-state format, or rendering algorithm is added.
+The next candidate still needs cumulative checks, release review, a final X4 Pro
+build, and a fresh device test.
+
+The cumulative host run passed 1,305 of 1,306 checks in 77.80 seconds. The
+remote-input fixture lacked the new typed accessor; after that harness update,
+both affected tests passed in 1.07 seconds. All four release reviews of
+`f9cf015f` are complete. They found no code defect requiring changes. The old
+installation note is now explicitly historical, and the short QA includes all
+four orientations. Final firmware compilation and device verification remain
+pending.
+
+## SD development folder
+
+`TEST58.BIN`, `CLIPFIX1.BIN`, and this device failure's `crash_report.txt` were
+moved from the SD root into `/zDev/`. Each destination matched its source size
+and SHA-256 after download, and the three source paths are absent. The receipt
+and private copies are in `.cache/zdev-migration-20261112/`. Future manually
+staged firmware and development files use `/zDev/`; runtime reading-state paths
+remain unchanged.
+
+The development branch already had the `bookReader()` capability from
+`9c98e395`. This checkpoint adds the manager-boundary regression and device
+failure record; it does not add a second capability or change firmware source.
