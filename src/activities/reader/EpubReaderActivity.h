@@ -36,6 +36,7 @@ class EpubReaderActivity final : public ReaderActivity {
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   uint32_t renderedSleepLayout = 0;
   uint32_t sleepPageLayoutSignature() const;
+  std::unique_ptr<Page> rebuildPageForSleep(uint16_t width, uint16_t height);
 #endif
   char barChapterTitle[192]{};
   int barChapterSpine = -1;

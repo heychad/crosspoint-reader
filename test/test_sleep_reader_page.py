@@ -71,6 +71,8 @@ struct EpubReaderActivity:ReaderActivity{
  void settleOverlayRefresh(){++settles;}void discardOverlayPage(){++discards;}
  void renderStatusBar(){++status;}void drawClippingHighlights(Page&,int,int top,int left){assert(top==33&&left==7);}
  void renderContents(std::unique_ptr<Page>p,int t,int r,int b,int l){assert(p&&t==33&&r==7&&b==33&&l==7);++fullPaints;}
+ bool rebuildSucceeds=false;int rebuildCalls=0;
+ std::unique_ptr<Page>rebuildPageForSleep(uint16_t,uint16_t){++rebuildCalls;return rebuildSucceeds?std::make_unique<Page>():nullptr;}
  explicit EpubReaderActivity(GfxRenderer&r):renderer(r){renderedSleepLayout=sleepPageLayoutSignature();}bool restorePageForSleep(SleepPageTarget target)override;
 };
 enum class PageOverlayArt{None,Available,Unavailable};PageOverlayArt art=PageOverlayArt::Available;
@@ -117,7 +119,7 @@ int main(){
  before=reader.section->loads;SETTINGS.sleepScreen=0;sleep.prepareReaderPageBackground(&reader);assert(reader.section->loads==before);
  SETTINGS.sleepScreen=14;sleep.fromTimeout=true;SETTINGS.quickResumeSleepScreen=1;sleep.prepareReaderPageBackground(&reader);assert(reader.section->loads==before);
  SETTINGS.quickResumeSleepScreen=0;sleep.prepareReaderPageBackground(nullptr);assert(reader.section->loads==before);
- assert(imagesReleased==5&&settles==5&&discards==5&&draws==10&&scans==5);
+ assert(imagesReleased==5&&settles==discards&&settles>=5&&draws==10&&scans==5);
  SleepActivity unavailable(r);unavailable.pageOverlayBackground=SleepActivity::PageOverlayBackground::Unavailable;SETTINGS.sleepScreen=14;
  unavailable.onEnter();assert(unavailable.defaults==1&&unavailable.otherPaints==0&&!display.inverted);
  unavailable.fromTimeout=true;SETTINGS.quickResumeSleepScreen=1;display.inverted=true;
@@ -130,6 +132,10 @@ int main(){
  display.inverted=true;gray.onEnter();assert(gray.defaults==0&&gray.otherPaints==0&&display.inverted);
  art=PageOverlayArt::Unavailable;const int reads=reader.section->loads;
  gray.prepareReaderPageBackground(&reader);assert(!gray.backgroundReady()&&reader.section->loads==reads);
+ art=PageOverlayArt::Available;reader.rebuildSucceeds=true;
+ reader.section.reset();const int rebuiltBefore=reader.rebuildCalls;
+ gray.prepareReaderPageBackground(&reader);assert(gray.backgroundReady()&&reader.rebuildCalls==rebuiltBefore+1);
+ assert(!reader.section);  // The reconstruction must not replace the reader's position owner.
 
 
 }

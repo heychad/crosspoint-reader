@@ -157,6 +157,7 @@ add_test(NAME HiddenSourceGaps COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOU
 add_test(NAME PageOverlayFlow COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_flow.py)
 add_test(NAME PageOverlayArtProbe COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_art_probe.py)
 add_test(NAME SleepReaderPage COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_reader_page.py)
+add_test(NAME SleepPageRebuild COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_page_rebuild.py)
 add_test(NAME XtcSleepPage COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_xtc_sleep_page.py)
 add_test(NAME PageOverlayFavorite COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_favorite.py)
 add_test(NAME PageOverlayFolder COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_folder.py)

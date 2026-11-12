@@ -9,6 +9,7 @@
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -336,20 +337,90 @@ uint32_t EpubReaderActivity::sleepPageLayoutSignature() const {
   return signature ? signature : 1U;
 }
 
+std::unique_ptr<Page> EpubReaderActivity::rebuildPageForSleep(const uint16_t width, const uint16_t height) {
+  if (!epub || currentSpineIndex < 0 || currentSpineIndex >= epub->getSpineItemsCount() ||
+      (section && section->isBuilding()))
+    return {};
+  const ChapterPosition position = chapterPosition();
+  if (position.pageIndex < 0 || (position.hasTotal() && position.pageIndex >= position.totalPages)) return {};
+  auto offset = visibleOffsetSpine == currentSpineIndex ? currentPageVisibleOffset : std::nullopt;
+  if (!offset && cachedSpineIndex == currentSpineIndex) offset = cachedVisibleTextOffset;
+  if (!offset && section && section->currentPage < section->pageCount)
+    offset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage));
+
+  // Keep the reader's position and settings intact for its exit events. Only
+  // rebuildable section data changes; the original section has no open builder.
+  const ReaderRenderSpec base = SETTINGS.readerRenderSpec(width, height);
+  EpubRenderRecovery recovery = renderRecovery;
+  const auto hasBuildRoom = [] {
+    const auto heap = HalMemory::getDefaultHeap();
+    return heap.freeBytes >= BACKGROUND_BUILD_MIN_FREE_HEAP && heap.largestBlockBytes >= BACKGROUND_BUILD_MIN_MAX_ALLOC;
+  };
+  if (!makeRoomForChapterBuild()) return {};
+  for (;;) {
+    if (!hasBuildRoom()) return {};
+    auto rebuilt = makeUniqueNoThrow<Section>(epub, currentSpineIndex, renderer);
+    if (!rebuilt) return {};
+    const auto spec = recovery.spec(base, currentSpineIndex);
+    const bool loaded = rebuilt->loadSectionFile(spec);
+    const auto targetAvailable = [&] {
+      if (!rebuilt->isBuilding() && !rebuilt->isPartial()) return rebuilt->pageCount > 0;
+      if (!offset) return position.pageIndex < rebuilt->pageCount;
+      if (rebuilt->isBuilding()) return rebuilt->buildReachedVisibleTextOffset(*offset);
+      if (rebuilt->pageCount == 0) return false;
+      const auto last = rebuilt->getVisibleTextOffsetForPage(rebuilt->pageCount - 1);
+      return last && *offset <= *last;
+    };
+    bool ready = loaded && targetAvailable();
+    if (!ready) {
+      if (!hasBuildRoom()) return {};
+      {
+        GfxRenderer::FrameBufferLoan loan(renderer);
+        ready = rebuilt->startBuild(spec);
+      }
+      while (ready && !rebuilt->isBuildComplete() && !targetAvailable()) {
+        if (!hasBuildRoom()) return {};
+        ready = rebuilt->buildSomeMore(BUILD_PAGES_PER_CHUNK);
+        vTaskDelay(1);
+      }
+    }
+    if (!ready) {
+      const auto failure = rebuilt->lastBuildFailure();
+      rebuilt.reset();
+      if (!recovery.retry(failure, base, currentSpineIndex)) return {};
+      continue;
+    }
+    if (rebuilt->pageCount == 0) return {};
+    int pageNumber = std::min(position.pageIndex, static_cast<int>(rebuilt->pageCount) - 1);
+    if (offset) {
+      const auto mapped = rebuilt->getPageForVisibleTextOffset(*offset);
+      if (!mapped) return {};
+      pageNumber = *mapped;
+    }
+    auto page = rebuilt->loadPage(pageNumber);
+    // Destruction suspends an unfinished build and releases its parser before
+    // the page's fonts and images are prepared for drawing.
+    rebuilt.reset();
+    return page;
+  }
+}
+
 bool EpubReaderActivity::restorePageForSleep(SleepPageTarget target) {
-  if (!epub || !section || !renderer.hasFrameBuffer() || section->currentPage < 0 ||
-      section->currentPage >= static_cast<int>(section->pageCount))
-    return false;
+  if (!epub || !renderer.hasFrameBuffer()) return false;
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   const auto layout = readerPageLayout();
-  if (layout.width != buildViewportWidth || layout.height != buildViewportHeight || renderedSleepLayout == 0 ||
-      renderedSleepLayout != sleepPageLayoutSignature())
-    return false;
-  auto page = section->loadPage(section->currentPage);
   auto* fonts = renderer.getFontCacheManager();
-  if (!page || !fonts) return false;
+  if (!fonts) return false;
+  std::unique_ptr<Page> page;
+  const bool currentLayout = layout.width == buildViewportWidth && layout.height == buildViewportHeight &&
+                             renderedSleepLayout != 0 && renderedSleepLayout == sleepPageLayoutSignature();
+  if (currentLayout && section && section->currentPage >= 0 && section->currentPage < section->pageCount)
+    page = section->loadPage(section->currentPage);
+  // Release any modal page snapshot before an optional parser/build allocation.
   settleOverlayRefresh();
   discardOverlayPage();
+  if (!page) page = rebuildPageForSleep(layout.width, layout.height);
+  if (!page) return false;
   if (target == SleepPageTarget::Display) {
     renderer.clearScreen();
     renderContents(std::move(page), layout.top, layout.right, layout.bottom, layout.left);
