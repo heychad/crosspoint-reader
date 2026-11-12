@@ -78,7 +78,7 @@ RAM and 5,712,986 bytes of application flash. Logs are
 `/tmp/x4-sleep-rebuild-host-final.log`, and `/tmp/x4-sleep-rebuild-pio-final.log`.
 Pre-existing SDK edits remain unchanged and excluded from this checkpoint.
 
-The broader E2 feature remains partial. RC2 adds a Cover + overlay mode that
-is not imported yet, and its separate Minimal statistics screen currently maps
-to Minimal book in this fork. Those are the next sleep-mode gaps; they are not
-counted as completed by this reconstruction stage.
+Cover + overlay is now implemented in the enabled profile; see
+[the sleep-mode mapping](COVER_OVERLAY_SLEEP.md). RC2 Minimal statistics only
+adds its extra overlay on X3, so the existing X4 Pro Minimal book mapping is
+intentional. Cumulative release review and device checks remain.

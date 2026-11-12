@@ -866,6 +866,11 @@ void SleepActivity::onEnter() {
       return renderBlankSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
       return renderCustomSleepScreen();
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_OVERLAY_SLEEP):
+      renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+      return renderCoverSleepScreen();
+#endif
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER):
       return renderCoverSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
@@ -1176,7 +1181,12 @@ bool SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     if (hasGreyscale && renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported()) {
       overlayGrayCover = &bitmap;
     }
-    renderTransparentCustomSleepScreen();
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    if (SETTINGS.sleepScreen == CrossPointSettings::COVER_OVERLAY_SLEEP)
+      renderPageOverlaySleepScreen();
+    else
+#endif
+      renderTransparentCustomSleepScreen();
     overlayGrayCover = nullptr;
     return true;
   }
@@ -1326,6 +1336,10 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
   if (!selectedPath.empty() && renderSleepOverlayPath(selectedPath)) return;
 
   LOG_ERR("SLP", "No valid transparent sleep overlay found");
+  renderOverlayFallback();
+}
+
+void SleepActivity::renderOverlayFallback() const {
   if (overlayCover) {
     // Show the plain cover.
     const Bitmap& cover = *overlayCover;
@@ -1337,9 +1351,15 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
 void SleepActivity::renderPageOverlaySleepScreen() const {
+  if (SETTINGS.sleepScreen == CrossPointSettings::COVER_OVERLAY_SLEEP && !overlayCover) renderer.clearScreen();
   bool candidateFailed = false;
   const auto tryOverlay = [&](const std::string& path) {
     if (!Storage.exists(path.c_str())) return false;
+    // Each attempt starts from the plain cover, including after a partial decoder failure.
+    if (overlayCover && !beginOverlayGrayPlane(renderer, overlayCover, GfxRenderer::BW, false)) {
+      candidateFailed = true;
+      return false;
+    }
     if (renderSleepOverlayPath(path)) return true;
     candidateFailed = true;
     return false;
@@ -1348,7 +1368,7 @@ void SleepActivity::renderPageOverlaySleepScreen() const {
   if (!favorite.empty() && (FsHelpers::hasBmpExtension(favorite) || FsHelpers::hasPngExtension(favorite)) &&
       tryOverlay(favorite))
     return;
-  if (candidateFailed) return renderDefaultSleepScreen();
+  if (candidateFailed && !overlayCover) return renderOverlayFallback();
 
   const auto& preferred = APP_STATE.preferredSleepFolderPath;
   std::string selectedPath;
@@ -1361,11 +1381,12 @@ void SleepActivity::renderPageOverlaySleepScreen() const {
     selectRandomSleepFile("/.sleep", "/sleep", SleepRecentKind::Overlay, selectedPath);
   }
   if (!selectedPath.empty() && tryOverlay(selectedPath)) return;
-  if (candidateFailed) return renderDefaultSleepScreen();
+  if (candidateFailed && !overlayCover) return renderOverlayFallback();
   if (tryOverlay("/sleep.bmp")) return;
-  if (candidateFailed) return renderDefaultSleepScreen();
+  if (candidateFailed && !overlayCover) return renderOverlayFallback();
   if (tryOverlay("/sleep.png")) return;
-  if (candidateFailed) return renderDefaultSleepScreen();
+  if (candidateFailed && !overlayCover) return renderOverlayFallback();
+  if (overlayCover || SETTINGS.sleepScreen == CrossPointSettings::COVER_OVERLAY_SLEEP) return renderOverlayFallback();
   renderer.displayBuffer(kSleepClean);
 }
 #endif
@@ -1381,6 +1402,12 @@ void SleepActivity::renderCoverSleepScreen() const {
       renderNoCoverSleepScreen = &SleepActivity::renderTransparentCustomSleepScreen;
       withOverlay = true;
       break;
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_OVERLAY_SLEEP):
+      renderNoCoverSleepScreen = &SleepActivity::renderPageOverlaySleepScreen;
+      withOverlay = true;
+      break;
+#endif
     default:
       renderNoCoverSleepScreen = &SleepActivity::renderDefaultSleepScreen;
       break;

@@ -53,6 +53,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     DASHBOARD_BOOK_SLEEP = 13,
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
     PAGE_OVERLAY_SLEEP = 14,
+    COVER_OVERLAY_SLEEP = 15,
 #endif
     SLEEP_SCREEN_MODE_COUNT
   };

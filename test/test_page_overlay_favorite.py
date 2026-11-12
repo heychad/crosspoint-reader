@@ -7,7 +7,7 @@ root = Path(__file__).resolve().parents[1]
 source = (root / 'src/activities/util/BmpViewerActivity.cpp').read_text()
 start = source.index('bool savePageOverlayFavorite(')
 end = source.index('\n#endif', start)
-method = source[start:end]
+method = source[source.index('bool pageOverlaySleepMode('):source.index('bool savePageOverlayFavorite(')] + source[start:end]
 start = source.index('bool isPageOverlayFavorite(')
 end = source.index('\nconst char* sleepCoverActionLabel', start)
 method += '\n' + source[start:end]
@@ -22,8 +22,8 @@ struct State {
  int saves=0;
  bool updateSleepFavoriteForPageOverlay(const std::string& path) { ++saves; if (ok) favoriteSleepImagePath=path; return ok; }
 } APP_STATE;
-bool enabled=true;
-bool pageOverlaySleepMode() {return enabled;}
+struct CrossPointSettings {enum {PAGE_OVERLAY_SLEEP=14,COVER_OVERLAY_SLEEP=15};};
+struct {int sleepScreen=14;} SETTINGS;
 ''' + method + r'''
 int main() {
  APP_STATE.favoriteSleepImagePath="/sleep/old.bmp";
@@ -35,7 +35,8 @@ int main() {
  assert(APP_STATE.favoriteSleepImagePath=="/sleep/Café.png" && APP_STATE.saves==2);
  assert(isPageOverlayFavorite("/sleep/Café.png"));
  assert(!isPageOverlayFavorite("/sleep/other.png"));
- enabled=false; assert(!isPageOverlayFavorite("/sleep/Café.png"));
+ SETTINGS.sleepScreen=15;assert(isPageOverlayFavorite("/sleep/Café.png"));
+ SETTINGS.sleepScreen=3; assert(!isPageOverlayFavorite("/sleep/Café.png"));
  assert(savePageOverlayFavorite(""));
  assert(APP_STATE.favoriteSleepImagePath.empty());
 }

@@ -97,10 +97,11 @@ struct BmpToBmpConverter {
   }
 };
 struct CrossPointSettings {
+  enum {COVER_OVERLAY_SLEEP=15};
   enum SLEEP_SCREEN_COVER_MODE {FIT,CROP};
   enum SLEEP_SCREEN_COVER_FILTER {NO_FILTER,BLACK_AND_WHITE,INVERTED_BLACK_AND_WHITE};
 };
-struct {int sleepScreenCoverMode=CrossPointSettings::CROP,sleepScreenCoverFilter=CrossPointSettings::NO_FILTER;} SETTINGS;
+struct {int sleepScreen=0;int sleepScreenCoverMode=CrossPointSettings::CROP,sleepScreenCoverFilter=CrossPointSettings::NO_FILTER;} SETTINGS;
 struct HalDisplay {enum RefreshMode {HALF_REFRESH};enum class GrayscaleMode {Direct};};
 struct Caps {bool enabled=true;bool supported()const{return enabled;}};
 struct GfxRenderer {
@@ -139,7 +140,9 @@ bool beginOverlayGrayPlane(GfxRenderer&,const Bitmap*,GfxRenderer::RenderMode,bo
 struct SleepActivity {
   mutable const Bitmap* overlayCover=nullptr;
   mutable const Bitmap* overlayGrayCover=nullptr;
-  void renderTransparentCustomSleepScreen()const{}
+  mutable int transparentCalls=0,pageCalls=0;
+  void renderTransparentCustomSleepScreen()const{++transparentCalls;}
+  void renderPageOverlaySleepScreen()const{++pageCalls;assert(overlayCover&&overlayGrayCover==overlayCover);}
   bool renderCustomSleepBmp(const std::string&)const;
   bool renderBitmapSleepScreen(const Bitmap&,bool preserveBackground=false)const;
 };
@@ -198,12 +201,24 @@ int main(){
   assert(sleep.renderCustomSleepBmp("/sleep.bmp"));
   assert(renderer.stored==1&&renderer.restored==1&&renderer.mode==GfxRenderer::BW);
   reset();
+  {
+    HalFile file;assert(Storage.openFileForRead("TEST","/sleep.bmp",file));Bitmap bitmap(file);
+    sleep.overlayCover=&bitmap;const int prior=sleep.transparentCalls;
+    assert(sleep.renderBitmapSleepScreen(bitmap)&&sleep.transparentCalls==prior+1&&!sleep.overlayGrayCover);
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    SETTINGS.sleepScreen=15;sleep.overlayCover=&bitmap;
+    assert(sleep.renderBitmapSleepScreen(bitmap)&&sleep.pageCalls==1&&!sleep.overlayGrayCover);
+#endif
+    sleep.overlayCover=nullptr;
+  }
+  reset();
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(program)
-    subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
-    subprocess.run([str(path / 'test')], check=True)
+    for flags in ([], ['-DCROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY=1']):
+        subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', *flags,
+                        '-fsanitize=address,undefined', str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+        subprocess.run([str(path / 'test')], check=True)
 print('Sleep image identity, bounds, handle ownership, fallback, and render failures passed')

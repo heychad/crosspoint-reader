@@ -29,6 +29,7 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
     values[CrossPointSettings::DASHBOARD_BOOK_SLEEP] = StrId::STR_DASHBOARD_BOOK_SLEEP;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
     values[CrossPointSettings::PAGE_OVERLAY_SLEEP] = StrId::STR_PAGE_OVERLAY_SLEEP;
+    values[CrossPointSettings::COVER_OVERLAY_SLEEP] = StrId::STR_COVER_OVERLAY_SLEEP;
 #endif
     return values;
   }();

@@ -101,7 +101,7 @@ int main() {
     assert(next["sleepScreen"] == pair.second);
     assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
   }
-  for (int unsupported : {12,255}) {
+  for (int unsupported : {255}) {
     JsonDocument old, next;
     old["sleepScreen"] = unsupported;
     next.to<JsonObject>();
@@ -110,15 +110,17 @@ int main() {
   }
   {
     JsonDocument old, next;
-    old["sleepScreen"] = 6;
-    next.to<JsonObject>();
+    for (const auto pair : {std::pair{6,14},std::pair{12,15}}) {
+    old["sleepScreen"] = pair.first;
+    next.clear();next.to<JsonObject>();
 #ifdef CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY
     assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
-    assert(next["sleepScreen"] == 14);
+    assert(next["sleepScreen"] == pair.second);
 #else
     assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
     assert(next["sleepScreen"].isUnbound());
 #endif
+    }
   }
   JsonDocument sleepSource, sleepTarget;
   assert(!deserializeJson(sleepSource, R"({"sleepScreen":4,"sleepScreenCoverMode":1,"sleepScreenCoverFilter":2,"quickResumeSleepScreen":1})"));
@@ -128,7 +130,7 @@ int main() {
   assert(sleepTarget["sleepScreenCoverFilter"] == 2 && sleepTarget["quickResumeSleepScreen"] == 1);
   assert(crossinkimport::stagePreferences(sleepSource.as<JsonVariantConst>(), sleepTarget, true));
   assert(sleepTarget["sleepScreen"] == 5 && sleepTarget["sleepScreenCoverMode"] == 1);
-  sleepSource["sleepScreen"] = 12;
+  sleepSource["sleepScreen"] = 255;
   sleepSource["sleepScreenCoverMode"] = 2;
   sleepSource["sleepScreenCoverFilter"] = 3;
   sleepSource["quickResumeSleepScreen"] = true;

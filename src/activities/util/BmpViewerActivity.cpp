@@ -46,7 +46,10 @@ bool overlaySleepMode() {
 }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
-bool pageOverlaySleepMode() { return SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP; }
+bool pageOverlaySleepMode() {
+  return SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP ||
+         SETTINGS.sleepScreen == CrossPointSettings::COVER_OVERLAY_SLEEP;
+}
 
 bool savePageOverlayFavorite(const std::string& path) { return APP_STATE.updateSleepFavoriteForPageOverlay(path); }
 #endif

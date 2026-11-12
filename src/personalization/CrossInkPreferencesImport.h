@@ -96,18 +96,24 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     }
   }
   // CrossInk's stored Blank and Cover Custom values differ from this fork.
-  // Minimal Stats shares Minimal on X4 Pro.
+  // Minimal Stats adds its device overlay only on X3, so both use Minimal on X4 Pro.
   const auto sleep = legacy["sleepScreen"];
   const auto currentSleep = proposed["sleepScreen"];
   if (sleep.is<uint8_t>() && (replaceExisting || currentSleep.isUnbound())) {
     constexpr uint8_t unsupported = 0xff;
-    constexpr uint8_t modes[] = {0,  1,  2, 3,  5, 4,
+    constexpr uint8_t modes[] = {0,  1,  2, 3,  5,  4,
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
                                  14,
 #else
                                  unsupported,
 #endif
-                                 9,  12, 6, 12, 13};
+                                 9,  12, 6, 12, 13,
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+                                 15
+#else
+                                 unsupported
+#endif
+    };
     const uint8_t raw = sleep.as<uint8_t>();
     if (raw < sizeof(modes) && modes[raw] != unsupported) {
       const uint8_t mapped = modes[raw];

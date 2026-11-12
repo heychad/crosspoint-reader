@@ -29,6 +29,7 @@ class SleepActivity final : public Activity {
   bool renderSleepOverlayPath(const std::string& path) const;
   void renderLastScreenSleepScreen() const;
   void renderTransparentCustomSleepScreen() const;
+  void renderOverlayFallback() const;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   void renderPageOverlaySleepScreen() const;
   enum class PageOverlayBackground { RetainedScreen, PreparedPage, DisplayedPage, Unavailable };
