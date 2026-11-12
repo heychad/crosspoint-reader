@@ -1,6 +1,6 @@
 # Upstream maintenance strategy
 
-Checked November 11, 2026.
+Checked November 12, 2026.
 
 ## Release channels
 
@@ -22,6 +22,12 @@ Current pins verified through GitHub Releases:
 - CrossInk stable reference: `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`.
 - CrossInk RC reference: `v2.0.0-rc`, `b8feaec4d10ecb484ed80e326f01f2a3ea949331`.
 - CrossPoint `2.0.0rc` is older than stable `2.0.0`; it is not an upgrade target.
+
+The November 12 release check found CrossInk `v2.0.0-rc2`,
+`959e3d1575cf1cf49475c4c4546e49adadf4d477`. It is a new review reference;
+the fork has not adopted its SDK or full change set. See the
+[RC2 review](RC2_AUDIT.md) for the integration order. CrossPoint stable remains
+2.0.0.
 
 Review new releases at integration milestones. Pin the selected tag and SDK,
 review its changes, and test on a development branch. Promote an RC only after

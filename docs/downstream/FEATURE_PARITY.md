@@ -14,6 +14,10 @@ Source revisions:
 - CrossInk RC reference: `b8feaec4d` (2.0.0-rc). The earlier development comparison at `1990a78f2` is historical, not an integration target.
 - FreeInk SDK: `5e94fe7480f019c89fbf691aef87523eb1b46704` (CrossPoint 2.0.0 stable pin).
 
+CrossInk `v2.0.0-rc2` (`959e3d1575cf`) was released November 12 and is under
+[review](RC2_AUDIT.md). The existing feature claims below do not imply RC2
+integration.
+
 ## Selected first-release scope: current source snapshot
 
 The table describes the current local candidate. “Built” means implemented with
