@@ -1,5 +1,6 @@
 #include <ClippingStore.h>
 #include <HalStorage.h>
+#include <Serialization.h>
 #include <gtest/gtest.h>
 
 namespace {
@@ -280,4 +281,68 @@ TEST(ClippingStore, MoveRefusesExistingDestinationHistoryAndDeleteCleansSidecars
   EXPECT_FALSE(Storage.exists((path + ".deleted").c_str()));
   EXPECT_FALSE(Storage.exists((path + ".bak").c_str()));
   EXPECT_FALSE(Storage.exists((path + ".tmp").c_str()));
+}
+
+TEST(ClippingStore, OldVersionsPreserveTextAndCoordinatesAcrossNativeSave) {
+  for (uint8_t version = 1; version <= 4; ++version) {
+    fake::reset();
+    ClippingStore store;
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(add(store), Result::Added);
+    const auto path = storePath();
+    store.unload();
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+    const auto write = [&](const auto& value) { EXPECT_TRUE(serialization::tryWritePod(file, value)); };
+    write(version);
+    write(uint16_t{1});
+    ASSERT_TRUE(serialization::tryWriteString(file, "Book"));
+    ASSERT_TRUE(serialization::tryWriteString(file, "Author"));
+    ASSERT_TRUE(serialization::tryWriteString(file, "/book.epub"));
+    for (const uint16_t value : {2, 3, 3, 10, 4, 5, 2, 0}) write(value);
+    write(uint32_t{123});
+    if (version >= 3) write(uint32_t{42});
+    if (version >= 4) {
+      write(uint32_t{100});
+      write(uint32_t{109});
+      write(uint64_t{7});
+      write(false);
+      char id[65] = "existing-id";
+      ASSERT_EQ(file.write(reinterpret_cast<const uint8_t*>(id), sizeof(id)), sizeof(id));
+    }
+    char chapter[CLIPPING_CHAPTER_TITLE_MAX] = "Chapter";
+    ASSERT_EQ(file.write(reinterpret_cast<const uint8_t*>(chapter), sizeof(chapter)), sizeof(chapter));
+    const std::string expected = "1. alpha";
+    if (version == 1)
+      write(static_cast<uint32_t>(expected.size()));
+    else
+      write(static_cast<uint16_t>(expected.size()));
+    ASSERT_EQ(file.write(reinterpret_cast<const uint8_t*>(expected.data()), expected.size()), expected.size());
+    file.close();
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(store.clippingCount(), 1u);
+    const auto check = [&] {
+      const auto* clip = store.clippingAt(0);
+      ASSERT_NE(clip, nullptr);
+      EXPECT_EQ(clip->spineIndex, 2);
+      EXPECT_EQ(clip->startWordIndex, 4);
+      EXPECT_EQ(clip->endWordIndex, 5);
+      EXPECT_EQ(clip->layoutSignature, version >= 3 ? 42u : 0u);
+      EXPECT_EQ(clip->startOffset, version >= 4 ? 100u : UINT32_MAX);
+      EXPECT_EQ(clip->endOffset, version >= 4 ? 109u : UINT32_MAX);
+      if (version >= 4) EXPECT_STREQ(clip->id, "existing-id");
+      std::string text;
+      ASSERT_TRUE(store.readClippingText(0, text));
+      EXPECT_EQ(text, expected);
+      EXPECT_EQ(clippingContainsWord(*clip, 2, 3, 10, 42, 4, 100, 105), version >= 3);
+      EXPECT_FALSE(clippingContainsWord(*clip, 2, 3, 10, 43, 4, UINT32_MAX, UINT32_MAX));
+    };
+    check();
+    ASSERT_EQ(add(store, "second"), Result::Added);
+    ASSERT_EQ(fake::files.at(path)->bytes.front(), 4);
+    store.unload();
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(store.clippingCount(), 2u);
+    check();
+  }
 }

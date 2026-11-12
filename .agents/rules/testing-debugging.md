@@ -3,7 +3,10 @@
 ### Build Commands
 
 Use the [existing environment](environment.md#build-in-an-existing-environment).
-Run the selected `pio run -e <environment>` target; `pio run` selects `default`.
+Use `pio run -e x4pro` for the standard X4 Pro build. `pio run` follows
+`default_envs` in `platformio.ini`; explicitly passing `-e default` selects an
+inherited C3 profile and does not validate this fork's target. Confirm the
+Processing line names `x4pro` and the ESP32-S3 board before recording a pass.
 Host suites use `pio run -t unit-tests` or their existing CMake/CTest commands.
 
 ### Compact build output

@@ -51,6 +51,10 @@ class ParsedText {
   // resolves each slot's font before layout.
   std::vector<uint8_t> wordSizeSlots;
   static constexpr uint8_t MAX_SIZE_SLOTS = TextBlock::MAX_WORD_FONTS + 1;
+  // Layout-only flag; generated text has no portable book source coordinates.
+  static constexpr uint8_t SYNTHETIC_WORD_FLAG = 0x40;
+  static_assert(MAX_SIZE_SLOTS <= SYNTHETIC_WORD_FLAG);
+  static_assert((SYNTHETIC_WORD_FLAG & TextBlock::SMALL_CAPS_SLOT_FLAG) == 0);
   float sizeSlotScales[MAX_SIZE_SLOTS] = {1.0f};
   int32_t sizeSlotFontIds[MAX_SIZE_SLOTS] = {};
   uint8_t sizeSlotCount = 1;
@@ -169,7 +173,8 @@ class ParsedText {
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
-               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, uint8_t sizeSlot = 0, bool noSpaceBefore = false);
+               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, uint8_t sizeSlot = 0, bool noSpaceBefore = false,
+               bool hasSourceText = true);
   bool recordHiddenSourceGap(uint32_t start, uint32_t length);
   uint8_t addLinkTarget(const char* href);
   bool linkTargetMatches(uint8_t linkId, const char* href) const;

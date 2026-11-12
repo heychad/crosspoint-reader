@@ -77,6 +77,12 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
   void SetUp() override { parser.currentTextBlock = std::make_unique<ParsedText>(); }
   void TearDown() override { Epub::enableGifProbeForTest = false; }
 
+  struct SourceWord {
+    std::string text;
+    TextBlock::SourceRange range;
+  };
+  std::vector<SourceWord> sourceWords;
+
   // Lays out a body fragment through the cached-page path and joins its words the way a
   // clipping does: '\n' at a paragraph start, ' ' across a source gap, nothing otherwise.
   std::string parseToParagraphText(const std::string& body) {
@@ -91,6 +97,7 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
     }
     const auto cachePath = (tempDir / ("crosspoint-clipping-paragraphs-" + testId + ".bin")).string();
     std::string selected;
+    sourceWords.clear();
     uint32_t previousEnd = 0;
     bool paragraphStartPending = false;
     parser.completePageFn = [&](std::unique_ptr<Page> page, auto, auto, auto) {
@@ -110,6 +117,7 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
           if (block.wordStartsParagraph(i)) paragraphStartPending = true;
           if (!clippingText::hasVisibleText(block.wordText(i))) continue;
           const auto range = block.wordSourceRange(i);
+          sourceWords.push_back({block.wordText(i), range});
           const char separator = paragraphStartPending ? '\n' : range.start > previousEnd ? ' ' : '\0';
           ASSERT_TRUE(clippingText::append(selected, block.wordText(i), separator, 4096));
           paragraphStartPending = false;
@@ -2457,4 +2465,80 @@ TEST(PageSerialization, RejectsEveryTruncatedWrite) {
     EXPECT_FALSE(page.serialize(output)) << "write limit " << limit;
   }
   std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, GeneratedListMarkersHaveNoBookSourceRange) {
+  parseToParagraphText("<ol><li>alpha</li></ol><ul><li>beta</li></ul>");
+  ASSERT_EQ(sourceWords.size(), 4u);
+  EXPECT_EQ(sourceWords[0].text, "1.");
+  EXPECT_EQ(sourceWords[0].range.start, UINT32_MAX);
+  EXPECT_EQ(sourceWords[0].range.end, UINT32_MAX);
+  EXPECT_EQ(sourceWords[1].text, "alpha");
+  EXPECT_EQ(sourceWords[1].range.start, 0u);
+  EXPECT_EQ(sourceWords[1].range.end, 5u);
+  EXPECT_EQ(sourceWords[2].text, "•");
+  EXPECT_EQ(sourceWords[2].range.start, UINT32_MAX);
+  EXPECT_EQ(sourceWords[2].range.end, UINT32_MAX);
+  EXPECT_EQ(sourceWords[3].text, "beta");
+  EXPECT_EQ(sourceWords[3].range.start, 5u);
+  EXPECT_EQ(sourceWords[3].range.end, 9u);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ImageFallbackWordsHaveNoBookSourceRange) {
+  parser.imageRendering = 1;
+  // A decomposed accent in generated text must not alter the following book coordinates.
+  parseToParagraphText("<img alt='Cafe\xCC\x81 skull'/><p>alpha</p>");
+  ASSERT_EQ(sourceWords.size(), 4u);
+  EXPECT_EQ(sourceWords[0].text, "[Image:");
+  EXPECT_EQ(sourceWords[1].text, "Caf\xC3\xA9");
+  EXPECT_EQ(sourceWords[2].text, "skull]");
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(sourceWords[i].range.start, UINT32_MAX);
+    EXPECT_EQ(sourceWords[i].range.end, UINT32_MAX);
+  }
+  EXPECT_EQ(sourceWords[3].text, "alpha");
+  EXPECT_EQ(sourceWords[3].range.start, 0u);
+  EXPECT_EQ(sourceWords[3].range.end, 5u);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, TableCellsRetainBookSourceRanges) {
+  parseToParagraphText("<table><tr><td>alpha</td><td>beta</td></tr></table><p>gamma</p>");
+  ASSERT_EQ(sourceWords.size(), 3u);
+  const char* expected[] = {"alpha", "beta", "gamma"};
+  const uint32_t starts[] = {0, 5, 9};
+  const uint32_t ends[] = {5, 9, 14};
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(sourceWords[i].text, expected[i]);
+    EXPECT_EQ(sourceWords[i].range.start, starts[i]);
+    EXPECT_EQ(sourceWords[i].range.end, ends[i]);
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, SyntheticFlagKeepsFontSlotsAndSplitWordStyles) {
+  for (const bool focus : {false, true}) {
+    ParsedText text(true, focus);
+    const uint8_t slot = text.sizeSlotFor(0.8f);
+    text.setSizeSlotFontId(slot, 42);
+    text.addWord("Cafe\xCC\x81一二", EpdFontFamily::SMALL_CAPS, false, false, 0, 0, slot, false, false);
+    text.addWord("alpha", EpdFontFamily::REGULAR, false, false, 0);
+    size_t synthetic = 0, actual = 0;
+    text.layoutAndExtractLines(renderer, 0, 80, [&](std::unique_ptr<TextBlock> line, auto) {
+      for (uint16_t i = 0; i < line->wordCount(); ++i) {
+        if (std::strcmp(line->wordText(i), "alpha") == 0) {
+          ++actual;
+          EXPECT_EQ(line->wordFontId(i, 0), 0);
+          EXPECT_EQ(line->wordSourceRange(i).start, 0u);
+          EXPECT_EQ(line->wordSourceRange(i).end, 5u);
+        } else {
+          ++synthetic;
+          EXPECT_EQ(line->wordFontId(i, 0), 42);
+          EXPECT_NE(line->wordStyle(i) & EpdFontFamily::SMALL_CAPS, 0);
+          EXPECT_EQ(line->wordSourceRange(i).start, UINT32_MAX);
+          EXPECT_EQ(line->wordSourceRange(i).end, UINT32_MAX);
+        }
+      }
+    });
+    EXPECT_GE(synthetic, 3u);
+    EXPECT_EQ(actual, 1u);
+  }
 }

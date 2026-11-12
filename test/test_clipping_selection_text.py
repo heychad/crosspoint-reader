@@ -70,6 +70,7 @@ struct Block {
   const char* text = "one";
   std::string packedText;
   std::vector<EpdFontFamily::Style> styles;
+  std::vector<Range> ranges;
   bool paragraphStart = true;
   bool prefixSpace = false;
   bool valid() const { return true; }
@@ -90,8 +91,9 @@ struct Block {
   }
   uint16_t wordTextLen(uint16_t i) const { return std::char_traits<char>::length(wordText(i)); }
   EpdFontFamily::Style wordStyle(uint16_t i) const { return styles.empty() ? EpdFontFamily::REGULAR : styles[i]; }
-  int wordXpos(uint16_t) const { return 0; }
+  int wordXpos(uint16_t i) const { return ranges.empty() ? 0 : i * 100; }
   Range wordSourceRange(uint16_t i) const {
+    if (!ranges.empty()) return ranges[i];
     return prefixSpace && i == 0 ? Range{range.start, range.start + 1} : range;
   }
   bool wordStartsParagraph(uint16_t i) const { return paragraphStart && i == 0; }
@@ -278,6 +280,28 @@ void expect(const ClipSelectionActivity& activity, int first, int last, const ch
   assert(text == expected);
 }
 int main() {
+  // Generated markers stay selectable and share a paragraph with their book text.
+  for (const auto mode : {ClipSelectionActivity::Mode::Clip, ClipSelectionActivity::Mode::DefinitionLookup}) {
+    ClipSelectionActivity generated;
+    generated.mode = mode;
+    auto page = std::make_unique<Page>();
+    auto line = std::make_unique<PageLine>();
+    line->block.packedText = std::string("1.\0alpha\0", 9);
+    line->block.ranges = {{UINT32_MAX, UINT32_MAX}, {0, 5}};
+    page->elements.push_back(std::move(line));
+    generated.pages.push_back(std::move(page));
+    generated.borrowedPages = generated.pages;
+    HalMemory::stats = {1024 * 1024, 1024 * 1024};
+    assert(generated.extractWords());
+    assert(generated.wordCount == 2);
+    if (!generated.words[0].paragraphStart || generated.words[1].paragraphStart) {
+      std::fprintf(stderr, "Generated marker split from its paragraph\n");
+      return 2;
+    }
+    assert(generated.words[0].pageWordIndex == 0 && generated.words[1].pageWordIndex == 1);
+    expect(generated, 0, 1, "1. alpha");
+    expect(generated, 1, 1, "alpha");
+  }
   // Returning from a definition releases the SD font caches before selection is rebuilt.
   for (const bool rtl : {false, true}) {
     ClipSelectionActivity cold;

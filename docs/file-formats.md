@@ -90,6 +90,20 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 80
+
+The serialized layout is unchanged. Generated list markers and image fallback
+labels store unknown source ranges (`UINT32_MAX` for both ends), so they cannot
+match portable book highlights. Their selectable text and page-local word
+ordinals remain available. Completed and partial section caches rebuild;
+clipping files and reading progress are preserved.
+
+### Version 79
+
+The serialized layout is unchanged. Word ranges now include hidden body text
+inside words and removed BOMs, alongside existing NFC corrections. Completed
+and partial section caches rebuild with the corrected ranges.
+
 ### Version 78
 
 Version 78 adds a one-byte EPUB rendering mode after the word-spacing field in

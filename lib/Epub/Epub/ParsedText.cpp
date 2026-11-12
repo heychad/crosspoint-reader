@@ -533,7 +533,7 @@ bool ParsedText::storeWord(const std::string_view text, WordStore::StoredWord& o
 
 void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle, const bool underline,
                          const bool attachToPrevious, const uint32_t visibleTextOffset, const uint8_t linkId,
-                         const uint8_t sizeSlot, const bool noSpaceBefore) {
+                         const uint8_t sizeSlot, const bool noSpaceBefore, const bool hasSourceText) {
   if (word.empty()) return;
 
   // The device fonts carry no combining-mark positioning, so EPUB text stored in NFD
@@ -546,14 +546,18 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     ParsedText* text;
     uint32_t start;
   } sourceContext{this, visibleTextOffset};
-  word = utf8ComposeNfc(
-      word,
-      [](const uint32_t offset, void* context) {
-        const auto& source = *static_cast<SourceContext*>(context);
-        return source.text->recordAbsorbedSourceOffset(
-            source.text->sourceOffsetBeforeNormalization(source.start, offset));
-      },
-      &sourceContext);
+  if (hasSourceText) {
+    word = utf8ComposeNfc(
+        word,
+        [](const uint32_t offset, void* context) {
+          const auto& source = *static_cast<SourceContext*>(context);
+          return source.text->recordAbsorbedSourceOffset(
+              source.text->sourceOffsetBeforeNormalization(source.start, offset));
+        },
+        &sourceContext);
+  } else {
+    word = utf8ComposeNfc(word);
+  }
   if (word.empty()) return;
 
   EpdFontFamily::Style baseStyle = fontStyle;
@@ -580,7 +584,8 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     wordFocusBoundary.push_back(focusBoundary);
     wordLinkIds.push_back(linkId);
     wordSizeSlots.push_back(
-        static_cast<uint8_t>(sizeSlot | ((style & EpdFontFamily::SMALL_CAPS) ? TextBlock::SMALL_CAPS_SLOT_FLAG : 0)));
+        static_cast<uint8_t>(sizeSlot | ((style & EpdFontFamily::SMALL_CAPS) ? TextBlock::SMALL_CAPS_SLOT_FLAG : 0) |
+                             (hasSourceText ? 0 : SYNTHETIC_WORD_FLAG)));
     pushVisibleOffset(tokenOffset);
     if (padRuby && !rubyTexts.empty()) {
       rubyTexts.push_back("");
@@ -1056,7 +1061,7 @@ int ParsedText::calculateRubyExtraEndOffset(const size_t lineStartIdx, const siz
 }
 
 int ParsedText::wordFontId(const size_t wordIndex, const int blockFontId) const {
-  const uint8_t slot = wordSizeSlots[wordIndex] & ~TextBlock::SMALL_CAPS_SLOT_FLAG;
+  const uint8_t slot = wordSizeSlots[wordIndex] & ~(TextBlock::SMALL_CAPS_SLOT_FLAG | SYNTHETIC_WORD_FLAG);
   return slot == 0 || sizeSlotFontIds[slot] == 0 ? blockFontId : sizeSlotFontIds[slot];
 }
 
@@ -1961,13 +1966,18 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   for (size_t i = 0; i < lineWordCount; ++i) {
     const size_t logical = lastBreakAt + (willReorder ? visualOrderScratch[i] : i);
     if (!paragraphStartEmitted && logical == 0) paragraphStartWord = static_cast<uint16_t>(i);
-    const uint32_t start = visibleOffsetAt(logical);
     const bool discretionaryHyphen = (wordStyles[logical] & TextBlock::DISCRETIONARY_HYPHEN_FLAG) != 0;
-    uint32_t end = sourceOffsetAfter(start, countCodepoints(wordAt(logical)) - discretionaryHyphen, false);
     if (discretionaryHyphen) {
       lineWordStyles[i] = static_cast<EpdFontFamily::Style>(lineWordStyles[i] | TextBlock::DISCRETIONARY_HYPHEN_FLAG);
     }
-    if (logical + 1 < words.size() && visibleOffsetAt(logical + 1) > start) {
+    if ((wordSizeSlots[logical] & SYNTHETIC_WORD_FLAG) != 0) {
+      sourceRanges.push_back({});
+      continue;
+    }
+    const uint32_t start = visibleOffsetAt(logical);
+    uint32_t end = sourceOffsetAfter(start, countCodepoints(wordAt(logical)) - discretionaryHyphen, false);
+    if (logical + 1 < words.size() && (wordSizeSlots[logical + 1] & SYNTHETIC_WORD_FLAG) == 0 &&
+        visibleOffsetAt(logical + 1) > start) {
       end = std::min(end, visibleOffsetAt(logical + 1));
     }
     sourceRanges.push_back({start, end});

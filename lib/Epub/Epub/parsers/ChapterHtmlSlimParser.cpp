@@ -799,7 +799,7 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
           ? currentTextBlock->sizeSlotFor(std::clamp(inlineScale, 0.5f, 3.0f))
           : 0;
   currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues, partWordVisibleOffset, linkId,
-                            sizeSlot, effectivePreserveWhitespace);
+                            sizeSlot, effectivePreserveWhitespace, !syntheticCharacterData);
   if (insideTableCell && !tableRowStacked) {
     tableRowTextBytes += wordBytes;
     size_t rowWords = currentTextBlock->size();
@@ -2011,6 +2011,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
         self->depth += 1;
         self->syntheticCharacterData = true;
         self->characterData(userData, alt.c_str(), alt.length());
+        self->flushPartWordBuffer();
         self->syntheticCharacterData = false;
         // Skip any child content (skip until parent as we pre-advanced depth above)
         self->skipUntilDepth = self->depth - 1;
@@ -2206,11 +2207,12 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
           self->listStack.back().counter += 1;
           char marker[16];
           snprintf(marker, sizeof(marker), "%d.", self->listStack.back().counter);
-          self->currentTextBlock->addWord(marker, EpdFontFamily::REGULAR, false, false, self->visibleTextOffset);
+          self->currentTextBlock->addWord(marker, EpdFontFamily::REGULAR, false, false, self->visibleTextOffset, 0, 0,
+                                          false, false);
           self->listItemBulletOnly = true;
         } else {
-          self->currentTextBlock->addWord("\xe2\x80\xa2", EpdFontFamily::REGULAR, false, false,
-                                          self->visibleTextOffset);
+          self->currentTextBlock->addWord("\xe2\x80\xa2", EpdFontFamily::REGULAR, false, false, self->visibleTextOffset,
+                                          0, 0, false, false);
           self->listItemBulletOnly = true;
         }
       } else if (strcmp(name, "ul") == 0 || strcmp(name, "ol") == 0) {

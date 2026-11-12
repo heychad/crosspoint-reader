@@ -225,9 +225,12 @@ bool ClipSelectionActivity::extractWords() {
       }
       if (wordCount > lineStart && paragraphStartPending) {
         // Whitespace-only tokens are skipped; keep their boundary on the first selectable logical word.
-        const auto first =
-            std::min_element(words.get() + lineStart, words.get() + wordCount,
-                             [](const WordBox& a, const WordBox& b) { return a.startOffset < b.startOffset; });
+        auto first = words.get() + lineStart;
+        const auto end = words.get() + wordCount;
+        if (std::all_of(first, end, [](const WordBox& word) { return word.startOffset != UINT32_MAX; })) {
+          first = std::min_element(first, end,
+                                   [](const WordBox& a, const WordBox& b) { return a.startOffset < b.startOffset; });
+        }
         first->paragraphStart = true;
         paragraphStartPending = false;
       }
