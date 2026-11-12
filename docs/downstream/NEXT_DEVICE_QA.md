@@ -9,6 +9,9 @@ run on the device yet.
 
 ## Before installing
 
+- Store firmware images, checksums, exported logs, and development test files in
+  `/zDev/` on the SD card. Open `zDev` in the firmware picker.
+
 - Back up and verify the reader's hidden `.crosspoint` folder, including reading
   positions, settings, bookmarks, and statistics; preserve
   `.crossink-stats-backup` if present. Keep the books on the card and a known-good
