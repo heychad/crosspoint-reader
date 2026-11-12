@@ -103,3 +103,19 @@ branch. Its X4 Pro build passed in 82.19 seconds; logs are in
 includes later features and is not the isolated
 device candidate described above. Do not deploy it as part of this repair.
 The existing SDK changes remain outside this checkpoint.
+
+## Dragging clarification
+
+Chad confirmed that the original crash occurred while moving or dragging the
+selection. The original touch loop already holds the render lock, so the
+initialization repair alone does not establish the cause of a mid-drag panic.
+No second concrete defect was found in the touch state transitions inspected.
+
+`ClipSelectionTouch` now runs the production drag loop and selection helpers
+under AddressSanitizer and UndefinedBehaviorSanitizer. It checks release after
+the initial long press, both handles crossing their opposite endpoint, page-end
+dwell through the 240-word boundary, Back after a held touch, and 8,000
+deterministic coordinate frames in portrait and landscape dimensions. The test
+passes. Rendering, font-cache behavior, physical touch input, and the actual
+device panic remain outside this host check. The device checklist now targets
+dragging first. This test/documentation addition does not change `CLIPFIX1.BIN`.
