@@ -109,6 +109,7 @@ popup_buttons = "  bool handleButtons(" + popup_source.split("  bool handleButto
 )[0]
 popup_harness = r"""
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <functional>
@@ -132,6 +133,7 @@ struct Popup {
   }
 };
 struct ClipSelectionActivity {
+  std::atomic<bool> renderReady{true};
   size_t wordCount = 0;  // extractWords() could not allocate its array.
   Popup actionPopup;
   Input mappedInput;

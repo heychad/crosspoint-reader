@@ -22,6 +22,15 @@ RTC_NOINIT_ATTR HalSystem::StackFrame panicStack[MAX_PANIC_STACK_DEPTH];
 // RTC_NOINIT is uninitialized on cold boot, so only this exact marker proves a
 // panic diagnostic was captured before the reset.
 RTC_NOINIT_ATTR volatile uint32_t panicCaptureMarker;
+#if !__riscv
+struct PanicRegisters {
+  uint32_t pc, cause, address, returnAddress, sp;
+};
+RTC_NOINIT_ATTR PanicRegisters panicRegisters[2];
+RTC_NOINIT_ATTR uint32_t panicRegistersMask;
+RTC_NOINIT_ATTR uint32_t panicRegistersMagic;
+static constexpr uint32_t PANIC_REGISTERS_MAGIC = 0x50524753U;
+#endif
 
 extern "C" {
 
@@ -30,6 +39,10 @@ void __real_panic_print_backtrace(const void* frame, int core);
 
 static DRAM_ATTR const char PANIC_REASON_UNKNOWN[] = "(unknown panic reason)";
 void IRAM_ATTR __wrap_panic_abort(const char* message) {
+#if !__riscv
+  panicRegistersMagic = 0;
+  panicRegistersMask = 0;
+#endif
   if (!message) message = PANIC_REASON_UNKNOWN;
   // IRAM-safe bounded copy (strncpy is not IRAM-safe in panic context)
   int i = 0;
@@ -58,7 +71,21 @@ void IRAM_ATTR __wrap_panic_print_backtrace(const void* frame, int core) {
 #if __riscv
   const uint32_t sp = (uint32_t)((RvExcFrame*)frame)->sp;
 #else
-  const uint32_t sp = (uint32_t)((XtExcFrame*)frame)->a1;
+  const auto* registers = static_cast<const XtExcFrame*>(frame);
+  const uint32_t sp = registers->a1;
+  if (panicCaptureMarker != PANIC_CAPTURE_MAGIC || panicRegistersMagic != PANIC_REGISTERS_MAGIC) panicRegistersMask = 0;
+  if (core >= 0 && core < 2) {
+    auto& saved = panicRegisters[core];
+    saved.pc = registers->pc;
+    saved.cause = registers->exccause;
+    saved.address = registers->excvaddr;
+    saved.returnAddress = registers->a0;
+    saved.sp = sp;
+    panicRegistersMask |= 1U << core;
+    panicRegistersMagic = PANIC_REGISTERS_MAGIC;
+  }
+  // Keep exception registers even when the stack pointer itself is corrupt.
+  panicCaptureMarker = PANIC_CAPTURE_MAGIC;
 #endif
   constexpr uint32_t captureBytes = 1024;
   if (!esp_stack_ptr_is_sane(sp) || sp > UINT32_MAX - captureBytes ||
@@ -127,6 +154,10 @@ void checkPanic() {
 
 void clearPanic() {
   panicCaptureMarker = 0;
+#if !__riscv
+  panicRegistersMagic = 0;
+  panicRegistersMask = 0;
+#endif
   panicMessage[0] = '\0';
   for (size_t i = 0; i < MAX_PANIC_STACK_DEPTH; i++) {
     panicStack[i].sp = 0;
@@ -171,6 +202,21 @@ std::string getPanicInfo(bool full) {
     // way to tell those apart from a true panic.
     info += "\n\nReset reason: " + std::string(resetReasonName(esp_reset_reason()));
     info += "\n\nPanic reason: " + std::string(panicMessage);
+#if !__riscv
+    if (panicRegistersMagic == PANIC_REGISTERS_MAGIC && panicRegistersMask <= 3) {
+      for (unsigned core = 0; core < 2; ++core) {
+        if (!(panicRegistersMask & (1U << core))) continue;
+        const auto& saved = panicRegisters[core];
+        char line[160];
+        snprintf(line, sizeof(line),
+                 "\nCore %u registers: PC=0x%08lX cause=0x%08lX address=0x%08lX A0=0x%08lX SP=0x%08lX", core,
+                 static_cast<unsigned long>(saved.pc), static_cast<unsigned long>(saved.cause),
+                 static_cast<unsigned long>(saved.address), static_cast<unsigned long>(saved.returnAddress),
+                 static_cast<unsigned long>(saved.sp));
+        info += line;
+      }
+    }
+#endif
     info += "\n\nLast logs:\n" + getLastLogs();
     info += "\n\nStack memory:\n";
 
