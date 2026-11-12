@@ -71,6 +71,8 @@ ClipSelectionActivity::ClipSelectionActivity(GfxRenderer& renderer, MappedInputM
       mode(Mode::DefinitionLookup) {}
 
 void ClipSelectionActivity::onEnter() {
+  RenderLock lock;
+  renderReady.store(false, std::memory_order_release);
   Activity::onEnter();
   std::string dictionaryPath;
   lookupAvailable =
@@ -81,6 +83,7 @@ void ClipSelectionActivity::onEnter() {
   if (!extracted && mode == Mode::DefinitionLookup) {
     static constexpr StrId OPTIONS[] = {StrId::STR_BACK};
     actionPopup.show(StrId::STR_DICT_LOW_MEMORY, OPTIONS, 1, 0, [this](int) { cancel(); });
+    renderReady.store(true, std::memory_order_release);
     requestUpdate();
     return;
   }
@@ -116,6 +119,7 @@ void ClipSelectionActivity::onEnter() {
     selected = rangeStart = hit;
     ignoreInitialTouch = true;
   }
+  renderReady.store(true, std::memory_order_release);
   requestUpdate();
 }
 
@@ -467,6 +471,7 @@ void ClipSelectionActivity::loopButtons() {
 }
 
 void ClipSelectionActivity::loop() {
+  if (!renderReady.load(std::memory_order_acquire)) return;
   if (wordCount == 0 && !actionPopup.isActive()) {
     cancel();
     return;
@@ -884,11 +889,13 @@ void ClipSelectionActivity::drawSelection() const {
 }
 
 void ClipSelectionActivity::render(RenderLock&&) {
+  if (!renderReady.load(std::memory_order_acquire)) return;
   if (actionPopup.processRender(renderer, mappedInput)) {
     lastRenderedPageOffset = -1;
     return;
   }
 
+  if (!words || wordCount == 0 || currentPageOffset >= pageCount()) return;
   if (renderIncremental()) {
     return;
   }

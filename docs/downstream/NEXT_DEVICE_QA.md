@@ -1,5 +1,8 @@
 # Next X4 Pro device test
 
+For the clipping repair, use the [five-minute check](FIVE_MINUTE_DEVICE_QA.md).
+The longer checklist below is for broader release testing.
+
 Use the latest reviewed, hash-verified local candidate and its matching source
 packet. Work through the checks one at a time. Nothing in this plan has been
 run on the device yet.
