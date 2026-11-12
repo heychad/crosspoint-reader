@@ -14,6 +14,7 @@ constexpr ThemeMetrics values = makeValues();
 
 class MinimalHomeTheme : public LyraTheme {
  public:
+  static Rect coverRect(Rect rect);
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                            int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,
                            std::function<bool()> storeCoverBuffer) const override;

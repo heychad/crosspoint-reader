@@ -11,6 +11,12 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+Rect MinimalHomeTheme::coverRect(Rect rect) {
+  const int coverHeight = std::max(1, std::min(MinimalHomeMetrics::values.homeCoverHeight, rect.height - 50));
+  const int coverWidth = std::max(1, std::min(rect.width - 12, coverHeight * 3 / 5));
+  return Rect{rect.x + (rect.width - coverWidth) / 2, rect.y + 8, coverWidth, coverHeight};
+}
+
 void MinimalHomeTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                            int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                            bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
@@ -19,9 +25,7 @@ void MinimalHomeTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, con
     return;
   }
   const auto& book = recentBooks.front();
-  const int coverHeight = std::max(1, std::min(MinimalHomeMetrics::values.homeCoverHeight, rect.height - 50));
-  const int coverWidth = std::max(1, std::min(rect.width - 12, coverHeight * 3 / 5));
-  const Rect cover{rect.x + (rect.width - coverWidth) / 2, rect.y + 8, coverWidth, coverHeight};
+  const Rect cover = coverRect(rect);
   if (!coverRendered || !bufferRestored) {
     bool drawn = false;
     if (!book.coverBmpPath.empty()) {

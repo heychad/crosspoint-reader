@@ -5,7 +5,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 source = (root / "src/components/themes/minimal/MinimalHomeTheme.cpp").read_text()
-function = source[source.index("void MinimalHomeTheme::drawRecentBookCover"):]
+function = source[source.index("Rect MinimalHomeTheme::coverRect"):]
 program = r'''
 #include <algorithm>
 #include <cassert>
@@ -31,6 +31,7 @@ struct GfxRenderer {
  int getLineHeight(int){return 12;}
 };
 struct MinimalHomeTheme {
+ static Rect coverRect(Rect);
  mutable int placeholders=0,images=0,empty=0;
  void drawEmptyRecents(GfxRenderer&,Rect)const{++empty;}
  void drawCoverPlaceholder(GfxRenderer&,Rect)const{++placeholders;}

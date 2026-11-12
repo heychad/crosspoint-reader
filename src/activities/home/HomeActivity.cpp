@@ -23,14 +23,15 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "activities/RenderLock.h"
 #include "activities/reader/ReadingStatsStore.h"
 #include "activities/reader/StatsSaveNotice.h"
+#include "activities/settings/ReadingStatsActivity.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION) && \
     (!defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) || !defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE))
 #error "Deferred automation requires completion and completion-move support"
 #endif
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
-#include "activities/RenderLock.h"
 #include "activities/reader/DeferredCompletionMove.h"
 #include "activities/reader/ReadingStatsUtils.h"
 #endif
@@ -42,6 +43,129 @@
 #endif
 #include "fontIds.h"
 #include "util/BookProgress.h"
+
+namespace {
+bool usesCompactHome() {
+  return SETTINGS.uiTheme == CrossPointSettings::MINIMAL_HOME || SETTINGS.uiTheme == CrossPointSettings::DASHBOARD_HOME;
+}
+}  // namespace
+
+void HomeActivity::activateSelection() {
+  if (selectorIndex < recentBooks.size()) {
+    onRecentBookSelected(recentBooks[selectorIndex].path);
+    return;
+  }
+  const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
+  switch (indexToMenuItem(menuIndex, hasLibrarySlot(), libraryFirstOnHome)) {
+    case HomeMenuItem::FILE_BROWSER:
+      onFileBrowserOpen();
+      break;
+    case HomeMenuItem::LIBRARY:
+      onLibraryOpen();
+      break;
+    case HomeMenuItem::SAVED_ITEMS:
+      activityManager.goToSavedItems();
+      break;
+    case HomeMenuItem::OPDS_BROWSER:  // the library slot
+      hasPlugins ? onPluginsOpen() : onOpdsBrowserOpen();
+      break;
+    case HomeMenuItem::FILE_TRANSFER:
+      onFileTransferOpen();
+      break;
+    case HomeMenuItem::SETTINGS_MENU:
+      onSettingsOpen();
+      break;
+    default:
+      break;
+  }
+}
+
+void HomeActivity::showCompactMenu() {
+  const char* options[7] = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_SAVED_ITEMS), tr(STR_FILE_TRANSFER),
+                            tr(STR_SETTINGS_TITLE)};
+  if (libraryFirstOnHome) std::swap(options[0], options[1]);
+  const int menuCount = getMenuItemCount() - static_cast<int>(recentBooks.size());
+  if (hasLibrarySlot()) {
+    options[5] = options[4];
+    options[4] = options[3];
+    options[3] = hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER);
+  }
+  int count = menuCount;
+  if (SETTINGS.trackReadingStats) options[count++] = tr(STR_READING_STATISTICS);
+  popup.show(tr(STR_MENU), options, count, 0, [this, menuCount](int index) {
+    if (index == menuCount) {
+      auto activity = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput);
+      if (activity)
+        activityManager.replaceActivity(std::move(activity));
+      else
+        LOG_ERR("HOME", "OOM: ReadingStatsActivity");
+      return;
+    }
+    selectorIndex = static_cast<int>(recentBooks.size()) + index;
+    activateSelection();
+  });
+  requestUpdate();
+}
+
+void HomeActivity::showNextCompactBook() {
+  if (recentBooks.empty()) return;
+  const auto& books = RECENT_BOOKS.getBooks();
+  const auto current = std::find(books.begin(), books.end(), recentBooks.front());
+  const size_t start = current == books.end() ? 0 : static_cast<size_t>(current - books.begin()) + 1;
+  for (size_t step = 0; step < books.size(); ++step) {
+    const auto& next = books[(start + step) % books.size()];
+    if (next.path == recentBooks.front().path || RecentBooksStore::isMissing(next)) continue;
+    {
+      RenderLock lock;
+      recentBooks.front() = next;
+      selectorIndex = 0;
+      freeCoverBuffer();
+      coverRendered = false;
+      recentsLoaded = false;
+      if (GUI.hasDashboardHome()) loadDashboardData();
+    }
+    requestUpdate();
+    return;
+  }
+}
+
+bool HomeActivity::handleCompactHome() {
+  if (!usesCompactHome()) return false;
+  switch (mappedInput.wasSwipe()) {
+    case MappedInputManager::SwipeDir::Up:
+      showCompactMenu();
+      return true;
+    case MappedInputManager::SwipeDir::Right:
+      libraryFirstOnHome ? onLibraryOpen() : onFileBrowserOpen();
+      return true;
+    case MappedInputManager::SwipeDir::Down:
+      onSettingsOpen();
+      return true;
+    case MappedInputManager::SwipeDir::Left:
+      showNextCompactBook();
+      return true;
+    case MappedInputManager::SwipeDir::None:
+      break;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    showCompactMenu();
+    return true;
+  }
+  const Rect content = UITheme::getInstance().getContentArea(renderer);
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect area{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()};
+  const Rect cover = GUI.hasDashboardHome() ? DashboardHomeTheme::coverRect(area) : MinimalHomeTheme::coverRect(area);
+  int touched = -1;
+  const auto touch = mappedInput.colTouch(touched, cover.x, cover.width, recentBooks.empty() ? 0 : 1, cover.y,
+                                          cover.y + cover.height, cover.width);
+  if (touch == MappedInputManager::RowTouch::Tap || mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (!recentBooks.empty()) {
+      haptic_feedback::touchAction();
+      onRecentBookSelected(recentBooks.front().path);
+    }
+  }
+  return true;
+}
 
 int HomeActivity::getMenuItemCount() const {
   int count = 5;  // File Browser, Library, Saved Items, File transfer, Settings
@@ -441,7 +565,7 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
-  if (!statsSavePopup.isActive()) {
+  if (!popup.isActive()) {
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
     if (deferredMoveRetryPending && static_cast<int32_t>(millis() - deferredMoveRetryAt) >= 0) {
       deferredMoveRetryPending = false;
@@ -463,7 +587,7 @@ void HomeActivity::loop() {
     if (deferredMoveNeedsReview) {
       deferredMoveNeedsReview = false;
       const char* options[] = {tr(STR_OK_BUTTON)};
-      statsSavePopup.showMessage(tr(STR_READING_STATISTICS), tr(STR_FINISHED_MOVE_REVIEW), options, 1, 0, [](int) {});
+      popup.showMessage(tr(STR_READING_STATISTICS), tr(STR_FINISHED_MOVE_REVIEW), options, 1, 0, [](int) {});
       requestUpdate();
       return;
     }
@@ -472,11 +596,11 @@ void HomeActivity::loop() {
     const uint32_t stateFailure = stateSaveNotice().pending();
     if (stateFailure) {
       const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
-      statsSavePopup.showMessage(tr(STR_STATE_SAVE_RECOVERY), tr(STR_STATE_RECOVERY_DETAILS), options, 2, 0,
-                                 [stateFailure](int index) {
-                                   if (index == 0 && !APP_STATE.recoverSleepStateForPageOverlay()) return;
-                                   stateSaveNotice().acknowledge(stateFailure);
-                                 });
+      popup.showMessage(tr(STR_STATE_SAVE_RECOVERY), tr(STR_STATE_RECOVERY_DETAILS), options, 2, 0,
+                        [stateFailure](int index) {
+                          if (index == 0 && !APP_STATE.recoverSleepStateForPageOverlay()) return;
+                          stateSaveNotice().acknowledge(stateFailure);
+                        });
       requestUpdate();
       return;
     }
@@ -484,24 +608,25 @@ void HomeActivity::loop() {
     const uint32_t settingsFailure = settingsSaveNotice().pending();
     if (settingsFailure) {
       const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
-      statsSavePopup.showMessage(tr(STR_SETTINGS_TITLE), tr(STR_SETTINGS_RECOVERY_DETAILS), options, 2, 0,
-                                 [settingsFailure](int index) {
-                                   if (index == 0 && !SETTINGS.saveToFile()) return;
-                                   settingsSaveNotice().acknowledge(settingsFailure);
-                                 });
+      popup.showMessage(tr(STR_SETTINGS_TITLE), tr(STR_SETTINGS_RECOVERY_DETAILS), options, 2, 0,
+                        [settingsFailure](int index) {
+                          if (index == 0 && !SETTINGS.saveToFile()) return;
+                          settingsSaveNotice().acknowledge(settingsFailure);
+                        });
       requestUpdate();
       return;
     }
     const uint32_t observed = statsSaveNotice().pending();
     if (observed) {
       const char* options[] = {tr(STR_OK_BUTTON)};
-      statsSavePopup.showMessage(tr(STR_READING_STATISTICS), tr(STR_READER_STATS_SAVE_FAILED), options, 1, 0,
-                                 [observed](int) { statsSaveNotice().acknowledge(observed); });
+      popup.showMessage(tr(STR_READING_STATISTICS), tr(STR_READER_STATS_SAVE_FAILED), options, 1, 0,
+                        [observed](int) { statsSaveNotice().acknowledge(observed); });
       requestUpdate();
       return;
     }
   }
-  if (statsSavePopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
+  if (popup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
+  if (handleCompactHome()) return;
   const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto page = menuPage();
@@ -510,36 +635,6 @@ void HomeActivity::loop() {
   const int carouselBooks = static_cast<int>(recentBooks.size());
   if (carousel && selectorIndex >= 0 && selectorIndex < carouselBooks) carouselCenterIndex = selectorIndex;
 #endif
-
-  auto activateSelection = [this] {
-    if (selectorIndex < recentBooks.size()) {
-      onRecentBookSelected(recentBooks[selectorIndex].path);
-      return;
-    }
-    const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasLibrarySlot(), libraryFirstOnHome)) {
-      case HomeMenuItem::FILE_BROWSER:
-        onFileBrowserOpen();
-        break;
-      case HomeMenuItem::LIBRARY:
-        onLibraryOpen();
-        break;
-      case HomeMenuItem::SAVED_ITEMS:
-        activityManager.goToSavedItems();
-        break;
-      case HomeMenuItem::OPDS_BROWSER:  // the library slot
-        hasPlugins ? onPluginsOpen() : onOpdsBrowserOpen();
-        break;
-      case HomeMenuItem::FILE_TRANSFER:
-        onFileTransferOpen();
-        break;
-      case HomeMenuItem::SETTINGS_MENU:
-        onSettingsOpen();
-        break;
-      default:
-        break;
-    }
-  };
 
   // Cover grid home splits navigation by button group (see below); the flat
   // next/previous cycle is for the classic list home only.
@@ -764,9 +859,9 @@ void HomeActivity::loop() {
 }
 
 void HomeActivity::render(RenderLock&&) {
-  if (statsSavePopup.isActive()) {
+  if (popup.isActive()) {
     renderer.clearScreen();
-    if (statsSavePopup.processRender(renderer, mappedInput)) return;
+    if (popup.processRender(renderer, mappedInput)) return;
   }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
@@ -842,51 +937,53 @@ void HomeActivity::render(RenderLock&&) {
         renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()}, dashboardData);
   }
 
-  // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_SAVED_ITEMS),
-                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Library, Bookmark, Transfer, Settings};
-  if (libraryFirstOnHome) {
-    std::swap(menuItems[0], menuItems[1]);
-    std::swap(menuIcons[0], menuIcons[1]);
-  }
+  if (!usesCompactHome()) {
+    // Build menu items dynamically
+    std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_SAVED_ITEMS),
+                                          tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+    std::vector<UIIcon> menuIcons = {Folder, Library, Bookmark, Transfer, Settings};
+    if (libraryFirstOnHome) {
+      std::swap(menuItems[0], menuItems[1]);
+      std::swap(menuIcons[0], menuIcons[1]);
+    }
 
-  if (hasLibrarySlot()) {
-    menuItems.insert(menuItems.begin() + 3, hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 3, Plugins);
-  }
+    if (hasLibrarySlot()) {
+      menuItems.insert(menuItems.begin() + 3, hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER));
+      menuIcons.insert(menuIcons.begin() + 3, Plugins);
+    }
 
-  if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
-    // Insert Continue Reading at the top if enabled in theme
-    menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
-    menuIcons.insert(menuIcons.begin(), Book);
-  }
+    if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
+      // Insert Continue Reading at the top if enabled in theme
+      menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
+      menuIcons.insert(menuIcons.begin(), Book);
+    }
 
-  const auto page = menuPage();
-  const int inset = GUI.getMenuTopInset();
-  renderer.fillRect(content.x, page.top - inset, content.width,
-                    std::max(0, pageHeight - metrics.buttonHintsHeight - page.top + inset), false);
-  const int bookRows = metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
+    const auto page = menuPage();
+    const int inset = GUI.getMenuTopInset();
+    renderer.fillRect(content.x, page.top - inset, content.width,
+                      std::max(0, pageHeight - metrics.buttonHintsHeight - page.top + inset), false);
+    const int bookRows = metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
-  if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
-    LyraCarouselTheme::drawHomeMenu(
-        renderer,
-        Rect{content.x, page.top, content.width, carousellayout::menuHeight(renderer.getLineHeight(SMALL_FONT_ID))},
-        page.count, selectorIndex - bookRows, [&menuItems](int index) { return std::string(menuItems[index]); },
-        [&menuIcons](int index) { return menuIcons[index]; });
-  } else
+    if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL) {
+      LyraCarouselTheme::drawHomeMenu(
+          renderer,
+          Rect{content.x, page.top, content.width, carousellayout::menuHeight(renderer.getLineHeight(SMALL_FONT_ID))},
+          page.count, selectorIndex - bookRows, [&menuItems](int index) { return std::string(menuItems[index]); },
+          [&menuIcons](int index) { return menuIcons[index]; });
+    } else
 #endif
-    GUI.drawButtonMenu(
-        renderer,
-        Rect{content.x, page.top - inset, content.width,
-             page.count * (GUI.getMenuRowHeight(renderer) + metrics.menuSpacing) + inset},
-        page.count, selectorIndex - bookRows - page.first,
-        [&menuItems, &page](int index) { return std::string(menuItems[page.first + index]); },
-        [&menuIcons, &page](int index) { return menuIcons[page.first + index]; });
+      GUI.drawButtonMenu(
+          renderer,
+          Rect{content.x, page.top - inset, content.width,
+               page.count * (GUI.getMenuRowHeight(renderer) + metrics.menuSpacing) + inset},
+          page.count, selectorIndex - bookRows - page.first,
+          [&menuItems, &page](int index) { return std::string(menuItems[page.first + index]); },
+          [&menuIcons, &page](int index) { return menuIcons[page.first + index]; });
 
-  const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
-                                            tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
+                                              tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  }
 
   renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
 

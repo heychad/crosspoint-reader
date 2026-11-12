@@ -17,7 +17,7 @@ struct Rect;
 
 class HomeActivity final : public Activity {
   std::unique_ptr<CoverGridHomeUi> coverGridUi;
-  OptionPopup statsSavePopup;
+  OptionPopup popup;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
@@ -85,6 +85,10 @@ class HomeActivity final : public Activity {
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
     return HomeMenuItem::NONE;
   }
+  void activateSelection();
+  void showCompactMenu();
+  void showNextCompactBook();
+  bool handleCompactHome();
   void onRecentBookSelected(const std::string& path);
   void onFileBrowserOpen();
   void onLibraryOpen();

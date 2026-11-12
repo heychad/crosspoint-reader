@@ -14,13 +14,11 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
-namespace {
-Rect coverRect(Rect rect) {
+Rect DashboardHomeTheme::coverRect(Rect rect) {
   const int height = std::max(1, std::min(MinimalHomeMetrics::values.homeCoverHeight, rect.height - 50));
   const int width = std::max(1, std::min(rect.width / 2 - 20, height * 3 / 5));
   return Rect{rect.x + 12, rect.y + 8, width, height};
 }
-}  // namespace
 
 void DashboardHomeTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect,
                                              const std::vector<RecentBook>& recentBooks, int selectorIndex,

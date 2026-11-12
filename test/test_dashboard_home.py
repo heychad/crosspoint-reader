@@ -60,8 +60,8 @@ int main(){
 '''
 
 theme = (root / 'src/components/themes/minimal/DashboardHomeTheme.cpp').read_text()
-geometry_start = theme.index('Rect coverRect(Rect rect)')
-geometry_end = theme.index('\n}  // namespace', geometry_start)
+geometry_start = theme.index('Rect DashboardHomeTheme::coverRect(Rect rect)')
+geometry_end = theme.index('\nvoid DashboardHomeTheme::drawRecentBookCover(', geometry_start)
 draw_start = theme.index('void DashboardHomeTheme::drawReadingInfo(')
 render = theme[geometry_start:geometry_end] + '\n' + theme[draw_start:]
 render_program = r'''
@@ -84,7 +84,7 @@ struct GfxRenderer {
  int getLineHeight(int){return 12;}
 };
 struct BookReadingStats {static void formatDuration(unsigned s,char* b,size_t n){snprintf(b,n,"%us",s);}};
-struct DashboardHomeTheme {static void drawReadingInfo(GfxRenderer&,Rect,const HomeDashboardData&);};
+struct DashboardHomeTheme {static Rect coverRect(Rect);static void drawReadingInfo(GfxRenderer&,Rect,const HomeDashboardData&);};
 ''' + render + r'''
 int main(){
  Rect r{10,56,460,390}; GfxRenderer unknown; HomeDashboardData d;
@@ -130,6 +130,7 @@ struct GfxRenderer {
  int getLineHeight(int){return 12;}
 };
 struct DashboardHomeTheme {
+ static Rect coverRect(Rect);
  mutable int placeholders=0,images=0,empty=0;
  void drawEmptyRecents(GfxRenderer&,Rect)const{++empty;}
  void drawCoverPlaceholder(GfxRenderer&,Rect)const{++placeholders;}
