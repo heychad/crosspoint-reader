@@ -4,6 +4,8 @@
 
 #include <cstdint>
 
+#include "CrossInkFontName.h"
+
 namespace crossinkimport {
 inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bool replaceExisting) {
   if (!legacy.is<JsonObjectConst>() || !proposed.is<JsonObject>()) return false;
@@ -57,6 +59,23 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     proposed[key] = value;
     changed = true;
   };
+  const auto font = legacy["sdFontFamilyName"];
+  if (font.is<const char*>()) {
+    const auto name = font.as<JsonString>();
+    if (crossink::compatibleFontName(name.c_str(), name.size())) {
+      const auto currentFont = proposed["sdFontFamilyName"];
+      const bool sameFont = currentFont.is<const char*>() && currentFont.as<JsonString>() == name;
+      // Keep a different native font and its size together unless replacement was requested.
+      if (replaceExisting || (currentFont.isUnbound() && proposed["fontFamily"].isUnbound()) || sameFont) {
+        if (!sameFont) {
+          proposed["sdFontFamilyName"] = name;
+          changed = true;
+        }
+        const auto size = legacy["fontSize"];
+        if (size.is<uint8_t>() && size.as<uint8_t>() >= 8) stageMapped("fontSize", size.as<uint8_t>());
+      }
+    }
+  }
   const auto characterSpacing = legacy["characterSpacing"];
   if (characterSpacing.is<uint8_t>()) {
     const uint8_t raw = characterSpacing.as<uint8_t>();

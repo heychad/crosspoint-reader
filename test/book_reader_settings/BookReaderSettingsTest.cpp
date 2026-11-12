@@ -824,6 +824,62 @@ TEST_F(BookSettings, LegacyFontSizeDoesNotChangeOrTriggerSaveDuringFontFallback)
   EXPECT_FALSE(Storage.exists(PATH));
 }
 
+TEST_F(BookSettings, LegacyNamedFontLoadsWithSizeAndPreservesOriginalUntilEdited) {
+  auto record = crossInkV10();
+  record.replace(24, 8, "Literata");
+  record[record.size() - 2] = 4;  // v10 font-name override at bit 18.
+  const std::string legacyPath = std::string(CACHE) + "/reader_settings.bin";
+  put(legacyPath, record);
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, ReaderPreferences::FONT_BIT | 1U | (1U << 4));
+  EXPECT_STREQ(settings.preferences.font, "Literata");
+  EXPECT_EQ(settings.preferences.values[0], 18);
+  CrossPointSettings effective;
+  BookReaderSettingsScope scope;
+  scope.begin(effective, settings);
+  EXPECT_STREQ(effective.sdFontFamilyName, "Literata");
+  EXPECT_EQ(effective.fontPointSize, 18);
+  ASSERT_TRUE(store.save(scope.capture(effective)));
+  EXPECT_FALSE(Storage.exists(PATH));
+  effective.lineSpacing = 1;
+  ASSERT_TRUE(store.save(scope.capture(effective)));
+  ASSERT_TRUE(Storage.exists(PATH));
+  BookReaderPreferences reopened;
+  BookReaderSettings restored;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", restored));
+  EXPECT_STREQ(restored.preferences.font, "Literata");
+  EXPECT_EQ(restored.preferences.values[0], 18);
+  std::string original;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacyPath, 256, original));
+  EXPECT_EQ(original, record);
+  scope.end(effective);
+  EXPECT_STREQ(effective.sdFontFamilyName, "");
+  EXPECT_EQ(effective.fontPointSize, 14);
+}
+
+TEST_F(BookSettings, LegacyFontWithoutOwnershipOrCompatibleNameKeepsCurrentFontAndSize) {
+  for (const auto& name : {std::string(""), std::string(32, 'a'), std::string("bad/name"), std::string(".hidden")}) {
+    Storage.reset();
+    auto record = crossInkV10();
+    record.replace(24, name.size(), name);
+    record[record.size() - 2] = 4;
+    put(std::string(CACHE) + "/reader_settings.bin", record);
+    BookReaderPreferences store;
+    BookReaderSettings settings;
+    ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+    EXPECT_EQ(settings.mask, 1U << 4);
+  }
+  auto record = crossInkV10();
+  record.replace(24, 8, "Literata");
+  put(std::string(CACHE) + "/reader_settings.bin", record);
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, 1U << 4);
+}
+
 TEST_F(BookSettings, LegacyFnvCacheIsRecognized) {
   const std::string book = "/book.epub";
   const auto old = "/.crosspoint/epub_" + std::to_string(ZipFile::fnvHash64(book.data(), book.size()));
@@ -1150,7 +1206,7 @@ TEST_F(BookSettings, CrossInkPreferencesPublishNewMappingsAndPreserveSource) {
   constexpr char primary[] = "/.crosspoint/settings.json";
   const std::string original = R"({"pluginsEnabled":1,"frontlightBrightness":50})";
   const std::string legacy =
-      R"({"characterSpacing":9,"imageRendering":0,"imageGrayscale":0,"frontlightBrightness":85,"frontlightWarmth":35,"frontlightOn":1,"pluginsEnabled":0})";
+      R"({"characterSpacing":9,"imageRendering":0,"imageGrayscale":0,"frontlightBrightness":85,"frontlightWarmth":35,"frontlightOn":1,"pluginsEnabled":0,"sdFontFamilyName":"Literata","fontSize":21})";
   put(primary, original);
   put(crossinkimport::SOURCE_PATH, legacy);
   JsonDocument proposed;
@@ -1170,6 +1226,8 @@ TEST_F(BookSettings, CrossInkPreferencesPublishNewMappingsAndPreserveSource) {
   EXPECT_EQ(persisted["frontlightWarmth"].as<int>(), 35);
   EXPECT_EQ(persisted["frontlightOn"].as<int>(), 1);
   EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
+  EXPECT_STREQ(persisted["sdFontFamilyName"].as<const char*>(), "Literata");
+  EXPECT_EQ(persisted["fontSize"].as<int>(), 21);
   EXPECT_EQ(backup, original);
   EXPECT_EQ(source, legacy);
 }

@@ -32,6 +32,11 @@ COMPATIBLE = {
 }
 LINE_HEIGHTS = (100, 110, 120, 130, 145, 160, 175)
 
+
+def compatible_font_name(name: str) -> bool:
+    return (0 < len(name.encode('utf-8')) < 32 and not name.startswith('.')
+            and not any(ord(c) < 32 or ord(c) == 127 or c in '/\\' for c in name))
+
 class Reader:
     def __init__(self, data: bytes):
         self.data = data
@@ -124,6 +129,9 @@ def decode(data: bytes) -> dict:
     image_pair = (version >= 11 and overrides.get('imageRendering') == 0
                   and 'imageGrayscale' in overrides)
     for key, value in overrides.items():
+        if key == 'sdFontFamilyName' and compatible_font_name(value):
+            preview[key] = value
+            continue
         if image_pair and key in ('imageRendering', 'imageGrayscale'):
             preview['imageRendering'] = 0 if overrides['imageGrayscale'] else 3
             continue
@@ -161,7 +169,8 @@ def decode(data: bytes) -> dict:
     return {'version': version, 'flags': flags, 'autoPageTurnSeconds': seconds,
             'renderMode': render_mode, 'dictionaryFont': dictionary,
             'dictionaryFontPointSize': dictionary_size, 'overrides': overrides,
-            'preview': preview, 'firmware_import_excluded': ['fontSize'] if 'fontSize' in preview else [],
+            'preview': preview,
+            'firmware_import_excluded': ['fontSize'] if 'fontSize' in preview and 'sdFontFamilyName' not in preview else [],
             'unmapped': unmapped}
 
 

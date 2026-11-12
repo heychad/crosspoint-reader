@@ -30,12 +30,11 @@ When no native preferences exist, the reader can load compatible values from a
 CrossInk `reader_settings.bin` in the current or legacy FNV cache. Existing
 native preferences take precedence. An unchanged import remains read-only; an
 edit or reset saves native preferences, while preserving the original binary.
-Safe Mode, unreadable records, and recovery artifacts block writes. Font size
-also stays in the original record until its font family can be migrated safely.
-Finished-book
-moves are blocked while a legacy settings file remains at the old path. Font
-families and other unsupported values are not imported; full migration remains
-pending and this behavior still requires device validation.
+Safe Mode, unreadable records, and recovery artifacts block writes. A named SD
+font can import with its point size when the book owns both fields. Without a
+compatible owned font name, the size stays in the original record. Finished-book
+moves are blocked while a legacy settings file remains at the old path. Other
+unsupported values remain in the source; full migration is still pending.
 
 `scripts/preview_crossink_book_settings.py` inspects a local copy of a CrossInk
 record without writing settings. It reports directly comparable values as
@@ -69,7 +68,7 @@ The preview retains unsupported fields rather than treating them as older data.
 Image Display plus an explicit grayscale override maps to the matching native
 Display or Display (B&W) choice only when both fields are owned by the book.
 Whole-pixel character spacing within the native -2 to +2 range maps exactly;
-half-pixel values, wider spacing, fonts, and publisher-font choices remain
+half-pixel values, wider spacing, built-in fonts, and publisher-font choices remain
 unmapped. The original CrossInk file is never rewritten. Existing native book
 preferences still take precedence, and CrossInk Safe Mode still prevents a
 partial import.
@@ -80,6 +79,41 @@ create an override. Invalid profile values remain unmapped. Reset to global
 settings records the reset in native preferences and leaves the CrossInk
 source intact. Safe Mode is still excluded: it temporarily changes style,
 focus, and guide settings and retains their underlying values for later use.
+
+## Named font migration
+
+The November 12 WIP imports named SD fonts from global CrossInk preferences and
+per-book records. Names must be valid UTF-8, fit the native 31-byte limit, and
+contain no path separators or control characters. Empty names, built-in font
+IDs, and longer names stay unmapped. The version-specific per-book font mask
+is honored, including its move from bit 18 to bit 19 in version 11.
+
+Global imports preserve an existing native font and size unless replacement is
+requested. A matching font can supply a missing size. Per-book imports preserve
+the whole existing native preference file. Importing does not copy or convert
+font files: the native loader resolves installed families and uses its existing
+fallback if a family is missing. The per-book fallback retains the requested
+name and size for a later open. Global fallback follows the existing loader and
+can clear an unavailable selection. Original CrossInk records remain intact.
+
+This adds 32 bytes to the temporary binary-decoder result. It adds no resident
+reader state, task, scan, or storage format. Global JSON imports add a name of
+up to 31 bytes plus its terminator and JSON node overhead through the existing
+document allocator. Device validation is pending; this checkpoint is not a
+firmware release.
+
+Validation: 79 focused checks passed in 4.16 seconds, including the decoder's
+3,343 reference/malformed records, global import, original-file preservation,
+save/reopen, and existing font-fallback tests. The default X4 Pro build passed
+in 76.98 seconds, with 113,124 bytes of static RAM and 5,655,726 bytes of flash.
+The decoder result is 60 bytes in the X4 Pro ELF. The build retains the existing
+local SDK edits in `SDCardManager.h` and `SdmmcBlockDevice.cpp`; this batch does
+not change or publish them.
+
+For the next device batch, reopen a backed-up book whose legacy settings name
+an installed SD font. Check its family, size, reading position, and the global
+font after closing it. A book requesting an unavailable font should still open
+through the native fallback without replacing its saved preference.
 
 ## Per-book dictionary
 

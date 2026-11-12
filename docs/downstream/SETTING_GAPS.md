@@ -81,3 +81,13 @@ existing native values retain priority unless replacement is explicitly chosen.
 Validation: the preference-import harness passed in default, statistics-backup,
 and page-overlay configurations. Ten affected host checks passed in 2.23 seconds;
 the default X4 Pro build passed in 68.31 seconds. Device behavior is unverified.
+
+## Named font mappings added November 12
+
+`sdFontFamilyName` now imports through global preferences and compatible owned
+per-book fields. Valid names fit 31 UTF-8 bytes; built-in IDs and unsupported
+names remain unmapped. Point size imports only alongside a compatible font.
+Existing native choices and original CrossInk files retain their protections.
+See [named font migration](BOOK_SETTINGS.md#named-font-migration) for fallback
+behavior and resource limits. This does not add the deferred CrossInk font pack
+or complete G3.

@@ -21,6 +21,10 @@ int main() {
     for (const auto value : result.values) std::cout << ' ' << static_cast<unsigned>(value);
     std::cout << ' ' << result.unmappedMask << ' ' << static_cast<unsigned>(result.extraFlags) << ' '
               << static_cast<unsigned>(result.indexingMethod) << ' ' << static_cast<unsigned>(result.verticalMargin)
-              << '\n';
+              << ' ';
+    if (!result.font[0]) std::cout << '-';
+    for (const auto* byte = reinterpret_cast<const unsigned char*>(result.font); *byte; ++byte)
+      std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<unsigned>(*byte);
+    std::cout << std::dec << '\n';
   }
 }

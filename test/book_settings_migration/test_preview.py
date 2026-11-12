@@ -101,7 +101,21 @@ class DecodeTest(unittest.TestCase):
             data = bytearray(record(version, mask=1 << 12))
             data[17] = 0
             self.assertEqual(preview.decode(bytes(data))['preview'], {})
-            self.assertEqual(preview.decode(record(version, mask=1 << 19))['unmapped'], ['sdFontFamilyName'])
+            self.assertEqual(preview.decode(record(version, mask=1 << 19))['preview'], {'sdFontFamilyName': 'Font'})
+
+    def test_named_font_and_size_require_font_ownership(self):
+        for version in range(2, 14):
+            bit = 18 if version < 11 else 19
+            result = preview.decode(record(version, mask=(1 << bit) | (1 << 1)))
+            self.assertEqual(result['preview']['sdFontFamilyName'], 'Font')
+            self.assertEqual(result['firmware_import_excluded'], [])
+        for name in (b'', b'a' * 32, b'.hidden', b'bad/name', b'bad\\name', b'bad\x1fname'):
+            data = bytearray(record(10, mask=(1 << 18) | (1 << 1)))
+            offset = data.index(b'Font\0')
+            data[offset:offset + 64] = (name + b'\0').ljust(64, b'\0')
+            result = preview.decode(bytes(data))
+            self.assertNotIn('sdFontFamilyName', result['preview'])
+            self.assertEqual(result['firmware_import_excluded'], ['fontSize'])
 
     def test_character_spacing_requires_exact_whole_pixels(self):
         for value in range(11):

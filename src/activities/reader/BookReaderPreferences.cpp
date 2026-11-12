@@ -48,10 +48,13 @@ bool readLegacyLocked(void* raw) {
   if (!read || !closed || !crossink::decodeBookSettings(bytes.get(), size, preview) || (preview.extraFlags & 0x10))
     return false;  // CrossInk Safe Mode changes effective settings beyond the saved snapshot.
   static_assert(ReaderPreferences::FIELD_COUNT == 15);
-  // Font resolution can snap an unsupported size during open. Until the
-  // original font is migrated too, leave the size with the legacy record.
+  // A point size without its font could select a different built-in size.
+  static_assert(ReaderPreferences::FONT_BIT == (1U << 15));
   static_assert(ReaderPreferences::INDEXING_BIT == (1U << 17));
-  context.settings.mask = preview.nativeMask & ~1U;
+  context.settings.mask = preview.nativeMask;
+  if (!(preview.nativeMask & ReaderPreferences::FONT_BIT)) context.settings.mask &= ~1U;
+  static_assert(sizeof(preview.font) == sizeof(context.settings.preferences.font));
+  memcpy(context.settings.preferences.font, preview.font, sizeof(preview.font));
   context.settings.preferences.indexingMethod = preview.indexingMethod;
   static_assert(ReaderPreferences::VERTICAL_MARGIN_BIT == (1U << 18));
   context.settings.preferences.verticalMargin = preview.verticalMargin;

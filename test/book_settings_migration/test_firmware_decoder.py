@@ -53,11 +53,13 @@ for version in (3, 10):
         records.append(bytes(data))
 records.extend((test_preview.record(10, flags=0), test_preview.record(10, flags=0x80),
                 test_preview.record(10, mask=1 << 20)))
-for name in (b'caf\xc3\xa9', b'\xc0\xaf', b'\xed\xa0\x80', b'\xf4\x90\x80\x80', b'\xe2\x82'):
-    data = bytearray(test_preview.record(10))
-    index = data.index(b'Font\0')
-    data[index:index + 64] = (name + b'\0').ljust(64, b'\0')
-    records.append(bytes(data))
+for version in range(2, 14):
+    for name in (b'', b'caf\xc3\xa9', b'A' * 31, b'A' * 32, b'A' * 63, b'bad/name', b'.hidden',
+                 b'bad\\name', b'bad\x1fname', b'\xc0\xaf', b'\xed\xa0\x80', b'\xf4\x90\x80\x80', b'\xe2\x82'):
+        data = bytearray(test_preview.record(version))
+        index = data.index(b'Font\0')
+        data[index:index + 64] = (name + b'\0').ljust(64, b'\0')
+        records.append(bytes(data))
 with tempfile.TemporaryDirectory() as directory:
     executable = Path(directory) / 'probe'
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',
@@ -75,13 +77,16 @@ with tempfile.TemporaryDirectory() as directory:
         except ValueError:
             assert line == 'invalid', index
             continue
-        values = [int(value) for value in line.split()]
+        tokens = line.split()
+        values = [int(value) for value in tokens[:20]]
         actual = {name: values[position + 1] for position, name in enumerate(FIELDS)
                   if values[0] & (1 << position)}
         if values[0] & (1 << 17):
             actual['indexingMethod'] = values[18]
         if values[0] & (1 << 18):
             actual['screenMarginVertical'] = values[19]
+        if values[0] & (1 << 15):
+            actual['sdFontFamilyName'] = bytes.fromhex(tokens[20]).decode('utf-8')
         assert actual == expected, (index, actual, expected)
         version = data[0]
         fields = module.MASK_FIELDS

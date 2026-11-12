@@ -2,40 +2,11 @@
 
 #include <cstring>
 
+#include "CrossInkFontName.h"
+
 namespace crossink {
 namespace {
 constexpr uint32_t ALL_OLD_BITS = (1UL << 19) - 1;
-bool validUtf8(const uint8_t* bytes, size_t length) {
-  for (size_t i = 0; i < length;) {
-    const uint8_t lead = bytes[i++];
-    if (lead < 0x80) continue;
-    unsigned remaining;
-    uint32_t codepoint;
-    if (lead >= 0xc2 && lead <= 0xdf) {
-      remaining = 1;
-      codepoint = lead & 0x1f;
-    } else if (lead >= 0xe0 && lead <= 0xef) {
-      remaining = 2;
-      codepoint = lead & 0x0f;
-    } else if (lead >= 0xf0 && lead <= 0xf4) {
-      remaining = 3;
-      codepoint = lead & 0x07;
-    } else {
-      return false;
-    }
-    if (remaining > length - i) return false;
-    const unsigned count = remaining;
-    while (remaining--) {
-      const uint8_t next = bytes[i++];
-      if ((next & 0xc0) != 0x80) return false;
-      codepoint = (codepoint << 6) | (next & 0x3f);
-    }
-    if ((count == 2 && codepoint < 0x800) || (count == 3 && codepoint < 0x10000) ||
-        (codepoint >= 0xd800 && codepoint <= 0xdfff) || codepoint > 0x10ffff)
-      return false;
-  }
-  return true;
-}
 struct Cursor {
   const uint8_t* bytes;
   size_t length;
@@ -50,10 +21,13 @@ struct Cursor {
     pos += count;
     return true;
   }
-  bool name() {
+  bool name(char* font = nullptr) {
     if (64 > length - pos) return false;
     const auto* end = static_cast<const uint8_t*>(std::memchr(bytes + pos, 0, 64));
     if (!end || !validUtf8(bytes + pos, static_cast<size_t>(end - (bytes + pos)))) return false;
+    const size_t size = static_cast<size_t>(end - (bytes + pos));
+    if (font && compatibleFontName(reinterpret_cast<const char*>(bytes + pos), size))
+      std::memcpy(font, bytes + pos, size + 1);
     pos += 64;
     return true;
   }
@@ -94,7 +68,8 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     if (!in.byte(old[i])) return false;
   if (!in.byte(ignored)) return false;  // snapshot render mode
   if (result.version >= 4 && !in.byte(old[17])) return false;
-  if (!in.name() || (result.version >= 5 && !in.name()) || (result.version >= 7 && !in.skip(1))) return false;
+  if (!in.name(result.font) || (result.version >= 5 && !in.name()) || (result.version >= 7 && !in.skip(1)))
+    return false;
   uint32_t mask = ALL_OLD_BITS;
   if (result.version >= 10) {
     mask = 0;
@@ -116,6 +91,13 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
   if (result.version < 3) mask &= ~(1UL << 3);
   if (result.version < 4) mask &= ~(1UL << 17);
   result.unmappedMask = mask;
+  const uint32_t fontBit = 1UL << (result.version < 11 ? 18 : 19);
+  if ((mask & fontBit) && result.font[0]) {
+    result.nativeMask |= 1UL << 15;
+    result.unmappedMask &= ~fontBit;
+  } else {
+    result.font[0] = '\0';
+  }
   const auto map = [&](unsigned source, unsigned target, uint8_t max) {
     if ((mask & (1UL << source)) && old[source] <= max) {
       set(result, target, old[source]);

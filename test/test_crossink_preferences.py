@@ -6,10 +6,55 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 program = r'''
 #include <cassert>
+#include <string>
 #include <tuple>
 #include <ArduinoJson.h>
 #include "personalization/CrossInkPreferencesImport.h"
 int main() {
+  for (const auto& name : {std::string("Literata"), std::string("Font Name"), std::string("caf\xc3\xa9"), std::string(31, 'a')}) {
+    JsonDocument old, next;
+    old["sdFontFamilyName"] = name;
+    old["fontSize"] = 21;
+    next.to<JsonObject>();
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    assert(next["sdFontFamilyName"] == name && next["fontSize"] == 21);
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    next["fontSize"] = 18;
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    assert(next["fontSize"] == 18);
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
+    assert(next["fontSize"] == 21);
+  }
+  for (const auto& name : {std::string(""), std::string(32, 'a'), std::string(".hidden"), std::string("bad/name"),
+                           std::string("bad\\name"), std::string("bad\nname"), std::string("Font\0Other", 10),
+                           std::string("\xc0\xaf"), std::string("\xed\xa0\x80"), std::string("\xe2\x82")}) {
+    JsonDocument old, next;
+    old["sdFontFamilyName"] = name;
+    old["fontSize"] = 21;
+    next.to<JsonObject>();
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
+    assert(next["sdFontFamilyName"].isUnbound() && next["fontSize"].isUnbound());
+  }
+  for (const char* target : {R"({"sdFontFamilyName":"Other","fontSize":18})",
+                             R"({"fontFamily":2,"fontSize":18})",
+                             R"({"sdFontFamilyName":"","fontSize":18})"}) {
+    JsonDocument old, next;
+    old["sdFontFamilyName"] = "Literata";
+    old["fontSize"] = 21;
+    assert(!deserializeJson(next, target));
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    assert(next["fontSize"] == 18);
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
+    assert(next["sdFontFamilyName"] == "Literata" && next["fontSize"] == 21);
+  }
+  for (int size : {0, 3, 7, 256}) {
+    JsonDocument old, next;
+    old["sdFontFamilyName"] = "Literata";
+    old["fontSize"] = size;
+    next.to<JsonObject>();
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    assert(next["sdFontFamilyName"] == "Literata" && next["fontSize"].isUnbound());
+  }
   for (const auto& field : {std::tuple{"refreshFrequency",0,5}, {"screenInverted",0,1},
                             {"hideBatteryPercentage",0,2}, {"sleepTimeoutMinutes",1,31},
                             {"indexingMethod",0,1}, {"fadingFix",0,1},
