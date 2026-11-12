@@ -5,6 +5,9 @@ validate the X4 Pro profile; other inherited board profiles are not supported
 release targets. Keep the next hardware test small, preserve reading state and
 use its results to guide the next change.
 
+Store firmware images and development artifacts on the reader's SD card under
+`/zDev/`. Keep firmware-managed reading state at its existing paths.
+
 ## FreeInk SDK
 
 The [FreeInk SDK](freeink-sdk/) supplies the board profiles, hardware drivers,
