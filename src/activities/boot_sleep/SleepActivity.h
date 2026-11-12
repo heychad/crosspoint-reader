@@ -5,12 +5,16 @@
 
 class Bitmap;
 class HalFile;
+class ReaderActivity;
 
 class SleepActivity final : public Activity {
  public:
   explicit SleepActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool fromTimeout = false)
       : Activity("Sleep", renderer, mappedInput), fromTimeout(fromTimeout) {}
   void onEnter() override;
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  void prepareReaderPageBackground(ReaderActivity* reader);
+#endif
 
  private:
   void renderDefaultSleepScreen() const;
@@ -27,6 +31,7 @@ class SleepActivity final : public Activity {
   void renderTransparentCustomSleepScreen() const;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   void renderPageOverlaySleepScreen() const;
+  bool pageOverlayBackgroundReady = true;
 #endif
   void renderBlankSleepScreen() const;
 

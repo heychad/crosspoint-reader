@@ -310,6 +310,52 @@ void EpubReaderActivity::prepareForSleep() {
   ReaderActivity::prepareForSleep();
 }
 
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+uint32_t EpubReaderActivity::sleepPageLayoutSignature() const {
+  uint32_t signature =
+      readerRenderSpecSignature(effectiveRenderSpec(buildViewportWidth, buildViewportHeight, currentSpineIndex));
+  signature = (signature ^ SETTINGS.paragraphIndentSpaces) * 16777619U;
+  signature = (signature ^ SETTINGS.fontPointSize) * 16777619U;
+  signature = (signature ^ SETTINGS.fontFamily) * 16777619U;
+  for (const char* name = SETTINGS.sdFontFamilyName; *name; ++name)
+    signature = (signature ^ static_cast<uint8_t>(*name)) * 16777619U;
+  return signature ? signature : 1U;
+}
+
+bool EpubReaderActivity::restorePageForSleep() {
+  if (!epub || !section || !renderer.hasFrameBuffer() || section->currentPage < 0 ||
+      section->currentPage >= static_cast<int>(section->pageCount))
+    return false;
+  ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
+  const auto layout = readerPageLayout();
+  if (layout.width != buildViewportWidth || layout.height != buildViewportHeight || renderedSleepLayout == 0 ||
+      renderedSleepLayout != sleepPageLayoutSignature())
+    return false;
+  auto page = section->loadPage(section->currentPage);
+  auto* fonts = renderer.getFontCacheManager();
+  if (!page || !fonts) return false;
+  settleOverlayRefresh();
+  discardOverlayPage();
+  ImageBlock::clearRenderFailures();
+  struct ImageCacheRelease {
+    ~ImageCacheRelease() { ImageBlock::releaseRenderCache(); }
+  } imageCacheRelease;
+  const int fontId = SETTINGS.getReaderFontId();
+  auto scope = fonts->createPrewarmScope();
+  page->render(renderer, fontId, layout.left, layout.top);
+  renderStatusBar();
+  scope.endScanAndPrewarm();
+  renderer.clearScreen();
+  const bool wasDithered = renderer.imagesDitheredInBw();
+  renderer.setDitherImagesInBw(true);
+  drawClippingHighlights(*page, fontId, layout.top, layout.left);
+  page->render(renderer, fontId, layout.left, layout.top);
+  renderStatusBar();
+  renderer.setDitherImagesInBw(wasDithered);
+  return true;
+}
+#endif
+
 void EpubReaderActivity::resetBookReaderSettings() {
   // Persist first so a failed SD write leaves the visible book settings intact.
   if (!bookPreferences.save({})) {
@@ -2513,6 +2559,9 @@ void EpubReaderActivity::renderBook() {
 
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+    renderedSleepLayout = sleepPageLayoutSignature();
+#endif
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
     markPageRendered();

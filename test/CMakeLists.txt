@@ -152,6 +152,8 @@ add_test(NAME HomeReaderNavigation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT
 add_test(NAME CrossInkPreferencesImport COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_crossink_preferences.py)
 add_test(NAME SleepStatePreservation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_state_preservation.py)
 add_test(NAME PageOverlayFlow COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_flow.py)
+add_test(NAME SleepReaderPage COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_reader_page.py)
+add_test(NAME XtcSleepPage COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_xtc_sleep_page.py)
 add_test(NAME PageOverlayFavorite COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_favorite.py)
 add_test(NAME PageOverlayFolder COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_folder.py)
 add_test(NAME PageOverlayStateRecovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_overlay_state_recovery.py)

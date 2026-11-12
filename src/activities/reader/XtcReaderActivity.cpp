@@ -313,10 +313,13 @@ void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const Stat
   GUI.drawStatusBar(renderer, progress, pageInfo.currentPage, pageInfo.pageCount, pageInfo.title, paddingBottom);
 }
 
-void XtcReaderActivity::renderPage() {
+bool XtcReaderActivity::renderPage(PageRenderTarget target) {
+  if (!xtc || currentPage >= xtc->getPageCount()) return false;
+  const bool bufferOnly = target == PageRenderTarget::Buffer;
   const uint16_t pageWidth = xtc->getPageWidth();
   const uint16_t pageHeight = xtc->getPageHeight();
   const uint8_t bitDepth = xtc->getBitDepth();
+  if (pageWidth == 0 || pageHeight == 0 || (bitDepth != 1 && bitDepth != 2)) return false;
 
   size_t pageBufferSize;
   if (bitDepth == 2) {
@@ -325,24 +328,25 @@ void XtcReaderActivity::renderPage() {
     pageBufferSize = ((pageWidth + 7) / 8) * pageHeight;
   }
 
-  uint8_t* pageBuffer = static_cast<uint8_t*>(malloc(pageBufferSize));
+  auto pageBuffer = makeUniqueNoThrow<uint8_t[]>(pageBufferSize);
   if (!pageBuffer) {
     LOG_ERR("XTR", "Failed to allocate page buffer (%lu bytes)", pageBufferSize);
+    if (bufferOnly) return false;
     renderer.clearScreen();
     renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_MEMORY_ERROR), true, EpdFontFamily::BOLD);
     renderer.displayBuffer();
-    return;
+    return false;
   }
 
-  size_t bytesRead = xtc->loadPage(currentPage, pageBuffer, pageBufferSize);
-  if (bytesRead == 0) {
+  size_t bytesRead = xtc->loadPage(currentPage, pageBuffer.get(), pageBufferSize);
+  if (bytesRead != pageBufferSize) {
     LOG_ERR("XTR", "Failed to load page %lu: bufferSize=%lu bitDepth=%u error=%s", currentPage, pageBufferSize,
             bitDepth, xtc::errorToString(xtc->getLastError()));
-    free(pageBuffer);
+    if (bufferOnly) return false;
     renderer.clearScreen();
     renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_PAGE_LOAD_ERROR), true, EpdFontFamily::BOLD);
     renderer.displayBuffer();
-    return;
+    return false;
   }
 
   renderer.clearScreen();
@@ -351,8 +355,8 @@ void XtcReaderActivity::renderPage() {
 
   if (bitDepth == 2) {
     const size_t planeSize = static_cast<size_t>(pageWidth) * ((static_cast<size_t>(pageHeight) + 7) / 8);
-    const uint8_t* plane1 = pageBuffer;
-    const uint8_t* plane2 = pageBuffer + planeSize;
+    const uint8_t* plane1 = pageBuffer.get();
+    const uint8_t* plane2 = pageBuffer.get() + planeSize;
     const size_t colBytes = (pageHeight + 7) / 8;
 
     auto getPixelValue = [&](uint16_t x, uint16_t y) -> uint8_t {
@@ -372,6 +376,8 @@ void XtcReaderActivity::renderPage() {
         }
       }
     }
+
+    if (bufferOnly) return true;
 
     if (pagesUntilFullRefresh <= 1) {
       // Periodic ghost cleanup: scrub via the normal path, then run the
@@ -425,11 +431,10 @@ void XtcReaderActivity::renderPage() {
 
     renderer.cleanupGrayscaleWithFrameBuffer();
 
-    free(pageBuffer);
-
+    pageBuffer.reset();
     LOG_DBG("XTR", "Rendered page %lu/%lu (2-bit grayscale)", currentPage + 1, xtc->getPageCount());
     markPageRendered();
-    return;
+    return true;
   } else {
     const size_t srcRowBytes = (pageWidth + 7) / 8;
 
@@ -448,19 +453,28 @@ void XtcReaderActivity::renderPage() {
     }
   }
 
-  free(pageBuffer);
-
+  pageBuffer.reset();
   if (SETTINGS.statusBarSpec().xtcMode == CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_TOP) {
     renderStatusBarOverlay(renderer, StatusBarOverlayPosition::Top);
   } else {
     renderStatusBarOverlay(renderer, StatusBarOverlayPosition::Bottom);
   }
 
+  if (bufferOnly) return true;
   ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
 
   LOG_DBG("XTR", "Rendered page %lu/%lu (%u-bit)", currentPage + 1, xtc->getPageCount(), bitDepth);
   markPageRendered();
+  return true;
 }
+
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+bool XtcReaderActivity::restorePageForSleep() {
+  if (!renderer.hasFrameBuffer()) return false;
+  renderer.setOrientation(GfxRenderer::Portrait);
+  return renderPage(PageRenderTarget::Buffer);
+}
+#endif
 
 bool XtcReaderActivity::pageTurn(bool isForward) {
   if (!xtc) return false;

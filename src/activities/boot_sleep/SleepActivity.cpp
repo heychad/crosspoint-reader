@@ -33,6 +33,9 @@
 #include "ReadingStatsSleep.h"
 #include "RecentBooksStore.h"
 #include "activities/reader/ReaderUtils.h"
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+#include "activities/reader/ReaderActivity.h"
+#endif
 #include "activities/reader/ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -693,6 +696,25 @@ void releaseSdFontCachesForDecode(const GfxRenderer& renderer) {
 
 }  // namespace
 
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+void SleepActivity::prepareReaderPageBackground(ReaderActivity* reader) {
+  if (!reader || SETTINGS.sleepScreen != CrossPointSettings::PAGE_OVERLAY_SLEEP ||
+      (fromTimeout && SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_AFTER_TIMEOUT))
+    return;
+  const auto orientation = renderer.getOrientation();
+  const auto clip = renderer.getClipRect();
+  const auto mode = renderer.getRenderMode();
+  const int extent = std::max(renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.setRenderMode(GfxRenderer::BW);
+  renderer.setClipRect(0, 0, extent, extent);
+  pageOverlayBackgroundReady = reader->restorePageForSleep();
+  renderer.setOrientation(orientation);
+  renderer.setRenderMode(mode);
+  renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+  if (!pageOverlayBackgroundReady) LOG_ERR("SLP", "Reader page unavailable for sleep overlay");
+}
+#endif
+
 void SleepActivity::onEnter() {
   Activity::onEnter();
 
@@ -707,6 +729,13 @@ void SleepActivity::onEnter() {
     // moon icon inverts with it at transfer like any other draw.
     return renderLastScreenSleepScreen();
   }
+
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  if (SETTINGS.sleepScreen == CrossPointSettings::PAGE_OVERLAY_SLEEP && !pageOverlayBackgroundReady) {
+    display.setInverted(false);
+    return renderDefaultSleepScreen();
+  }
+#endif
 
   const bool frameWasInverted = display.isInverted();
 

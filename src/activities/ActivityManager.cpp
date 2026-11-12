@@ -253,6 +253,15 @@ void ActivityManager::loop() {
       RenderLock lock;
 
       if (pendingAction == PendingAction::Replace || pendingAction == PendingAction::ReplaceForSleep) {
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+        if (pendingAction == PendingAction::ReplaceForSleep) {
+          auto* reader = currentActivity ? currentActivity->bookReader() : nullptr;
+          for (auto it = stackActivities.rbegin(); !reader && it != stackActivities.rend(); ++it)
+            if (*it) reader = (*it)->bookReader();
+          // ReplaceForSleep is queued only by goToSleep with a SleepActivity.
+          static_cast<SleepActivity*>(pendingActivity.get())->prepareReaderPageBackground(reader);
+        }
+#endif
         // Destroy the current activity
         exitActivity(lock);
         // Clear the stack

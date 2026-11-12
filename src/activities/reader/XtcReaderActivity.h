@@ -18,7 +18,8 @@ class XtcReaderActivity final : public ReaderActivity {
     std::string title;
   };
 
-  void renderPage();
+  enum class PageRenderTarget { Display, Buffer };
+  bool renderPage(PageRenderTarget target = PageRenderTarget::Display);
   void openChapterSelection(bool returnToMenu = false);
   void openReaderMenu() override;
   void openPercentSelection();
@@ -49,6 +50,9 @@ class XtcReaderActivity final : public ReaderActivity {
       : ReaderActivity("XtcReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~XtcReaderActivity() override = default;
 
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  bool restorePageForSleep() override;
+#endif
   bool pageTurn(bool isForward) override;
   bool skipPages(int amount) override;
   bool isAtEndOfBook() const override;

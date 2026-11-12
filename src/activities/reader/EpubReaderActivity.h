@@ -33,6 +33,10 @@
 
 class EpubReaderActivity final : public ReaderActivity {
   ReaderPageLayout readerPageLayout() const;
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  uint32_t renderedSleepLayout = 0;
+  uint32_t sleepPageLayoutSignature() const;
+#endif
   char barChapterTitle[192]{};
   int barChapterSpine = -1;
   readershortcuts::Tracker shortcutTracker;
@@ -326,6 +330,9 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderBackground(RenderLock&&) override { prefetchNextChapter(buildViewportWidth, buildViewportHeight); }
 #endif
   void prepareForSleep() override;
+#if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+  bool restorePageForSleep() override;
+#endif
   void loop() override;
   void render(RenderLock&& lock) override;
 
