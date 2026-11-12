@@ -69,14 +69,14 @@ class BmpToBmpTest : public ::testing::Test {
     file.close();
     std::filesystem::remove(path);
   }
-  Output convert(const std::vector<uint8_t>& bmp, bool crop) {
+  Output convert(const std::vector<uint8_t>& bmp, bool crop, int width = 40, int height = 64) {
     {
       std::ofstream out(path, std::ios::binary);
       out.write(reinterpret_cast<const char*>(bmp.data()), bmp.size());
     }
     EXPECT_TRUE(file.open(path.c_str(), "rb"));
     Output out;
-    EXPECT_TRUE(BmpToBmpConverter::bmpFileToBmpStream(file, out, crop, false));
+    EXPECT_TRUE(BmpToBmpConverter::bmpFileToBmpStream(file, out, width, height, crop, false));
     file.close();
     return out;
   }
@@ -139,6 +139,82 @@ TEST_F(BmpToBmpTest, OneBitSourceStaysOneBit) {
   EXPECT_EQ(le32(out.bytes, 18), 40u);
   EXPECT_EQ(level(out, 3, 2), 0);
   EXPECT_EQ(level(out, 3, 61), 1);
+}
+
+TEST_F(BmpToBmpTest, CropUsesExactRuntimeBoundsForBothOrientations) {
+  for (const auto target : {std::pair{480, 800}, std::pair{800, 480}}) {
+    for (const auto source : {std::pair{12, 8}, std::pair{320, 128}}) {
+      for (const bool topDown : {false, true}) {
+        const Output out =
+            convert(splitBmp(source.first, source.second, topDown, false), true, target.first, target.second);
+        EXPECT_EQ(le32(out.bytes, 18), target.first);
+        EXPECT_EQ(static_cast<int32_t>(le32(out.bytes, 22)), topDown ? -target.second : target.second);
+        EXPECT_EQ(level(out, target.first / 2, 0), 0);
+        EXPECT_EQ(level(out, target.first / 2, target.second - 1), 3);
+      }
+    }
+  }
+}
+
+TEST_F(BmpToBmpTest, FitUsesRuntimeAspectRatioAndCentersTallCrop) {
+  const auto fitted = convert(splitBmp(80, 80, true, false), false, 800, 480);
+  EXPECT_EQ(le32(fitted.bytes, 18), 480u);
+  EXPECT_EQ(static_cast<int32_t>(le32(fitted.bytes, 22)), -480);
+  auto tall = splitBmp(40, 160, true, false);
+  std::fill(tall.begin() + 54 + 120 * 40, tall.end(), 0xFF);
+  const auto cropped = convert(tall, true, 40, 40);
+  for (int y = 0; y < 40; ++y) EXPECT_EQ(level(cropped, 20, y), 3);
+}
+
+TEST_F(BmpToBmpTest, PreservesNativeGrayLevelsWhenResizing) {
+  std::vector<uint8_t> bytes = {'B', 'M'};
+  put32(bytes, 70 + 16 * 16);
+  put32(bytes, 0);
+  put32(bytes, 70);
+  put32(bytes, 40);
+  put32(bytes, 64);
+  put32(bytes, 16);
+  bytes.insert(bytes.end(), {1, 0, 2, 0});
+  for (int i = 0; i < 6; ++i) put32(bytes, i == 4 ? 4 : 0);
+  for (int level = 0; level < 4; ++level) put32(bytes, level * 0x555555);
+  bytes.insert(bytes.end(), 16 * 16, 0x55);
+  const auto out = convert(bytes, true, 128, 32);
+  for (int y = 0; y < 32; ++y)
+    for (int x = 0; x < 128; ++x) EXPECT_EQ(level(out, x, y), 1);
+}
+
+TEST_F(BmpToBmpTest, RejectsInvalidBoundsAndTruncatedSourceRows) {
+  const auto bytes = splitBmp(20, 32, false, false);
+  {
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+  }
+  for (const auto bounds : {std::pair{0, 64}, std::pair{40, -1}, std::pair{3073, 64}}) {
+    ASSERT_TRUE(file.open(path.c_str(), "rb"));
+    Output out;
+    EXPECT_FALSE(BmpToBmpConverter::bmpFileToBmpStream(file, out, bounds.first, bounds.second, true, false));
+    EXPECT_TRUE(out.bytes.empty());
+  }
+  file.close();
+  std::filesystem::resize_file(path, bytes.size() - 1);
+  ASSERT_TRUE(file.open(path.c_str(), "rb"));
+  Output out;
+  EXPECT_FALSE(BmpToBmpConverter::bmpFileToBmpStream(file, out, 40, 64, true, false));
+}
+
+TEST_F(BmpToBmpTest, PropagatesShortOutputWrites) {
+  class ShortOutput final : public Print {
+   public:
+    size_t remaining = 90;
+    size_t write(uint8_t) override { return remaining ? (--remaining, 1) : 0; }
+  } out;
+  const auto bytes = splitBmp(20, 32, false, false);
+  {
+    std::ofstream source(path, std::ios::binary);
+    source.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+  }
+  ASSERT_TRUE(file.open(path.c_str(), "rb"));
+  EXPECT_FALSE(BmpToBmpConverter::bmpFileToBmpStream(file, out, 40, 64, true, false));
 }
 
 TEST_F(BmpToBmpTest, RejectsMinimumSignedHeightAndTruncatedPalette) {

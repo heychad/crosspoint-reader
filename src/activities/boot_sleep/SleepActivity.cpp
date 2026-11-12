@@ -75,6 +75,27 @@ bool useOriginalCoverThresholds(const GfxRenderer& renderer) {
          SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
 }
 
+// FAT time and size can stay unchanged when a sleep image is replaced.
+bool sleepImageFingerprint(HalFile& file, uint64_t& hash) {
+  if (!file.seek(0)) return false;
+  hash = 14695981039346656037ULL;
+  uint8_t chunk[128];
+  size_t remaining = file.size();
+  size_t sinceYield = 0;
+  while (remaining > 0) {
+    const size_t count = std::min(remaining, sizeof(chunk));
+    if (file.read(chunk, count) != static_cast<int>(count)) return false;
+    for (size_t i = 0; i < count; ++i) hash = (hash ^ chunk[i]) * 1099511628211ULL;
+    remaining -= count;
+    sinceYield += count;
+    if (sinceYield >= 65536) {
+      vTaskDelay(1);
+      sinceYield = 0;
+    }
+  }
+  return file.seek(0);
+}
+
 // Kept separate from normal custom sleep sources so alpha-overlay art does not mix with full-screen wallpapers.
 constexpr char TRANSPARENT_SLEEP_ROOT_BMP[] = "/sleep-overlay.bmp";
 constexpr char TRANSPARENT_SLEEP_ROOT_PNG[] = "/sleep-overlay.png";
@@ -1043,48 +1064,49 @@ void SleepActivity::renderReadingStatsSleepScreen() const {
 bool SleepActivity::renderCustomSleepBmp(const std::string& path) const {
   HalFile file;
   if (!Storage.openFileForRead("SLP", path, file)) return false;
-  Bitmap source(file);
-  if (source.parseHeaders() != BmpReaderError::Ok) return false;
+  bool screenReady = false;
+  {
+    Bitmap source(file);
+    if (source.parseHeaders() != BmpReaderError::Ok) return false;
+    screenReady = source.getWidth() == renderer.getScreenWidth() && source.getHeight() == renderer.getScreenHeight() &&
+                  source.getBpp() <= 2;
+  }
   LOG_DBG("SLP", "Loading: %s", path.c_str());
 
   const bool thresholds = useOriginalCoverThresholds(renderer);
-  const bool screenReady = source.getWidth() == renderer.getScreenWidth() &&
-                           source.getHeight() == renderer.getScreenHeight() && source.getBpp() <= 2;
   if (!screenReady) {
-    // Like book covers: scale and dither once into a cached screen-sized BMP, then draw it without dithering.
+    uint64_t fingerprint = 0;
+    if (!sleepImageFingerprint(file, fingerprint)) return false;
     const bool crop = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
-    // Same-sized BMPs share a byte count, so the key also needs the modification time.
-    const std::string key = path + '|' + std::to_string(file.size()) + '|' + std::to_string(file.modificationTime()) +
-                            '|' + std::to_string(renderer.getScreenWidth()) + 'x' +
-                            std::to_string(renderer.getScreenHeight()) + (crop ? "|c" : "|f") +
-                            (thresholds ? "|t" : "");
+    const std::string key = path + '|' + std::to_string(fingerprint) + '|' + std::to_string(renderer.getScreenWidth()) +
+                            'x' + std::to_string(renderer.getScreenHeight()) + (crop ? "|c" : "|f") +
+                            (thresholds ? "|t" : "") + "|v2";
     const std::string cachePath = "/.crosspoint/sleep_" + std::to_string(std::hash<std::string>{}(key)) + ".bmp";
     if (!Storage.exists(cachePath.c_str())) {
       const std::string tmpPath = cachePath + ".tmp";
       HalFile out;
       bool ok = Storage.openFileForWrite("SLP", tmpPath, out) &&
-                BmpToBmpConverter::bmpFileToBmpStream(file, out, crop, thresholds);
+                BmpToBmpConverter::bmpFileToBmpStream(file, out, renderer.getScreenWidth(), renderer.getScreenHeight(),
+                                                      crop, thresholds);
       if (out.isOpen()) ok = out.close() && ok;
       ok = ok && Storage.rename(tmpPath.c_str(), cachePath.c_str());
       if (!ok) Storage.remove(tmpPath.c_str());
     }
+    // Release the source before a direct fallback opens the same path again.
+    file.close();
     HalFile cached;
     if (Storage.openFileForRead("SLP", cachePath, cached)) {
       Bitmap bitmap(cached);
-      if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-        renderBitmapSleepScreen(bitmap);
-        return true;
-      }
+      if (bitmap.parseHeaders() == BmpReaderError::Ok && renderBitmapSleepScreen(bitmap)) return true;
       cached.close();
       Storage.remove(cachePath.c_str());
     }
     LOG_ERR("SLP", "Sleep image conversion failed; drawing %s directly", path.c_str());
+    if (!Storage.openFileForRead("SLP", path, file)) return false;
   }
 
   Bitmap bitmap(file, true, thresholds);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok) return false;
-  renderBitmapSleepScreen(bitmap);
-  return true;
+  return bitmap.parseHeaders() == BmpReaderError::Ok && renderBitmapSleepScreen(bitmap);
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
@@ -1122,7 +1144,7 @@ void SleepActivity::renderDefaultSleepScreen() const {
   renderer.displayBuffer(kSleepClean);
 }
 
-void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool preserveBackground) const {
+bool SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool preserveBackground) const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   const auto placement = calculateBitmapPlacement(bitmap.getWidth(), bitmap.getHeight(), renderer);
@@ -1141,7 +1163,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
 
   if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, preserveBackground)) {
     renderer.displayBuffer(kSleepClean);
-    return;
+    return false;
   }
 
   if (!preserveBackground &&
@@ -1156,18 +1178,18 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     }
     renderTransparentCustomSleepScreen();
     overlayGrayCover = nullptr;
-    return;
+    return true;
   }
 
   const bool absolute = hasGreyscale && renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported();
   const BwFrameKeeper bwFrame(renderer, hasGreyscale && !absolute);
   if (!bwFrame.ready()) {
     renderer.displayBuffer(kSleepClean);
-    return;
+    return false;
   }
   if (absolute) {
     cleanBeforeAbsoluteGray(renderer);
-    if (!renderer.displayGrayscaleBase(sleepGrayscaleMode(renderer))) return;
+    if (!renderer.displayGrayscaleBase(sleepGrayscaleMode(renderer))) return false;
   } else if (hasGreyscale) {
     // OEM grayscale pipeline base. Must stay HALF: the gray nudge LUT is
     // calibrated against the pixel state the single-pass HALF waveform leaves
@@ -1208,7 +1230,9 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     else
       LOG_ERR("SLP", "Incomplete grayscale image; keeping the current display");
     renderer.setRenderMode(GfxRenderer::BW);
+    return ready;
   }
+  return true;
 }
 
 bool SleepActivity::renderSleepOverlayFile(HalFile& file, const char* pathForLog) const {
@@ -1226,8 +1250,7 @@ bool SleepActivity::renderSleepOverlayFile(HalFile& file, const char* pathForLog
   LOG_DBG("SLP", "Rendering regular BMP sleep overlay: %s (%dx%d)", pathForLog, bitmap.getWidth(), bitmap.getHeight());
   // drawBitmap leaves white pixels untouched; skipping the initial clear makes
   // them transparent while retaining the existing grayscale pipeline.
-  renderBitmapSleepScreen(bitmap, true);
-  return true;
+  return renderBitmapSleepScreen(bitmap, true);
 }
 
 bool SleepActivity::renderTransparentOverlayPng(const std::string& path) const {
@@ -1307,7 +1330,7 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
     // Show the plain cover.
     const Bitmap& cover = *overlayCover;
     overlayCover = nullptr;
-    if (cover.rewindToData() == BmpReaderError::Ok) return renderBitmapSleepScreen(cover);
+    if (cover.rewindToData() == BmpReaderError::Ok && renderBitmapSleepScreen(cover)) return;
   }
   renderDefaultSleepScreen();
 }
@@ -1411,9 +1434,9 @@ void SleepActivity::renderCoverSleepScreen() const {
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       LOG_DBG("SLP", "Rendering sleep cover: %s", coverBmpPath.c_str());
       if (withOverlay) overlayCover = &bitmap;
-      renderBitmapSleepScreen(bitmap);
+      const bool displayed = renderBitmapSleepScreen(bitmap);
       overlayCover = nullptr;
-      return;
+      if (displayed) return;
     }
   }
 

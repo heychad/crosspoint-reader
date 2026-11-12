@@ -5,7 +5,8 @@ class Print;
 
 class BmpToBmpConverter {
  public:
-  // Scales a BMP to the portrait display the way book covers are converted: crop or fit, then one Atkinson
-  // pass into a 2-bit BMP. 1-bit sources stay 1-bit so B/W images keep the B/W refresh path.
-  static bool bmpFileToBmpStream(HalFile& bmpFile, Print& bmpOut, bool crop, bool originalThresholds);
+  // Crops or fits a BMP to the requested bounds. Native gray levels are preserved;
+  // other color sources get 2-bit Atkinson dithering. 1-bit sources stay 1-bit.
+  static bool bmpFileToBmpStream(HalFile& bmpFile, Print& bmpOut, int targetWidth, int targetHeight, bool crop,
+                                 bool originalThresholds);
 };

@@ -80,6 +80,7 @@ class Bitmap {
   bool hasGreyscale() const { return bpp > 1; }
   int getRowBytes() const { return rowBytes; }
   bool is1Bit() const { return bpp == 1; }
+  bool hasNativePalette() const { return nativePalette; }
   uint16_t getBpp() const { return bpp; }
 
  private:
