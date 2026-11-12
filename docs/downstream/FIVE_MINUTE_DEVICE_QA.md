@@ -3,10 +3,10 @@
 Run after installing the reviewed clipping repair candidate. Keep this check at
 five minutes. Report the failed step, book, and action; a pass is `Passed 1–6`.
 
-`CLIPFIX1.BIN` failed the device test. Wait for the reviewed replacement before
-running this checklist. Firmware images are staged under `/zDev/`; open `zDev`
-in **Settings → System → SD Card Firmware Update**. Keep the reader powered
-through the restart, then start the timer.
+The reviewed repair is `/zDev/CLIPFIX2.BIN`, version
+`2.0.0-chad.3-test58-clipfix2-x4pro`. Open `zDev` in
+**Settings → System → SD Card Firmware Update** and select `CLIPFIX2.BIN`.
+Keep the reader powered through the restart, then start the timer.
 
 | Time | Check | Pass |
 | --- | --- | --- |
