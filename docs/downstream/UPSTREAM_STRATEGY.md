@@ -78,6 +78,14 @@ python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc2
 
 Inspect newly reported changes, prioritize fixes to already-ported behavior, and update the comparison baseline after recording
 what was reviewed. CrossInk remains a source reference, not a merge target.
+
+The snapshot also checks the [RC2 settings inventory](RC2_SETTINGS_INVENTORY.json).
+Its 157 catalog/save keys have explicit scope and compatibility classifications.
+Changed reviewed source files require a new semantic audit, including changes
+to defaults, enum values, nested codecs, or behavior with the same key names.
+Matching hashes mean the reviewed sources are unchanged, not that every
+preference migrates or that device validation is complete. The inventory keeps
+the remaining touch-enable and paragraph-indent compatibility gaps visible.
 Use the [development process](DEVELOPMENT_PROCESS.md) for verification depth.
 Keep the known device-tested revision available for rollback.
 

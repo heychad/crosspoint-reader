@@ -72,3 +72,18 @@ other boards are not X4 Pro gaps. No hardware acceptance is inferred.
 A fresh scoped run passed 137 shortcut, ownership, preference, and menu checks
 in 1.26 seconds. The original A2 table entry was stale after the later mapping
 work; it is now marked Built. No input code was changed by this reconciliation.
+
+## RC2 and menu-navigation boundary
+
+November 13 comparison with `v2.0.0-rc2` (`959e3d1575cf`): the persisted
+shortcut catalogs in `CrossPointSettings.h` are unchanged. Its additions are
+the fading-fix capability declaration and tilt-sensitivity support. This
+catalog comparison does not certify RC2 input routing or adopt its SDK.
+
+RC2 `getSettingsList()` adds `menuNavigation` only when
+`deviceHasFrontButtons()` is true; that capability is false for its touch
+profile. Directional/Classic changes front-button navigation on supported
+boards. The pinned X4 Pro has Up, Down, and Power plus touch, so this fork keeps
+native SDK menu navigation. Its profile also has no slide switch or IMU.
+These fields are board exclusions in the [settings inventory](RC2_SETTINGS_INVENTORY.json),
+not missing X4 Pro controls. The native reader-menu style is a separate choice.

@@ -142,7 +142,62 @@ cumulative release review and physical-device validation remain.
 | Device, date, frontlight schedule, and dictionary typography | Their additional CrossInk controls are Later; do not copy raw IDs into different native fields. |
 | Clock synchronization, credentials, and plugin state | These are not restored by the library/preferences import. Retain the current CrossPoint configuration. |
 
-## Remaining selected gaps from the RC2 audit
+## Pinned RC2 settings inventory
+
+[The machine-readable inventory](RC2_SETTINGS_INVENTORY.json) classifies all
+157 unique keys found in the RC2 base catalog and explicit top-level `toJson`
+writes, including the `sleepScreen` and `fontSize` builder keys. This includes
+Dynamic catalog entries backed by separate stores; it does not mean all 157
+keys appear in `settings.json`. The four older aliases above are tracked
+separately. Nested bar codecs and per-book formats retain their own checks.
+
+| Handling | Keys |
+| --- | ---: |
+| Compatible mappings | 72 |
+| Conditional mappings or feature gates | 17 |
+| Partial mappings with explicit compatibility limits | 6 |
+| Open selected compatibility | 2 |
+| Selected for Later | 19 |
+| Inputs absent from the pinned X4 Pro profile | 21 |
+| Existing native configuration retained | 19 |
+| Nearby sync skipped | 1 |
+
+Each group records behavior and implementation/check references. This is a
+coverage audit, not proof of runtime behavior or complete migration. The
+upstream snapshot command compares eight reviewed source blobs, including
+settings definitions, catalog builders, the nested bar codec, board capability
+policy, and paragraph-indent semantics. Any changed or removed file requires
+semantic review, even if its key names are unchanged:
+
+```sh
+python3 scripts/upstream_snapshot.py --crossink refs/tags/v2.0.0-rc2
+```
+
+This command reads local Git objects; use `--fetch` at the next upstream
+integration milestone. It does not change the working tree, settings, or device.
+
+RC2 exposes Directional/Classic `menuNavigation` only when
+`deviceHasFrontButtons()` is true. Its touch profile returns false. The pinned
+FreeInk X4 Pro profile has physical Up, Down, and Power, with touch providing
+other navigation; it has no front-button cluster, slide switch, or IMU. Retain
+native SDK menu navigation rather than importing controls from another board.
+This does not assert that the two RC2 modes behave identically on other boards.
+See [the input audit](RC_SHORTCUT_AUDIT.md).
+
+`disableReaderTouchscreen` also needs a correction. Disabling already maps, but
+enabling currently requires the older `touchReaderControls` field, which RC2
+no longer saves. A normal RC2 enabled preference therefore cannot enable
+native reader touch during replacement. Fix this while preserving Quick
+Actions ownership protections.
+
+`forceParagraphIndents` remains open. RC2 keeps an embedded CSS indent when
+extra paragraph spacing is off, or when forcing is enabled; negative hanging
+indents are retained either way. Native `paragraphIndentSpaces` sets a fixed
+space count instead. Copying the Boolean into that number would change its
+meaning. Resolve this selected-layout compatibility before closing G3; do not
+silently count it as deferred font-engine work.
+
+## Completed mappings from the RC2 audit
 
 The audit found supported native fields whose explicit imports were missing.
 Preferences now imports the 0/1 clock format (24-hour/12-hour) and the older
@@ -161,21 +216,27 @@ at 113,140 static RAM bytes and 5,678,098 flash bytes. The shared transaction is
 unchanged; this bounded mapping change did not require repeating the full host
 suite. No device installation or runtime validation is claimed.
 
-The wider audit remains open. These fields need behavior comparison or work
-inside the selected features before G3 can close:
+The following audit findings now have implementations. G3 stays open for the
+touch-enable and paragraph-indent compatibility described above:
 
 | RC2 field | Required follow-up |
 | --- | --- |
 | `tapToHideStatusBar` | Implemented: validated preferences import and temporary EPUB/XTC edge-tap hiding/restoration. See [bar behavior](RC2_READER_BARS.md); cumulative review and device validation remain. |
 | `statusBarTextSize` | Implemented: 0/1/2 map to existing Small/UI 10/UI 12 custom-bar fonts, with matching lane height and preferences import. Legacy/XTC bar compatibility remains below. |
 | `xtcStatusBarMode`, `readerStatusBars.xtcMode`, `legacyXtcTopUsesBottom` | Implemented: four placements, nested-source priority, strict validation, and legacy top-layout mapping. Native cold-save migration and source/snapshot publication are checked. |
-| `menuNavigation` | Compare Directional/Classic global navigation against the native SDK controls; it is not the reader menu-style enum. |
+| `menuNavigation` | Audited: RC2 offers this preference only for front-button devices. Keep X4 Pro native SDK navigation; no phantom front controls are imported. |
 
 The historical [key-gap list](SETTING_GAPS.md) is a discovery list, not the
 current implementation status. A literal key missing from an import file is
 not by itself proof of a missing behavior: helper mappings, board scope,
 credentials, generated language state, and the explicitly deferred features
 must be checked separately.
+
+The inventory was checked against the pinned RC2 source: all 157 discovered
+keys have exactly one classification, all evidence paths exist, and the eight
+source blobs match. Comparing the earlier RC correctly reports six changed
+reviewed files. These host-only audit changes reuse the existing firmware and
+migration-test evidence; they do not require rebuilding unchanged firmware.
 
 The controls, bar, global-preference, and per-book import paths retain separate
 checks and confirmations. See [import behavior](SHORTCUT_MIGRATION_PREVIEW.md)

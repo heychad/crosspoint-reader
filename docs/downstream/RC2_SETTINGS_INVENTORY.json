@@ -1,0 +1,476 @@
+{
+  "schema_version": 1,
+  "reference": "959e3d1575cf1cf49475c4c4546e49adadf4d477",
+  "tag": "v2.0.0-rc2",
+  "inventory_contract": "Manually reviewed catalog keys plus explicit toJson top-level keys, including sleepScreen/fontSize builder keys. Catalog-only Dynamic fields are included. Classification coverage is not proof of migration or runtime behavior. Changed source blobs require semantic review, even when key names stay the same.",
+  "source_blobs": {
+    "src/SettingsList.cpp": "c7eefc3d8d2ba1f63e3b789fcd09ad65753b44e0",
+    "src/SettingsList.h": "d0b7fae9ff07aad92a8a81e2592a924311c8995b",
+    "src/CrossPointSettings.cpp": "a67e2732602f155b7581584b6ff5def5ded4f9c0",
+    "src/CrossPointSettings.h": "5515420d29096ece9d16aefa6bdea7b682de9932",
+    "src/util/ReaderStatusBarConfig.h": "784b4f27e34741130651ad41188e16eb1407ead0",
+    "src/util/ReaderStatusBarJson.h": "a79eb55183b4cac6ea9f1595122795f389ed0699",
+    "include/DeviceCapabilities.h": "907c7caa55f15bba6a558025dc4885fe304cc15d",
+    "lib/Epub/Epub/ParsedText.cpp": "dabbc880f5bcf1fed9a140d87d55821773b88e90"
+  },
+  "legacy_aliases": [
+    "readerDarkMode",
+    "sleepTimeout",
+    "screenMargin",
+    "fileBrowserPreview"
+  ],
+  "groups": [
+    {
+      "handling": "mapped",
+      "keys": [
+        "uiScale",
+        "trackReadingStats",
+        "refreshFrequency",
+        "screenInverted",
+        "clockFormat",
+        "tapToHideStatusBar",
+        "statusBarTextSize",
+        "sleepTimeoutMinutes",
+        "readingIdleTimeThresholdUnits",
+        "paragraphAlignment",
+        "embeddedStyle",
+        "hyphenationEnabled",
+        "extraParagraphSpacing",
+        "textAntiAliasing",
+        "orientation",
+        "sleepScreenCoverMode",
+        "sleepScreenCoverFilter",
+        "quickResumeSleepScreen",
+        "indexingMethod",
+        "fadingFix",
+        "pwrBtnFootnoteBack",
+        "frontlightRestoreOnWake",
+        "frontlightBrightness",
+        "frontlightWarmth",
+        "frontlightOn"
+      ],
+      "behavior": "Validate compatible scalar ranges; preserve native ownership unless replacement is chosen.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "test/test_crossink_preferences.py"
+      ]
+    },
+    {
+      "handling": "conditional",
+      "keys": [
+        "autoBackupStats"
+      ],
+      "behavior": "Import only with experimental statistics backup enabled.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "test/test_crossink_preferences.py"
+      ]
+    },
+    {
+      "handling": "conditional",
+      "keys": [
+        "sleepScreen"
+      ],
+      "behavior": "Translate all 13 RC2 storage modes; overlays require their experimental flag. Minimal Stats shares Minimal on X4 Pro.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "docs/downstream/COVER_OVERLAY_SLEEP.md"
+      ]
+    },
+    {
+      "handling": "partial",
+      "keys": [
+        "fontFamily",
+        "fontSize",
+        "sdFontFamilyName"
+      ],
+      "behavior": "Import a compatible named SD font and its paired size. Built-in IDs differ; font pack and full engine parity remain Later E5/E6.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "src/personalization/CrossInkFontName.h",
+        "docs/downstream/BOOK_SETTINGS.md"
+      ]
+    },
+    {
+      "handling": "partial",
+      "keys": [
+        "characterSpacing",
+        "lineHeightPercent",
+        "wordSpacing"
+      ],
+      "behavior": "Only whole-pixel character spacing, exact native line-height presets, and default word spacing map. Other typography remains Later E6.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "test/test_crossink_preferences.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "imageRendering",
+        "imageGrayscale"
+      ],
+      "behavior": "Combine both source fields into the native display mode with type/range checks.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "test/test_crossink_preferences.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "screenMarginHorizontal",
+        "screenMarginVertical"
+      ],
+      "behavior": "Import independent 5-150-pixel axes. A present source axis takes priority over the older common-margin alias.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "test/test_crossink_preferences.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "libraryUseMetadata",
+        "showHiddenFiles",
+        "removeReadBooksFromRecents",
+        "moveFinishedToReadFolder",
+        "libraryShowSeries",
+        "libraryShowGenre",
+        "libraryShowEpub",
+        "libraryShowXtc",
+        "libraryShowTxt",
+        "libraryShowMarkdown",
+        "libraryHideFinishedBooks",
+        "hideFileExtension",
+        "fileBrowserDisplay",
+        "recentBooksView",
+        "libraryListExpanded"
+      ],
+      "behavior": "Import validated Library/display/completion choices. Import itself does not move books or change reading state.",
+      "evidence": [
+        "src/personalization/CrossInkLibraryImport.h",
+        "test/test_crossink_library.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "librarySortMethod",
+        "librarySortDescending"
+      ],
+      "behavior": "Translate all seven RC2 sorts as a selected-view/direction pair; keep independent native direction bits.",
+      "evidence": [
+        "src/personalization/CrossInkLibraryImport.h",
+        "src/personalization/LibraryViewSettings.h",
+        "test/test_crossink_library.py"
+      ]
+    },
+    {
+      "handling": "conditional",
+      "keys": [
+        "uiTheme",
+        "swapLibraryFileBrowser"
+      ],
+      "behavior": "Translate all eight themes; Carousel requires its flag. The swap preference applies only to RC2 Minimal/Dashboard.",
+      "evidence": [
+        "src/personalization/CrossInkLibraryImport.h",
+        "test/test_crossink_library.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "pinchFontResizeEnabled",
+        "twoFingerRotationEnabled",
+        "disablePageTurnGestures",
+        "pageTurnGesture",
+        "previousPageGesture",
+        "leftEdgeUp",
+        "leftEdgeDown",
+        "rightEdgeUp",
+        "rightEdgeDown",
+        "twoFingerSwipeUp",
+        "twoFingerSwipeDown",
+        "twoFingerSwipeLeft",
+        "twoFingerSwipeRight"
+      ],
+      "behavior": "Translate gesture controls and edge actions; conflicting two-finger groups retain current bindings.",
+      "evidence": [
+        "src/personalization/CrossInkControlImport.h",
+        "src/personalization/ReaderGestureJson.h"
+      ]
+    },
+    {
+      "handling": "open",
+      "keys": [
+        "disableReaderTouchscreen"
+      ],
+      "behavior": "Disabling maps directly, but enabling currently requires the older touchReaderControls field. RC2 no longer saves that field, so its normal enabled setting cannot enable native reader touch during replacement. Resolve this controls-import gap without removing Quick Actions ownership protections.",
+      "evidence": [
+        "src/personalization/CrossInkControlImport.h",
+        "test/controls_menu/test_handoff.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "sideButtonUpShort",
+        "sideButtonUpLong",
+        "sideButtonDownShort",
+        "sideButtonDownLong",
+        "sideButtonChordAction",
+        "sideButtonOrientationAware",
+        "shortPwrBtn",
+        "longPwrBtn",
+        "powerChordAction",
+        "homeButtonInReaderEnabled",
+        "homeButtonTapAction",
+        "homeButtonLongPressAction",
+        "homeButtonDoubleTapAction"
+      ],
+      "behavior": "Translate supported X4 Pro side, Power, chord, and Home catalogs while retaining Quick Actions ownership.",
+      "evidence": [
+        "src/personalization/CrossInkControlImport.h",
+        "docs/downstream/RC_SHORTCUT_AUDIT.md"
+      ]
+    },
+    {
+      "handling": "conditional",
+      "keys": [
+        "quickActionSlots",
+        "quickActionsTrigger"
+      ],
+      "behavior": "All five slots import together; unavailable actions reject the group. Inspect front-only owners for conflicts without creating X4 Pro inputs.",
+      "evidence": [
+        "src/personalization/LegacyQuickOwner.h",
+        "src/personalization/CrossInkControlImport.h",
+        "docs/downstream/RC_SHORTCUT_AUDIT.md"
+      ]
+    },
+    {
+      "handling": "conditional",
+      "keys": [
+        "readerStatusBars",
+        "xtcStatusBarMode",
+        "statusBarChapterPageCount",
+        "statusBarBookProgressPercentage",
+        "statusBarBookPercentageFormat",
+        "statusBarProgressBar",
+        "statusBarProgressBarThickness",
+        "statusBarTitle",
+        "statusBarBattery",
+        "statusBarTimeLeft",
+        "hideClock"
+      ],
+      "behavior": "Translate custom version-1 bars or legacy flat fields, including XTC placement/compatibility. Stable-page requests reject the group; chapter time requires its flag. hideClock maps reader-clock behavior only.",
+      "evidence": [
+        "src/personalization/CrossInkBarImport.h",
+        "docs/downstream/RC2_READER_BARS.md",
+        "test/test_crossink_flat_bars.py"
+      ]
+    },
+    {
+      "handling": "open",
+      "keys": [
+        "forceParagraphIndents"
+      ],
+      "behavior": "RC2 conditionally keeps embedded CSS indents with extra paragraph spacing. Native paragraphIndentSpaces controls a fixed space count and is not equivalent. Resolve selected-layout compatibility before closing G3.",
+      "evidence": [
+        "lib/Epub/Epub/ParsedText.cpp",
+        "docs/downstream/SETTINGS_MIGRATION.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "focusReadingEnabled",
+        "guideReadingEnabled"
+      ],
+      "behavior": "Deferred A6. Retain source values; Safe Mode preserves underlying compatible per-book values without enabling deferred controls.",
+      "evidence": [
+        "docs/downstream/BOOK_SETTINGS.md",
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "stablePageNumbers",
+        "publisherPageNumbers"
+      ],
+      "behavior": "Deferred A8. Reject incompatible bar imports and preserve source data.",
+      "evidence": [
+        "src/personalization/CrossInkBarImport.h",
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "customBootscreenEnabled"
+      ],
+      "behavior": "Deferred E3.",
+      "evidence": [
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "publisherFonts",
+        "sdFontSizeRange",
+        "filenameFallbackFont"
+      ],
+      "behavior": "Deferred font pack/engine work E5/E6; no raw font-ID conversion.",
+      "evidence": [
+        "docs/downstream/BOOK_SETTINGS.md",
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "frontlightScheduleEnabled",
+        "frontlightScheduleStart",
+        "frontlightScheduleEnd"
+      ],
+      "behavior": "Deferred E7; immediate frontlight state imports separately.",
+      "evidence": [
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "dateFormat",
+        "dateSeparator",
+        "displayStatusBar",
+        "displayBatteryStyle",
+        "displayStatusBarTextSize"
+      ],
+      "behavior": "Deferred E8 non-reader display/date controls.",
+      "evidence": [
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "deviceName"
+      ],
+      "behavior": "Deferred E9.",
+      "evidence": [
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "later",
+      "keys": [
+        "dictionaryFont",
+        "dictionaryFontSize"
+      ],
+      "behavior": "Deferred F3 dictionary typography.",
+      "evidence": [
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    },
+    {
+      "handling": "board-excluded",
+      "keys": [
+        "frontButtonBack",
+        "frontButtonConfirm",
+        "frontButtonLeft",
+        "frontButtonRight",
+        "frontButtonLeftLong",
+        "frontButtonRightLong",
+        "frontButtonOrientationAware",
+        "readerFrontButtonsEnabled",
+        "readerFrontButtonBack",
+        "readerFrontButtonConfirm",
+        "readerFrontButtonLeft",
+        "readerFrontButtonRight",
+        "longPressBackAction",
+        "longPressMenuAction",
+        "menuNavigation",
+        "slideSwitchAction"
+      ],
+      "behavior": "RC2 exposes Directional/Classic only with front buttons. The pinned X4 Pro has Up, Down, Power, touch, and no front cluster/slide switch. Retain native SDK menu navigation.",
+      "evidence": [
+        "freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h",
+        "docs/downstream/RC_SHORTCUT_AUDIT.md"
+      ]
+    },
+    {
+      "handling": "board-excluded",
+      "keys": [
+        "tiltPageTurn",
+        "tiltPageTurnDirection",
+        "tiltNextPageOnly",
+        "tiltSensitivity",
+        "tiltPageTurnDirectionSchema"
+      ],
+      "behavior": "The pinned X4 Pro profile has no IMU; do not present motion controls as usable hardware.",
+      "evidence": [
+        "freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h",
+        "lib/hal/HalTiltSensor.cpp"
+      ]
+    },
+    {
+      "handling": "preserve-native",
+      "keys": [
+        "clockDateHasBeenSynced",
+        "clockHasBeenSynced",
+        "clockUtcOffsetQ"
+      ],
+      "behavior": "Keep current clock/time-zone/sync configuration; 12/24-hour format imports separately.",
+      "evidence": [
+        "docs/downstream/SETTINGS_MIGRATION.md"
+      ]
+    },
+    {
+      "handling": "preserve-native",
+      "keys": [
+        "koCustomHeader1",
+        "koCustomHeader2",
+        "koMatchMethod",
+        "koPassword",
+        "koSendMetadata",
+        "koServerType",
+        "koServerUrl",
+        "koSyncBehavior",
+        "koUsername",
+        "opdsDownloadFolder",
+        "wifiTransmitPower"
+      ],
+      "behavior": "Keep native service/network configuration and credentials. RC2 Dynamic catalog entries may use separate stores rather than settings.json.",
+      "evidence": [
+        "docs/downstream/SETTINGS_MIGRATION.md"
+      ]
+    },
+    {
+      "handling": "preserve-native",
+      "keys": [
+        "language",
+        "languageCacheGeneration",
+        "keyboardLayouts",
+        "pluginsEnabled",
+        "pluginHubPromptHidden"
+      ],
+      "behavior": "Keep native language/cache, keyboard, and plugin state; foreign IDs can invalidate configuration or disable capabilities.",
+      "evidence": [
+        "docs/downstream/SETTINGS_MIGRATION.md"
+      ]
+    },
+    {
+      "handling": "skip",
+      "keys": [
+        "nearbyReceiveFolder"
+      ],
+      "behavior": "Nearby device-to-device sync is explicitly skipped D5.",
+      "evidence": [
+        "docs/downstream/FEATURE_PARITY.md"
+      ]
+    }
+  ]
+}

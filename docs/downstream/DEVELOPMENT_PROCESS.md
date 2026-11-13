@@ -141,6 +141,7 @@ These are check durations, not coding speed or total development time.
 | November 13 temporary reader-bar hiding | Full run 2359/2360 in 110.46 s; stale XTC menu fixture fixed, then 32 affected passed in 3.18 s. Tap routing and three-profile preference imports passed both sanitizers | 135.32 s; standard X4 Pro, RAM 113140, flash 5678794; test-only fixture correction reused this build |
 | November 13 custom-bar text sizes | Full run 2359/2360 in 108.89 s; progress-thickness assumption corrected in the new fixture, then 91 affected passed in 2.65 s. Expanded geometry and imports passed both sanitizers | 130.85 s; standard X4 Pro, RAM 113140, flash 5679894; final fixture-only matrix reused the firmware build |
 | November 13 XTC bar placements and render passes | 2364 full: 96.24 s. Overlays, 70 policy cases, legacy imports in both profiles, and padded render/sleep passes passed both sanitizers | 102.62 s; standard X4 Pro, RAM 113148, flash 5681958; initial 53.40 s attempt failed on a local-header include, then corrected |
+| November 13 settings inventory and source-drift audit | All 157 catalog/save keys classified once; RC2 matches all eight reviewed blobs; earlier RC correctly flags six changed files. Snapshot checks took about 0.4 s each | Not repeated: host-only script and documentation; firmware inputs unchanged |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
