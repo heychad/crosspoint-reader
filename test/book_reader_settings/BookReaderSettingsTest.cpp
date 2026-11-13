@@ -224,12 +224,13 @@ TEST_F(BookSettings, CrossInkControlsTransactionPublishesTouchGesturesAndKeepsSo
 
 TEST_F(BookSettings, CrossInkLibraryImportPreservesOtherSettingsAndBacksUpOriginal) {
   constexpr char primary[] = "/.crosspoint/settings.json";
-  const std::string original = R"({"libraryShowEpub":1,"fileBrowserDisplay":1,"pluginsEnabled":1})";
+  const std::string original =
+      R"({"libraryShowEpub":1,"fileBrowserDisplay":1,"libraryListExpanded":1,"pluginsEnabled":1})";
   const std::string legacy =
       R"({"libraryShowSeries":0,"libraryShowGenre":1,"libraryShowEpub":0,"libraryShowXtc":0,"libraryShowTxt":1,
-    "libraryShowMarkdown":0,"libraryHideFinishedBooks":1,"hideFileExtension":1,"fileBrowserDisplay":0,
+    "libraryShowMarkdown":0,"libraryHideFinishedBooks":1,"hideFileExtension":1,"fileBrowserPreview":0,
     "recentBooksView":1,"uiTheme":5,"swapLibraryFileBrowser":1,"pluginsEnabled":0,
-    "libraryUseMetadata":0,"showHiddenFiles":1,"removeReadBooksFromRecents":1,"moveFinishedToReadFolder":1})";
+    "libraryUseMetadata":0,"showHiddenFiles":1,"removeReadBooksFromRecents":1,"moveFinishedToReadFolder":1,"libraryListExpanded":0})";
   put(primary, original);
   put(crossinkimport::SOURCE_PATH, legacy);
   JsonDocument proposed;
@@ -250,6 +251,8 @@ TEST_F(BookSettings, CrossInkLibraryImportPreservesOtherSettingsAndBacksUpOrigin
   EXPECT_EQ(persisted["libraryHideFinishedBooks"].as<int>(), 1);
   EXPECT_EQ(persisted["hideFileExtension"].as<int>(), 1);
   EXPECT_EQ(persisted["fileBrowserDisplay"].as<int>(), 0);
+  EXPECT_EQ(persisted["libraryListExpanded"].as<int>(), 0);
+  EXPECT_TRUE(persisted["fileBrowserPreview"].isUnbound());
   EXPECT_EQ(persisted["recentBooksView"].as<int>(), 1);
   EXPECT_EQ(persisted["uiTheme"].as<int>(), 5);
   EXPECT_EQ(persisted["libraryFirstOnHome"].as<int>(), 1);
@@ -1423,7 +1426,7 @@ TEST_F(BookSettings, CrossInkPreferencesPublishNewMappingsAndPreserveSource) {
   constexpr char primary[] = "/.crosspoint/settings.json";
   const std::string original = R"({"pluginsEnabled":1,"frontlightBrightness":50})";
   const std::string legacy =
-      R"({"characterSpacing":9,"imageRendering":0,"imageGrayscale":0,"frontlightBrightness":85,"frontlightWarmth":35,"frontlightOn":1,"pluginsEnabled":0,"sdFontFamilyName":"Literata","fontSize":21})";
+      R"({"characterSpacing":9,"imageRendering":0,"imageGrayscale":0,"frontlightBrightness":85,"frontlightWarmth":35,"frontlightOn":1,"pluginsEnabled":0,"sdFontFamilyName":"Literata","fontSize":21,"readerDarkMode":1,"sleepTimeout":4})";
   put(primary, original);
   put(crossinkimport::SOURCE_PATH, legacy);
   JsonDocument proposed;
@@ -1442,6 +1445,10 @@ TEST_F(BookSettings, CrossInkPreferencesPublishNewMappingsAndPreserveSource) {
   EXPECT_EQ(persisted["frontlightBrightness"].as<int>(), 85);
   EXPECT_EQ(persisted["frontlightWarmth"].as<int>(), 35);
   EXPECT_EQ(persisted["frontlightOn"].as<int>(), 1);
+  EXPECT_EQ(persisted["screenInverted"].as<int>(), 1);
+  EXPECT_EQ(persisted["sleepTimeoutMinutes"].as<int>(), 30);
+  EXPECT_TRUE(persisted["readerDarkMode"].isUnbound());
+  EXPECT_TRUE(persisted["sleepTimeout"].isUnbound());
   EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
   EXPECT_STREQ(persisted["sdFontFamilyName"].as<const char*>(), "Literata");
   EXPECT_EQ(persisted["fontSize"].as<int>(), 21);

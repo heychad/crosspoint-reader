@@ -59,6 +59,16 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     proposed[key] = value;
     changed = true;
   };
+  // A present modern source field owns its value, even when malformed.
+  const auto oldDark = legacy["readerDarkMode"];
+  if (legacy["screenInverted"].isUnbound() && oldDark.is<uint8_t>() && oldDark.as<uint8_t>() <= 1)
+    stageMapped("screenInverted", oldDark.as<uint8_t>());
+  const auto oldSleep = legacy["sleepTimeout"];
+  if (legacy["sleepTimeoutMinutes"].isUnbound() && oldSleep.is<uint8_t>()) {
+    constexpr uint8_t minutes[] = {1, 5, 10, 15, 30};
+    const auto value = oldSleep.as<uint8_t>();
+    if (value < sizeof(minutes)) stageMapped("sleepTimeoutMinutes", minutes[value]);
+  }
   const auto font = legacy["sdFontFamilyName"];
   if (font.is<const char*>()) {
     const auto name = font.as<JsonString>();

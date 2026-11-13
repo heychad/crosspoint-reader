@@ -1,5 +1,7 @@
 """Check preference import with and without experimental automatic backups."""
 from pathlib import Path
+import os
+import shlex
 import subprocess
 import tempfile
 
@@ -11,6 +13,42 @@ program = r'''
 #include <ArduinoJson.h>
 #include "personalization/CrossInkPreferencesImport.h"
 int main() {
+  for (const auto field : {std::tuple{"readerDarkMode","screenInverted",1},
+                           std::tuple{"sleepTimeout","sleepTimeoutMinutes",4}}) {
+    const auto [legacyKey,nativeKey,high] = field;
+    constexpr int minutes[] = {1,5,10,15,30};
+    for (int value=0; value<=high; ++value) {
+      JsonDocument old,next; old[legacyKey]=value; next.to<JsonObject>();
+      const int expected = high == 4 ? minutes[value] : value;
+      std::string source;serializeJson(old,source);
+      assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,false));
+      assert(next[nativeKey] == expected && next[legacyKey].isUnbound());
+      assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+      next[nativeKey]=nullptr;
+      assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,false));
+      assert(next[nativeKey].isNull());
+      assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+      assert(next[nativeKey] == expected);
+      std::string after;serializeJson(old,after);assert(after==source);
+      const int modern = high == 4 ? 12 : 1-value;
+      old[nativeKey]=modern;
+      assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+      assert(next[nativeKey] == modern);
+    }
+    for (const char* invalid : {"-1","256","1.0","true","null","\"1\"","[]","{}"}) {
+      JsonDocument old,next;
+      assert(!deserializeJson(old,std::string("{\"")+legacyKey+"\":"+invalid+"}"));
+      next[nativeKey]=7;
+      assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+      assert(next[nativeKey] == 7);
+      assert(!deserializeJson(old,std::string("{\"")+nativeKey+"\":"+invalid+",\""+legacyKey+"\":0}"));
+      assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+      assert(next[nativeKey] == 7);
+    }
+    JsonDocument old,next;old[legacyKey]=high+1;next.to<JsonObject>();
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+    assert(next[nativeKey].isUnbound());
+  }
   for (const auto& name : {std::string("Literata"), std::string("Font Name"), std::string("caf\xc3\xa9"), std::string(31, 'a')}) {
     JsonDocument old, next;
     old["sdFontFamilyName"] = name;
@@ -143,7 +181,8 @@ with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(program)
     for flag in ([], ['-DCROSSPOINT_EXPERIMENTAL_STATS_BACKUP=1'], ['-DCROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY=1']):
-        subprocess.run(['c++', '-std=c++20', *flag, '-I', str(root / 'src'),
+        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', *flag,
+                        *shlex.split(os.environ.get('CXXFLAGS', '')), '-I', str(root / 'src'),
                         '-I', str(root / '.pio/libdeps/x4pro/ArduinoJson/src'),
                         str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)

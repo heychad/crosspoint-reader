@@ -21,7 +21,8 @@ int main() {
   constexpr const char* keys[] = {
     "libraryUseMetadata", "showHiddenFiles", "removeReadBooksFromRecents", "moveFinishedToReadFolder",
     "libraryShowSeries", "libraryShowGenre", "libraryShowEpub", "libraryShowXtc", "libraryShowTxt",
-    "libraryShowMarkdown", "libraryHideFinishedBooks", "hideFileExtension", "fileBrowserDisplay", "recentBooksView"
+    "libraryShowMarkdown", "libraryHideFinishedBooks", "hideFileExtension", "fileBrowserDisplay", "recentBooksView",
+    "libraryListExpanded"
   };
   for (const char* key : keys) {
     for (int value : {0, 1}) {
@@ -50,6 +51,34 @@ int main() {
       current[key] = 0;
       const auto original = json(current);
       assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+      assert(json(current) == original);
+    }
+  }
+  for (int rows : {0,1}) {
+    JsonDocument legacy, current;
+    legacy["fileBrowserPreview"] = rows;
+    current.to<JsonObject>();
+    const auto source = json(legacy);
+    assert(crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(),current,false));
+    assert(current["fileBrowserDisplay"] == rows && current["fileBrowserPreview"].isUnbound());
+    assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(),current,true));
+    current["fileBrowserDisplay"] = nullptr;
+    assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(),current,false));
+    assert(current["fileBrowserDisplay"].isNull());
+    assert(crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(),current,true));
+    assert(current["fileBrowserDisplay"] == rows && json(legacy) == source);
+    legacy["fileBrowserDisplay"] = 1 - rows;
+    assert(crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(),current,true));
+    assert(current["fileBrowserDisplay"] == 1 - rows);
+    for (const char* invalid : {"-1","2","256","1.0","true","null","\"1\"","[]","{}"}) {
+      JsonDocument malformed;
+      assert(!deserializeJson(malformed,std::string("{\"fileBrowserDisplay\":")+invalid+",\"fileBrowserPreview\":1}"));
+      const auto original = json(current);
+      assert(!crossinkimport::stageLibrary(malformed.as<JsonVariantConst>(),current,true));
+      assert(json(current) == original);
+      malformed.remove("fileBrowserDisplay");
+      assert(!deserializeJson(malformed,std::string("{\"fileBrowserPreview\":")+invalid+"}"));
+      assert(!crossinkimport::stageLibrary(malformed.as<JsonVariantConst>(),current,true));
       assert(json(current) == original);
     }
   }

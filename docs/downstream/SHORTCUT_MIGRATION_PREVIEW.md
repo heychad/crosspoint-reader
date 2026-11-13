@@ -54,7 +54,8 @@ folder. These paths need independent review and X4 Pro validation before use.
 **Import CrossInk library settings** under Settings > Library separately imports
 compatible series, genre, format and finished filters, recent-book layout,
 metadata use, hidden-file visibility, finished-book Recents removal and folder
-organization, filename extensions, file-browser row style, and supported home themes. Carousel
+organization, filename extensions, compact/expanded library rows, file-browser row
+style (including the older `fileBrowserPreview` name), and supported home themes. Carousel
 imports only when the experimental Carousel build is enabled. It uses the same backup and recovery process and
 does not change other preferences. Library-first order imports only when the
 source used CrossInk's Minimal or Dashboard home, where that preference applied.
@@ -64,10 +65,11 @@ entries in the web file manager. A metadata-mode change uses the existing index
 check and rebuilds when Library or Saved Items next opens.
 
 **Import CrossInk preferences** under Settings > Reader imports UI scale,
-statistics tracking, the reading idle threshold, refresh frequency, night mode,
-battery-percentage visibility, sleep timeout, supported sleep settings, frontlight brightness, warmth, and on/off state, and compatible reading layout
-settings. Line spacing imports only when it matches a supported preset; margins
-import when both axes match and fit the supported range. Only the default word
+statistics tracking, the reading idle threshold, refresh frequency, night mode
+(including older `readerDarkMode` saves), battery-percentage visibility, sleep
+timeout (minutes or the older five-value enum), supported sleep settings, frontlight brightness, warmth, and on/off state, and compatible reading layout
+settings. Line spacing imports only when it matches a supported preset. Each
+margin axis imports independently within the native 5–150-pixel range. Only the default word
 spacing maps directly. RC character spacing imports when it represents an
 exact whole-pixel value. Image display and its separate grayscale toggle map
 together to the native grayscale or black-and-white mode; invalid combinations

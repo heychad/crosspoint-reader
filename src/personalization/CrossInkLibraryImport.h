@@ -11,13 +11,21 @@ inline bool stageLibrary(JsonVariantConst legacy, JsonDocument& proposed, bool r
   for (const char* key : {"libraryUseMetadata", "showHiddenFiles", "removeReadBooksFromRecents",
                           "moveFinishedToReadFolder", "libraryShowSeries", "libraryShowGenre", "libraryShowEpub",
                           "libraryShowXtc", "libraryShowTxt", "libraryShowMarkdown", "libraryHideFinishedBooks",
-                          "hideFileExtension", "fileBrowserDisplay", "recentBooksView"}) {
+                          "hideFileExtension", "fileBrowserDisplay", "recentBooksView", "libraryListExpanded"}) {
     const auto source = legacy[key];
     const auto current = proposed[key];
     if (!source.is<uint8_t>() || source.as<uint8_t>() > 1 || (!replaceExisting && !current.isUnbound())) continue;
     const uint8_t value = source.as<uint8_t>();
     if (current.is<uint8_t>() && current.as<uint8_t>() == value) continue;
     proposed[key] = value;
+    changed = true;
+  }
+  const auto oldRows = legacy["fileBrowserPreview"];
+  const auto currentRows = proposed["fileBrowserDisplay"];
+  if (legacy["fileBrowserDisplay"].isUnbound() && oldRows.is<uint8_t>() && oldRows.as<uint8_t>() <= 1 &&
+      (replaceExisting || currentRows.isUnbound()) &&
+      (!currentRows.is<uint8_t>() || currentRows.as<uint8_t>() != oldRows.as<uint8_t>())) {
+    proposed["fileBrowserDisplay"] = oldRows.as<uint8_t>();
     changed = true;
   }
   // CrossInk only applied this setting to its Minimal and Dashboard homes.
