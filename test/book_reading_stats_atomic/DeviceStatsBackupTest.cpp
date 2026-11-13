@@ -6,6 +6,7 @@
 #include <StatsSessionLease.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <string>
 #include <vector>
@@ -63,6 +64,60 @@ TEST_F(DeviceStatsBackupTest, CreatesVerifiedCompatibleSnapshot) {
   EXPECT_EQ(actual[5], 0xd2U);  // 1234 seconds, little-endian.
   EXPECT_EQ(actual[6], 0x04U);
   EXPECT_EQ(actual[67], 7U);  // Calendar-history byte.
+}
+
+TEST_F(DeviceStatsBackupTest, ManualBackupRejectsSyncFailureEvenWhenReadbackMatches) {
+  ASSERT_TRUE(statsbackup::createDeviceBackup(fixture()));
+  const auto prior = names().at(0);
+  auto failedName = prior;
+  failedName.replace(9, 10, "0000000009");
+  const auto failedPath = std::string(DIRECTORY) + "/" + failedName;
+  ++testMillis;
+  Storage.failNextNewSyncFor(failedPath);
+  EXPECT_FALSE(statsbackup::createDeviceBackup(fixture()));
+  EXPECT_TRUE(Storage.exists(failedPath.c_str()));
+  GlobalReadingStats saved;
+  ASSERT_TRUE(statsbackup::readDeviceBackup(prior, saved));
+  EXPECT_EQ(saved.totalReadingSeconds, 1234U);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 1234U);
+}
+
+TEST_F(DeviceStatsBackupTest, ResetRequiresASyncedPreOperationBackup) {
+  ASSERT_TRUE(statsbackup::createDeviceBackup(fixture()));
+  auto failedName = names().at(0);
+  failedName.replace(9, 10, "0000000009");
+  const auto path = std::string(DIRECTORY) + "/" + failedName;
+  ++testMillis;
+  Storage.failNextNewSyncFor(path);
+  EXPECT_EQ(statsbackup::resetDeviceStats(), statsbackup::RestoreResult::BackupFailed);
+  EXPECT_TRUE(Storage.exists(path.c_str()));
+  const auto current = GlobalReadingStats::loadReadOnly();
+  EXPECT_EQ(current.totalReadingSeconds, 1234U);
+  EXPECT_EQ(current.totalSessions, 3U);
+  EXPECT_EQ(current.readingHistoryBits[2], 7U);
+}
+
+TEST_F(DeviceStatsBackupTest, RestoreRequiresASyncedPreOperationBackup) {
+  ASSERT_TRUE(statsbackup::createDeviceBackup(fixture()));
+  const auto selected = names().at(0);
+  auto current = fixture();
+  current.totalReadingSeconds = 2000;
+  ASSERT_TRUE(current.save());
+  ++testMillis;
+  ASSERT_TRUE(statsbackup::createDeviceBackup(current));
+  const auto backups = names();
+  ASSERT_EQ(backups.size(), 2U);
+  auto failedName = backups[0] == selected ? backups[1] : backups[0];
+  failedName.replace(9, 10, "0000000010");
+  const auto path = std::string(DIRECTORY) + "/" + failedName;
+  ++testMillis;
+  Storage.failNextNewSyncFor(path);
+  EXPECT_EQ(statsbackup::restoreDeviceBackup(selected), statsbackup::RestoreResult::BackupFailed);
+  EXPECT_TRUE(Storage.exists(path.c_str()));
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 2000U);
+  GlobalReadingStats old;
+  ASSERT_TRUE(statsbackup::readDeviceBackup(selected, old));
+  EXPECT_EQ(old.totalReadingSeconds, 1234U);
 }
 
 TEST_F(DeviceStatsBackupTest, ReadsVerifiedBackupWithoutChangingCurrentStatistics) {
@@ -464,4 +519,99 @@ TEST_F(DeviceStatsBackupTest, ReadsSequencedUndatedSnapshotWithChecksum) {
   GlobalReadingStats decoded;
   EXPECT_EQ(statsbackup::inspectDeviceBackup(sequenced, decoded), statsbackup::BackupIntegrity::Checked);
   EXPECT_EQ(decoded.totalReadingSeconds, fixture().totalReadingSeconds);
+}
+
+TEST_F(DeviceStatsBackupTest, ReadsRc2V4TotalsAndHistoryWithoutAdoptingCounterIdentity) {
+  ASSERT_TRUE(Storage.mkdir(DIRECTORY));
+  std::array<uint8_t, 175> payload{};
+  payload[0] = 4;
+  const auto put32 = [&](size_t at, uint32_t value) {
+    for (unsigned i = 0; i < 4; ++i) payload[at + i] = static_cast<uint8_t>(value >> (8 * i));
+  };
+  put32(1, 23);
+  put32(5, 6789);
+  put32(9, 87);
+  put32(13, 4);
+  for (size_t i = 0; i < 4; ++i) put32(17 + 4 * i, 100 + i);
+  for (size_t i = 0; i < 7; ++i) put32(33 + 4 * i, 200 + i);
+  put32(61, 19123);
+  for (size_t i = 0; i < 92; ++i) payload[65 + i] = static_cast<uint8_t>(11 * i + 3);
+  payload[157] = 0x34;
+  payload[158] = 0x12;
+  for (size_t i = 159; i < payload.size(); ++i) payload[i] = static_cast<uint8_t>(0xa0 + i - 159);
+  const std::string path = std::string(DIRECTORY) + "/stats_2026-11-12.bin";
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+  ASSERT_EQ(file.write(payload.data(), payload.size()), payload.size());
+  ASSERT_TRUE(file.close());
+  GlobalReadingStats selected;
+  EXPECT_EQ(statsbackup::inspectDeviceBackup("stats_2026-11-12.bin", selected),
+            statsbackup::BackupIntegrity::LegacyUnverified);
+  EXPECT_EQ(selected.totalSessions, 23U);
+  EXPECT_EQ(selected.totalReadingSeconds, 6789U);
+  EXPECT_EQ(selected.totalPagesTurned, 87U);
+  EXPECT_EQ(selected.completedBooks, 4U);
+  for (size_t i = 0; i < 4; ++i) EXPECT_EQ(selected.timeOfDaySeconds[i], 100 + i);
+  for (size_t i = 0; i < 7; ++i) EXPECT_EQ(selected.dayOfWeekSeconds[i], 200 + i);
+  EXPECT_EQ(selected.readingHistoryAnchorDay, 19123U);
+  for (size_t i = 0; i < 92; ++i) EXPECT_EQ(selected.readingHistoryBits[i], payload[65 + i]);
+  EXPECT_EQ(selected.longestReadingStreak, 0x1234U);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 1234U);
+  GlobalReadingStats native;
+  EXPECT_FALSE(GlobalReadingStats::decode(payload.data(), payload.size(), native));
+  EXPECT_EQ(statsbackup::restoreDeviceBackup("stats_2026-11-12.bin"), statsbackup::RestoreResult::Restored);
+  HalFile original, saved;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", path, original));
+  ASSERT_EQ(original.fileSize(), payload.size());
+  std::array<uint8_t, 175> originalBytes{};
+  ASSERT_EQ(original.read(originalBytes.data(), originalBytes.size()), static_cast<int>(originalBytes.size()));
+  ASSERT_TRUE(original.close());
+  EXPECT_EQ(originalBytes, payload);
+  ASSERT_TRUE(Storage.openFileForRead("TEST", "/.crosspoint/global_stats.bin", saved));
+  ASSERT_EQ(saved.fileSize(), 159U);
+  std::array<uint8_t, 159> savedBytes{}, expected{};
+  ASSERT_EQ(saved.read(savedBytes.data(), savedBytes.size()), static_cast<int>(savedBytes.size()));
+  ASSERT_TRUE(saved.close());
+  std::copy_n(payload.data(), expected.size(), expected.data());
+  expected[0] = 3;
+  EXPECT_EQ(savedBytes, expected);
+}
+
+TEST_F(DeviceStatsBackupTest, Rc2V4BackupRequiresExactLengthVersionAndLegacyName) {
+  ASSERT_TRUE(statsbackup::createDeviceBackup(fixture()));
+  const auto checked = names().at(0);
+  const std::string legacyPath = std::string(DIRECTORY) + "/stats_2026-11-12.bin";
+  std::array<uint8_t, 176> payload{};
+  payload[0] = 4;
+  for (size_t length = 0; length <= payload.size(); ++length) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", legacyPath, file));
+    ASSERT_EQ(file.write(payload.data(), length), length);
+    ASSERT_TRUE(file.close());
+    GlobalReadingStats selected;
+    selected.totalReadingSeconds = 9999;
+    const auto result = statsbackup::inspectDeviceBackup("stats_2026-11-12.bin", selected);
+    EXPECT_EQ(result, length == 175 ? statsbackup::BackupIntegrity::LegacyUnverified
+                                    : statsbackup::BackupIntegrity::Unavailable);
+    EXPECT_EQ(selected.totalReadingSeconds, length == 175 ? 0U : 9999U);
+  }
+  for (uint8_t version : {3, 5, 255}) {
+    payload[0] = version;
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", legacyPath, file));
+    ASSERT_EQ(file.write(payload.data(), 175), 175U);
+    ASSERT_TRUE(file.close());
+    GlobalReadingStats selected;
+    selected.totalReadingSeconds = 9999;
+    EXPECT_EQ(statsbackup::inspectDeviceBackup("stats_2026-11-12.bin", selected),
+              statsbackup::BackupIntegrity::Unavailable);
+    EXPECT_EQ(selected.totalReadingSeconds, 9999U);
+  }
+  payload[0] = 4;
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", std::string(DIRECTORY) + "/" + checked, file));
+  ASSERT_EQ(file.write(payload.data(), 175), 175U);
+  ASSERT_TRUE(file.close());
+  GlobalReadingStats selected;
+  EXPECT_EQ(statsbackup::inspectDeviceBackup(checked, selected), statsbackup::BackupIntegrity::Unavailable);
 }

@@ -97,8 +97,9 @@ bool createBookBackupUnlocked(const std::string& cachePath, const BookReadingSta
   HalFile file = Storage.open(target.c_str(), O_WRONLY | O_CREAT | O_EXCL);
   if (!file) return false;
   const bool written = file.write(bytes.data(), bytes.size()) == bytes.size();
-  file.flush();
-  if (!file.close() || !written) return false;
+  const bool synced = written && file.sync();
+  const bool closed = file.close();
+  if (!written || !synced || !closed) return false;
   if (!readMatches(target, bytes)) return false;
   if (createdPath) *createdPath = target;
   return true;

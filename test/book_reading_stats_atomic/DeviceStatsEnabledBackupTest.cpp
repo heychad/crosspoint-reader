@@ -53,6 +53,19 @@ TEST_F(DeviceStatsEnabledBackupTest, ManualUsesPersistedSequenceAndPrunesItsOwnG
   EXPECT_EQ(statsbackup::inspectDeviceBackup(prunedName, read), statsbackup::BackupIntegrity::Checked);
   EXPECT_EQ(read.totalReadingSeconds, 123U);
 }
+TEST_F(DeviceStatsEnabledBackupTest, FailedManualSyncDoesNotStartRetention) {
+  ASSERT_TRUE(statsbackup::createDeviceBackup(GlobalReadingStats::loadReadOnly()));
+  const auto prior = prunedName;
+  auto failedName = prior;
+  failedName.replace(9, 10, "0000000043");
+  const auto path = std::string("/.crossink-stats-backup/") + failedName;
+  nextSequence = 43;
+  Storage.failNextNewSyncFor(path);
+  EXPECT_FALSE(statsbackup::createDeviceBackup(GlobalReadingStats::loadReadOnly()));
+  EXPECT_EQ(prunedName, prior);
+  EXPECT_TRUE(Storage.exists(path.c_str()));
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 123U);
+}
 TEST_F(DeviceStatsEnabledBackupTest, ClocklessDeduplicatesLatestThenAdvancesAfterChangedTotals) {
   EXPECT_EQ(statsbackup::createAutomaticDeviceBackup({}), statsbackup::AutomaticBackupResult::Saved);
   EXPECT_TRUE(prunedName.starts_with("stats_cp_0000000042_U_"));

@@ -6,7 +6,7 @@ not back up individual book statistics or reading positions.
 
 The current snapshot must match the saved primary. Missing or unreadable
 statistics do not produce an empty replacement backup. Creation uses a new,
-exclusive file and verifies the bytes before reporting success. Existing and
+exclusive file, checks sync and close, and verifies the bytes before reporting success. Existing and
 incomplete files are preserved. A content hash detects corruption; it does not
 prove the SD card has committed the write to durable storage.
 
@@ -95,3 +95,44 @@ new undated name and the writer's deduplication and failure paths. The FAT/exFAT
 checks independent manual/undated pruning and deriving the next sequence.
 The X4 Pro build with backups enabled passed in 69.98 seconds. Release review
 and device validation are still required.
+
+## RC2 backup compatibility and sync failures
+
+The pinned CrossInk RC2 `959e3d1575cf` exports version 4 as 175 bytes: the
+version-3 totals/history layout followed by a 16-byte counter identity.
+Explicit restore now accepts that exact legacy-named payload, maps its totals
+and history into native version 3, and preserves the complete source file.
+It does not adopt the foreign counter identity or change native primary/synced
+statistics formats. The confirmation retains the integrity warning and states
+that reader identity stays unchanged. This is explicit backup translation,
+not automatic cross-firmware identity reconciliation or aggregation.
+
+The read buffer grows from 159 to 175 bytes; there is no new task, heap buffer,
+or persistent format. Unknown versions, truncations, suffix bytes, and a
+175-byte file under a native checked filename are rejected without changing
+output. A compile-time assertion requires reviewing this translation if the
+native format changes.
+
+Manual book/device backups now require successful sync as well as write,
+close, and readback. Two regression tests reproduced the previous false
+success when sync failed but cached bytes were readable. Restore and reset now
+return BackupFailed before replacing current statistics in this case. The
+failed new file, selected source, and prior backup remain; automatic retention
+does not start after a failed manual backup.
+
+The 231 focused checks passed in 6.01 seconds, including default/daily cases,
+restore UI configurations, retention, and FAT/exFAT transient/fail-stop writes.
+The real-filesystem fixture now restores RC2 v4 snapshots and checks all 175
+source bytes after failures and remounts. Sixty book/device checks and five
+automatic-backup-enabled checks passed AddressSanitizer and
+UndefinedBehaviorSanitizer. The semantic fixture independently checks totals,
+time buckets, weekday buckets, history, streaks, and exact native output.
+Logs are `/tmp/x4-c5-final-checks.log` and `/tmp/x4-c5-sanitizers.log`.
+
+The latest default X4 Pro build passed in 69.34 seconds: 113,148 static RAM
+bytes and 5,683,694 flash bytes. The combined ten-flag configuration is recorded
+in [the development process](DEVELOPMENT_PROCESS.md#combined-statistics-profile).
+The ten-flag X4 Pro build passed in 166.38 seconds, with 113,076 static RAM
+bytes and 5,781,286 flash bytes (`/tmp/x4-c5-enabled-firmware.log`). The selected
+backup/restore/reset core is implemented; cumulative release review, latency
+and memory measurements, and physical-device validation remain.

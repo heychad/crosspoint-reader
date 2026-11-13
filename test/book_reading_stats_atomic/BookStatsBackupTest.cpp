@@ -192,6 +192,61 @@ TEST_F(BookStatsBackupTest, AmbiguousCompletedResetRetainsJournalAndBackupForRev
   EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::Unavailable);
 }
 
+TEST_F(BookStatsBackupTest, ManualBackupRejectsSyncFailureEvenWhenReadbackMatches) {
+  ASSERT_TRUE(statsbackup::createBookBackup(CACHE, fixture()));
+  const auto prior = names().at(0);
+  auto failedName = prior;
+  failedName.replace(5, 10, "0000000009");
+  const auto failedPath = BACKUPS + "/" + failedName;
+  ++testMillis;
+  Storage.failNextNewSyncFor(failedPath);
+  EXPECT_FALSE(statsbackup::createBookBackup(CACHE, fixture()));
+  EXPECT_TRUE(Storage.exists(failedPath.c_str()));
+  BookReadingStats saved;
+  ASSERT_TRUE(statsbackup::readBookBackup(CACHE, prior, saved));
+  EXPECT_EQ(saved.totalReadingSeconds, 1234U);
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(CACHE)).totalReadingSeconds, 1234U);
+}
+
+TEST_F(BookStatsBackupTest, ResetRequiresASyncedPreOperationBackup) {
+  ASSERT_TRUE(statsbackup::createBookBackup(CACHE, fixture()));
+  auto failedName = names().at(0);
+  failedName.replace(5, 10, "0000000009");
+  const auto path = BACKUPS + "/" + failedName;
+  GlobalReadingStats global;
+  global.totalReadingSeconds = 4321;
+  ASSERT_TRUE(global.save());
+  ++testMillis;
+  Storage.failNextNewSyncFor(path);
+  EXPECT_EQ(statsbackup::resetBookStatistics(CACHE, BOOK_PATH), statsbackup::BookRestoreResult::BackupFailed);
+  EXPECT_TRUE(Storage.exists(path.c_str()));
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(CACHE)).totalReadingSeconds, 1234U);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 4321U);
+}
+
+TEST_F(BookStatsBackupTest, RestoreRequiresASyncedPreOperationBackup) {
+  ASSERT_TRUE(statsbackup::createBookBackup(CACHE, fixture()));
+  const auto selected = names().at(0);
+  auto current = fixture();
+  current.totalReadingSeconds = 2000;
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(CACHE), current));
+  ++testMillis;
+  ASSERT_TRUE(statsbackup::createBookBackup(CACHE, current));
+  const auto backups = names();
+  ASSERT_EQ(backups.size(), 2U);
+  auto failedName = backups[0] == selected ? backups[1] : backups[0];
+  failedName.replace(5, 10, "0000000010");
+  const auto path = BACKUPS + "/" + failedName;
+  ++testMillis;
+  Storage.failNextNewSyncFor(path);
+  EXPECT_EQ(statsbackup::restoreBookBackup(CACHE, BOOK_PATH, selected), statsbackup::BookRestoreResult::BackupFailed);
+  EXPECT_TRUE(Storage.exists(path.c_str()));
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(CACHE)).totalReadingSeconds, 2000U);
+  BookReadingStats old;
+  ASSERT_TRUE(statsbackup::readBookBackup(CACHE, selected, old));
+  EXPECT_EQ(old.totalReadingSeconds, 1234U);
+}
+
 TEST_F(BookStatsBackupTest, ReadsVerifiedSnapshotForSelectedBook) {
   ASSERT_TRUE(statsbackup::createBookBackup(CACHE, fixture()));
   const auto name = names().at(0);

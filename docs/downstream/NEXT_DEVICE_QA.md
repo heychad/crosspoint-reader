@@ -313,3 +313,14 @@ behavior; their broader feature parity remains in the Later scope.
 - Map Join Network, Create Hotspot, and Calibre Wireless in turn. Each should
   enter its existing flow directly. Exit and reopen the book at the same
   position. General File Transfer should still show its mode picker.
+
+## Statistics backup/restore smoke check
+
+On the reviewed enabled candidate, back up device totals, then sleep/wake once
+with automatic backups enabled. Check dated or clockless snapshots without
+changing the book passage. In a disposable book, make a manual backup, change
+one supported statistic, close the reader, and restore through Statistics.
+Confirm the preview and verify totals and the unchanged passage. Test reset
+only on disposable statistics. For an RC2 v4 source, retain an external copy,
+check the integrity/identity notice, and verify all 175 source bytes remain.
+Failed backups must not be reported Saved or allow reset/restore to proceed.

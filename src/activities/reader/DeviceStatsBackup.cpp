@@ -24,9 +24,10 @@ constexpr char DIRECTORY[] = "/.crossink-stats-backup";
 constexpr char DEVICE_STATS[] = "/.crosspoint/global_stats.bin";
 constexpr char DEVICE_STATS_BACKUP[] = "/.crosspoint/global_stats.bin.bak";
 
-uint64_t hashBytes(const std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE>& bytes) {
+template <size_t N>
+uint64_t hashBytes(const std::array<uint8_t, N>& bytes, const size_t length = N) {
   uint64_t hash = 14695981039346656037ULL;
-  for (const auto byte : bytes) hash = (hash ^ byte) * 1099511628211ULL;
+  for (size_t i = 0; i < length; ++i) hash = (hash ^ bytes[i]) * 1099511628211ULL;
   return hash;
 }
 
@@ -130,8 +131,9 @@ bool createDeviceBackupUnlocked(const GlobalReadingStats& stats, std::string* cr
   HalFile file = Storage.open(target.c_str(), O_WRONLY | O_CREAT | O_EXCL);
   if (!file) return false;
   const bool written = file.write(bytes->data(), bytes->size()) == bytes->size();
-  file.flush();
-  if (!file.close() || !written) return false;
+  const bool synced = written && file.sync();
+  const bool closed = file.close();
+  if (!written || !synced || !closed) return false;
   if (!verifiedFile(target.c_str(), *bytes)) return false;
   if (createdPath) *createdPath = target;
   return true;
@@ -255,15 +257,23 @@ statsbackup::BackupIntegrity statsbackup::inspectDeviceBackup(const std::string&
     if (Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Present ||
         !Storage.openFileForRead("STATS", path, file))
       return false;
-    std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> bytes{};
+    // RC2 appends a 16-byte counter identity to the unchanged v3 statistics.
+    // Translate only explicit backup imports; native stores keep their format.
+    static_assert(GlobalReadingStats::CURRENT_FILE_VERSION == 3 && GlobalReadingStats::CURRENT_FILE_SIZE == 159,
+                  "Review RC2 backup translation when the native statistics format changes");
+    constexpr size_t CROSSINK_V4_SIZE = 175;
+    std::array<uint8_t, CROSSINK_V4_SIZE> bytes{};
     const size_t size = file.fileSize();
     const bool readOk = size >= GlobalReadingStats::MIN_SUPPORTED_FILE_SIZE && size <= bytes.size() &&
-                        (!input.checked || size == bytes.size()) &&
+                        (!input.checked || size == GlobalReadingStats::CURRENT_FILE_SIZE) &&
                         file.read(bytes.data(), size) == static_cast<int>(size);
     const bool closed = file.close();
-    if (!readOk || !closed || (input.checked && hashBytes(bytes) != input.expectedHash)) return false;
+    if (!readOk || !closed || (input.checked && hashBytes(bytes, size) != input.expectedHash)) return false;
     GlobalReadingStats decoded;
-    if (!GlobalReadingStats::decode(bytes.data(), size, decoded)) return false;
+    const bool crossInkV4 = !input.checked && size == CROSSINK_V4_SIZE && bytes[0] == 4;
+    if (crossInkV4) bytes[0] = GlobalReadingStats::CURRENT_FILE_VERSION;
+    if (!GlobalReadingStats::decode(bytes.data(), crossInkV4 ? GlobalReadingStats::CURRENT_FILE_SIZE : size, decoded))
+      return false;
     input.output = decoded;
     input.result = input.checked ? BackupIntegrity::Checked : BackupIntegrity::LegacyUnverified;
     return true;

@@ -144,6 +144,7 @@ These are check durations, not coding speed or total development time.
 | November 13 settings inventory and source-drift audit | All 157 catalog/save keys classified once; RC2 matches all eight reviewed blobs; earlier RC correctly flags six changed files. Snapshot checks took about 0.4 s each | Not repeated: host-only script and documentation; firmware inputs unchanged |
 | November 13 RC2 reader-touch import | 59 affected: 0.09 s; 21 control/catalog cases passed both sanitizers. Production publication preserves exact source and native snapshot | 68.85 s; default X4 Pro, RAM 113148, flash 5681970 |
 | November 13 Book/Force paragraph indents | Full 2371: 80.23 s. Ten parser/scope sanitizer cases, three-profile preference imports, and 4367 decoder records pass both sanitizers. Initial five fixture failures corrected; fresh consistent sanitizer build replaces the mixed startup attempt | 116.41 s; default X4 Pro, RAM 113148, flash 5683630 |
+| November 13 backup sync and RC2 v4 restore | 231 focused: 6.01 s; 65 sanitizer cases; native FAT/exFAT faults preserve full RC2 source and prior snapshots. Two pre-fix sync regressions reproduced | 69.34 s; default X4 Pro, RAM 113148, flash 5683694; combined ten-flag profile: 166.38 s, RAM 113076, flash 5781286 |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
@@ -161,3 +162,31 @@ failed an earlier save assertion; its unchanged baseline passed. That extension
 was removed. New byte-preservation coverage uses the registered
 `BookReaderSettingsTest` transaction harness instead. The final focused run
 passes, and the fixture correction does not invalidate the unchanged firmware build.
+
+## Combined statistics profile
+
+Personal overrides remain in ignored `platformio.local.ini`. This standalone
+block reproduces the current ten-flag configuration without the earlier local
+inheritance chain. It does not include the unfinished sync, prefetch, or online
+update features and is not an installation candidate.
+
+```ini
+[env:x4pro-completion-automation-wip]
+extends = env:x4pro
+build_flags =
+  ${env:x4pro.build_flags}
+  -DCROSSPOINT_EXPERIMENTAL_COMPLETION=1
+  -DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT=1
+  -DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE=1
+  -DCROSSPOINT_EXPERIMENTAL_DAILY_STATS=1
+  -DCROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY=1
+  -DCROSSPOINT_EXPERIMENTAL_CAROUSEL=1
+  -DCROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE=1
+  -DCROSSPOINT_EXPERIMENTAL_CHAPTER_TIME=1
+  -DCROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION=1
+  -DCROSSPOINT_EXPERIMENTAL_STATS_BACKUP=1
+```
+
+Build with `pio run -e x4pro-completion-automation-wip`. The SDK pin and base
+X4 Pro dependency configuration stay unchanged. Keep its build result separate
+from the default profile and from device acceptance.

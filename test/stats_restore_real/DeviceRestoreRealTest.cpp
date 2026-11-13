@@ -10,6 +10,7 @@
 #include <StatsSessionLease.h>
 #include <common/FsBlockDeviceInterface.h>
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdio>
@@ -115,14 +116,15 @@ std::string backupName(uint32_t millisValue, const Bytes& bytes) {
            (unsigned long long)hash(bytes));
   return name;
 }
-bool matches(const std::string& path, const Bytes& expected) {
+template <size_t N>
+bool matches(const std::string& path, const std::array<uint8_t, N>& expected) {
   HalFile f;
   if (!Storage.openFileForRead("TEST", path, f)) return false;
-  Bytes got{};
+  std::array<uint8_t, N> got{};
   bool ok = f.fileSize() == got.size() && f.read(got.data(), got.size()) == int(got.size());
   return f.close() && ok && got == expected;
 }
-void exercise(bool exfat, bool failStop, bool legacy = false) {
+void exercise(bool exfat, bool failStop, bool legacy = false, bool rc2 = false) {
   Disk baseline;
   uint8_t scratch[512];
   if (exfat) {
@@ -137,6 +139,10 @@ void exercise(bool exfat, bool failStop, bool legacy = false) {
   prior.totalReadingSeconds = 2000;
   Bytes selectedBytes{}, previousBytes{};
   assert(saved.encode(selectedBytes) && prior.encode(previousBytes));
+  std::array<uint8_t, 175> extended{};
+  std::copy(selectedBytes.begin(), selectedBytes.end(), extended.begin());
+  extended[0] = 4;
+  for (size_t i = 159; i < extended.size(); ++i) extended[i] = static_cast<uint8_t>(0x80 + i - 159);
   const std::string sourceName = legacy ? "stats_2026-11-10.bin" : backupName(7, selectedBytes);
   const std::string beforeName = backupName(8, previousBytes);
   const std::string source = "/.crossink-stats-backup/" + sourceName, before = "/.crossink-stats-backup/" + beforeName;
@@ -150,8 +156,9 @@ void exercise(bool exfat, bool failStop, bool legacy = false) {
     if (legacy) {
       assert(volume.mkdir("/.crossink-stats-backup", true));
       auto file = Storage.open(source.c_str(), O_CREAT | O_EXCL | O_WRONLY);
-      assert(file && file.write(selectedBytes.data(), selectedBytes.size()) == selectedBytes.size() && file.sync() &&
-             file.close());
+      const uint8_t* payload = rc2 ? extended.data() : selectedBytes.data();
+      const size_t size = rc2 ? extended.size() : selectedBytes.size();
+      assert(file && file.write(payload, size) == size && file.sync() && file.close());
     } else
       assert(statsbackup::createDeviceBackup(saved));
     assert(prior.save());
@@ -181,7 +188,7 @@ void exercise(bool exfat, bool failStop, bool legacy = false) {
     FsVolume after;
     assert(after.begin(&disk));
     Storage.attach(after);
-    bool selected = matches(source, selectedBytes);
+    bool selected = rc2 ? matches(source, extended) : matches(source, selectedBytes);
     bool original = matches(PRIMARY, previousBytes) || matches(std::string(PRIMARY) + ".bak", previousBytes) ||
                     matches(before, previousBytes);
     if (!selected || !original || (restored && !matches(PRIMARY, selectedBytes))) {
@@ -200,13 +207,17 @@ void exercise(bool exfat, bool failStop, bool legacy = false) {
     FsVolume remounted;
     assert(remounted.begin(&disk));
     Storage.attach(remounted);
-    assert(matches(source, selectedBytes));
+    assert(rc2 ? matches(source, extended) : matches(source, selectedBytes));
     assert((priorPrimary && matches(PRIMARY, previousBytes)) ||
            (priorJournal && matches(std::string(PRIMARY) + ".bak", previousBytes)) ||
            (priorSnapshot && matches(before, previousBytes)));
   }
   std::printf("%s %s %s: %d injected write failures preserved selected and prior snapshots\n", exfat ? "exfat" : "fat",
-              failStop ? "fail-stop" : "transient", legacy ? "legacy" : "checked", injected);
+              failStop ? "fail-stop" : "transient",
+              rc2      ? "rc2-v4"
+              : legacy ? "legacy"
+                       : "checked",
+              injected);
   assert(injected > 0);
 }
 void exerciseReset(bool exfat, bool failStop) {
@@ -346,6 +357,7 @@ int main() {
     for (bool failStop : {false, true}) {
       exercise(exfat, failStop);
       exercise(exfat, failStop, true);
+      exercise(exfat, failStop, true, true);
       exerciseReset(exfat, failStop);
       exerciseDaily(exfat, failStop);
       exerciseDaily(exfat, failStop, true);

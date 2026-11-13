@@ -12,15 +12,19 @@ primary before backing it up.
 Each backup uses the current book-cache identity, a sequence, and a content
 hash in its name. The sequence is not a date. Book paths can change the cache
 identity, so the folder name alone is not a permanent book identifier. The
-backup writes a new file exclusively and verifies its contents; it never
+backup writes a new file exclusively, checks sync and close, and verifies its contents; it never
 deliberately replaces a prior backup. An interrupted or failed write can leave
 an incomplete `.bin` file, so its filename alone does not prove validity. A
 `.part` file from an older build is preserved. After a failed or interrupted older
 backup, its `.part` and `.bin` names can share storage; deleting either can
 damage the other. Preserve both until safely copied and checked.
 The content hash is for identification, not cryptographic authentication.
-There is no restore screen or backup browser in this candidate. Keep a separate
-verified backup of reading positions and settings before changing firmware.
+With `CROSSPOINT_EXPERIMENTAL_STATS_RESTORE`, a closed book’s Statistics
+screen offers Restore book statistics through the backup picker and a
+confirmation. An open reader must be closed first. Restore/reset require a
+verified pre-operation backup; failed sync returns BackupFailed before changing
+the saved statistics. Failed/incomplete backup files are preserved. Keep a
+separate verified backup of reading positions and settings before changing firmware.
 
 The write runs synchronously on the reader's main task; SD latency and watchdog
 behavior remain unmeasured. On-device checks should create two backups, verify
