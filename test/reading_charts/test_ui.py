@@ -31,6 +31,7 @@ for name, literal in re.findall(r'^(STR_\w+): (".*")$', (ROOT / 'lib/I18n/transl
         continue
     translations.append(f'case StrId::{name}: return {json.dumps(json.loads(literal))};')
 lookup = 'const char* tr(StrId id) { switch(id) {' + ''.join(translations) + 'default:return "";}}'
+lookup += '\nconst char* chartTranslation(StrId id) { return tr(id); }'
 duration = method((ROOT / 'src/activities/reader/BookReadingStats.cpp').read_text(), 'void BookReadingStats::formatDuration(')
 
 metric_names = ['topPadding', 'headerHeight', 'tabBarHeight', 'verticalSpacing', 'contentSidePadding', 'menuRowHeight', 'buttonHintsHeight']
@@ -51,8 +52,9 @@ code = code.replace('// TRANSLATIONS', lookup).replace('// LABELS', labels).repl
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(code)
+    (path / 'I18n.h').write_text('#pragma once\n#include <I18nKeys.h>\nconst char* chartTranslation(StrId);\n#define tr(id) chartTranslation(StrId::id)\n')
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', *shlex.split(os.environ.get('CXXFLAGS', '')),
-                    '-I' + str(ROOT / 'src'), '-I' + str(ROOT / 'lib/EpdFont'), '-I' + str(ROOT / 'lib/Utf8'),
+                    '-I' + str(path), '-I' + str(ROOT / 'src'), '-I' + str(ROOT / 'lib/EpdFont'), '-I' + str(ROOT / 'lib/Utf8'),
                     '-I' + str(ROOT / 'lib/I18n'), '-I' + str(ROOT / 'test/book_reading_stats_atomic/stubs'),
                     '-I' + str(ROOT / 'freeink-sdk/libs/ui/FreeInkUI/include'), str(path / 'test.cpp'),
                     str(ROOT / 'src/activities/reader/ReadingStatsUtils.cpp'), str(ROOT / 'lib/EpdFont/EpdFont.cpp'),

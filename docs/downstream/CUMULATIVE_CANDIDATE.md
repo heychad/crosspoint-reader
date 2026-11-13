@@ -2,7 +2,8 @@
 
 November 13, 2026. This is the cumulative review record, not installation approval.
 Round-one corrections and retained storage fixes have checked checkpoints.
-The versioned candidate is being prepared for the second review.
+The second review is complete. Host adapter/provenance corrections are checked;
+the unsupported-move notification remains to be corrected.
 
 ## Test59 configuration
 
@@ -20,7 +21,7 @@ The application image has the ESP32-S3 chip ID and expected version string.
 The full host build passes after adding the shared-validator include path to
 its daily-statistics variant. Logs are `/tmp/x4-test59-build.log` and
 `/tmp/x4-test59-host-build2.log`. The cumulative host run and targeted second
-review follow this source/configuration checkpoint.
+review results are recorded below for this source/configuration checkpoint.
 
 ## Requirement and frozen inputs
 
@@ -30,8 +31,10 @@ plugin/protected-book interfaces, and existing reading state. Later features
 remain deferred; Nearby is skipped. Device performance tuning follows feature
 integration, with measurements required before claiming improvement.
 
-- Review source: `f3b28c79a4b75236404c3965dab3cefc4fcbfcb1`.
-- Source tree: `0e7f79cc951f152fdda9864dce65f0742013a0c5`.
+- Second-round frozen test59 source: `d93dce0ceaf73c4a40cef83502df2fdea65fe42b`.
+- Test59 source tree: `9364f092acac507bed91386193149ddf84080fb8`.
+- Historical round-one source: `f3b28c79a4b75236404c3965dab3cefc4fcbfcb1`,
+  tree `0e7f79cc951f152fdda9864dce65f0742013a0c5`.
 - Working branch: `codex/x4pro-release-baseline-20261111`.
 - Comparison base: CrossPoint 2.0.0, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - CrossInk references: stable v1.6.1 and tagged v2.0.0-rc2
@@ -74,23 +77,26 @@ CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH
 CROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES
 ```
 
-The exact local profile is reproduced in [development process](DEVELOPMENT_PROCESS.md).
+The tracked test59 profile and historical local WIP recipes are described in
+[development process](DEVELOPMENT_PROCESS.md).
 Inventory, stage, and publication prototype flags are absent. D1 uses the
 existing selected-book app, ordinary exclusive upload, and checksum/download
 verification. The default and release profiles still leave WIP options disabled.
-The current build string remains test58; packaging needs a distinct test version
-and a checked-in reproducible candidate profile before handoff.
+The frozen build identifies as test59 and uses the tracked `x4pro-chad-test`
+profile. Packaging and device acceptance remain separate gates.
 
 ## Recorded checks
 
 | Check | Evidence and limit |
 | --- | --- |
-| Latest default X4 Pro build | 71.77 s; RAM 113068, flash 5696342. Log `/tmp/x4-create-upload-default.log`. |
-| Latest twelve-flag X4 Pro build | 76.96 s; RAM 113100, flash 5803398. Log `/tmp/x4-create-upload-enabled.log`. These are build footprints, not runtime peaks. |
+| Historical round-one default X4 Pro build | At `f3b28c79`: 71.77 s; RAM 113068, flash 5696342. Log `/tmp/x4-create-upload-default.log`. |
+| Historical round-one twelve-flag X4 Pro build | At `f3b28c79`: 76.96 s; RAM 113100, flash 5803398. Log `/tmp/x4-create-upload-enabled.log`. |
+| Frozen test59 X4 Pro build | At `d93dce0c`: 188.69 s; RAM 113100, flash 5804822. Log `/tmp/x4-test59-build.log`. These are build footprints, not runtime peaks. |
 | Update path | 43 focused checks and both sanitizers pass. Real host pinned-root API/redirect/CDN and rejection checks pass; firmware TLS cryptography and runtime resources remain untested. See [update contract](PERSONAL_UPDATES.md). |
 | Sync client | Eight full-queue HTTP cases; all 303 canonical tests and 68 concepts pass. Code-only publication passes 73 tests and five base concepts. These use a host reader fixture. |
-| Exclusive upload | Nine focused firmware checks; real FAT/exFAT remount and ASan pass. UBSan reports retained SdFat alignment/null-pointer findings; it is not a clean UBSan pass. See [sync contract](FILE_CHECKSUM_API.md). |
-| Cumulative host suite | Frozen source `f3b28c79` passed all 2431 checks in 447.16 s. Logs: `/tmp/x4-candidate-host-build.log` and `/tmp/x4-candidate-host-tests.log`. Later corrections need their own checks. |
+| Exclusive upload | The original round-one run reported vendor UBSan failures. The corrected pinned dependency and locked create-only path now pass real FAT/exFAT checks under both sanitizers using target bytewise helpers. See the retained-fix section below and [sync contract](FILE_CHECKSUM_API.md). |
+| Historical round-one host suite | `f3b28c79` passed all 2431 checks in 447.16 s. Logs: `/tmp/x4-candidate-host-build.log` and `/tmp/x4-candidate-host-tests.log`. |
+| Test59 host suite | The cumulative run passed 2446/2448 checks in 137.87 s. The two failures were host include/link adapters. Their corrected rerun passes both checks; the other 2446 inputs are unchanged. Logs: `/tmp/x4-test59-host-tests.log` and `/tmp/x4-test59-host-adapters.log`. No firmware change was needed for these harness corrections. |
 | Physical reader | Clipfix2 is the last accepted baseline. No later source in this packet has been installed or physically validated. |
 
 ## Round-one findings and corrections
@@ -103,7 +109,7 @@ resolved by the passing pre-correction suite.
 
 | ID | Finding | Current status |
 | --- | --- | --- |
-| R1, P1 | Per-book JSON retries can delete a `.tmp`/`.bak` alias sharing the live primary's chain. | Corrected under one storage lock with checked lookups, disjoint-chain checks, exclusive staging, sync/close/readback, and checked rename results. Real FAT/exFAT alias regressions fail before the fix and pass afterward. Awaiting targeted cumulative review. |
+| R1, P1 | Per-book JSON retries can delete a `.tmp`/`.bak` alias sharing the live primary's chain. | Corrected under one storage lock with checked lookups, disjoint-chain checks, exclusive staging, sync/close/readback, and checked rename results. Real FAT/exFAT alias regressions fail before the fix and pass afterward. Verified in the second cumulative review. |
 | R2, P1 | Completion accepts deep existing book paths, but its later source-reference audit applies staged-publication's 16-component limit after moving files. | Corrected: source audits use the existing reference validator; publication retains its narrower policy. Production guard, move, retry, retirement, and remount checks pass for a 17-component source on FAT/exFAT. |
 | R3, P2 | Routine application-state saves consume permanent history slots; exhaustion blocks later saves and causes increasing scan work. | Corrected: clean routine saves retire only their checked independent backup. Existing history and uncertain recovery artifacts remain preserved; move history keeps its separate policy. |
 | R4, P2 | Rotated Quick Lock activation and unlock resolve asymmetric side holds differently. | Corrected with the shared orientation mapping; regression failed before the fix and passes afterward across all four orientations. |
@@ -162,7 +168,7 @@ The follow-up source preflight shares that existing validator with completion
 entry and move execution. Names resembling 8.3 aliases (for example,
 `Part~1.epub`) previously could start a journal and move before the reference
 audit rejected them. New direct/deferred move requests now return Invalid
-before changing statistics or starting a journal. Ordinary finished marking
+before changing finished status/completed-book totals or starting a journal. Ordinary finished marking
 without a move still works. An older prepared unsupported plan returns Conflict
 before moving files or marking the index dirty; its book, journal, and plan stay
 available for inspection. This does not repair older in-flight transactions.
@@ -233,7 +239,20 @@ headroom still need measurement; no measured watchdog failure is established.
 The default X4 Pro build passes in 74.44 seconds (RAM 113068, flash 5698134);
 the twelve-flag build passes in 77.03 seconds (RAM 113100, flash 5804922).
 FAT, exFAT, and wrapper lookup suites also pass both sanitizers on the target's
-bytewise helper path. The full cumulative suite and second review remain open.
+bytewise helper path. The second review is complete. Host adapter fixes clear the two failed checks;
+unsupported-move guidance and runtime/device gates remain.
+
+## Second-review outcomes
+
+All four axes reviewed frozen source `d93dce0c` against `f3b28c79`, read-only.
+Correctness, embedded, and architecture found no new production defect in that
+correction diff. Two host harness include/link gaps are corrected and pass their
+rerun. The documentation review identified stale provenance (corrected above),
+an overbroad statistics guarantee (narrowed to finished status/completed-book
+totals), and a permanent unsupported-name error that still offers generic Retry.
+That notification is the remaining correction before packaging. The reviews
+carry the first round's unchanged-code coverage limits; they do not prove
+physical behavior. No additional broad review round is planned.
 
 ## Review and remaining gates
 
