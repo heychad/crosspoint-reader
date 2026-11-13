@@ -30,9 +30,13 @@ program = r'''
 #include <cassert>
 #include <cstdint>
 #include <string_view>
+#include <functional>
+#include <memory>
+#include <span>
+#include <variant>
 #include "personalization/LibraryViewSettings.h"
 enum class Order { RecentAsc, RecentDesc, TitleAsc, TitleDesc, AuthorAsc, AuthorDesc,
-                   SeriesAsc, SeriesDesc, GenreAsc, GenreDesc };
+                   SeriesAsc, SeriesDesc, GenreAsc, GenreDesc, AuthorFirstAsc, AuthorFirstDesc };
 constexpr int TAB_SLOTS = 5;
 constexpr Order orderForTab(int tab, uint8_t bits) {
   return static_cast<Order>(tab * 2 + ((bits >> tab) & 1));
@@ -52,26 +56,55 @@ struct Settings {
     return true;
   }
 } SETTINGS;
+enum class StrId { STR_LIBRARY_REVERSE_ORDER, STR_LIBRARY_TAB_RECENT, STR_LIBRARY_TAB_TITLE,
+                   STR_LIBRARY_AUTHOR_SURNAME, STR_LIBRARY_TAB_SERIES, STR_LIBRARY_TAB_GENRE,
+                   STR_LIBRARY_AUTHOR_FIRST_NAME, STR_LIBRARY_REBUILD, STR_LIBRARY_SORT };
+struct MenuResult { int action; };
+struct ActivityResult { bool isCancelled = false; std::variant<std::monostate, MenuResult> data; };
+struct EnumSelectionActivity {
+  std::span<const StrId> labels;
+  int selected;
+  EnumSelectionActivity(int&, int&, StrId, std::span<const StrId> labels, int selected)
+      : labels(labels), selected(selected) {}
+};
+bool failPicker = false;
+template<class T, class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
+  return failPicker ? nullptr : std::make_unique<T>(std::forward<Args>(args)...);
+}
 struct LibraryListActivity {
   int activeTabIndex = 0;
   uint8_t descendingTabs = 1;
   Order sortOrder = Order::RecentDesc;
   int filters = 0, overlaps = 0, paints = 0, swipesClosed = 0;
   struct Nav { int selected = 4, top = 3; } nav;
-  int activeTab() const { return activeTabIndex; }
+  int activeTab() const;
   Nav& activeNav() { return nav; }
   void closeSwipeDelete() { ++swipesClosed; }
-  void applyFilter() { ++filters; }
+  void applyFilter() { ++filters; assert(sortOrder == orderForTab(activeTabIndex, descendingTabs)); }
   void refreshOverlap() { ++overlaps; }
   void requestUpdate() { ++paints; }
   void loadViewPreferences();
   void selectTab(int, bool);
+  void selectView(int, bool);
   void toggleSortDirection();
+  int renderer = 0, mappedInput = 0, starts = 0, swallowed = 0, rebuilds = 0;
+  struct App { int clears = 0; void clearTapFlash() { ++clears; } } app;
+  std::unique_ptr<EnumSelectionActivity> picker;
+  std::function<void(const ActivityResult&)> callback;
+  void startActivityForResult(std::unique_ptr<EnumSelectionActivity> child,
+                              std::function<void(const ActivityResult&)> onResult) {
+    ++starts;
+    picker = std::move(child);
+    callback = std::move(onResult);
+  }
+  void swallowHeldReleases() { ++swallowed; }
+  void promptRebuildIndex() { ++rebuilds; }
+  void openSortPicker();
 };
 // INSERT_METHODS
 int main() {
-  for (unsigned tab = 0; tab < 5; ++tab) {
-    for (unsigned bits = 0; bits < 32; ++bits) {
+  for (unsigned tab = 0; tab < 6; ++tab) {
+    for (unsigned bits = 0; bits < 64; ++bits) {
       JsonDocument saved;
       saved["keep"] = 42;
       libraryview::Preferences original;
@@ -84,13 +117,14 @@ int main() {
       SETTINGS.libraryView = loaded;
       LibraryListActivity view;
       view.loadViewPreferences();
-      assert(view.activeTab() == tab && view.sortOrder == orderForTab(tab, bits));
+      assert(view.activeTabIndex == tab && view.activeTab() == libraryview::mainTab(tab) && view.sortOrder == orderForTab(tab, bits));
       int writes = SETTINGS.writes;
-      view.selectTab(tab, false);
+      view.selectTab(libraryview::mainTab(tab), false);
       assert(SETTINGS.writes == writes);
       view.selectTab(-1, true);
       view.selectTab(5, true);
-      assert(SETTINGS.writes == writes && view.activeTab() == tab);
+      view.selectView(6, true);
+      assert(SETTINGS.writes == writes && view.activeTabIndex == tab && view.activeTab() == libraryview::mainTab(tab));
       view.toggleSortDirection();
       assert(view.descendingTabs == (bits ^ (1u << tab)));
       assert(view.sortOrder == orderForTab(tab, view.descendingTabs));
@@ -102,13 +136,13 @@ int main() {
       SETTINGS.libraryView.read(SETTINGS.disk.as<JsonVariantConst>());
       LibraryListActivity reopened;
       reopened.loadViewPreferences();
-      assert(reopened.activeTab() == tab && reopened.sortOrder == view.sortOrder);
-      for (unsigned next = 0; next < 5; ++next) {
+      assert(reopened.activeTabIndex == tab && reopened.sortOrder == view.sortOrder);
+      for (unsigned next = 0; next < 6; ++next) {
         writes = SETTINGS.writes;
-        const int previous = reopened.activeTab();
+        const int previous = reopened.activeTabIndex;
         const auto directions = reopened.descendingTabs;
-        reopened.selectTab(next, false);
-        assert(reopened.activeTab() == next && reopened.descendingTabs == directions);
+        reopened.selectView(next, false);
+        assert(reopened.activeTabIndex == next && reopened.descendingTabs == directions);
         assert(SETTINGS.writes == writes + (previous != next));
         assert(reopened.sortOrder == orderForTab(next, directions));
       }
@@ -127,13 +161,13 @@ int main() {
       assert(loaded.descendingTabs == (key == std::string_view("libraryViewDescendingTabs") ? 1 : 31));
     }
   }
-  for (unsigned bad = 5; bad < 256; ++bad) {
+  for (unsigned bad = 6; bad < 256; ++bad) {
     JsonDocument doc;
     doc["libraryViewTab"] = bad;
     doc["libraryViewDescendingTabs"] = bad;
     libraryview::Preferences loaded;
     loaded.read(doc.as<JsonVariantConst>());
-    assert(loaded.tab == 0 && loaded.descendingTabs == (bad < 32 ? bad : 1));
+    assert(loaded.tab == 0 && loaded.descendingTabs == (bad < 64 ? bad : 1));
   }
   JsonDocument empty;
   empty.to<JsonObject>();
@@ -157,18 +191,56 @@ int main() {
   SETTINGS.libraryView.read(SETTINGS.disk.as<JsonVariantConst>());
   failed.loadViewPreferences();
   assert(failed.activeTab() == 4);
+
+  LibraryListActivity picker;
+  picker.selectView(5, false);
+  picker.openSortPicker();
+  assert(picker.starts == 1 && picker.picker->selected == 6 && picker.picker->labels.size() == 8);
+  assert(picker.picker->labels[0] == StrId::STR_LIBRARY_REVERSE_ORDER);
+  assert(picker.picker->labels[6] == StrId::STR_LIBRARY_AUTHOR_FIRST_NAME);
+  assert(picker.picker->labels[7] == StrId::STR_LIBRARY_REBUILD);
+  const auto writes = SETTINGS.writes;
+  picker.callback({true, MenuResult{1}});
+  picker.callback({false, std::monostate{}});
+  picker.callback({false, MenuResult{-1}});
+  picker.callback({false, MenuResult{8}});
+  assert(SETTINGS.writes == writes && picker.activeTabIndex == 5 && picker.swallowed == 4);
+  for (int choice = 1; choice <= 6; ++choice) {
+    picker.callback({false, MenuResult{choice}});
+    assert(picker.activeTabIndex == choice - 1);
+    assert(picker.activeTab() == libraryview::mainTab(choice - 1));
+    assert(SETTINGS.libraryView.tab == choice - 1);
+  }
+  const auto previous = picker.descendingTabs;
+  picker.callback({false, MenuResult{0}});
+  assert(picker.descendingTabs == (previous ^ 32) && picker.activeTabIndex == 5);
+  picker.callback({false, MenuResult{7}});
+  assert(picker.rebuilds == 1);
+  // The alias uses the Author tab's navigation, while keeping its own direction.
+  const auto mask = picker.descendingTabs;
+  picker.selectTab(2, true);
+  assert(picker.activeTabIndex == 5 && picker.descendingTabs == (mask ^ 32));
+  picker.selectTab(1, false);
+  picker.selectTab(2, false);
+  assert(picker.activeTabIndex == 2 && picker.activeTab() == 2);
+  failPicker = true;
+  picker.openSortPicker();
+  assert(picker.starts == 1 && picker.app.clears == 1);
 }
 '''
 methods = '\n'.join(method(signature) for signature in (
     'void LibraryListActivity::loadViewPreferences(',
     'void LibraryListActivity::selectTab(',
+    'void LibraryListActivity::selectView(',
+    'int LibraryListActivity::activeTab(',
+    'void LibraryListActivity::openSortPicker(',
     'void LibraryListActivity::toggleSortDirection('))
 with tempfile.TemporaryDirectory() as temporary:
     directory = Path(temporary)
     source_path = directory / 'test.cpp'
     binary = directory / 'test'
     source_path.write_text(program.replace('// INSERT_METHODS', methods))
-    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17',
+    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20',
                     *shlex.split(os.environ.get('CXXFLAGS', '')),
                     '-I', str(ROOT / 'src'),
                     '-I', str(ROOT / '.pio/libdeps/x4pro/ArduinoJson/src'),

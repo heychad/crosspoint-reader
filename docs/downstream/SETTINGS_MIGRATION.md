@@ -81,6 +81,7 @@ The explicit Library import translates tagged RC2's `librarySortMethod` and
 | --- | --- |
 | 1 Title | Title |
 | 2 Author last name | Author, using the canonical display name's surname |
+| 3 Author first name | First name, using the folded canonical display name and the Author quick tab |
 | 5 Series | Series |
 | 6 Genre | Genre |
 
@@ -90,14 +91,20 @@ the whole native pair when either key exists, including null or invalid values.
 Confirmed replacement can replace it. The existing transaction backs up the
 native settings and preserves the CrossInk source byte for byte.
 
-Date added (0), Author first name (3), and Recently opened (4) remain unchanged
-on import. The native Recent tab combines newly arrived books with a pinned
-reading-history overlay; it is not either RC2 list. G3 stays partial until these
+Date added (0) and Recently opened (4) remain unchanged on import. The native
+Recent tab combines newly arrived books with a pinned reading-history overlay;
+it is not either RC2 list. Tagged RC2's Date added uses file creation time; the
+native arrival order uses modification time. A faithful import needs creation
+time capture and freshness checks. Recently opened needs a separate history-only
+view in both directions. G3 stays partial until these
 semantics and the compatibility boundaries below are resolved.
 
-The first-name index order is now built and checked, including version 2/3
-reconciliation and full-name comparisons. Its UI selection and import remain
-part of the next view update; see [index details](LIBRARY_METADATA.md).
+The first-name view and import are now built, with independent saved direction
+and the native scrolling sort picker. Its logical view ID is 5; it uses Author's
+quick-tab/navigation slot 2. The two numeric IDs are not interchangeable. The
+version 4 index from the preceding checkpoint provides the order; this UI stage
+does not change that format. See [index details](LIBRARY_METADATA.md) and
+[controls](LIBRARY_BROWSING.md).
 
 The two settings occupy two bytes before enclosing-structure padding. There is
 no new task, retained buffer, index version, or reading-state write. The two JSON

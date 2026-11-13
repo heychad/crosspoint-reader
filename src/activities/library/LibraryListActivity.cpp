@@ -23,6 +23,7 @@
 #include "RecentBooksStore.h"
 #include "activities/reader/BookCompletion.h"
 #include "activities/reader/ReadingStatsStore.h"
+#include "activities/settings/EnumSelectionActivity.h"
 #include "activities/settings/ReadingStatsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -55,12 +56,12 @@ constexpr int AUTHOR_TAB = static_cast<int>(libraryview::Tab::Author);
 constexpr int SERIES_TAB = static_cast<int>(libraryview::Tab::Series);
 constexpr int GENRE_TAB = static_cast<int>(libraryview::Tab::Genre);
 constexpr int TAB_SLOTS = GENRE_TAB + 1;
-static_assert(TAB_SLOTS == libraryview::TAB_COUNT);
+static_assert(TAB_SLOTS == libraryview::MAIN_TAB_COUNT);
 
 constexpr bool isDescending(const library::SortOrder order) {
   return order == library::SortOrder::RecentDesc || order == library::SortOrder::TitleDesc ||
          order == library::SortOrder::AuthorDesc || order == library::SortOrder::SeriesDesc ||
-         order == library::SortOrder::GenreDesc;
+         order == library::SortOrder::GenreDesc || order == library::SortOrder::AuthorFirstDesc;
 }
 
 constexpr bool isRecentSort(const library::SortOrder order) {
@@ -68,7 +69,8 @@ constexpr bool isRecentSort(const library::SortOrder order) {
 }
 
 constexpr bool isAuthorSort(const library::SortOrder order) {
-  return order == library::SortOrder::AuthorAsc || order == library::SortOrder::AuthorDesc;
+  return order == library::SortOrder::AuthorAsc || order == library::SortOrder::AuthorDesc ||
+         order == library::SortOrder::AuthorFirstAsc || order == library::SortOrder::AuthorFirstDesc;
 }
 
 constexpr bool isSeriesSort(const library::SortOrder order) {
@@ -80,11 +82,13 @@ constexpr bool isMetadataSort(const library::SortOrder order) {
 }
 
 constexpr library::SortOrder orderForTab(const int tab, const uint8_t descendingTabs) {
-  constexpr library::SortOrder orders[][2] = {{library::SortOrder::RecentAsc, library::SortOrder::RecentDesc},
-                                              {library::SortOrder::TitleAsc, library::SortOrder::TitleDesc},
-                                              {library::SortOrder::AuthorAsc, library::SortOrder::AuthorDesc},
-                                              {library::SortOrder::SeriesAsc, library::SortOrder::SeriesDesc},
-                                              {library::SortOrder::GenreAsc, library::SortOrder::GenreDesc}};
+  constexpr library::SortOrder orders[][2] = {
+      {library::SortOrder::RecentAsc, library::SortOrder::RecentDesc},
+      {library::SortOrder::TitleAsc, library::SortOrder::TitleDesc},
+      {library::SortOrder::AuthorAsc, library::SortOrder::AuthorDesc},
+      {library::SortOrder::SeriesAsc, library::SortOrder::SeriesDesc},
+      {library::SortOrder::GenreAsc, library::SortOrder::GenreDesc},
+      {library::SortOrder::AuthorFirstAsc, library::SortOrder::AuthorFirstDesc}};
   return orders[tab][(descendingTabs & (1u << tab)) != 0];
 }
 
@@ -127,6 +131,7 @@ void LibraryListActivity::onEnter() {
   app.on(ACTION_SEARCH, &LibraryListActivity::searchActionTrampoline, this);
   app.on(ACTION_REBUILD, &LibraryListActivity::rebuildActionTrampoline, this);
   app.on(ACTION_BACK, &LibraryListActivity::backActionTrampoline, this);
+  app.on(ACTION_SORT, &LibraryListActivity::sortActionTrampoline, this);
 
   // Recent is backed by the resident store. Prune before opening the index so
   // its persistence write never overlaps the long-lived index reader.
@@ -630,20 +635,24 @@ void LibraryListActivity::onTabAction(const int index) {
 }
 
 void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
+  if (index < 0 || index >= TAB_SLOTS) return;
+  selectView(index == activeTab() ? activeTabIndex : index, toggleIfActive);
+}
+
+void LibraryListActivity::selectView(const int index, const bool toggleIfActive) {
   RenderLock lock(*this);
 #if FREEINK_CAP_TOUCH
   closeSwipeDelete();
 #endif
-  if (index < 0 || index >= TAB_SLOTS) return;
-  if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
+  if (index < 0 || index >= libraryview::TAB_COUNT) return;
+  if (toggleIfActive && index == activeTabIndex) descendingTabs ^= static_cast<uint8_t>(1u << index);
   sortOrder = orderForTab(index, descendingTabs);
   // The filter and the overlap rows hold positions in the old order, so they
   // must be rebuilt.
-  applyFilter();
   activeTabIndex = index;
+  applyFilter();
   refreshOverlap();
-  // Tab changes happen only while the bar owns focus. A tab's remembered row
-  // must not pull focus back into the list after the switch.
+  // Return focus to the tabs after either a tab tap or a picker selection.
   auto& nav = activeNav();
   nav.selected = 0;
   nav.top = 0;
@@ -662,13 +671,44 @@ void LibraryListActivity::loadViewPreferences() {
   sortOrder = orderForTab(activeTabIndex, descendingTabs);
 }
 
-void LibraryListActivity::toggleSortDirection() { selectTab(activeTab(), true); }
+void LibraryListActivity::toggleSortDirection() { selectView(activeTabIndex, true); }
+
+void LibraryListActivity::openSortPicker() {
+  static constexpr StrId choices[] = {StrId::STR_LIBRARY_REVERSE_ORDER,     StrId::STR_LIBRARY_TAB_RECENT,
+                                      StrId::STR_LIBRARY_TAB_TITLE,         StrId::STR_LIBRARY_AUTHOR_SURNAME,
+                                      StrId::STR_LIBRARY_TAB_SERIES,        StrId::STR_LIBRARY_TAB_GENRE,
+                                      StrId::STR_LIBRARY_AUTHOR_FIRST_NAME, StrId::STR_LIBRARY_REBUILD};
+  auto picker = makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, StrId::STR_LIBRARY_SORT, choices,
+                                                         activeTabIndex + 1);
+  if (!picker) {
+    LOG_ERR("LIB", "OOM: Library sort picker");
+    return;
+  }
+  app.clearTapFlash();
+  startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+    swallowHeldReleases();
+    const auto* selected = std::get_if<MenuResult>(&result.data);
+    if (result.isCancelled || !selected) return;
+    const int choice = selected->action;
+    if (choice == 0) {
+      toggleSortDirection();
+    } else if (choice > 0 && choice <= libraryview::TAB_COUNT) {
+      selectView(choice - 1, false);
+    } else if (choice == libraryview::TAB_COUNT + 1) {
+      promptRebuildIndex();
+    }
+  });
+}
 
 int LibraryListActivity::tabCount() const { return TAB_SLOTS; }
 
-int LibraryListActivity::activeTab() const { return activeTabIndex; }
+int LibraryListActivity::activeTab() const { return libraryview::mainTab(static_cast<uint8_t>(activeTabIndex)); }
 
-const char* LibraryListActivity::tabLabel(const int index) const { return tabLabelFor(index); }
+const char* LibraryListActivity::tabLabel(const int index) const {
+  if (index == AUTHOR_TAB && activeTabIndex == static_cast<int>(libraryview::Tab::AuthorFirst))
+    return tr(STR_LIBRARY_FIRST_NAME_TAB);
+  return tabLabelFor(index);
+}
 
 fui::TabIndicator LibraryListActivity::tabIndicator(const int index) const {
   if (index != activeTab()) return fui::TabIndicator::None;
@@ -932,6 +972,10 @@ void LibraryListActivity::rebuildActionTrampoline(const fui::ActionEvent&, void*
   static_cast<LibraryListActivity*>(user)->promptRebuildIndex();
 }
 
+void LibraryListActivity::sortActionTrampoline(const fui::ActionEvent&, void* user) {
+  static_cast<LibraryListActivity*>(user)->openSortPicker();
+}
+
 // Title and author for one entry, read straight from the index. Only ever
 // called for rows about to be drawn, so at most a screenful of strings exists
 // at once.
@@ -1093,7 +1137,7 @@ bool LibraryListActivity::handleButtons() {
   // the freshly opened confirmation and select its default.
   if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
     if (tabsFocused()) {
-      if (!degraded) toggleSortDirection();
+      if (!degraded) openSortPicker();
     } else if (count > 0) {
       onRowLongPress(selectedEntry());
     }
@@ -1303,7 +1347,9 @@ void LibraryListActivity::formatInitialHeading(uint32_t initial, std::string& ou
 
 void LibraryListActivity::formatAuthorHeading(const std::string& author, std::string& out) const {
   out = author.empty() ? std::string(tr(STR_LIBRARY_UNKNOWN_AUTHOR)) : author;
-  if (author.empty()) return;
+  if (author.empty() || sortOrder == library::SortOrder::AuthorFirstAsc ||
+      sortOrder == library::SortOrder::AuthorFirstDesc)
+    return;
   const size_t lastSpace = out.find_last_of(' ');
   if (lastSpace != std::string::npos && lastSpace + 1 < out.size()) {
     out = out.substr(lastSpace + 1) + ", " + out.substr(0, lastSpace);
@@ -1334,13 +1380,12 @@ void LibraryListActivity::buildHeader(UiScreen& screen) {
     header.leadingAction = ACTION_BACK;
   }
   if (!degraded) {
-    // Keep both touch actions together on the right; button boards reach
-    // rebuild through the row options menu.
+    // Search and the sort picker share the existing two header actions.
     header.trailingIcon = fui::bitmapFromIcon(icon_search_32);
     header.trailingAction = ACTION_SEARCH;
     if (mappedInput.hasTouch()) {
-      header.trailingAdjacentIcon = fui::bitmapFromIcon(icon_refresh_cw_32);
-      header.trailingAdjacentAction = ACTION_REBUILD;
+      header.trailingAdjacentIcon = fui::bitmapFromIcon(icon_settings_32);
+      header.trailingAdjacentAction = ACTION_SORT;
     }
     // Vertical placement comes from applyHeaderStatus: buttons center on the
     // unified band.

@@ -105,7 +105,9 @@ enum class SortOrder {
   SeriesAsc,
   SeriesDesc,
   GenreAsc,
-  GenreDesc
+  GenreDesc,
+  AuthorFirstAsc,
+  AuthorFirstDesc
 };
 struct BookIdentity {
   uint64_t pathHash;
@@ -124,7 +126,7 @@ bool matchesQuery(std::string_view text, std::string_view needle) { return text.
 bool isDescending(library::SortOrder order) {
   return order == library::SortOrder::RecentDesc || order == library::SortOrder::TitleDesc ||
          order == library::SortOrder::AuthorDesc || order == library::SortOrder::SeriesDesc ||
-         order == library::SortOrder::GenreDesc;
+         order == library::SortOrder::GenreDesc || order == library::SortOrder::AuthorFirstDesc;
 }
 bool isSeriesSort(library::SortOrder order) {
   return order == library::SortOrder::SeriesAsc || order == library::SortOrder::SeriesDesc;
@@ -132,9 +134,12 @@ bool isSeriesSort(library::SortOrder order) {
 bool isMetadataSort(library::SortOrder order) {
   return isSeriesSort(order) || order == library::SortOrder::GenreAsc || order == library::SortOrder::GenreDesc;
 }
-enum class StrId { STR_LIBRARY_UNKNOWN_SERIES, STR_LIBRARY_UNKNOWN_GENRE };
+enum class StrId { STR_LIBRARY_UNKNOWN_SERIES, STR_LIBRARY_UNKNOWN_GENRE, STR_LIBRARY_UNKNOWN_AUTHOR };
 struct TestI18n {
-  const char* get(StrId id) { return id == StrId::STR_LIBRARY_UNKNOWN_SERIES ? "No series" : "Uncategorized"; }
+  const char* get(StrId id) {
+    if (id == StrId::STR_LIBRARY_UNKNOWN_AUTHOR) return "Unknown author";
+    return id == StrId::STR_LIBRARY_UNKNOWN_SERIES ? "No series" : "Uncategorized";
+  }
 } I18N;
 #define tr(id) I18N.get(StrId::id)
 constexpr int RECENT_TAB = 0;
@@ -267,7 +272,8 @@ struct LibraryCoverGrid {
 };
 int listIconFor(int value, int) { return value; }
 bool isAuthorSort(library::SortOrder order) {
-  return order == library::SortOrder::AuthorAsc || order == library::SortOrder::AuthorDesc;
+  return order == library::SortOrder::AuthorAsc || order == library::SortOrder::AuthorDesc ||
+         order == library::SortOrder::AuthorFirstAsc || order == library::SortOrder::AuthorFirstDesc;
 }
 bool isRecentSort(library::SortOrder order) {
   return order == library::SortOrder::RecentAsc || order == library::SortOrder::RecentDesc;
@@ -332,7 +338,7 @@ struct LibraryListActivity {
     return title.empty() ? 0 : title[0];
   }
   static void formatInitialHeading(uint32_t initial, std::string& out) { out = static_cast<char>(initial); }
-  void formatAuthorHeading(const std::string& author, std::string& out) const { out = author; }
+  void formatAuthorHeading(const std::string& author, std::string& out) const;
 
   int activeTabIndex = 0;
   library::SortOrder sortOrder = library::SortOrder::RecentDesc;
@@ -368,6 +374,18 @@ struct LibraryListActivity {
 // INSERT_METHODS
 int main() {
   LibraryListActivity view;
+  std::string heading;
+  view.sortOrder = library::SortOrder::AuthorAsc;
+  view.formatAuthorHeading("Victor Hugo", heading);
+  assert(heading == "Hugo, Victor");
+  for (const auto order : {library::SortOrder::AuthorFirstAsc, library::SortOrder::AuthorFirstDesc}) {
+    view.sortOrder = order;
+    view.formatAuthorHeading("Victor Hugo", heading);
+    assert(heading == "Victor Hugo");
+    view.formatAuthorHeading("", heading);
+    assert(heading == "Unknown author");
+  }
+  view.sortOrder = library::SortOrder::RecentDesc;
   view.applyFilter();
   view.resolvePinned();
   assert(view.bookRowCount() == 7 && view.visible()[0] == "/missing.epub");

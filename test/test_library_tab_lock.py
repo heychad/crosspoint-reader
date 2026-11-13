@@ -5,13 +5,16 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 source = (root / 'src/activities/library/LibraryListActivity.cpp').read_text()
-start = source.index('void LibraryListActivity::selectTab(')
-end = source.index('{', start) + 1
-depth = 1
-while depth:
-    depth += (source[end] == '{') - (source[end] == '}')
-    end += 1
-body = source[start:end]
+def method(signature):
+    start = source.index(signature)
+    end = source.index('{', start) + 1
+    depth = 1
+    while depth:
+        depth += (source[end] == '{') - (source[end] == '}')
+        end += 1
+    return source[start:end]
+
+body = method('void LibraryListActivity::selectTab(') + '\n' + method('void LibraryListActivity::selectView(')
 code = r'''
 #include <atomic>
 #include <chrono>
@@ -24,6 +27,7 @@ struct Settings {
   struct View { uint8_t tab = 0, descendingTabs = 1; } libraryView;
   bool saveToFile() { return true; }
 } SETTINGS;
+namespace libraryview { constexpr int TAB_COUNT = 6; }
 std::mutex renderMutex;
 class LibraryListActivity;
 struct RenderLock {
@@ -44,6 +48,7 @@ class LibraryListActivity {
   void refreshOverlap() {}
   void requestUpdate() {}
   void selectTab(int index, bool toggleIfActive);
+  void selectView(int index, bool toggleIfActive);
 };
 ''' + body + r'''
 int main() {

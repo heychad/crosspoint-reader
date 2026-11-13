@@ -14,7 +14,8 @@ inline bool stageLibraryView(JsonVariantConst legacy, JsonDocument& proposed, co
   using libraryview::Tab;
   // RC2: Added, title, surname, first name, recently opened, series, genre.
   // Count marks views whose behavior does not match a native tab.
-  static constexpr Tab tabs[] = {Tab::Count, Tab::Title, Tab::Author, Tab::Count, Tab::Count, Tab::Series, Tab::Genre};
+  static constexpr Tab tabs[] = {Tab::Count, Tab::Title,  Tab::Author, Tab::AuthorFirst,
+                                 Tab::Count, Tab::Series, Tab::Genre};
   const uint8_t raw = method.as<uint8_t>();
   if (raw >= sizeof(tabs) / sizeof(tabs[0]) || tabs[raw] == Tab::Count) return false;
   const uint8_t tab = static_cast<uint8_t>(tabs[raw]);

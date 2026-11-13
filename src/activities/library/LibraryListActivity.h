@@ -74,6 +74,7 @@ class LibraryListActivity final : public UiTabListActivity {
   static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_TAB_USER;
   static constexpr freeink::ui::ActionId ACTION_REBUILD = ACTION_SEARCH + 1;
   static constexpr freeink::ui::ActionId ACTION_BACK = ACTION_REBUILD + 1;
+  static constexpr freeink::ui::ActionId ACTION_SORT = ACTION_BACK + 1;
 
   // Walk the card and write a fresh index. Blocking, with a popup: at ~70 books
   // it is well under a second, and it only runs when the index is missing or the
@@ -101,6 +102,8 @@ class LibraryListActivity final : public UiTabListActivity {
   void expandGroup(int groupEntry);
   void restoreExpandedList();
   void selectTab(int index, bool toggleIfActive);
+  void selectView(int index, bool toggleIfActive);
+  void openSortPicker();
   void loadViewPreferences();
   void toggleSortDirection();
   // Sub-screens act on button press, so a button still held when we resume must
@@ -111,6 +114,7 @@ class LibraryListActivity final : public UiTabListActivity {
   static void searchActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
   static void rebuildActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
   static void backActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
+  static void sortActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
 
   // Data
   void applyFilter();

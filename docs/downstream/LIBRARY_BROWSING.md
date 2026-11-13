@@ -1,9 +1,48 @@
 # Library browsing controls
 
-The chad.34 candidate adds settings for visible book formats, finished books,
-Library row layout and File Browser display. Settings → Library contains the
-controls. Their numeric and boolean keys also work through the existing web
-settings API. CrossInk settings import is not included in this candidate.
+Settings → Library controls visible book formats, finished books, Library rows,
+and File Browser display. Their numeric and boolean keys also work through the
+existing web settings API. The explicit CrossInk Library import carries the
+compatible choices through the existing backed-up transaction; see
+[supported mappings](SETTINGS_MIGRATION.md).
+
+## Sort views
+
+The five quick tabs remain Recent, Title, Author, Series, and Genre. The gear
+beside Search opens Sort library, using the existing scrolling selection screen.
+It offers Reverse order, the five existing views, Author first name, and Rebuild
+library. Holding Confirm while the tabs have focus opens the same picker.
+
+Author first name shares the Author tab's navigation. Its tab label becomes
+First name, and expanded headings show the normal name rather than the surname
+inversion. Tapping that active tab reverses the first-name order. Surname and
+first-name views retain separate direction bits. Choosing another quick tab
+then Author selects the surname view; the picker selects first-name order again.
+The current view and direction survive reopening Library and a clean restart.
+
+The picker allocates one checked EnumSelectionActivity while retaining the
+Library parent. Its compiled X4 Pro object is 1204 bytes; its eight StrId labels
+use 16 static bytes. The object and inherited UI resources coexist with the
+parent. Runtime heap peak still needs measurement. It adds no book-sized
+buffer or new storage writer. A failed allocation leaves Library open. Cancel
+and invalid results preserve the current view. The existing input owner and
+held-release guard handle returning from the picker.
+
+On the next reviewed firmware, open the gear and choose Author first name.
+Check its heading and direction, tap First name to reverse it, then leave and
+reopen Library. Also cancel the picker after a Confirm hold and reopen an
+in-progress book to check its saved position. Device validation remains pending.
+
+The 211 affected host checks pass, including real-font layouts for Author and
+First name in both reader orientations. Import, picker/view changes, and
+filter/group rendering pass AddressSanitizer and UndefinedBehaviorSanitizer.
+The default X4 Pro build passes in 107.65 seconds, with 113140 static RAM bytes
+and 5675630 flash bytes. The picker entry frame is 96 bytes. Logs are
+`/tmp/x4-first-name-view-checks.log`, `/tmp/x4-first-name-view-sanitizers.log`,
+`/tmp/x4-first-name-view-import-sanitizers.log`,
+`/tmp/x4-first-name-view-filter-sanitizers.log`, and
+`/tmp/x4-first-name-view-firmware.log`. Cumulative handoff review and device
+validation remain.
 
 ## Filters and rows
 
@@ -30,7 +69,7 @@ default.
 
 ## State and resources
 
-The eight browsing preferences use the existing bounded settings serializer.
+The browsing preferences use the existing bounded settings serializer.
 The current author-ordering work upgrades the derived Library index to version 4; see
 [index migration](LIBRARY_METADATA.md). Active search or format/completion filtering uses
 the existing array of at most 4096 16-bit row positions, requiring at most

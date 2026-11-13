@@ -18,7 +18,7 @@ std::string json(const JsonDocument& document) {
 }
 
 int main() {
-  constexpr unsigned nativeTabs[] = {255, 1, 2, 255, 255, 3, 4};
+  constexpr unsigned nativeTabs[] = {255, 1, 2, 5, 255, 3, 4};
   for (unsigned method = 0; method < 256; ++method) {
     for (unsigned direction = 0; direction < 2; ++direction) {
       const bool supported = method < 7 && nativeTabs[method] != 255;
@@ -37,7 +37,7 @@ int main() {
       assert(current["libraryViewDescendingTabs"] == (1 | (direction << tab)));
       assert(current["librarySortMethod"].isUnbound() && current["librarySortDescending"].isUnbound());
       assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
-      for (unsigned bits = 0; bits < 32; ++bits) {
+      for (unsigned bits = 0; bits < 64; ++bits) {
         current["libraryViewTab"] = 0;
         current["libraryViewDescendingTabs"] = bits;
         current["unrelated"] = "preserved";

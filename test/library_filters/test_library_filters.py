@@ -28,6 +28,7 @@ for signature in ('int LibraryListActivity::pinnedCount(', 'void LibraryListActi
                   'bool LibraryListActivity::matchesFilters(', 'bool LibraryListActivity::matchesFormat(',
                   'void LibraryListActivity::applyFilter(', 'bool LibraryListActivity::rowMetadataFor(',
                   'bool LibraryListActivity::buildGroupStarts(', 'void LibraryListActivity::formatMetadataHeading(',
+                  'void LibraryListActivity::formatAuthorHeading(',
                   'int LibraryListActivity::bookRowCount(', 'int LibraryListActivity::rowFor(',
                   'bool LibraryListActivity::rowPathFor(', 'bool LibraryListActivity::gridRequested(',
                   'bool LibraryListActivity::gridEnabled(', 'int LibraryListActivity::navigationPageSize(',

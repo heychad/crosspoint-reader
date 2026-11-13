@@ -15,8 +15,8 @@ positions last. Descending order reverses the entire order, including unknown
 positions.
 
 Show series and Show genre control row subtitles. Both default on and use the
-normal global settings serializer and web settings route. CrossInk settings
-import is not included in this candidate. They affect the displayed details. The Series and Genre tabs remain
+normal global settings serializer and web settings route. The explicit CrossInk
+Library import includes these choices. They affect the displayed details. The Series and Genre tabs remain
 available. EPUB metadata extraction follows the existing Library metadata
 setting.
 
@@ -27,8 +27,9 @@ They compare the folded canonical display name, including long shared prefixes,
 rather than the surname key or its 12-byte prefix. Unknown names sort last in
 ascending order; descending reverses the whole order. Equal names retain title
 order. Both author orders use the same spelling chosen by the existing author
-vote. The first-name order is a prerequisite for the next Library view update;
-it is not exposed by the current five-tab UI yet.
+vote. Sort library now selects first-name order through the header gear or a
+Confirm hold on the tab strip. It shares the Author quick tab and keeps its own
+direction. See [browsing controls](LIBRARY_BROWSING.md) for the input flow.
 
 This adds one bounded sort pass through the existing sorter. Its 32 KiB maximum
 run buffer, 4 KiB fallback, temporary run file, and per-pass text scratch retain
@@ -63,9 +64,9 @@ the source package because existing reader caches contain only basic metadata.
 If the source metadata is unavailable, the basic title/author cache remains a
 fallback. Later builds can reuse the rich index fields.
 
-## Current validation
+## Index checkpoint validation
 
-The full 2353-check host suite passed in 92.69 seconds. The native builder and
+The index checkpoint's full 2353-check host suite passed in 92.69 seconds. The native builder and
 sorter passed all 37 cases under AddressSanitizer and UndefinedBehaviorSanitizer,
 including the 4096-book ceiling. New checks cover distinct first/surname order,
 long shared prefixes, accented names, canonical spellings, and spilled runs.
