@@ -27,7 +27,7 @@ struct Settings {
   struct View { uint8_t tab = 0, descendingTabs = 1; } libraryView;
   bool saveToFile() { return true; }
 } SETTINGS;
-namespace libraryview { constexpr int TAB_COUNT = 7; }
+namespace libraryview { constexpr int TAB_COUNT = 8; }
 std::mutex renderMutex;
 class LibraryListActivity;
 struct RenderLock {

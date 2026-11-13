@@ -11,7 +11,7 @@ compatible choices through the existing backed-up transaction; see
 The five quick tabs remain Recent, Title, Author, Series, and Genre. The gear
 beside Search opens Sort library, using the existing scrolling selection screen.
 It offers Reverse order, Recent and new, Title, Author surname, Series, Genre,
-Author first name, Recently opened, and Rebuild library. Holding Confirm while the tabs have focus opens the same picker.
+Author first name, Recently opened, Date added, and Rebuild library. Holding Confirm while the tabs have focus opens the same picker.
 
 Author first name shares the Author tab's navigation. Its tab label becomes
 First name, and expanded headings show the normal name rather than the surname
@@ -114,7 +114,7 @@ default.
 ## State and resources
 
 The browsing preferences use the existing bounded settings serializer.
-The current author-ordering work upgrades the derived Library index to version 4; see
+The current time-ordering work upgrades the derived Library index to version 5; see
 [index migration](LIBRARY_METADATA.md). Active search or format/completion filtering uses
 the existing array of at most 4096 16-bit row positions, requiring at most
 8 KiB. The ordinary unfiltered view allocates no row-position array. Eighteen
@@ -138,3 +138,11 @@ blocks and stack watermarks require device measurements.
 Series and genre browsing and the recent-book cover grid are included; see
 [series and genre](LIBRARY_METADATA.md) and [recent covers](RECENT_COVERS.md).
 Nearby synchronization is excluded. Device verification is pending.
+
+## Date added
+
+Choose Sort library → Date added to list the entire indexed library by file
+creation time. The Recent quick tab reads Added in this view. Tap it to reverse
+the order; its direction is saved separately. Dates tied or missing use the
+preserved arrival identity, then title order. This view uses flat list rows and
+the normal shelf actions. It does not pin reading history above new books.

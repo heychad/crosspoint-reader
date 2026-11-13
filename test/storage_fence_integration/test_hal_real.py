@@ -29,7 +29,7 @@ signatures = ('bool HalStorage::observedSdmmcHealthy()', 'bool HalStorage::begin
               'HalStorage::SnapshotRead HalStorage::readDirectoryRecordAtPath(',
               'HalFile HalStorage::open(', 'HalFile HalStorage::openChecked(',
               'bool HalStorage::openFileForWrite(const char* moduleName, const char* path,',
-              'void HalFile::flush()', 'bool HalFile::sync()', 'size_t HalFile::write(const uint8_t*',
+              'uint32_t HalFile::creationTime()', 'uint32_t HalFile::modificationTime()', 'void HalFile::flush()', 'bool HalFile::sync()', 'size_t HalFile::write(const uint8_t*',
               'size_t HalFile::write(const void*', 'size_t HalFile::write(uint8_t', 'bool HalFile::close()',
               'bool HalFile::isOpen() const', 'HalFile::operator bool() const')
 methods = '\n'.join(extract(signature) for signature in signatures)
@@ -73,6 +73,7 @@ class HalFile {
  class Impl;std::unique_ptr<Impl> impl;
  HalFile();explicit HalFile(std::unique_ptr<Impl>);~HalFile();HalFile(HalFile&&);HalFile& operator=(HalFile&&);
  void flush();bool sync();size_t write(const uint8_t*,size_t);size_t write(const void*,size_t);size_t write(uint8_t);
+ uint32_t creationTime();uint32_t modificationTime();
  bool close();bool isOpen()const;explicit operator bool()const;
 };
 class HalStorage {
@@ -126,7 +127,17 @@ int main(int argc,char** argv){
   assert(manual && manual.write(uint8_t{2})==1 && manual.sync() && manual.close());
   assert(volume.mkdir("/.crossink-stats-backup/stats_cp_20261100_A_0000000000000001.bin",true));
  }
+ {auto file=volume.open("/books/progress.bin",O_RDWR);
+  assert(file && file.timestamp(T_CREATE,2020,1,2,3,4,6) && file.timestamp(T_WRITE,2025,6,7,8,9,10));
+  assert(file.sync() && file.close());}
  auto& storage=HalStorage::getInstance();HalStorage::MutationSnapshot before;
+ assert(storage.beginMutationSnapshot(before));
+ {const int writes=disk.writes;auto file=storage.open("/books/progress.bin",O_RDONLY);assert(file);
+  assert(file.creationTime()==((uint32_t(FS_DATE(2020,1,2))<<16)|FS_TIME(3,4,6)));
+  assert(file.modificationTime()==((uint32_t(FS_DATE(2025,6,7))<<16)|FS_TIME(8,9,10)));
+  assert(file.close());assert(file.creationTime()==0 && file.modificationTime()==0);
+  assert(disk.writes==writes && storage.mutationSnapshotUnchanged(before));}
+
  assert(storage.beginMutationSnapshot(before));
  if(std::string(argv[2]).starts_with("retention")){
   constexpr char current[]="stats_cp_20261110_A_0000000000000001.bin";

@@ -112,7 +112,7 @@ TEST(LibraryMetadataTabs, AllFiveLabelsAndTouchTargetsFitReaderOrientations) {
   };
   // Production Base, Lyra and RoundedRaff properties, plus a wider-gap stress case.
   const Theme themes[] = {{0, 10, false}, {0, 8, false}, {1, 0, true}, {1, 10, true}};
-  for (const char* recentLabel : {"Recent", "Opened"}) {
+  for (const char* recentLabel : {"Recent", "Opened", "Added"}) {
     labels[0] = recentLabel;
     for (const char* authorLabel : {"Author", "First name"}) {
       labels[2] = authorLabel;

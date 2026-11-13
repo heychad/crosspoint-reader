@@ -110,7 +110,9 @@ enum class SortOrder {
   GenreAsc,
   GenreDesc,
   AuthorFirstAsc,
-  AuthorFirstDesc
+  AuthorFirstDesc,
+  DateAddedAsc,
+  DateAddedDesc
 };
 struct BookIdentity {
   uint64_t pathHash;
@@ -129,7 +131,8 @@ bool matchesQuery(std::string_view text, std::string_view needle) { return text.
 bool isDescending(library::SortOrder order) {
   return order == library::SortOrder::RecentDesc || order == library::SortOrder::TitleDesc ||
          order == library::SortOrder::AuthorDesc || order == library::SortOrder::SeriesDesc ||
-         order == library::SortOrder::GenreDesc || order == library::SortOrder::AuthorFirstDesc;
+         order == library::SortOrder::GenreDesc || order == library::SortOrder::AuthorFirstDesc ||
+         order == library::SortOrder::DateAddedDesc;
 }
 bool isSeriesSort(library::SortOrder order) {
   return order == library::SortOrder::SeriesAsc || order == library::SortOrder::SeriesDesc;
@@ -307,8 +310,13 @@ bool isAuthorSort(library::SortOrder order) {
   return order == library::SortOrder::AuthorAsc || order == library::SortOrder::AuthorDesc ||
          order == library::SortOrder::AuthorFirstAsc || order == library::SortOrder::AuthorFirstDesc;
 }
-bool isRecentSort(library::SortOrder order) {
+bool isRecentSort(const library::SortOrder order) {
   return order == library::SortOrder::RecentAsc || order == library::SortOrder::RecentDesc;
+}
+
+bool isFlatSort(library::SortOrder order) {
+  return order == library::SortOrder::RecentAsc || order == library::SortOrder::RecentDesc ||
+         order == library::SortOrder::DateAddedAsc || order == library::SortOrder::DateAddedDesc;
 }
 struct MappedInputManager {
   enum class SwipeDir { None, Left, Right, Up, Down };
@@ -422,6 +430,21 @@ int main() {
     view.formatAuthorHeading("", heading);
     assert(heading == "Unknown author");
   }
+  for (const auto order : {library::SortOrder::DateAddedAsc, library::SortOrder::DateAddedDesc}) {
+    view.activeTabIndex = 7;
+    view.sortOrder = order;
+    view.applyFilter();
+    view.resolvePinned();
+    assert(view.pinnedCount() == 0 && view.bookRowCount() == static_cast<int>(books.size()));
+    auto dated = view.visible();
+    assert(std::find(dated.begin(), dated.end(), "/missing.epub") == dated.end());
+    assert(isFlatSort(order) && !isRecentSort(order));
+    SETTINGS.libraryShowXtc = false;
+    view.applyFilter();
+    assert(view.bookRowCount() == static_cast<int>(books.size()) - 1);
+    SETTINGS.libraryShowXtc = true;
+  }
+  view.activeTabIndex = 0;
   view.sortOrder = library::SortOrder::RecentDesc;
   view.applyFilter();
   view.resolvePinned();

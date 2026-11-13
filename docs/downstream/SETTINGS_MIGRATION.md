@@ -79,6 +79,7 @@ The explicit Library import translates tagged RC2's `librarySortMethod` and
 
 | RC2 method | Native tab |
 | --- | --- |
+| 0 Date added | Added, using file creation time, arrival identity, then title order |
 | 1 Title | Title |
 | 2 Author last name | Author, using the canonical display name's surname |
 | 3 Author first name | First name, using the folded canonical display name and the Author quick tab |
@@ -92,24 +93,23 @@ the whole native pair when either key exists, including null or invalid values.
 Confirmed replacement can replace it. The existing transaction backs up the
 native settings and preserves the CrossInk source byte for byte.
 
-Date added (0) remains unchanged on import. Tagged RC2 sorts it by file creation
-time; the native arrival order uses modification time. A faithful import needs
-creation-time capture and freshness checks. Recently opened now maps to logical
-view 6 and quick-tab slot 0, with direction bit 6. It reads the resident history
-rather than using the combined arrival/history shelf. The default directions
-start Recent and Recently opened newest first; existing native masks are retained.
-G3 remains partial while Date added and the remaining compatibility boundaries
-are resolved.
+All seven RC2 choices now map to native views. Date added uses logical view 7,
+quick-tab slot 0, and direction bit 7. The version 5 derived index stores creation
+timestamps and a separate order; changing creation time invalidates the order
+without reparsing unchanged metadata. The combined Recent shelf keeps its
+modification-time behavior. Recently opened uses logical view 6, quick-tab slot
+0, and direction bit 6, reading resident history rather than the combined shelf.
+New defaults start all three time views newest first; existing native masks are
+retained. G3 remains partial pending the remaining migration audit.
 
 The first-name view and import are now built, with independent saved direction
 and the native scrolling sort picker. Its logical view ID is 5; it uses Author's
 quick-tab/navigation slot 2. The two numeric IDs are not interchangeable. The
-version 4 index from the preceding checkpoint provides the order; this UI stage
-does not change that format. See [index details](LIBRARY_METADATA.md) and
+version 5 index preserves the first-name order. See [index details](LIBRARY_METADATA.md) and
 [controls](LIBRARY_BROWSING.md).
 
-The two settings occupy two bytes before enclosing-structure padding. There is
-no new task, retained buffer, index version, or reading-state write. The two JSON
+The two settings occupy two bytes before enclosing-structure padding. These preferences add
+no task, retained buffer, or reading-state write. The two JSON
 members share the existing 32 KiB settings limit and overflow checks. Runtime
 save latency and heap/stack headroom still need measurement on the X4 Pro.
 

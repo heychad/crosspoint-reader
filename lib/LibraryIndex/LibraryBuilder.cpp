@@ -66,6 +66,7 @@ struct StagedEntry {
   char series[STAGE_METADATA_BYTES];
   uint8_t genreLen;
   char genre[STAGE_METADATA_BYTES];
+  uint32_t creationTime;
 };
 constexpr size_t STAGE_STRIDE = sizeof(StagedEntry);
 
@@ -274,6 +275,7 @@ struct WalkState {
   uint16_t activeDedupCount = 0;
   bool dedupDegraded = false;
   bool failed = false;
+  bool creationTimesUnchanged = true;
   bool readMetadata = false;
   LibraryIndexFile* previous = nullptr;
   BuildStats* stats = nullptr;
@@ -309,10 +311,11 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
 // nothing about a book's surroundings names its author any more.
 [[gnu::noinline]] bool stageRecord(WalkState& st, const std::string& name, const uint32_t fileSize,
                                    const uint16_t folderId, const std::string& fullPath,
-                                   const uint32_t modificationTime) {
+                                   const uint32_t modificationTime, const uint32_t creationTime) {
   StagedEntry& entry = *st.stagedEntry;
   memset(&entry, 0, sizeof(entry));
   entry.seriesPosition = CLIX_UNKNOWN_SERIES_POSITION;
+  entry.creationTime = creationTime;
   // The filename is a fallback for the title and nothing else: no parsing, and
   // never an author. Per review on #2885 -- no other reader parses filenames,
   // and a name pulled out of one by pattern is a guess wearing a fact's clothes.
@@ -336,10 +339,18 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
       st.failed = true;
       return false;
     }
+    if (st.previous->header().formatVersion == CLIX_FORMAT_VERSION) {
+      uint32_t previousCreation = 0;
+      if (!st.previous->readCreationTime(priorOrdinal(st.prior[priorIndex]), previousCreation)) {
+        st.failed = true;
+        return false;
+      }
+      if (previousCreation != creationTime) st.creationTimesUnchanged = false;
+    }
     reuseMetadata =
         st.prior[priorIndex].fileSize == fileSize && modificationTime != 0 &&
         priorRecord.modificationTime == modificationTime && st.previous->header().foldVersion == CLIX_FOLD_VERSION &&
-        st.previous->header().formatVersion == CLIX_FORMAT_VERSION &&
+        st.previous->header().formatVersion >= CLIX_METADATA_FORMAT_VERSION &&
         st.previous->header().metadataEnabled == st.readMetadata && priorRecord.metadataStatus == expectedStatus;
   }
 
@@ -519,6 +530,7 @@ void walk(WalkState& st, const std::string& path, const int depth) {
     const bool isDir = entry.isDirectory();
     const uint32_t size = isDir ? 0 : static_cast<uint32_t>(entry.fileSize());
     const uint32_t modificationTime = isDir ? 0 : entry.modificationTime();
+    const uint32_t creationTime = isDir ? 0 : entry.creationTime();
     entry.close();
 
     if (st.nameBuf[0] == '\0' || isHiddenOrSidecar(st.nameBuf)) continue;
@@ -593,7 +605,7 @@ void walk(WalkState& st, const std::string& path, const int depth) {
       st.folderId++;
       folderEmitted = true;
     }
-    if (!stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime)) break;
+    if (!stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime, creationTime)) break;
   }
   dir.close();
 }
@@ -605,12 +617,13 @@ uint32_t blobBytesFor(const StagedEntry& entry, const StagedEntry& canonical) {
          entry.authorLen + 1u + entry.seriesLen + 1u + entry.genreLen + sizeof(entry.seriesPosition);
 }
 
-enum class MetadataField { Series, Genre, AuthorFirst };
+enum class MetadataField { Series, Genre, AuthorFirst, DateAdded };
 
 struct MetadataOrderContext {
   HalFile& stage;
   serialization::BufferedFileWriter& output;
   MetadataField field;
+  const uint16_t* firstSeen;
   std::string text;
   std::string key;
   uint32_t workUnits = 0;
@@ -627,6 +640,23 @@ bool loadMetadataKey(void* context, const uint16_t source, const size_t offset, 
   auto& state = *static_cast<MetadataOrderContext*>(context);
   const bool series = state.field == MetadataField::Series;
   const uint64_t base = static_cast<uint64_t>(source) * STAGE_STRIDE;
+  if (state.field == MetadataField::DateAdded) {
+    memset(segment, 0, SORT_SEGMENT_BYTES);
+    valueBytes = 6;
+    if (offset != 0) return true;
+    uint32_t creation = 0;
+    uint16_t firstSeen = 0;
+    if (!state.read(base + offsetof(StagedEntry, creationTime), &creation, sizeof(creation))) return false;
+    if (state.firstSeen)
+      firstSeen = state.firstSeen[source];
+    else if (!state.read(base + offsetof(StagedEntry, record) + offsetof(ClixRecord, firstSeen), &firstSeen,
+                         sizeof(firstSeen)))
+      return false;
+    for (size_t byte = 0; byte < 4; ++byte) segment[byte] = static_cast<char>(creation >> ((3u - byte) * 8u));
+    segment[4] = static_cast<char>(firstSeen >> 8);
+    segment[5] = static_cast<char>(firstSeen);
+    return true;
+  }
   size_t lengthOffset = 0;
   size_t textOffset = 0;
   switch (state.field) {
@@ -642,6 +672,8 @@ bool loadMetadataKey(void* context, const uint16_t source, const size_t offset, 
       lengthOffset = offsetof(StagedEntry, authorLen);
       textOffset = offsetof(StagedEntry, author);
       break;
+    case MetadataField::DateAdded:
+      return false;  // Numeric key handled above.
   }
   static_assert(STAGE_AUTHOR_BYTES == STAGE_METADATA_BYTES);
   uint8_t length = 0;
@@ -669,13 +701,16 @@ bool loadMetadataKey(void* context, const uint16_t source, const size_t offset, 
 }
 
 bool writeMetadataOrder(HalFile& stage, serialization::BufferedFileWriter& output, const uint16_t* order,
-                        const uint16_t count, const MetadataField field, const uint16_t* canonicalFrom = nullptr) {
-  MetadataOrderContext context{stage, output, field, {}, {}, 0};
-  context.text.reserve(STAGE_METADATA_BYTES);
-  context.key.reserve(STAGE_METADATA_BYTES * 4u + 5u);
+                        const uint16_t count, const MetadataField field, const uint16_t* canonicalFrom = nullptr,
+                        const uint16_t* firstSeen = nullptr) {
+  MetadataOrderContext context{stage, output, field, firstSeen, {}, {}, 0};
+  if (field != MetadataField::DateAdded) {
+    context.text.reserve(STAGE_METADATA_BYTES);
+    context.key.reserve(STAGE_METADATA_BYTES * 4u + 5u);
+  }
   SortConfig config;
   config.runPath = "/.crosspoint/library.sort";
-  config.keyBytes = STAGE_METADATA_BYTES * 4u + 5u;
+  config.keyBytes = field == MetadataField::DateAdded ? SORT_SEGMENT_BYTES : STAGE_METADATA_BYTES * 4u + 5u;
   config.load = &loadMetadataKey;
   config.loadContext = &context;
   ExternalSorter sorter;
@@ -1129,8 +1164,18 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
   arrivalOrder.reset();
   if (!writeMetadataOrder(stage, outBuffer, order, n, MetadataField::Series) ||
       !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::Genre) ||
-      !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::AuthorFirst, canonicalFrom.get())) {
+      !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::AuthorFirst, canonicalFrom.get()) ||
+      !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::DateAdded, nullptr, resolvedFirstSeen)) {
     ioFailed = true;
+  }
+  padTo(creationTimeOffset(header, 0));
+  for (uint16_t i = 0; i < n; ++i) {
+    serviceBuilder(serviceUnits);
+    uint32_t creation = 0;
+    if (!readStageAt(static_cast<uint64_t>(order[i]) * STAGE_STRIDE + offsetof(StagedEntry, creationTime), &creation,
+                     sizeof(creation)))
+      break;
+    put(&creation, sizeof(creation));
   }
   padTo(header.nameStart);
 
@@ -1355,7 +1400,7 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   if (previous.isOpen() && previous.header().formatVersion == CLIX_FORMAT_VERSION &&
       previous.header().foldVersion == CLIX_FOLD_VERSION && previous.header().metadataEnabled == st.readMetadata &&
       st.books == priorCount && st.reused == priorCount && stats.metadataReused == priorCount &&
-      st.unreadableSkipped == 0 &&
+      st.unreadableSkipped == 0 && st.creationTimesUnchanged &&
       (st.books >= CLIX_MAX_RECORDS || (previous.header().flags & CLIX_FLAG_SCAN_COMPLETE))) {
     previous.close();
     Storage.remove(STAGE_PATH);

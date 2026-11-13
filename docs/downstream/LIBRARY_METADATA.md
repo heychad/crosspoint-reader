@@ -41,11 +41,12 @@ per-book array. At the 4096-book ceiling, the extra on-card permutation costs
 ## Index and state
 
 Library index version 3 added series/genre/position fields and their two
-permutations. Version 4 appends the first-name permutation, with the same
-128-byte record and name-blob layout. Versions 2 and 3 remain readable during
-rebuild reconciliation so firstSeen values survive the upgrade. Version 3 rich
-metadata remains readable during reconciliation. Current display opens require
-version 4. All writes use
+permutations. Version 4 appends the first-name permutation. Version 5 adds a Date added
+permutation and a sector-aligned column of packed 32-bit creation timestamps.
+The 128-byte record and name-blob layouts stay the same. Versions 2, 3, and 4
+remain readable during rebuild reconciliation so firstSeen values survive.
+Versions 3 and 4 can reuse unchanged rich metadata. Current display opens require
+version 5. All writes use
 the existing staged index installation. A failed rebuild preserves the prior
 index. Book paths and reader caches are outside this index migration.
 
@@ -86,3 +87,33 @@ Library/EPUB-loader sanitizer harnesses. Real-font layout checks cover the five
 tabs with Library margins in portrait and landscape. An early C3 build passed
 before the final content-width layout hook. Independent reviews, final firmware builds, resource
 measurements and hardware validation are pending.
+
+## Date added
+
+The Added view sorts by file creation time, then preserved firstSeen identity,
+then title ordinal, matching the tagged RC2 behavior. Missing timestamps sort
+as zero. Reversal reverses the complete order. The combined Recent shelf keeps
+its existing modification-time order.
+
+FAT and exFAT creation dates use the existing SdFat getter through the firmware
+HAL. An unchanged-size, unchanged-modification-time book can retain its extracted
+metadata while a creation-time change rebuilds the derived order. The sorter
+reuses the bounded external-sort buffer; no new resident per-book array is added.
+Creation timestamps and the extra permutation add at most 24 KiB across the
+supported counts, including alignment. A failed rebuild keeps the prior index.
+Book files and reader progress are outside this migration.
+
+The standard X4 Pro build passes at 113,140 bytes of static RAM and 5,678,054
+bytes of flash. Its Library activity is 2,368 bytes; one staging entry is 1,048
+bytes, and the emitter owns two temporary entries. Native builder/sorter tests,
+view/picker persistence, import ownership, and filter/row paths pass
+AddressSanitizer and UndefinedBehaviorSanitizer. The real FAT/exFAT fixture
+checks distinct creation/modification times, closed handles, and unchanged
+mutation snapshots. Cumulative review and device validation remain pending.
+
+The final full host run passed all 2,358 checks in 80.49 seconds. The default
+X4 Pro build took 160.48 seconds. Two earlier suite runs exposed fixture setup
+text dependencies; the final fixture preserves their injection point and passes
+all consumers. Logs: `/tmp/x4-dateadded-full-checks.log`,
+`/tmp/x4-dateadded-firmware.log`, and `/tmp/x4-dateadded-*-sanitizers.log`.
+This is a checked development checkpoint, not an installed firmware candidate.

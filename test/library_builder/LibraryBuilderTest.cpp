@@ -33,6 +33,20 @@ std::string pathAt(LibraryIndexFile& index, const SortOrder order, const uint16_
   return index.readPath(record, path) ? path : std::string();
 }
 
+void downgradeIndex(const uint8_t version) {
+  auto& bytes = fake::files.at(INDEX)->bytes;
+  ClixHeader header{};
+  memcpy(&header, bytes.data(), sizeof(header));
+  const uint32_t blob = header.nameStart;
+  header.formatVersion = version;
+  layoutSections(header, header.folderLen, header.nameLen);
+  std::vector<uint8_t> older(header.selfSize);
+  std::copy_n(bytes.begin(), header.nameStart, older.begin());
+  std::copy_n(bytes.begin() + blob, header.nameLen, older.begin() + header.nameStart);
+  memcpy(older.data(), &header, sizeof(header));
+  bytes = std::move(older);
+}
+
 class LibraryBuilderTest : public ::testing::Test {
  protected:
   BuildStats stats;
@@ -617,11 +631,7 @@ TEST_F(LibraryBuilderTest, VersionTwoRebuildPreservesArrivalIdentityAndExtractsR
   auto& bytes = fake::files.at(INDEX)->bytes;
   ClixHeader header{};
   memcpy(&header, bytes.data(), sizeof(header));
-  const uint32_t blobStart = header.nameStart;
-  header.formatVersion = CLIX_LEGACY_FORMAT_VERSION;
-  layoutSections(header, header.folderLen, header.nameLen);
-  ASSERT_EQ(header.nameStart, blobStart);
-  memcpy(bytes.data(), &header, sizeof(header));
+  downgradeIndex(CLIX_LEGACY_FORMAT_VERSION);
   LibraryIndexFile previous;
   ASSERT_FALSE(previous.open(INDEX));
   ASSERT_TRUE(previous.openForReconciliation(INDEX));
@@ -643,8 +653,8 @@ TEST_F(LibraryBuilderTest, VersionTwoRebuildPreservesArrivalIdentityAndExtractsR
   EXPECT_EQ(genre, "Adventure");
 }
 
-TEST_F(LibraryBuilderTest, MigratesBothOlderLayoutsAndRetriesFailedWrite) {
-  for (const auto version : {CLIX_LEGACY_FORMAT_VERSION, CLIX_PREVIOUS_FORMAT_VERSION}) {
+TEST_F(LibraryBuilderTest, MigratesAllOlderLayoutsAndRetriesFailedWrite) {
+  for (const auto version : {CLIX_LEGACY_FORMAT_VERSION, CLIX_METADATA_FORMAT_VERSION, CLIX_PREVIOUS_FORMAT_VERSION}) {
     fake::reset();
     bookMetadata.clear();
     fake::add("/a.epub");
@@ -680,7 +690,8 @@ TEST_F(LibraryBuilderTest, MigratesBothOlderLayoutsAndRetriesFailedWrite) {
     ASSERT_TRUE(previous.readSeries(first, series));
     EXPECT_EQ(genre, version == CLIX_LEGACY_FORMAT_VERSION ? "" : "Adventure");
     EXPECT_EQ(series, version == CLIX_LEGACY_FORMAT_VERSION ? "" : "Series A");
-    EXPECT_EQ(previous.ordinalForRow(SortOrder::AuthorFirstAsc, 0), 0xFFFF);
+    EXPECT_EQ(previous.ordinalForRow(SortOrder::AuthorFirstAsc, 0) == 0xFFFF, version < CLIX_PREVIOUS_FORMAT_VERSION);
+    EXPECT_EQ(previous.ordinalForRow(SortOrder::DateAddedAsc, 0), 0xFFFF);
     previous.close();
 
     fake::failWritePath = "/.crosspoint/library.new";
@@ -719,7 +730,8 @@ TEST_F(LibraryBuilderTest, RecoversValidLegacyBackupBeforeRebuildingInvalidLiveI
   auto& bytes = fake::files.at(INDEX)->bytes;
   ClixHeader header{};
   memcpy(&header, bytes.data(), sizeof(header));
-  header.formatVersion = CLIX_PREVIOUS_FORMAT_VERSION;
+  downgradeIndex(CLIX_PREVIOUS_FORMAT_VERSION);
+  memcpy(&header, bytes.data(), sizeof(header));
   header.nextFirstSeen = 77;
   memcpy(bytes.data(), &header, sizeof(header));
   for (uint16_t i = 0; i < header.bookCount; ++i) {
@@ -737,5 +749,60 @@ TEST_F(LibraryBuilderTest, RecoversValidLegacyBackupBeforeRebuildingInvalidLiveI
     ClixRecord record{};
     ASSERT_TRUE(index.readRecord(i, record));
     EXPECT_EQ(record.firstSeen, 40 + i);
+  }
+}
+
+TEST_F(LibraryBuilderTest, DateAddedUsesCreationThenArrivalAndRefreshesWithoutParsing) {
+  for (const uint16_t capacity : {uint16_t{0}, uint16_t{3}}) {
+    fake::reset();
+    bookMetadata.clear();
+    for (unsigned i = 0; i < 7; ++i) {
+      const auto path = "/" + numbered("book", i) + ".epub";
+      fake::add(path, "book", 100 - i);
+      fake::files.at(path)->created = i == 0 ? 0 : (i % 3) + 1;
+      bookMetadata[path].title = numbered("Title", 6 - i);
+    }
+    setSortRunCapacityForTesting(capacity);
+    ASSERT_TRUE(buildLibraryIndex("/", stats, true));
+    LibraryIndexFile index;
+    ASSERT_TRUE(index.open(INDEX));
+    const unsigned expected[] = {0, 3, 6, 1, 4, 2, 5};
+    std::vector<uint16_t> arrivals;
+    for (uint16_t row = 0; row < 7; ++row) {
+      EXPECT_EQ(pathAt(index, SortOrder::DateAddedAsc, row), "/" + numbered("book", expected[row]) + ".epub");
+      EXPECT_EQ(pathAt(index, SortOrder::DateAddedDesc, 6 - row), pathAt(index, SortOrder::DateAddedAsc, row));
+      ClixRecord record{};
+      ASSERT_TRUE(index.readRecord(row, record));
+      arrivals.push_back(record.firstSeen);
+    }
+    index.close();
+    const auto old = fake::files.at(INDEX)->bytes;
+    fake::files.at("/book0000.epub")->created = 99;
+    fake::failWritePath = "/.crosspoint/library.new";
+    EXPECT_FALSE(buildLibraryIndex("/", stats, true));
+    EXPECT_EQ(fake::files.at(INDEX)->bytes, old);
+    ASSERT_TRUE(buildLibraryIndex("/", stats, true));
+    EXPECT_TRUE(stats.indexReplaced);
+    EXPECT_EQ(stats.parsed, 0u);
+    ASSERT_TRUE(index.open(INDEX));
+    EXPECT_EQ(pathAt(index, SortOrder::DateAddedDesc, 0), "/book0000.epub");
+    for (uint16_t row = 0; row < 7; ++row) {
+      ClixRecord record{};
+      ASSERT_TRUE(index.readRecord(row, record));
+      EXPECT_EQ(record.firstSeen, arrivals[row]);
+      std::string path;
+      ASSERT_TRUE(index.readPath(record, path));
+      uint32_t created = 0;
+      ASSERT_TRUE(index.readCreationTime(row, created));
+      EXPECT_EQ(created, fake::files.at(path)->created);
+      EXPECT_EQ(fake::files.at(path)->bytes, std::vector<uint8_t>({'b', 'o', 'o', 'k'}));
+    }
+    uint32_t missing = 42;
+    EXPECT_FALSE(index.readCreationTime(7, missing));
+    EXPECT_EQ(missing, 0u);
+    index.close();
+    ASSERT_TRUE(buildLibraryIndex("/", stats, true));
+    EXPECT_FALSE(stats.indexReplaced);
+    setSortRunCapacityForTesting(0);
   }
 }

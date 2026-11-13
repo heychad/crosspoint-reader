@@ -1039,3 +1039,6 @@ STR_BOOK_PREVIEW: "Book preview"
 STR_STATS_RECORDED_TODAY: "Recorded today"
 STR_STATS_RECORDED_DAILY_AVERAGE: "Recorded 7-day average"
 STR_MENU: "Menu"
+
+STR_LIBRARY_DATE_ADDED: "Date added"
+STR_LIBRARY_ADDED_TAB: "Added"

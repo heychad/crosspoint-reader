@@ -78,7 +78,7 @@ uint16_t LibraryIndexFile::ordinalForRow(const SortOrder order, const uint16_t r
     case SortOrder::AuthorFirstAsc:
     case SortOrder::AuthorFirstDesc: {
       const bool firstName = order == SortOrder::AuthorFirstAsc || order == SortOrder::AuthorFirstDesc;
-      if (firstName && head.formatVersion != CLIX_FORMAT_VERSION) return NONE;
+      if (firstName && head.formatVersion < CLIX_PREVIOUS_FORMAT_VERSION) return NONE;
       const bool ascending = order == SortOrder::AuthorAsc || order == SortOrder::AuthorFirstAsc;
       const uint16_t k = ascending ? row : static_cast<uint16_t>(head.bookCount - 1 - row);
       uint16_t ordinal = NONE;
@@ -94,6 +94,14 @@ uint16_t LibraryIndexFile::ordinalForRow(const SortOrder order, const uint16_t r
       return readAt(arrivalOrderOffset(head, k), &ordinal, sizeof(ordinal)) && ordinal < head.bookCount ? ordinal
                                                                                                         : NONE;
     }
+    case SortOrder::DateAddedAsc:
+    case SortOrder::DateAddedDesc: {
+      if (head.formatVersion != CLIX_FORMAT_VERSION) return NONE;
+      const uint16_t k = order == SortOrder::DateAddedAsc ? row : static_cast<uint16_t>(head.bookCount - 1 - row);
+      uint16_t ordinal = NONE;
+      return readAt(dateAddedOrderOffset(head, k), &ordinal, sizeof(ordinal)) && ordinal < head.bookCount ? ordinal
+                                                                                                          : NONE;
+    }
     case SortOrder::SeriesAsc:
     case SortOrder::SeriesDesc:
     case SortOrder::GenreAsc:
@@ -108,6 +116,12 @@ uint16_t LibraryIndexFile::ordinalForRow(const SortOrder order, const uint16_t r
     }
   }
   return NONE;
+}
+
+bool LibraryIndexFile::readCreationTime(const uint16_t ordinal, uint32_t& out) {
+  out = 0;
+  return opened && head.formatVersion == CLIX_FORMAT_VERSION && ordinal < head.bookCount &&
+         readAt(creationTimeOffset(head, ordinal), &out, sizeof(out));
 }
 
 bool LibraryIndexFile::recentRowsFor(const BookIdentity* books, const size_t count, uint16_t* outRows) {

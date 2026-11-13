@@ -32,6 +32,8 @@ enum class SortOrder : uint8_t {
   GenreDesc,
   AuthorFirstAsc,
   AuthorFirstDesc,
+  DateAddedAsc,
+  DateAddedDesc,
 };
 
 // One book to locate in the index: the complete-path hash (clixPathHash) is
@@ -95,6 +97,7 @@ class LibraryIndexFile {
   bool recentRowsFor(const BookIdentity* books, size_t count, uint16_t* outRows);
 
   bool readRecord(uint16_t ordinal, ClixRecord& out);
+  bool readCreationTime(uint16_t ordinal, uint32_t& out);
   // Persisted complete-path fingerprint used by rebuild reconciliation.
   bool readPathHash(const ClixRecord& record, uint64_t& out);
 

@@ -317,6 +317,34 @@ TEST_F(BookSettings, CrossInkFirstNameViewPublishesWithSourceAndBackupPreserved)
   EXPECT_EQ(backup, original);
 }
 
+TEST_F(BookSettings, CrossInkDateAddedViewPublishesWithSourceAndBackupPreserved) {
+  constexpr char primary[] = "/.crosspoint/settings.json";
+  const std::string original = R"({"libraryViewTab":4,"libraryViewDescendingTabs":17,"pluginsEnabled":1})";
+  const std::string legacy = R"({"librarySortMethod":0,"librarySortDescending":1})";
+  put(primary, original);
+  put(crossinkimport::SOURCE_PATH, legacy);
+  JsonDocument proposed;
+  ASSERT_FALSE(deserializeJson(proposed, original));
+  char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+  ASSERT_EQ(crossinkimport::publishLibrary(proposed, original.data(), original.size(), snapshot),
+            crossinkimport::ApplyResult::Published);
+  std::string saved, backup, source;
+  ASSERT_TRUE(Storage.readFileToString("TEST", primary, 32768, saved));
+  ASSERT_TRUE(Storage.readFileToString("TEST", snapshot, 32768, backup));
+  ASSERT_TRUE(Storage.readFileToString("TEST", crossinkimport::SOURCE_PATH, 32768, source));
+  JsonDocument persisted;
+  ASSERT_FALSE(deserializeJson(persisted, saved));
+  libraryview::Preferences restored;
+  restored.read(persisted.as<JsonVariantConst>());
+  EXPECT_EQ(restored.tab, static_cast<uint8_t>(libraryview::Tab::DateAdded));
+  EXPECT_EQ(restored.descendingTabs, 145);
+  EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
+  EXPECT_TRUE(persisted["librarySortMethod"].isUnbound());
+  EXPECT_TRUE(persisted["librarySortDescending"].isUnbound());
+  EXPECT_EQ(source, legacy);
+  EXPECT_EQ(backup, original);
+}
+
 TEST_F(BookSettings, CrossInkLibraryImportsCompatibleThemesByMeaning) {
   for (const auto [legacy, expected] : {std::pair{0, 0}, {1, 1}, {2, 2}, {3, 3}, {5, 5}, {6, 6}, {7, 4}}) {
     JsonDocument source, current;

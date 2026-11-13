@@ -57,17 +57,24 @@ constexpr int AUTHOR_TAB = static_cast<int>(libraryview::Tab::Author);
 constexpr int SERIES_TAB = static_cast<int>(libraryview::Tab::Series);
 constexpr int GENRE_TAB = static_cast<int>(libraryview::Tab::Genre);
 constexpr int OPENED_VIEW = static_cast<int>(libraryview::Tab::RecentlyOpened);
+constexpr int ADDED_VIEW = static_cast<int>(libraryview::Tab::DateAdded);
 constexpr int TAB_SLOTS = GENRE_TAB + 1;
 static_assert(TAB_SLOTS == libraryview::MAIN_TAB_COUNT);
 
 constexpr bool isDescending(const library::SortOrder order) {
   return order == library::SortOrder::RecentDesc || order == library::SortOrder::TitleDesc ||
          order == library::SortOrder::AuthorDesc || order == library::SortOrder::SeriesDesc ||
-         order == library::SortOrder::GenreDesc || order == library::SortOrder::AuthorFirstDesc;
+         order == library::SortOrder::GenreDesc || order == library::SortOrder::AuthorFirstDesc ||
+         order == library::SortOrder::DateAddedDesc;
 }
 
 constexpr bool isRecentSort(const library::SortOrder order) {
   return order == library::SortOrder::RecentAsc || order == library::SortOrder::RecentDesc;
+}
+
+constexpr bool isFlatSort(const library::SortOrder order) {
+  return order == library::SortOrder::RecentAsc || order == library::SortOrder::RecentDesc ||
+         order == library::SortOrder::DateAddedAsc || order == library::SortOrder::DateAddedDesc;
 }
 
 constexpr bool isAuthorSort(const library::SortOrder order) {
@@ -90,7 +97,9 @@ constexpr library::SortOrder orderForTab(const int tab, const uint8_t descending
                                               {library::SortOrder::SeriesAsc, library::SortOrder::SeriesDesc},
                                               {library::SortOrder::GenreAsc, library::SortOrder::GenreDesc},
                                               {library::SortOrder::AuthorFirstAsc, library::SortOrder::AuthorFirstDesc},
-                                              {library::SortOrder::RecentAsc, library::SortOrder::RecentDesc}};
+                                              {library::SortOrder::RecentAsc, library::SortOrder::RecentDesc},
+                                              {library::SortOrder::DateAddedAsc, library::SortOrder::DateAddedDesc}};
+  static_assert(sizeof(orders) / sizeof(orders[0]) == libraryview::TAB_COUNT);
   return orders[tab][(descendingTabs & (1u << tab)) != 0];
 }
 
@@ -726,10 +735,12 @@ void LibraryListActivity::loadViewPreferences() {
 void LibraryListActivity::toggleSortDirection() { selectView(activeTabIndex, true); }
 
 void LibraryListActivity::openSortPicker() {
-  static constexpr StrId choices[] = {
-      StrId::STR_LIBRARY_REVERSE_ORDER,     StrId::STR_LIBRARY_RECENT_AND_NEW,  StrId::STR_LIBRARY_TAB_TITLE,
-      StrId::STR_LIBRARY_AUTHOR_SURNAME,    StrId::STR_LIBRARY_TAB_SERIES,      StrId::STR_LIBRARY_TAB_GENRE,
-      StrId::STR_LIBRARY_AUTHOR_FIRST_NAME, StrId::STR_LIBRARY_RECENTLY_OPENED, StrId::STR_LIBRARY_REBUILD};
+  static constexpr StrId choices[] = {StrId::STR_LIBRARY_REVERSE_ORDER,     StrId::STR_LIBRARY_RECENT_AND_NEW,
+                                      StrId::STR_LIBRARY_TAB_TITLE,         StrId::STR_LIBRARY_AUTHOR_SURNAME,
+                                      StrId::STR_LIBRARY_TAB_SERIES,        StrId::STR_LIBRARY_TAB_GENRE,
+                                      StrId::STR_LIBRARY_AUTHOR_FIRST_NAME, StrId::STR_LIBRARY_RECENTLY_OPENED,
+                                      StrId::STR_LIBRARY_DATE_ADDED,        StrId::STR_LIBRARY_REBUILD};
+  static_assert(sizeof(choices) / sizeof(choices[0]) == libraryview::TAB_COUNT + 2);
   auto picker = makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, StrId::STR_LIBRARY_SORT, choices,
                                                          activeTabIndex + 1);
   if (!picker) {
@@ -757,6 +768,7 @@ int LibraryListActivity::tabCount() const { return TAB_SLOTS; }
 int LibraryListActivity::activeTab() const { return libraryview::mainTab(static_cast<uint8_t>(activeTabIndex)); }
 
 const char* LibraryListActivity::tabLabel(const int index) const {
+  if (index == RECENT_TAB && activeTabIndex == ADDED_VIEW) return tr(STR_LIBRARY_ADDED_TAB);
   if (index == RECENT_TAB && historyView()) return tr(STR_LIBRARY_OPENED_TAB);
   if (index == AUTHOR_TAB && activeTabIndex == static_cast<int>(libraryview::Tab::AuthorFirst))
     return tr(STR_LIBRARY_FIRST_NAME_TAB);
@@ -798,7 +810,7 @@ int LibraryListActivity::rowFor(const int entry) const {
   return row;
 }
 
-bool LibraryListActivity::groupable() const { return !degraded && !isRecentSort(sortOrder) && bookRowCount() > 0; }
+bool LibraryListActivity::groupable() const { return !degraded && !isFlatSort(sortOrder) && bookRowCount() > 0; }
 
 uint32_t LibraryListActivity::titleInitialFor(const int entry) {
   const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(entry)));
@@ -1304,7 +1316,7 @@ void LibraryListActivity::buildRows(UiScreen& screen) {
   const int count = listCount();
   const bool authorGrouped = SETTINGS.libraryListExpanded && isAuthorSort(sortOrder);
   const bool metadataGrouped = SETTINGS.libraryListExpanded && isMetadataSort(sortOrder);
-  const bool grouped = SETTINGS.libraryListExpanded && !isRecentSort(sortOrder);
+  const bool grouped = SETTINGS.libraryListExpanded && !isFlatSort(sortOrder);
 
   fui::ListProps props;
   props.count = static_cast<uint16_t>(count);

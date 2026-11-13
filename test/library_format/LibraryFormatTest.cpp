@@ -30,8 +30,9 @@ TEST(LibraryFormat, StructSizesAreFrozen) {
   EXPECT_EQ(sizeof(ClixHeader), 64u);
   EXPECT_EQ(sizeof(ClixRecord), 128u);
   EXPECT_EQ(sizeof(ClixFolderHeader), 1u);
-  EXPECT_EQ(CLIX_FORMAT_VERSION, 4u);
-  EXPECT_EQ(CLIX_PREVIOUS_FORMAT_VERSION, 3u);
+  EXPECT_EQ(CLIX_FORMAT_VERSION, 5u);
+  EXPECT_EQ(CLIX_PREVIOUS_FORMAT_VERSION, 4u);
+  EXPECT_EQ(CLIX_METADATA_FORMAT_VERSION, 3u);
   EXPECT_EQ(CLIX_LEGACY_FORMAT_VERSION, 2u);
 }
 
@@ -59,7 +60,7 @@ TEST(LibraryFormat, SectionsDoNotOverlap) {
   EXPECT_GE(h.folderStart, sizeof(ClixHeader));
   EXPECT_GE(h.recordStart, h.folderStart + h.folderLen);
   EXPECT_GE(h.permStart, h.recordStart + 200u * sizeof(ClixRecord));
-  EXPECT_GE(h.nameStart, h.permStart + 200u * 5u * sizeof(uint16_t));
+  EXPECT_GE(h.nameStart, creationTimeOffset(h, 200));
   EXPECT_EQ(h.selfSize, h.nameStart + h.nameLen);
 }
 
@@ -81,12 +82,14 @@ TEST(LibraryFormat, PermutationArraysDoNotOverlapEachOther) {
   EXPECT_GT(seriesOrderOffset(h, 0), arrivalOrderOffset(h, h.bookCount - 1));
   EXPECT_GT(genreOrderOffset(h, 0), seriesOrderOffset(h, h.bookCount - 1));
   EXPECT_GT(firstNameOrderOffset(h, 0), genreOrderOffset(h, h.bookCount - 1));
-  EXPECT_GE(h.nameStart, firstNameOrderOffset(h, h.bookCount - 1) + sizeof(uint16_t));
+  EXPECT_GT(dateAddedOrderOffset(h, 0), firstNameOrderOffset(h, h.bookCount - 1));
+  EXPECT_GE(creationTimeOffset(h, 0), dateAddedOrderOffset(h, h.bookCount - 1) + sizeof(uint16_t));
+  EXPECT_GE(h.nameStart, creationTimeOffset(h, h.bookCount));
 }
 
 TEST(LibraryFormat, SizeArithmeticMatchesTheSpecTable) {
   // Spec section 3.7, the 200-book row: 512 header + 1536 folders + 25600
-  // records + 2048 permutations + 16000 names.
+  // records + 2560 permutations + 1024 creation timestamps + 16000 names.
   ClixHeader h{};
   memcpy(h.magic, CLIX_MAGIC, sizeof(CLIX_MAGIC));
   h.formatVersion = CLIX_FORMAT_VERSION;
@@ -96,11 +99,11 @@ TEST(LibraryFormat, SizeArithmeticMatchesTheSpecTable) {
   EXPECT_EQ(h.folderStart, 512u);
   EXPECT_EQ(h.recordStart, 2048u);
   EXPECT_EQ(h.permStart, 2048u + 25600u);
-  EXPECT_EQ(h.selfSize, 45696u);
+  EXPECT_EQ(h.selfSize, 47232u);
 }
 
 TEST(LibraryFormatValidation, OlderVersionsAreAcceptedOnlyForReconciliation) {
-  for (const auto version : {CLIX_LEGACY_FORMAT_VERSION, CLIX_PREVIOUS_FORMAT_VERSION}) {
+  for (const auto version : {CLIX_LEGACY_FORMAT_VERSION, CLIX_METADATA_FORMAT_VERSION, CLIX_PREVIOUS_FORMAT_VERSION}) {
     ClixHeader h = makeHeader(300, 116);
     h.formatVersion = version;
     layoutSections(h, h.folderLen, h.nameLen);
@@ -216,4 +219,15 @@ TEST(LibraryFormat, ByteImageIsStableAcrossBuilds) {
   EXPECT_EQ(offsetof(ClixHeader, bookCount), 8u);
   EXPECT_EQ(offsetof(ClixHeader, folderStart), 16u);
   EXPECT_EQ(offsetof(ClixHeader, selfSize), 40u);
+}
+
+TEST(LibraryFormat, DateAddedStorageGrowthStaysWithinTwentyFourKiB) {
+  for (uint16_t count = 0; count <= CLIX_MAX_RECORDS; ++count) {
+    auto current = makeHeader(count);
+    auto old = current;
+    old.formatVersion = CLIX_PREVIOUS_FORMAT_VERSION;
+    layoutSections(old, old.folderLen, old.nameLen);
+    EXPECT_LE(current.selfSize - old.selfSize, 24u * 1024u);
+    if (count == CLIX_MAX_RECORDS) EXPECT_EQ(current.selfSize - old.selfSize, 24u * 1024u);
+  }
 }
