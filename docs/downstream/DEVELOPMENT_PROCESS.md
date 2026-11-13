@@ -150,6 +150,7 @@ These are check durations, not coding speed or total development time.
 | November 13 TLS setup and build provenance | Full 2390 checks: 458.59 s, concurrent with a firmware build; 47 final focused checks: 1.99 s, including 6 patch and 6 link-repair cases. Production TLS setup/retry harness passes both sanitizers. Real certificate cryptography and updater integration remain open | Initial 38.38 s default build excluded: stale links selected a sibling SDK. Corrected default: 116.03 s, RAM 113060, flash 5682114, compiled TLS source path verified. Eleven-flag profile: 71.21 s, RAM 113092, flash 5783834 |
 | November 13 bounded release metadata | 16 metadata/version checks: 0.09 s; both sanitizers pass. Truncation, duplicate/escaped keys, syntax, UTF-8, memory bounds, field types, and exact asset binding covered. Initial CMake dependency-scope failure corrected using FetchContent properties | Default X4 Pro: 72.13 s, RAM 113060, flash 5682130. Updater gate remains closed; enabled transport/resource and image-stream validation remain |
 | November 13 streamed image verification | 31 focused checks: 0.16 s; ASAN + UBSAN: 0.56 s. Whole production updater exercised with fake transport/ESP writer and real SHA-256. Initial missing stub include corrected | Default X4 Pro: 74.59 s, RAM 113068, flash 5696246. Production transport stays disabled; live HTTPS, enabled resources, and device installation remain |
+| November 13 restricted update HTTPS | 43 focused checks: 0.23 s; ASAN + UBSAN: 0.76 s. Eleven policy checks plus missing-release recheck regression. Host pinned-root API/redirect/CDN and wrong-root/hostname checks pass. Initial stub type/name errors corrected | Default X4 Pro: 70.28 s, RAM 113068, flash 5696254. Twelve-flag profile: 180.25 s, RAM 113100, flash 5803310, including first-profile pinned dependency installation. Firmware TLS/runtime/device checks remain; standard gate closed |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
@@ -197,3 +198,16 @@ build_flags =
 Build with `pio run -e x4pro-completion-automation-wip`. The SDK pin and base
 X4 Pro dependency configuration stay unchanged. Keep its build result separate
 from the default profile and from device acceptance.
+
+For the experimental HTTPS path, extend that profile locally:
+
+```ini
+[env:x4pro-personal-updates-wip]
+extends = env:x4pro-completion-automation-wip
+build_flags =
+  ${env:x4pro-completion-automation-wip.build_flags}
+  -DCROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES=1
+```
+
+Build with `pio run -e x4pro-personal-updates-wip`. This enables twelve WIP flags,
+including the update transport; it is not an installation or release profile.

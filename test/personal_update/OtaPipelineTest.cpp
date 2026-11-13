@@ -16,8 +16,8 @@
 namespace {
 bool failVerifierAllocation = false;
 struct Environment {
-  bool available = true, releaseOk = true, imageOk = true, psram = true, partitionPresent = true, open = false,
-       selected = false;
+  bool available = true, releaseOk = true, releaseMissing = false, imageOk = true, psram = true,
+       partitionPresent = true, open = false, selected = false;
   int beginError = 0, endError = 0, bootError = 0, failWrite = -1;
   int begins = 0, writes = 0, ends = 0, aborts = 0, boots = 0, releaseCalls = 0, imageCalls = 0;
   size_t width = 17, beginSize = 0;
@@ -70,10 +70,13 @@ HalMemory::PsramBuffer HalMemory::allocatePsram(size_t bytes) {
   return PsramBuffer(env.psram ? static_cast<uint8_t*>(std::malloc(bytes)) : nullptr);
 }
 bool personalupdate::transportAvailable() { return env.available; }
-bool personalupdate::fetchRelease(UpdateSink sink, void* context) {
+personalupdate::ReleaseFetch personalupdate::fetchRelease(UpdateSink sink, void* context) {
   ++env.releaseCalls;
+  if (env.releaseMissing) return ReleaseFetch::NotFound;
   return env.releaseOk &&
-         send(reinterpret_cast<const uint8_t*>(env.metadata.data()), env.metadata.size(), sink, context);
+                 send(reinterpret_cast<const uint8_t*>(env.metadata.data()), env.metadata.size(), sink, context)
+             ? ReleaseFetch::Success
+             : ReleaseFetch::Failure;
 }
 bool personalupdate::fetchImage(const char* url, UpdateSink sink, void* context) {
   ++env.imageCalls;
@@ -302,4 +305,17 @@ TEST_F(OtaPipeline, SdkBeginEndAndBootFailuresKeepHandleOwnershipCorrect) {
     EXPECT_FALSE(env.selected);
     EXPECT_FALSE(env.open);
   }
+}
+
+TEST_F(OtaPipeline, MissingReleaseClearsAnEarlierOfferWithoutStartingFlash) {
+  OtaUpdater updater;
+  ASSERT_EQ(updater.checkForUpdate(), OtaUpdater::OK);
+  ASSERT_TRUE(updater.isUpdateNewer());
+  env.releaseMissing = true;
+  EXPECT_EQ(updater.checkForUpdate(), OtaUpdater::NO_UPDATE);
+  EXPECT_FALSE(updater.isUpdateNewer());
+  EXPECT_TRUE(updater.getLatestVersion().empty());
+  EXPECT_EQ(updater.installUpdate(nullptr, nullptr), OtaUpdater::UPDATE_OLDER_ERROR);
+  EXPECT_EQ(env.begins, 0);
+  expectNoBoot();
 }

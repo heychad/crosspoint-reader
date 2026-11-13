@@ -44,3 +44,13 @@ if(NOT APPLE)
   target_link_libraries(OtaPipelineTest PRIVATE OpenSSL::Crypto)
 endif()
 gtest_discover_tests(OtaPipelineTest)
+
+add_executable(PersonalTransportTest PersonalTransportTest.cpp
+  ${REPO_ROOT}/src/network/PersonalUpdateTransport.cpp
+  ${REPO_ROOT}/src/network/PersonalUpdatePolicy.cpp
+  ${REPO_ROOT}/src/network/PersonalUpdateVersion.cpp)
+target_include_directories(PersonalTransportTest PRIVATE stubs ${REPO_ROOT}/src/network ${REPO_ROOT}/lib/Memory)
+target_compile_definitions(PersonalTransportTest PRIVATE CROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES=1
+  FREEINK_NET_WOLFSSL=1 FREEINK_DEVICE_X4PRO=1)
+target_link_libraries(PersonalTransportTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(PersonalTransportTest)

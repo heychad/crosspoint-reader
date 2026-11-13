@@ -37,7 +37,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     size_t received = 0;
     bool tooLarge = false;
   } download{body.get()};
-  const bool ok = personalupdate::fetchRelease(
+  const auto fetched = personalupdate::fetchRelease(
       [](void* context, const uint8_t* data, size_t len) {
         auto& value = *static_cast<Download*>(context);
         if (len > personalupdate::MAX_RELEASE_BYTES - value.received) {
@@ -49,7 +49,8 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
         return true;
       },
       &download);
-  if (!ok) {
+  if (fetched == personalupdate::ReleaseFetch::NotFound) return NO_UPDATE;
+  if (fetched != personalupdate::ReleaseFetch::Success) {
     LOG_ERR("OTA", "Release check fetch failed");
     return download.tooLarge ? JSON_PARSE_ERROR : HTTP_ERROR;
   }

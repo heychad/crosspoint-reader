@@ -6,7 +6,7 @@ TEST(PersonalUpdateVersion, ReleaseEndpointBelongsToPersonalFork) {
   EXPECT_STREQ(personalupdate::RELEASE_API, "https://api.github.com/repos/heychad/crosspoint-reader/releases/latest");
 }
 
-TEST(PersonalUpdateVersion, OnlineUpdatesStayDisabledUntilAuthenticationIsImplemented) {
+TEST(PersonalUpdateVersion, OnlineUpdatesStayDisabledInStandardBuild) {
   EXPECT_FALSE(personalupdate::transportAvailable());
 }
 

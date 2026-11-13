@@ -9,9 +9,10 @@ For example, `2.0.0-chad.4` supplies
 `crosspoint-2.0.0-chad.4-x4pro.bin`. The numbered release must increase even when
 the installed firmware is a test build.
 
-Online checking and installation remain disabled by
-`personalupdate::transportAvailable()`. This document tracks the components
-needed before that gate can open. Nothing in this WIP publishes a release or
+Online checking and installation remain disabled in the standard build.
+`CROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES=1` enables the update-only HTTPS
+implementation through `personalupdate::transportAvailable()`. It is a WIP
+test configuration pending cumulative review and device validation. Nothing in this WIP publishes a release or
 installs firmware.
 The disabled update screen directs the reader to SD-card installation and does
 not start Wi-Fi. Reader-state backup and a known-good rollback image remain
@@ -46,17 +47,17 @@ stay intact. SDK upgrades require reviewing this small TLS patch as well.
 The patch adds no task, persistent state, or permanent buffer. Explicit CA mode
 uses wolfSSL's existing trust-store allocations and its hostname copy, released
 with the TLS session. Hostname setup allocation failure stops the connection.
-The updater's future fixed-origin transport must budget those allocations with
-TLS and the active screen, using separate internal/PSRAM heap measurements.
+The fixed-origin transport uses this CA path. Its TLS allocations and the
+active screen still need separate internal/PSRAM heap measurements.
 
 ## Bounded release metadata
 
 The check path now clears its previous offer before fetching. On the X4 Pro it
 collects at most 64 KiB into a checked PSRAM allocation, with one terminator byte
 and no internal-RAM fallback. A larger response stops the request. The updater
-gate remains closed. Metadata and image requests now use a separate synchronous
-transport interface whose production implementation returns failure. The updater
-no longer uses the generic insecure downloader.
+standard-build gate remains closed. Metadata and image requests use a separate
+synchronous transport interface. The updater does not use the generic insecure
+downloader.
 
 `PersonalRelease` validates JSON syntax, nesting, UTF-8, and a complete single
 document before using the existing ArduinoJson parser. A bounded SAX audit
@@ -115,14 +116,79 @@ Their synthetic payload is not a bootable ESP image; these checks do not prove
 physical flashing, power-loss recovery, or certificate validation. The standard
 X4 Pro build passes in 74.59 seconds (RAM 113,068 bytes; flash 5,696,246 bytes).
 
+## Restricted HTTPS transport
+
+The experimental transport uses the pinned SDK client with CA and hostname
+verification for every connection. The metadata URL is fixed, accepts no
+redirects, and treats a verified 404 as no published update. An initial image
+URL must name an exact stable personal X4 Pro asset. Image redirects accept only
+absolute `https://release-assets.githubusercontent.com/` URLs, at most three
+hops. Alternate hosts, credentials in the authority, ports, fragments, control
+characters, backslashes, and oversized URLs fail. Credentials are never sent.
+GitHub lists that CDN in its [release-download communication requirements](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#communication-requirements-for-github-hosted-runners).
+
+The transport checks the existing trusted-time floor against the system clock,
+requesting up to ten seconds of SNTP when unset. That existing clock is a
+plausibility floor, not authenticated time. Certificate date checks stay enabled;
+the experimental build refuses `NO_ASN_TIME`. Each socket operation has a
+15-second timeout and the request has a cooperative ten-minute budget across
+redirects. DNS/TCP/SDK work can return after that deadline; this is not a hard
+cancellation latency bound. No background network task is added. The existing
+Wi-Fi activity owns the network, and the transfer restores modem power-save
+state on return.
+
+Metadata has a 64 KiB body cap and image transport a 7 MiB cap; the installer
+also enforces its exact smaller metadata/partition size. Non-200 bodies are
+stopped before delivery. Unsupported compression, conflicting length/transfer
+framing, and duplicated nonempty framing headers fail, as do truncated responses. The SDK already caps response headers at 8 KiB/64
+headers and each line at 4 KiB. URLs are capped at 2 KiB. One checked HTTP-client
+allocation lasts for the request. The compiled X4 Pro HTTP client is 448 bytes
+and the image verifier is 216 bytes. Client strings, headers, TLS state, and
+the SDK's 2 KiB body-read stack buffer coexist with metadata or the flash verifier.
+The client releases its connection after every hop and on all returns. The two
+roots occupy 2,889 bytes in the compiled object's `.rodata`. The SDK fixed/close
+body readers each have a compiled 2,112-byte frame; that is not the whole call
+chain or a measured task high-water mark. Runtime heap/stack headroom remains
+pending.
+
+Two public roots are embedded as immutable text, one selected per origin:
+
+| Origin | Root | SHA-256 of DER certificate |
+| --- | --- | --- |
+| `api.github.com`, `github.com` | USERTrust ECC Certification Authority | `4ff460d54b9c86dabfbcfc5712e0400d2bed3fbc4d4fbdaa86e06adcd2a9ad7a` |
+| `release-assets.githubusercontent.com` | ISRG Root X1 | `96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6` |
+
+The copies came from this Mac's trusted `/etc/ssl/cert.pem`; their publishers
+are [Sectigo](https://support.sectigo.com/Com_KnowledgeDetailPage?Id=kA0Uj0000004IrB)
+and [Let's Encrypt](https://letsencrypt.org/certificates/). On November 13,
+these roots verified live API, GitHub release-redirect, and CDN connections from
+the Mac. The observed upstream release was 2.0.0, with a 302 to the allowed CDN
+and a 200 HEAD response. Wrong-root and hostname-mismatch checks failed as
+expected. This used host TLS, not the firmware's wolfSSL implementation. CA
+rotation requires reviewing and replacing these public roots; failures never
+fall back to insecure mode or arbitrary roots.
+
+All 43 focused checks pass (0.23 seconds), including 11 transport-policy tests
+and the whole-updater missing-release regression. All 43 pass ASAN and UBSAN
+(0.76 seconds). Host policy tests use a fake SDK HTTP provider; earlier tests
+exercise the production TLS setup with controlled wolfSSL/socket adapters.
+Neither proves real firmware certificate validation. Initial host-stub type and
+name errors were corrected before the passing runs.
+The standard X4 Pro build passes in 70.28 seconds (RAM 113,068 bytes; flash
+5,696,254 bytes). The twelve-flag profile, including HTTPS updates, passes in
+180.25 seconds (RAM 113,100 bytes; flash 5,803,310 bytes), leaving 750,290 bytes
+in the image slot. The first enabled-profile build also installed its pinned
+dependencies. These are build footprints, not runtime memory measurements.
+
 ## Remaining integration
 
-- A request path that selects trusted roots, checks the clock, restricts every
-  redirect to the expected HTTPS origins, and never uses the generic insecure
-  downloader for metadata or firmware.
-- An enabled transport build and combined runtime heap/stack measurements.
-- Cumulative release review, reproducible release artifacts, and physical
-  success/failure checks on the reader. No release is published by WIP pushes.
+- Measure internal/PSRAM peaks, largest blocks, and stack with the complete
+  enabled update path and active screen.
+- Confirm certificate-chain, hostname/date rejection, update success/failure,
+  and reading-state preservation on the reader.
+- Complete cumulative release review and reproducible release artifacts. The
+  standard release profile does not yet enable this or the other WIP flags.
+  No release is published by WIP pushes.
 
 ## Verification boundary
 
@@ -135,7 +201,7 @@ UndefinedBehaviorSanitizer. These adapters do not perform real certificate
 cryptography or establish on-device TLS behavior.
 
 Six patch tests cover clean/repeated application, source drift, patch drift,
-wrong revision, escaping target, and a missing patch. Live certificate-chain,
+wrong revision, escaping target, and a missing patch. Firmware certificate-chain,
 hostname/date rejection, resource use, and updater installation remain unproven.
 
 ## Build source ownership
