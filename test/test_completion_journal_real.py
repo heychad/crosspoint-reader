@@ -299,7 +299,19 @@ bool FatFile::experimentUnlinkOneSector() {
             (Path(temporary) / 'CleanupInplaceExperiment.h').write_text(
                 short_names((ROOT / 'test/completion_journal_real/CleanupInplaceExperiment.h').read_text()))
     host_compat = Path(temporary) / 'HostCompat.h'
-    host_compat.write_text('class __FlashStringHelper;\ninline unsigned long millis() { static unsigned long now = 0; return ++now; }\n')
+    host_compat.write_text('''#include <cstdint>
+class __FlashStringHelper;
+#if defined(SDFAT_REAL_MOVE_STORES)
+inline uint32_t liveTestMillis = 0;
+inline bool liveTestClockEnabled = false;
+inline unsigned long millis() {
+  static unsigned long now = 0;
+  return liveTestClockEnabled ? liveTestMillis++ : ++now;
+}
+#else
+inline unsigned long millis() { static unsigned long now = 0; return ++now; }
+#endif
+''')
     real_move_stores = os.environ.get('SDFAT_REAL_MOVE_STORES') == '1'
     stub_directory = ROOT / 'test/completion_journal_real/stubs'
     store_sources = []
@@ -308,6 +320,8 @@ bool FatFile::experimentUnlinkOneSector() {
     lease_sources = [str(lease_stub)]
     if real_move_stores:
         flags += ['-DSDFAT_REAL_MOVE_STORES=1', '-DCONFIG_IDF_TARGET_ESP32S3=1']
+        if os.environ.get('SDFAT_LIVE_COMPLETION') == '1':
+            flags.append('-DSDFAT_LIVE_COMPLETION=1')
         stub_directory = Path(temporary) / 'real-store-stubs'
         shutil.copytree(ROOT / 'test/completion_journal_real/stubs', stub_directory)
         (stub_directory / 'CrossPointState.h').unlink()
@@ -360,10 +374,18 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
         store_sources += [str(ROOT / 'src/activities/reader' / name) for name in (
             'CompletionTransaction.cpp', 'CompletionEdit.cpp', 'BookReadingStats.cpp',
             'GlobalReadingStats.cpp', 'ReadingStatsStore.cpp', 'BookTracking.cpp',
-            'StatsSessionLease.cpp', 'StatsAccessGate.cpp')]
+            'StatsSessionLease.cpp', 'StatsAccessGate.cpp', 'ReaderStats.cpp',
+            'ReadingStatsSession.cpp', 'ReadingSessionStats.cpp', 'ReadingStatsDateEdit.cpp',
+            'BookStatsBackup.cpp', 'DeviceStatsBackup.cpp', 'BookCompletion.cpp',
+            'DeferredCompletionMove.cpp', 'DeferredCompletionExecutor.cpp', 'DeferredCompletionRecovery.cpp')]
+        if os.environ.get('SDFAT_LIVE_DAILY') == '1':
+            flags.append('-DCROSSPOINT_EXPERIMENTAL_DAILY_STATS=1')
+            store_sources += [str(ROOT / 'src/activities/reader' / name) for name in (
+                'DailyReadingStatsSession.cpp', 'DailyReadingStatsStore.cpp')]
         probe_sources = []
         lease_sources = []
         store_includes = ['-I', str(ROOT / 'src'), '-I', str(ROOT / 'lib/Memory'),
+                          '-I', str(ROOT / 'test/daily_reading_stats/stubs'),
                           '-I', str(ROOT / 'test/clipping_store/stubs'), '-I', str(ROOT / 'lib/Utf8'),
                           '-I', str(ROOT / 'freeink-sdk/libs/network/CatalogList/include'),
                           '-I', str(ROOT / 'freeink-sdk/libs/network/JsonSax/include'),

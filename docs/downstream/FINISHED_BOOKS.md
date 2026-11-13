@@ -284,3 +284,30 @@ findings remain open; this is not a full sanitizer pass.
 
 Full EPUB opening, XPath resolution, passage rendering, and on-device library
 index rebuilding remain for cumulative/device validation.
+
+## Live-reader completion integration
+
+The new `StatsLiveCompletionReal` and `StatsLiveCompletionDailyReal` checks join
+production ReaderStats, reader destruction, the deferred executor, and the
+filesystem coordinator. Scenarios cover both Recents policies, undo before exit,
+and Recents-removal failure. Existing isolated coordinator coverage remains
+separate. Both live profiles pass on FAT and exFAT, in 42.52 and 43.13 seconds.
+The isolated coordinator profile also passed in 42.91 seconds.
+
+The move is refused while ReaderStats is alive, including after `finish()`;
+destruction releases the session lease. The executor then moves or cancels the
+request exactly once. Remount checks reopen progress, both bookmark formats,
+clippings, Saved Items, and opaque sidecars. Book/global totals include the
+130-second reading session exactly once, with one session count and the expected
+completion count. The daily profile records the same 130 seconds. These checks
+use the existing host lifecycle and locking adapters; physical EPUB-handle
+release, simultaneous tasks, cumulative review, and device behavior remain
+outside their evidence. B5 and C6 remain experimental.
+
+The first draft froze `millis()` between simulated page turns. SdFat uses that
+clock to generate unique short filenames; repeated collisions prevented
+publishing the second legacy bookmark. Temporary source instrumentation traced
+the failure to `FatFile::makeUniqueSfn`. The original EPUB, bookmarks, staging
+copy, and journal remained present. The fixture now advances its clock on each
+read and adds simulated reading intervals to that clock. No firmware or vendor
+code changed. This fixture failure does not establish a device regression.

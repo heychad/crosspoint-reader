@@ -20,6 +20,9 @@
 #include <StatsSessionLease.h>
 
 #include "MovedReadingState.h"
+#if defined(SDFAT_LIVE_COMPLETION)
+#include "LiveCompletion.h"
+#endif
 #endif
 #if defined(SDFAT_IMPORT_SNAPSHOT)
 #include <CrossInkImportSnapshot.h>
@@ -2942,6 +2945,18 @@ int main() {
         verifyMovedFilesOnRealFilesystem(exfat);
 #if defined(SDFAT_REAL_MOVE_STORES)
         verifyMovedFilesOnRealFilesystem(exfat, true);
+#if defined(SDFAT_LIVE_COMPLETION)
+        for (bool removeRecent : {false, true}) {
+          for (bool undo : {false, true}) {
+            Disk live;
+            livecompletiontest::exercise(live, exfat, removeRecent, undo);
+          }
+          if (removeRecent) {
+            Disk retry;
+            livecompletiontest::exercise(retry, exfat, true, false, true);
+          }
+        }
+#endif
 #endif
         deferredSourceRemount(exfat);
         retiredIntentRecovery(exfat);
