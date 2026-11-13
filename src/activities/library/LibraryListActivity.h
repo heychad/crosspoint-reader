@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "RecentBooksStore.h"
@@ -80,6 +81,8 @@ class LibraryListActivity final : public UiTabListActivity {
   // it is well under a second, and it only runs when the index is missing or the
   // user asks.
   bool rebuildIndex();
+  void refreshViewIndex();
+  bool historyView() const;
 
   // Input
   void openSelectedBook();
@@ -123,6 +126,8 @@ class LibraryListActivity final : public UiTabListActivity {
   // fileName, when asked for, is the on-card name the row's icon derives from
   // (the display title may come from metadata and carry no extension).
   bool rowTextFor(int entry, std::string& title, std::string& author, std::string* fileName = nullptr);
+  bool recentTextFor(size_t storeIndex, std::string& title, std::string& author) const;
+  bool recentTextViews(size_t storeIndex, std::string_view& title, std::string_view& author) const;
   bool rowMetadataFor(int entry, std::string& series, std::string& genre);
   uint32_t titleInitialFor(int entry);
   bool buildGroupStarts();

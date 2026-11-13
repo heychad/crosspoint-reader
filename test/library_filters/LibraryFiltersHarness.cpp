@@ -40,6 +40,7 @@ struct CrossPointSettings {
 };
 struct Settings {
   int recentBooksView = 0;
+  bool libraryUseMetadata = true;
   bool libraryTitleCoverGrid = false;
   bool libraryShowEpub = true, libraryShowXtc = true, libraryShowTxt = true, libraryShowMarkdown = true;
   bool libraryHideFinishedBooks = false;
@@ -77,7 +78,7 @@ std::optional<bool> bookCompletion(const std::string& path) {
 }
 }  // namespace readingstats
 struct RecentBooksStore {
-  static constexpr int MAX_RECENT_BOOKS = 10;
+  static constexpr int MAX_RECENT_BOOKS = 18;
   std::vector<Book> entries = {{"/missing.epub", "missing", "", false}, books[1], books[3]};
   const auto& getBooks() { return entries; }
 } RECENT_BOOKS;
@@ -88,6 +89,8 @@ struct StorageModel {
   bool openFileForRead(const char*, const char*, HalFile&) { return false; }
 } Storage;
 namespace library {
+bool dirty = false;
+bool isLibraryIndexDirty() { return dirty; }
 const char* libraryIndexPath() { return "/index"; }
 struct LibraryIndexFile {
   struct PathLookup {
@@ -134,9 +137,16 @@ bool isSeriesSort(library::SortOrder order) {
 bool isMetadataSort(library::SortOrder order) {
   return isSeriesSort(order) || order == library::SortOrder::GenreAsc || order == library::SortOrder::GenreDesc;
 }
-enum class StrId { STR_LIBRARY_UNKNOWN_SERIES, STR_LIBRARY_UNKNOWN_GENRE, STR_LIBRARY_UNKNOWN_AUTHOR };
+enum class StrId {
+  STR_LIBRARY_UNKNOWN_SERIES,
+  STR_LIBRARY_UNKNOWN_GENRE,
+  STR_LIBRARY_UNKNOWN_AUTHOR,
+  STR_LIBRARY_UNKNOWN_TITLE,
+  STR_LIBRARY_REBUILDING
+};
 struct TestI18n {
   const char* get(StrId id) {
+    if (id == StrId::STR_LIBRARY_UNKNOWN_TITLE) return "Unknown title";
     if (id == StrId::STR_LIBRARY_UNKNOWN_AUTHOR) return "Unknown author";
     return id == StrId::STR_LIBRARY_UNKNOWN_SERIES ? "No series" : "Uncategorized";
   }
@@ -144,13 +154,25 @@ struct TestI18n {
 #define tr(id) I18N.get(StrId::id)
 constexpr int RECENT_TAB = 0;
 constexpr int TITLE_TAB = 1;
+constexpr int OPENED_VIEW = 6;
+constexpr size_t RECENT_SEARCH_TEXT_BYTES = 512;
+struct Gui {
+  void drawPopup(int, const char*) {}
+} GUI;
 struct Index {
   bool broken = false, opened = true, lookupFails = false, failReopen = false;
-  int pathReads = 0, nameReads = 0, lookupBuilds = 0;
-  int bookCount() const { return books.size(); }
+  int pathReads = 0, nameReads = 0, lookupBuilds = 0, openCalls = 0, recentLookups = 0, failLookupAt = -1;
+  struct Header {
+    int metadataEnabled = 1;
+  } savedHeader;
+  const Header& header() const { return savedHeader; }
+  bool ranksDegraded() const { return false; }
+  bool dedupDegraded() const { return false; }
+  int bookCount() const { return opened ? books.size() : 0; }
   bool isOpen() const { return opened; }
   void close() { opened = false; }
   bool open(const char*) {
+    ++openCalls;
     opened = !broken && !failReopen;
     return opened;
   }
@@ -195,6 +217,10 @@ struct Index {
     out = books[row.nameOff].path;
     return !broken;
   }
+  bool readTitle(const library::ClixRecord& row, std::string& out) {
+    out = books[row.nameOff].title;
+    return !broken;
+  }
   bool readAuthor(const library::ClixRecord& row, std::string& out) {
     out = books[row.nameOff].author;
     return !broken && !out.empty();
@@ -209,6 +235,8 @@ struct Index {
   }
   bool ioFailed() const { return broken; }
   bool recentRowsFor(const library::BookIdentity* identities, size_t count, uint16_t* out) {
+    assert(count <= 8);
+    if (++recentLookups == failLookupAt) return false;
     for (size_t i = 0; i < count; ++i) {
       out[i] = 0xffff;
       for (size_t n = 0; n < books.size(); ++n) {
@@ -261,7 +289,11 @@ struct LibraryCoverGrid {
   int pageSize() const { return page; }
   int nextCover() const { return 0; }
   bool matches(int slot, uint64_t identity) const { return identities[slot] == identity; }
-  bool loadCover(int, const std::string&) { return true; }
+  int loads = 0;
+  bool loadCover(int, const std::string&) {
+    ++loads;
+    return true;
+  }
   void setBook(int slot, uint64_t identity, const std::string&) { identities[slot] = identity; }
   void clearBook(int slot) { identities[slot] = 0; }
   void draw(UiScreen&, int start, int visible, int selection, int) {
@@ -324,12 +356,17 @@ struct LibraryListActivity {
   bool rowMetadataFor(int, std::string&, std::string&);
   bool buildGroupStarts();
   void formatMetadataHeading(const std::string&, std::string&) const;
-  bool rowTextFor(int entry, std::string& title, std::string& author, std::string* path = nullptr) {
-    const auto& book = entry < pinnedCount() ? RECENT_BOOKS.entries[pinnedStoreIndices[entry]]
-                                             : books[index.ordinalForRow(sortOrder, rowFor(entry))];
-    title = book.title;
-    author = book.author;
-    if (path) *path = book.path;
+  bool rowTextFor(int entry, std::string& title, std::string& author, std::string* path = nullptr);
+  bool recentTextFor(size_t, std::string&, std::string&) const;
+  bool recentTextViews(size_t, std::string_view&, std::string_view&) const;
+  bool historyView() const;
+  void refreshViewIndex();
+  int renderer = 0, rebuilds = 0;
+  bool rebuildIndex() {
+    ++rebuilds;
+    index.broken = false;
+    index.failReopen = false;
+    library::dirty = false;
     return true;
   }
   uint32_t titleInitialFor(int entry) {
@@ -343,7 +380,7 @@ struct LibraryListActivity {
   int activeTabIndex = 0;
   library::SortOrder sortOrder = library::SortOrder::RecentDesc;
   std::string query, headerSearchTitle;
-  bool filterFailed = false, groupsCollapsed = false;
+  bool filterFailed = false, groupsCollapsed = false, degraded = false;
   uint16_t groupCount = 0, filteredCount = 0, groupCapacity = 0;
   std::unique_ptr<uint16_t[]> filtered;
   uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS]{}, overlapRows[RecentBooksStore::MAX_RECENT_BOOKS]{};
@@ -623,4 +660,120 @@ int main() {
   view.index.failReopen = true;
   view.loadNextGridCover();
   assert(view.filterFailed && view.pinnedTotal == 0 && view.updates > 0);
+
+  // A history-only shelf uses resident rows even without a valid derived index.
+  SETTINGS = Settings{};
+  RECENT_BOOKS.entries = {{"/incoming/not-indexed.epub", "New arrival", "Ada", false},
+                          books[1],
+                          books[3],
+                          {"/Books/Filename fallback.epub", "", "Named Author", false}};
+  LibraryListActivity history;
+  history.activeTabIndex = OPENED_VIEW;
+  history.sortOrder = library::SortOrder::RecentDesc;
+  history.index.opened = false;
+  history.index.failReopen = true;
+  library::dirty = true;
+  history.refreshViewIndex();
+  assert(!history.index.isOpen() && history.rebuilds == 0 && !history.degraded);
+  const std::vector<std::string> newest{"/incoming/not-indexed.epub", "/beta.xtc", "/delta.md",
+                                        "/Books/Filename fallback.epub"};
+  failAllocation = true;
+  history.applyFilter();
+  assert(!history.filterFailed && !history.filtered && history.visible() == newest);
+  failAllocation = false;
+  history.sortOrder = library::SortOrder::RecentAsc;
+  history.applyFilter();
+  auto oldest = newest;
+  std::reverse(oldest.begin(), oldest.end());
+  assert(history.visible() == oldest && history.overlapCount == 0);
+  for (int row = 0; row < history.bookRowCount(); ++row) {
+    std::string actual;
+    assert(history.rowPathFor(row, actual) && actual == oldest[row]);
+  }
+  history.query = "new arrival ada";
+  history.applyFilter();
+  assert(history.bookRowCount() == 1 && history.visible()[0] == newest[0]);
+  history.query = "filename fallback named author";
+  history.applyFilter();
+  assert(history.bookRowCount() == 1 && history.visible()[0] == newest[3]);
+  SETTINGS.libraryUseMetadata = false;
+  history.query = "new arrival";
+  history.applyFilter();
+  assert(history.bookRowCount() == 0 && !history.filterFailed);
+  history.query = "not-indexed";
+  history.applyFilter();
+  assert(history.bookRowCount() == 1 && history.visible()[0] == newest[0]);
+  std::string recentTitle, recentAuthor;
+  assert(history.rowTextFor(0, recentTitle, recentAuthor));
+  assert(recentTitle == "not-indexed" && recentAuthor.empty());
+  SETTINGS.libraryUseMetadata = true;
+  history.query.clear();
+  SETTINGS.libraryShowXtc = false;
+  history.applyFilter();
+  assert(history.bookRowCount() == 3);
+  SETTINGS.libraryShowXtc = true;
+  SETTINGS.libraryHideFinishedBooks = true;
+  history.applyFilter();
+  assert(history.bookRowCount() == 3);
+  SETTINGS.libraryHideFinishedBooks = false;
+  // Bound query scratch without truncating or rewriting the resident metadata.
+  const auto originalTitle = RECENT_BOOKS.entries[0].title;
+  const auto originalAuthor = RECENT_BOOKS.entries[0].author;
+  RECENT_BOOKS.entries[0].title = "search" + std::string(505, 'a');
+  RECENT_BOOKS.entries[0].author.clear();
+  history.query = "search";
+  history.applyFilter();
+  assert(!history.filterFailed && history.bookRowCount() == 1);
+  RECENT_BOOKS.entries[0].title += "b";
+  history.applyFilter();
+  assert(history.filterFailed && history.bookRowCount() == 0 && RECENT_BOOKS.entries[0].title.size() == 512);
+  RECENT_BOOKS.entries[0].title = originalTitle;
+  RECENT_BOOKS.entries[0].author = originalAuthor;
+  history.query.clear();
+  history.applyFilter();
+  assert(!history.filterFailed && history.bookRowCount() == 4);
+  // Optional annotation failures do not drop reading-history rows.
+  history.index.opened = true;
+  history.index.broken = true;
+  history.applyFilter();
+  assert(!history.index.isOpen() && !history.filterFailed && history.bookRowCount() == 4);
+  assert(history.visible() == oldest);
+  history.recentGrid = std::make_unique<LibraryCoverGrid>();
+  SETTINGS.recentBooksView = CrossPointSettings::RECENT_BOOKS_GRID;
+  history.nav.selected = 1;
+  history.nav.followOnBuild = true;
+  assert(history.gridRequested() && history.buildGrid(expanded));
+  history.loadNextGridCover();
+  assert(history.recentGrid->loads == 1 && !history.filterFailed && history.bookRowCount() == 4);
+  history.index.opened = true;
+  history.index.broken = false;
+  history.index.failReopen = true;
+  history.loadNextGridCover();
+  assert(!history.filterFailed && history.pinnedTotal == 4 && !history.index.isOpen());
+  // Removal changes the same resident mapping used by Open and book actions.
+  RECENT_BOOKS.entries.erase(RECENT_BOOKS.entries.begin() + 1);
+  history.applyFilter();
+  assert(history.bookRowCount() == 3 && history.visible()[0] == newest[3]);
+  while (RECENT_BOOKS.entries.size() < 18) {
+    const auto number = std::to_string(RECENT_BOOKS.entries.size());
+    RECENT_BOOKS.entries.push_back({"/older" + number + ".epub", "Older " + number, "", false});
+  }
+  history.index.opened = true;
+  history.index.failReopen = false;
+  history.index.recentLookups = 0;
+  history.index.failLookupAt = 2;
+  history.applyFilter();
+  assert(history.bookRowCount() == 18 && !history.filterFailed && !history.index.isOpen());
+  assert(history.index.recentLookups == 2);
+  history.index.opened = true;
+  history.index.recentLookups = 0;
+  history.index.failLookupAt = -1;
+  history.applyFilter();
+  assert(history.bookRowCount() == 18 && history.index.recentLookups == 3);
+  library::dirty = false;
+  history.index.close();
+  history.index.failReopen = true;
+  history.activeTabIndex = TITLE_TAB;
+  history.refreshViewIndex();
+  assert(history.rebuilds == 1 && history.index.isOpen());
 }

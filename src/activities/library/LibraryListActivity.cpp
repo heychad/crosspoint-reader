@@ -41,6 +41,7 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr int SIDE_PADDING = 12;
+constexpr size_t RECENT_SEARCH_TEXT_BYTES = 512;
 
 // Side clearance for the footer text in the panel's bottom corners.
 int bottomCornerClearance() {
@@ -55,6 +56,7 @@ constexpr int TITLE_TAB = static_cast<int>(libraryview::Tab::Title);
 constexpr int AUTHOR_TAB = static_cast<int>(libraryview::Tab::Author);
 constexpr int SERIES_TAB = static_cast<int>(libraryview::Tab::Series);
 constexpr int GENRE_TAB = static_cast<int>(libraryview::Tab::Genre);
+constexpr int OPENED_VIEW = static_cast<int>(libraryview::Tab::RecentlyOpened);
 constexpr int TAB_SLOTS = GENRE_TAB + 1;
 static_assert(TAB_SLOTS == libraryview::MAIN_TAB_COUNT);
 
@@ -82,13 +84,13 @@ constexpr bool isMetadataSort(const library::SortOrder order) {
 }
 
 constexpr library::SortOrder orderForTab(const int tab, const uint8_t descendingTabs) {
-  constexpr library::SortOrder orders[][2] = {
-      {library::SortOrder::RecentAsc, library::SortOrder::RecentDesc},
-      {library::SortOrder::TitleAsc, library::SortOrder::TitleDesc},
-      {library::SortOrder::AuthorAsc, library::SortOrder::AuthorDesc},
-      {library::SortOrder::SeriesAsc, library::SortOrder::SeriesDesc},
-      {library::SortOrder::GenreAsc, library::SortOrder::GenreDesc},
-      {library::SortOrder::AuthorFirstAsc, library::SortOrder::AuthorFirstDesc}};
+  constexpr library::SortOrder orders[][2] = {{library::SortOrder::RecentAsc, library::SortOrder::RecentDesc},
+                                              {library::SortOrder::TitleAsc, library::SortOrder::TitleDesc},
+                                              {library::SortOrder::AuthorAsc, library::SortOrder::AuthorDesc},
+                                              {library::SortOrder::SeriesAsc, library::SortOrder::SeriesDesc},
+                                              {library::SortOrder::GenreAsc, library::SortOrder::GenreDesc},
+                                              {library::SortOrder::AuthorFirstAsc, library::SortOrder::AuthorFirstDesc},
+                                              {library::SortOrder::RecentAsc, library::SortOrder::RecentDesc}};
   return orders[tab][(descendingTabs & (1u << tab)) != 0];
 }
 
@@ -137,28 +139,36 @@ void LibraryListActivity::onEnter() {
   // its persistence write never overlaps the long-lived index reader.
   if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
 
-  // Rebuild when the index is missing, invalid, or was built with the other
-  // metadata mode. Otherwise entering the screen stays instant.
-  const bool readMetadata = SETTINGS.libraryUseMetadata != 0;
-  const bool rebuildNeeded = library::isLibraryIndexDirty() || !index.open(library::libraryIndexPath()) ||
-                             index.header().metadataEnabled != readMetadata;
-  if (rebuildNeeded) {
-    index.close();
-    GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
-    rebuildIndex();
-    if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot open library index");
-  }
-  degraded = index.isOpen() && index.ranksDegraded();
-  if (index.isOpen() && index.dedupDegraded()) {
-    LOG_ERR("LIB", "index was built without duplicate detection");
-  }
+  refreshViewIndex();
   applyFilter();
-  resolvePinned();
+  if (!historyView()) resolvePinned();
 
   // Entered while Confirm was still held (typical when launched from the home
   // menu): ignore its release, or we would open whatever sits at row 0.
   lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate(true);
+}
+
+bool LibraryListActivity::historyView() const { return activeTabIndex == OPENED_VIEW; }
+
+void LibraryListActivity::refreshViewIndex() {
+  const bool readMetadata = SETTINGS.libraryUseMetadata != 0;
+  const bool rebuildNeeded = library::isLibraryIndexDirty() || index.ioFailed() ||
+                             (!index.isOpen() && !index.open(library::libraryIndexPath())) ||
+                             index.header().metadataEnabled != readMetadata;
+  if (rebuildNeeded) {
+    index.close();
+    // Reading history remains usable without a derived index or a card scan.
+    if (!historyView()) {
+      GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
+      rebuildIndex();
+      if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot open library index");
+    }
+  }
+  degraded = !historyView() && index.isOpen() && index.ranksDegraded();
+  if (index.isOpen() && index.dedupDegraded()) {
+    LOG_ERR("LIB", "index was built without duplicate detection");
+  }
 }
 
 void LibraryListActivity::onExit() {
@@ -197,9 +207,9 @@ int LibraryListActivity::selectedEntry() const {
   return entry < 0 ? 0 : entry;
 }
 
-// Pins use the newest-first Recent shelf and obey the book filters. Search
-// results and oldest-first views use their requested flat sort order.
+// Leading store rows are either the whole history view or the Recent overlay.
 int LibraryListActivity::pinnedCount() const {
+  if (historyView()) return filterFailed ? 0 : pinnedTotal;
   if (activeTabIndex != RECENT_TAB || !query.empty() || filterFailed || !isDescending(sortOrder)) return 0;
   return pinnedTotal;
 }
@@ -208,28 +218,59 @@ void LibraryListActivity::resolvePinned() {
   const auto& books = RECENT_BOOKS.getBooks();
   pinnedTotal = 0;
   const size_t count = std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS);
+  const std::string needle = historyView() ? library::fold(query) : std::string();
+  if (historyView()) filterFailed = false;
   for (size_t i = 0; i < count; ++i) {
     if (!matchesFilters(books[i].path)) continue;
+    if (!needle.empty()) {
+      std::string_view title, author;
+      if (!recentTextViews(i, title, author)) continue;
+      if (title.size() >= RECENT_SEARCH_TEXT_BYTES || author.size() >= RECENT_SEARCH_TEXT_BYTES - title.size()) {
+        filterFailed = true;
+        pinnedTotal = 0;
+        return;
+      }
+      metadataKeyScratch.assign(title);
+      metadataKeyScratch.push_back(' ');
+      metadataKeyScratch.append(author);
+      library::foldInto(metadataKeyScratch, seriesScratch);
+      if (!library::matchesQuery(seriesScratch, needle)) continue;
+    }
     pinnedStoreIndices[pinnedTotal] = static_cast<uint8_t>(i);
     pinnedAscRows[pinnedTotal++] = 0xFFFF;
   }
+  if (historyView() && !isDescending(sortOrder)) std::reverse(pinnedStoreIndices, pinnedStoreIndices + pinnedTotal);
   if (pinnedTotal > 0 && index.isOpen()) {
-    library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
-    for (int i = 0; i < pinnedTotal; i++) {
-      const std::string& path = books[pinnedStoreIndices[i]].path;
-      identities[i].pathHash = library::clixPathHash(path.data(), path.size());
-      // Size is only a lookup prefilter; a failed stat falls back to hash-only matching.
-      identities[i].fileSize = 0;
-      HalFile file;
-      if (Storage.openFileForRead("LIB", path.c_str(), file)) {
-        identities[i].fileSize = static_cast<uint32_t>(file.fileSize());
+    constexpr int batchSize = 8;
+    library::BookIdentity identities[batchSize];
+    bool matched = true;
+    for (int start = 0; start < pinnedTotal; start += batchSize) {
+      const int batch = std::min<int>(batchSize, pinnedTotal - start);
+      for (int i = 0; i < batch; i++) {
+        const std::string& path = books[pinnedStoreIndices[start + i]].path;
+        identities[i].pathHash = library::clixPathHash(path.data(), path.size());
+        // Size only prefilters; failed stats fall back to the complete path hash.
+        identities[i].fileSize = 0;
+        HalFile file;
+        if (Storage.openFileForRead("LIB", path.c_str(), file))
+          identities[i].fileSize = static_cast<uint32_t>(file.fileSize());
+      }
+      if (!index.recentRowsFor(identities, batch, pinnedAscRows + start)) {
+        matched = false;
+        break;
       }
     }
-    if (!index.recentRowsFor(identities, pinnedTotal, pinnedAscRows)) {
-      // Without the match the overlay would duplicate every pinned book that is
-      // also in the index; better to drop the pins than to show doubles.
-      LOG_ERR("LIB", "recent-book lookup failed; overlay disabled");
-      pinnedTotal = 0;
+    if (!matched) {
+      if (historyView()) {
+        std::fill(pinnedAscRows, pinnedAscRows + pinnedTotal, 0xFFFF);
+        index.close();
+        LOG_ERR("LIB", "recent metadata lookup failed; history retained");
+      } else {
+        // Without the match the overlay would duplicate every pinned book that is
+        // also in the index; better to drop the pins than to show doubles.
+        LOG_ERR("LIB", "recent-book lookup failed; overlay disabled");
+        pinnedTotal = 0;
+      }
     }
   }
   refreshOverlap();
@@ -237,6 +278,7 @@ void LibraryListActivity::resolvePinned() {
 
 void LibraryListActivity::refreshOverlap() {
   overlapCount = 0;
+  if (historyView()) return;
   const int total = static_cast<int>(index.bookCount());
   for (int i = 0; i < pinnedTotal; i++) {
     if (pinnedAscRows[i] == 0xFFFF || pinnedAscRows[i] >= total) continue;
@@ -439,6 +481,11 @@ void LibraryListActivity::openBookStatistics(const std::string& path, const std:
 }
 
 void LibraryListActivity::restoreIndexAfterStatistics(bool reopenIndex) {
+  if (historyView()) {
+    refreshViewIndex();
+    resetAfterRebuild();
+    return;
+  }
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE)
   if (reopenIndex && library::isLibraryIndexDirty()) {
     GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
@@ -491,7 +538,7 @@ void LibraryListActivity::promptRebuildIndex() {
 void LibraryListActivity::resetAfterRebuild() {
   // Sort positions, group starts, and pinned rows all point into the old order.
   applyFilter();
-  resolvePinned();
+  if (!historyView()) resolvePinned();
   auto& nav = activeNav();
   const int count = listCount();
   if (count == 0) {
@@ -611,7 +658,7 @@ void LibraryListActivity::openSearch() {
     applyFilter();
     refreshOverlap();
     auto& nav = activeNav();
-    if (!query.empty() && filteredCount == 0 && !degraded) {
+    if (!query.empty() && bookRowCount() == 0 && !degraded) {
       // Up from the tab bar reopens Search even with no results.
       nav.selected = 0;
     } else {
@@ -645,13 +692,18 @@ void LibraryListActivity::selectView(const int index, const bool toggleIfActive)
   closeSwipeDelete();
 #endif
   if (index < 0 || index >= libraryview::TAB_COUNT) return;
+  const bool wasHistory = historyView();
   if (toggleIfActive && index == activeTabIndex) descendingTabs ^= static_cast<uint8_t>(1u << index);
   sortOrder = orderForTab(index, descendingTabs);
   // The filter and the overlap rows hold positions in the old order, so they
   // must be rebuilt.
   activeTabIndex = index;
+  refreshViewIndex();
   applyFilter();
-  refreshOverlap();
+  if (wasHistory && !historyView())
+    resolvePinned();
+  else
+    refreshOverlap();
   // Return focus to the tabs after either a tab tap or a picker selection.
   auto& nav = activeNav();
   nav.selected = 0;
@@ -674,10 +726,10 @@ void LibraryListActivity::loadViewPreferences() {
 void LibraryListActivity::toggleSortDirection() { selectView(activeTabIndex, true); }
 
 void LibraryListActivity::openSortPicker() {
-  static constexpr StrId choices[] = {StrId::STR_LIBRARY_REVERSE_ORDER,     StrId::STR_LIBRARY_TAB_RECENT,
-                                      StrId::STR_LIBRARY_TAB_TITLE,         StrId::STR_LIBRARY_AUTHOR_SURNAME,
-                                      StrId::STR_LIBRARY_TAB_SERIES,        StrId::STR_LIBRARY_TAB_GENRE,
-                                      StrId::STR_LIBRARY_AUTHOR_FIRST_NAME, StrId::STR_LIBRARY_REBUILD};
+  static constexpr StrId choices[] = {
+      StrId::STR_LIBRARY_REVERSE_ORDER,     StrId::STR_LIBRARY_RECENT_AND_NEW,  StrId::STR_LIBRARY_TAB_TITLE,
+      StrId::STR_LIBRARY_AUTHOR_SURNAME,    StrId::STR_LIBRARY_TAB_SERIES,      StrId::STR_LIBRARY_TAB_GENRE,
+      StrId::STR_LIBRARY_AUTHOR_FIRST_NAME, StrId::STR_LIBRARY_RECENTLY_OPENED, StrId::STR_LIBRARY_REBUILD};
   auto picker = makeUniqueNoThrow<EnumSelectionActivity>(renderer, mappedInput, StrId::STR_LIBRARY_SORT, choices,
                                                          activeTabIndex + 1);
   if (!picker) {
@@ -705,6 +757,7 @@ int LibraryListActivity::tabCount() const { return TAB_SLOTS; }
 int LibraryListActivity::activeTab() const { return libraryview::mainTab(static_cast<uint8_t>(activeTabIndex)); }
 
 const char* LibraryListActivity::tabLabel(const int index) const {
+  if (index == RECENT_TAB && historyView()) return tr(STR_LIBRARY_OPENED_TAB);
   if (index == AUTHOR_TAB && activeTabIndex == static_cast<int>(libraryview::Tab::AuthorFirst))
     return tr(STR_LIBRARY_FIRST_NAME_TAB);
   return tabLabelFor(index);
@@ -716,6 +769,7 @@ fui::TabIndicator LibraryListActivity::tabIndicator(const int index) const {
 }
 
 int LibraryListActivity::bookRowCount() const {
+  if (historyView()) return pinnedCount();
   const int total = filtersActive() ? static_cast<int>(filteredCount) : static_cast<int>(index.bookCount());
   // Pinned books already in the index are skipped below the pins, not doubled;
   // pinned books the index missed still show, so the difference stays split.
@@ -857,6 +911,10 @@ void LibraryListActivity::applyFilter() {
   filteredCount = 0;
   filterFailed = false;
   headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
+  if (historyView()) {
+    resolvePinned();
+    return;
+  }
   if (!filtersActive()) return;
 
   const std::string needle = library::fold(query);
@@ -989,6 +1047,10 @@ bool LibraryListActivity::rowTextFor(const int entry, std::string& title, std::s
     const auto stored = pinnedStoreIndices[entry];
     if (stored >= books.size()) return false;
     const auto& book = books[stored];
+    if (historyView()) {
+      if (fileName) *fileName = book.path;
+      return recentTextFor(stored, title, author);
+    }
     title = book.title;
     author = book.author;
     if (fileName) *fileName = book.path;
@@ -1007,6 +1069,34 @@ bool LibraryListActivity::rowTextFor(const int entry, std::string& title, std::s
     if (fileName) index.readName(record, *fileName);
   }
   if (title.empty()) title = tr(STR_LIBRARY_UNKNOWN_TITLE);
+  return true;
+}
+
+bool LibraryListActivity::recentTextViews(const size_t storeIndex, std::string_view& title,
+                                          std::string_view& author) const {
+  title = {};
+  author = {};
+  const auto& books = RECENT_BOOKS.getBooks();
+  if (storeIndex >= books.size()) return false;
+  const auto& book = books[storeIndex];
+  if (SETTINGS.libraryUseMetadata && !book.title.empty()) {
+    title = book.title;
+  } else {
+    title = book.path;
+    const auto slash = title.find_last_of('/');
+    if (slash != std::string_view::npos) title.remove_prefix(slash + 1);
+    const auto dot = title.find_last_of('.');
+    if (dot != std::string_view::npos && dot != 0) title = title.substr(0, dot);
+  }
+  if (SETTINGS.libraryUseMetadata) author = book.author;
+  return true;
+}
+
+bool LibraryListActivity::recentTextFor(const size_t storeIndex, std::string& title, std::string& author) const {
+  std::string_view titleView, authorView;
+  if (!recentTextViews(storeIndex, titleView, authorView)) return false;
+  title.assign(titleView);
+  author.assign(authorView);
   return true;
 }
 
@@ -1043,7 +1133,8 @@ bool LibraryListActivity::handleCustomInput() {
 
 bool LibraryListActivity::gridRequested() const {
   return recentGrid && !groupsCollapsed &&
-         ((activeTabIndex == RECENT_TAB && SETTINGS.recentBooksView == CrossPointSettings::RECENT_BOOKS_GRID) ||
+         (((activeTabIndex == RECENT_TAB || historyView()) &&
+           SETTINGS.recentBooksView == CrossPointSettings::RECENT_BOOKS_GRID) ||
           (activeTabIndex == TITLE_TAB && SETTINGS.libraryTitleCoverGrid));
 }
 
@@ -1103,7 +1194,7 @@ void LibraryListActivity::loop() {
 
 void LibraryListActivity::loadNextGridCover() {
   RenderLock lock(*this);
-  if (!gridEnabled() || !index.isOpen()) return;
+  if (!gridEnabled() || (!historyView() && !index.isOpen())) return;
   const int slot = recentGrid->nextCover();
   if (slot < 0) return;
   if (!rowPathFor(activeNav().top + slot, rowFileScratch)) {
@@ -1113,9 +1204,15 @@ void LibraryListActivity::loadNextGridCover() {
   }
   if (!recentGrid->matches(slot, library::clixPathHash(rowFileScratch.data(), rowFileScratch.size()))) return;
   // Source parsing and thumbnail generation need the card's reader handle.
+  const bool reopenIndex = index.isOpen();
   index.close();
   const bool loaded = recentGrid->loadCover(slot, rowFileScratch);
-  if (!index.open(library::libraryIndexPath())) {
+  if (reopenIndex && !index.open(library::libraryIndexPath())) {
+    if (historyView()) {
+      std::fill(pinnedAscRows, pinnedAscRows + pinnedTotal, 0xFFFF);
+      if (loaded) requestUpdate();
+      return;
+    }
     LOG_ERR("LIB", "cannot reopen index after thumbnail generation");
     filterFailed = true;
     filteredCount = 0;
@@ -1416,7 +1513,7 @@ void LibraryListActivity::buildScreen(UiScreen& screen) {
   if (bookRowCount() == 0) {
     const char* message = tr(STR_LIBRARY_NO_RESULTS);
     if (filterFailed) {
-      message = tr(STR_LIBRARY_FILTER_UNAVAILABLE);
+      message = historyView() ? tr(STR_LIBRARY_HISTORY_SEARCH_LIMIT) : tr(STR_LIBRARY_FILTER_UNAVAILABLE);
     } else if (!filtersActive()) {
       message = tr(STR_LIBRARY_EMPTY);
     }

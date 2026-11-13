@@ -69,6 +69,8 @@ struct LibraryListActivity;
 bool locked=false;
 struct RenderLock {explicit RenderLock(LibraryListActivity&){assert(!locked);locked=true;}void unlock(){assert(locked);locked=false;}~RenderLock(){locked=false;}};
 struct LibraryListActivity {
+ bool history=false;int refreshes=0;
+ bool historyView() const {return history;}void refreshViewIndex(){++refreshes;index.close();degraded=false;}
  Index index;int renderer=0,mappedInput=0;bool filterFailed=false,statisticsOpenFailed=false,degraded=false,rebuildOk=true;int filteredCount=3,pinnedTotal=2,closeCount=0,updates=0,releases=0,pushes=0,rebuilds=0,resets=0;
  std::unique_ptr<ReadingStatsActivity> child;std::function<void(const ActivityResult&)> callback;
  void closeRouting(){++closeCount;}void requestUpdate(){++updates;}void swallowHeldReleases(){++releases;}
@@ -78,6 +80,10 @@ struct LibraryListActivity {
 };
 ''' + factory + '\n' + functions + r'''
 int main(){
+ LibraryListActivity history;history.history=true;history.index.openOk=false;allocation=0;
+ history.openBookStatistics("book.epub","Title");library::dirty=true;
+ history.callback({});assert(!history.filterFailed&&history.refreshes==1&&history.rebuilds==0&&history.resets==1);
+ library::dirty=false;
  LibraryListActivity ok;allocation=0;ok.openBookStatistics("book.epub","Title");
  assert(ok.pushes==1 && !ok.index.isOpen() && ok.child->bookWritable && ok.child->progress==4200 && ok.child->tracking);
  ok.callback({});assert(ok.index.isOpen() && ok.releases==1 && !ok.filterFailed);

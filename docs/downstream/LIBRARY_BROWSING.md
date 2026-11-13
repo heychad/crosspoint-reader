@@ -10,8 +10,8 @@ compatible choices through the existing backed-up transaction; see
 
 The five quick tabs remain Recent, Title, Author, Series, and Genre. The gear
 beside Search opens Sort library, using the existing scrolling selection screen.
-It offers Reverse order, the five existing views, Author first name, and Rebuild
-library. Holding Confirm while the tabs have focus opens the same picker.
+It offers Reverse order, Recent and new, Title, Author surname, Series, Genre,
+Author first name, Recently opened, and Rebuild library. Holding Confirm while the tabs have focus opens the same picker.
 
 Author first name shares the Author tab's navigation. Its tab label becomes
 First name, and expanded headings show the normal name rather than the surname
@@ -21,8 +21,8 @@ then Author selects the surname view; the picker selects first-name order again.
 The current view and direction survive reopening Library and a clean restart.
 
 The picker allocates one checked EnumSelectionActivity while retaining the
-Library parent. Its compiled X4 Pro object is 1204 bytes; its eight StrId labels
-use 16 static bytes. The object and inherited UI resources coexist with the
+Library parent. Its compiled X4 Pro object is 1204 bytes; its nine StrId labels
+use 18 static bytes. The object and inherited UI resources coexist with the
 parent. Runtime heap peak still needs measurement. It adds no book-sized
 buffer or new storage writer. A failed allocation leaves Library open. Cancel
 and invalid results preserve the current view. The existing input owner and
@@ -33,7 +33,7 @@ Check its heading and direction, tap First name to reverse it, then leave and
 reopen Library. Also cancel the picker after a Confirm hold and reopen an
 in-progress book to check its saved position. Device validation remains pending.
 
-The 211 affected host checks pass, including real-font layouts for Author and
+The first-name checkpoint passed 211 affected host checks, including real-font layouts for Author and
 First name in both reader orientations. Import, picker/view changes, and
 filter/group rendering pass AddressSanitizer and UndefinedBehaviorSanitizer.
 The default X4 Pro build passes in 107.65 seconds, with 113140 static RAM bytes
@@ -43,6 +43,35 @@ and 5675630 flash bytes. The picker entry frame is 96 bytes. Logs are
 `/tmp/x4-first-name-view-filter-sanitizers.log`, and
 `/tmp/x4-first-name-view-firmware.log`. Cumulative handoff review and device
 validation remain.
+
+## Recently opened
+
+Recently opened shows only the resident reading history, newest or oldest first.
+It shares the Recent quick tab, labelled Opened in this view, and has its own
+saved direction. Recent and new keeps the combined arrival/history shelf.
+Search uses the displayed title and author; disabling metadata uses the filename
+stem and hides the author. Format and finished-book filters still apply.
+
+A missing, stale, or unreadable derived index does not trigger a card scan when
+opening history. Available index metadata supplies optional series/genre details;
+lookup failures retain the history rows. Covers can load without an index.
+Choosing an indexed view opens or rebuilds its index as needed. The existing
+book actions, including deletion and explicit rebuilding, retain their normal
+storage behavior. Returning from Statistics refreshes the resident mapping.
+
+History now retains 18 books, matching tagged CrossInk RC2. Existing ten-entry
+files still load fully; subsequent opens can fill the larger capacity. Rotation
+and serialization preserve surviving titles, authors, covers, and order. The
+three existing row-mapping arrays occupy 90 bytes in the activity. Optional
+identity matching uses batches of eight, with a 128-byte stack array, and keeps
+the existing index API's limit.
+
+History search joins at most 512 UTF-8 bytes of title, separator, and author in
+existing activity scratch. Folded scratch has the existing four-times expansion
+budget. Oversized metadata shows a clear-search instruction; browsing and stored
+metadata remain intact. No new task, per-book heap array, reading-state format,
+or derived-index version is introduced. Runtime heap peak and latency still
+need device measurements.
 
 ## Filters and rows
 
@@ -73,7 +102,7 @@ The browsing preferences use the existing bounded settings serializer.
 The current author-ordering work upgrades the derived Library index to version 4; see
 [index migration](LIBRARY_METADATA.md). Active search or format/completion filtering uses
 the existing array of at most 4096 16-bit row positions, requiring at most
-8 KiB. The ordinary unfiltered view allocates no row-position array. Ten
+8 KiB. The ordinary unfiltered view allocates no row-position array. Eighteen
 recent-store indexes identify the surviving pins. Visible row strings use
 the existing page-sized storage.
 

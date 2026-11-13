@@ -27,7 +27,7 @@ struct Settings {
   struct View { uint8_t tab = 0, descendingTabs = 1; } libraryView;
   bool saveToFile() { return true; }
 } SETTINGS;
-namespace libraryview { constexpr int TAB_COUNT = 6; }
+namespace libraryview { constexpr int TAB_COUNT = 7; }
 std::mutex renderMutex;
 class LibraryListActivity;
 struct RenderLock {
@@ -44,6 +44,9 @@ class LibraryListActivity {
   Nav nav;
   int activeTab() const { return activeTabIndex; }
   Nav& activeNav() { return nav; }
+  bool historyView() const { return false; }
+  void refreshViewIndex() {}
+  void resolvePinned() {}
   void applyFilter() { filteredOrder = sortOrder; std::this_thread::sleep_for(std::chrono::microseconds(30)); }
   void refreshOverlap() {}
   void requestUpdate() {}

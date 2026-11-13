@@ -23,7 +23,9 @@ def method(signature):
 assert 'tabPillMaxPad' not in method('LibraryListActivity::LibraryListActivity(')
 code = (ROOT / 'test/library_filters/LibraryFiltersHarness.cpp').read_text()
 methods = []
-for signature in ('int LibraryListActivity::pinnedCount(', 'void LibraryListActivity::resolvePinned(',
+for signature in ('bool LibraryListActivity::historyView(', 'void LibraryListActivity::refreshViewIndex(',
+                  'bool LibraryListActivity::recentTextViews(', 'bool LibraryListActivity::recentTextFor(',
+                  'bool LibraryListActivity::rowTextFor(', 'int LibraryListActivity::pinnedCount(', 'void LibraryListActivity::resolvePinned(',
                   'void LibraryListActivity::refreshOverlap(', 'bool LibraryListActivity::filtersActive(',
                   'bool LibraryListActivity::matchesFilters(', 'bool LibraryListActivity::matchesFormat(',
                   'void LibraryListActivity::applyFilter(', 'bool LibraryListActivity::rowMetadataFor(',

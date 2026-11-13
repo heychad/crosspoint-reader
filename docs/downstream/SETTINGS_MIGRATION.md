@@ -82,6 +82,7 @@ The explicit Library import translates tagged RC2's `librarySortMethod` and
 | 1 Title | Title |
 | 2 Author last name | Author, using the canonical display name's surname |
 | 3 Author first name | First name, using the folded canonical display name and the Author quick tab |
+| 4 Recently opened | The history-only view, using the Recent quick tab and an independent direction |
 | 5 Series | Series |
 | 6 Genre | Genre |
 
@@ -91,13 +92,14 @@ the whole native pair when either key exists, including null or invalid values.
 Confirmed replacement can replace it. The existing transaction backs up the
 native settings and preserves the CrossInk source byte for byte.
 
-Date added (0) and Recently opened (4) remain unchanged on import. The native
-Recent tab combines newly arrived books with a pinned reading-history overlay;
-it is not either RC2 list. Tagged RC2's Date added uses file creation time; the
-native arrival order uses modification time. A faithful import needs creation
-time capture and freshness checks. Recently opened needs a separate history-only
-view in both directions. G3 stays partial until these
-semantics and the compatibility boundaries below are resolved.
+Date added (0) remains unchanged on import. Tagged RC2 sorts it by file creation
+time; the native arrival order uses modification time. A faithful import needs
+creation-time capture and freshness checks. Recently opened now maps to logical
+view 6 and quick-tab slot 0, with direction bit 6. It reads the resident history
+rather than using the combined arrival/history shelf. The default directions
+start Recent and Recently opened newest first; existing native masks are retained.
+G3 remains partial while Date added and the remaining compatibility boundaries
+are resolved.
 
 The first-name view and import are now built, with independent saved direction
 and the native scrolling sort picker. Its logical view ID is 5; it uses Author's

@@ -39,7 +39,7 @@ enum class Order { RecentAsc, RecentDesc, TitleAsc, TitleDesc, AuthorAsc, Author
                    SeriesAsc, SeriesDesc, GenreAsc, GenreDesc, AuthorFirstAsc, AuthorFirstDesc };
 constexpr int TAB_SLOTS = 5;
 constexpr Order orderForTab(int tab, uint8_t bits) {
-  return static_cast<Order>(tab * 2 + ((bits >> tab) & 1));
+  return static_cast<Order>((tab == 6 ? 0 : tab * 2) + ((bits >> tab) & 1));
 }
 #define FREEINK_CAP_TOUCH 1
 #define LOG_ERR(...) ((void)0)
@@ -58,6 +58,7 @@ struct Settings {
 } SETTINGS;
 enum class StrId { STR_LIBRARY_REVERSE_ORDER, STR_LIBRARY_TAB_RECENT, STR_LIBRARY_TAB_TITLE,
                    STR_LIBRARY_AUTHOR_SURNAME, STR_LIBRARY_TAB_SERIES, STR_LIBRARY_TAB_GENRE,
+                   STR_LIBRARY_RECENT_AND_NEW, STR_LIBRARY_RECENTLY_OPENED,
                    STR_LIBRARY_AUTHOR_FIRST_NAME, STR_LIBRARY_REBUILD, STR_LIBRARY_SORT };
 struct MenuResult { int action; };
 struct ActivityResult { bool isCancelled = false; std::variant<std::monostate, MenuResult> data; };
@@ -83,6 +84,10 @@ struct LibraryListActivity {
   void applyFilter() { ++filters; assert(sortOrder == orderForTab(activeTabIndex, descendingTabs)); }
   void refreshOverlap() { ++overlaps; }
   void requestUpdate() { ++paints; }
+  bool historyView() const { return activeTabIndex == 6; }
+  void refreshViewIndex() {}
+  int resolves = 0;
+  void resolvePinned() { ++resolves; }
   void loadViewPreferences();
   void selectTab(int, bool);
   void selectView(int, bool);
@@ -103,8 +108,8 @@ struct LibraryListActivity {
 };
 // INSERT_METHODS
 int main() {
-  for (unsigned tab = 0; tab < 6; ++tab) {
-    for (unsigned bits = 0; bits < 64; ++bits) {
+  for (unsigned tab = 0; tab < 7; ++tab) {
+    for (unsigned bits = 0; bits < 128; ++bits) {
       JsonDocument saved;
       saved["keep"] = 42;
       libraryview::Preferences original;
@@ -123,7 +128,7 @@ int main() {
       assert(SETTINGS.writes == writes);
       view.selectTab(-1, true);
       view.selectTab(5, true);
-      view.selectView(6, true);
+      view.selectView(7, true);
       assert(SETTINGS.writes == writes && view.activeTabIndex == tab && view.activeTab() == libraryview::mainTab(tab));
       view.toggleSortDirection();
       assert(view.descendingTabs == (bits ^ (1u << tab)));
@@ -137,11 +142,13 @@ int main() {
       LibraryListActivity reopened;
       reopened.loadViewPreferences();
       assert(reopened.activeTabIndex == tab && reopened.sortOrder == view.sortOrder);
-      for (unsigned next = 0; next < 6; ++next) {
+      for (unsigned next = 0; next < 7; ++next) {
         writes = SETTINGS.writes;
         const int previous = reopened.activeTabIndex;
         const auto directions = reopened.descendingTabs;
+        const int resolves = reopened.resolves;
         reopened.selectView(next, false);
+        if (previous == 6 && next != 6) assert(reopened.resolves == resolves + 1);
         assert(reopened.activeTabIndex == next && reopened.descendingTabs == directions);
         assert(SETTINGS.writes == writes + (previous != next));
         assert(reopened.sortOrder == orderForTab(next, directions));
@@ -158,16 +165,16 @@ int main() {
       libraryview::Preferences loaded;
       loaded.read(doc.as<JsonVariantConst>());
       assert(loaded.tab == (key == std::string_view("libraryViewTab") ? 0 : 4));
-      assert(loaded.descendingTabs == (key == std::string_view("libraryViewDescendingTabs") ? 1 : 31));
+      assert(loaded.descendingTabs == (key == std::string_view("libraryViewDescendingTabs") ? 65 : 31));
     }
   }
-  for (unsigned bad = 6; bad < 256; ++bad) {
+  for (unsigned bad = 7; bad < 256; ++bad) {
     JsonDocument doc;
     doc["libraryViewTab"] = bad;
     doc["libraryViewDescendingTabs"] = bad;
     libraryview::Preferences loaded;
     loaded.read(doc.as<JsonVariantConst>());
-    assert(loaded.tab == 0 && loaded.descendingTabs == (bad < 64 ? bad : 1));
+    assert(loaded.tab == 0 && loaded.descendingTabs == (bad < 128 ? bad : 65));
   }
   JsonDocument empty;
   empty.to<JsonObject>();
@@ -175,7 +182,7 @@ int main() {
   defaults.tab = 4;
   defaults.descendingTabs = 31;
   defaults.read(empty.as<JsonVariantConst>());
-  assert(defaults.tab == 0 && defaults.descendingTabs == 1);
+  assert(defaults.tab == 0 && defaults.descendingTabs == 65);
   SETTINGS.libraryView = {};
   assert(SETTINGS.saveToFile());
   SETTINGS.fail = true;
@@ -195,26 +202,27 @@ int main() {
   LibraryListActivity picker;
   picker.selectView(5, false);
   picker.openSortPicker();
-  assert(picker.starts == 1 && picker.picker->selected == 6 && picker.picker->labels.size() == 8);
+  assert(picker.starts == 1 && picker.picker->selected == 6 && picker.picker->labels.size() == 9);
   assert(picker.picker->labels[0] == StrId::STR_LIBRARY_REVERSE_ORDER);
   assert(picker.picker->labels[6] == StrId::STR_LIBRARY_AUTHOR_FIRST_NAME);
-  assert(picker.picker->labels[7] == StrId::STR_LIBRARY_REBUILD);
+  assert(picker.picker->labels[7] == StrId::STR_LIBRARY_RECENTLY_OPENED && picker.picker->labels[8] == StrId::STR_LIBRARY_REBUILD);
   const auto writes = SETTINGS.writes;
   picker.callback({true, MenuResult{1}});
   picker.callback({false, std::monostate{}});
   picker.callback({false, MenuResult{-1}});
-  picker.callback({false, MenuResult{8}});
+  picker.callback({false, MenuResult{9}});
   assert(SETTINGS.writes == writes && picker.activeTabIndex == 5 && picker.swallowed == 4);
-  for (int choice = 1; choice <= 6; ++choice) {
+  for (int choice = 1; choice <= 7; ++choice) {
     picker.callback({false, MenuResult{choice}});
     assert(picker.activeTabIndex == choice - 1);
     assert(picker.activeTab() == libraryview::mainTab(choice - 1));
     assert(SETTINGS.libraryView.tab == choice - 1);
   }
+  picker.selectView(5, false);
   const auto previous = picker.descendingTabs;
   picker.callback({false, MenuResult{0}});
   assert(picker.descendingTabs == (previous ^ 32) && picker.activeTabIndex == 5);
-  picker.callback({false, MenuResult{7}});
+  picker.callback({false, MenuResult{8}});
   assert(picker.rebuilds == 1);
   // The alias uses the Author tab's navigation, while keeping its own direction.
   const auto mask = picker.descendingTabs;

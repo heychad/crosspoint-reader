@@ -14,8 +14,8 @@ inline bool stageLibraryView(JsonVariantConst legacy, JsonDocument& proposed, co
   using libraryview::Tab;
   // RC2: Added, title, surname, first name, recently opened, series, genre.
   // Count marks views whose behavior does not match a native tab.
-  static constexpr Tab tabs[] = {Tab::Count, Tab::Title,  Tab::Author, Tab::AuthorFirst,
-                                 Tab::Count, Tab::Series, Tab::Genre};
+  static constexpr Tab tabs[] = {Tab::Count,          Tab::Title,  Tab::Author, Tab::AuthorFirst,
+                                 Tab::RecentlyOpened, Tab::Series, Tab::Genre};
   const uint8_t raw = method.as<uint8_t>();
   if (raw >= sizeof(tabs) / sizeof(tabs[0]) || tabs[raw] == Tab::Count) return false;
   const uint8_t tab = static_cast<uint8_t>(tabs[raw]);
@@ -26,7 +26,7 @@ inline bool stageLibraryView(JsonVariantConst legacy, JsonDocument& proposed, co
   if (!replaceExisting && (!currentTab.isUnbound() || !currentDirections.isUnbound())) return false;
   uint8_t directions = currentDirections.is<uint8_t>() && currentDirections.as<uint8_t>() <= libraryview::DIRECTION_MASK
                            ? currentDirections.as<uint8_t>()
-                           : 1;
+                           : libraryview::DEFAULT_DIRECTIONS;
   const uint8_t bit = 1u << tab;
   directions = direction.as<uint8_t>() ? directions | bit : directions & ~bit;
   if (currentTab.is<uint8_t>() && currentTab.as<uint8_t>() == tab && currentDirections.is<uint8_t>() &&
