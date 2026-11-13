@@ -75,7 +75,7 @@ leaves the uploaded file for review.
 ## Library client integration
 
 The client is `apps/book-library/device_sync.py` in Chad's second-brain
-repository, local checkpoint `050334fbefddf13cdf5cc0866ca18dc08c6c6f70`
+repository. Its integration checkpoint is `6c94b59b4fe3d983ad14580e343af1c9918ab17d`
 (checksum integration `4f68baf`). Missing serial numbers, including the firmware's
 `Not found` sentinel, block sync instead of sharing an unknown reader identity.
 Its existing `Reader.digest(path, size, progress)` interface now selects the
@@ -98,11 +98,62 @@ Eighteen protocol tests use real local HTTP, including capability fallback,
 malformed results, mismatched jobs, HTTP errors, redirects, cancellation,
 deadlines, missing reader identity, and receipt failure/retry. Four additional
 queue regressions cover reruns, a lost upload response, hash failures, and
-same-size conflicts. All 295
-second-brain host tests and its authoring validator pass. These tests use a host
-server, not reader hardware. Cumulative review, client publication, and measured
-end-to-end transfer timing remain pending. The installed clipfix2 firmware uses
+same-size conflicts. That checkpoint passed all 295
+second-brain host tests and its authoring validator; the queue checks below
+bring the current total to 303. These tests use a host
+server, not reader hardware. Cumulative review and measured end-to-end transfer
+timing remain pending; code publication is recorded below. The installed clipfix2 firmware uses
 the existing download fallback until a reviewed candidate is installed.
+
+## Selected-book queue and create-only uploads
+
+The supported D1 flow is Drive Desktop's local library, the existing web-library
+selection queue, File Transfer, and create-only `/upload` followed by byte
+verification. It uses the existing upload and folder routes; experimental staged
+publication is a separate unfinished experiment and is not enabled by this flow.
+Drive cloud completion and continuous background sync are not implied.
+
+Create-only upload opens now use `HalStorage::openChecked()` with `O_EXCL` and
+without `O_TRUNC`. This closes the gap between the earlier existence check and
+open: another HAL writer's new destination causes failure instead of truncation
+under the existing storage lock.
+Explicit overwrite keeps the existing staged `.part` path and replacement
+behavior. The change adds no buffer, task, format, endpoint, or reservation file.
+It reuses the checked HAL wrapper, storage lock, and mutation fence.
+
+Nine focused firmware checks pass in 2.52 seconds. The new test executes the
+production open policy and HAL methods against patched SdFat on FAT/exFAT disk
+images. New files, case-insensitive late collisions, directory collisions,
+explicit overwrite staging, and reading-state preservation survive remount.
+AddressSanitizer passes. The combined UBSan attempt reports the existing vendor
+unaligned accesses and null-pointer arithmetic already tracked in
+[completion evidence](FINISHED_BOOKS.md).
+It is not a clean UBSan pass; no category was suppressed. A separate leak-check
+option was unsupported on this Mac and was removed for the passing ASan run.
+
+Eight real-HTTP integration tests run the production client queue, multipart
+upload, folder creation, and checksum or download verification together. They
+cover nested Unicode paths, reruns, lost acknowledgements, late conflicts,
+truncated files, old firmware, reader identity changes, and Stop after the
+current book. Reader state and source organization stay unchanged in the host
+fixture. The web app restores the saved address once, without replacing edits
+made before or during polling; its UI regression initially exposed and then
+verified the first-response ordering correction.
+
+The full client repository passes 303 tests and validates 68 concepts with no
+errors or warnings. The final default X4 Pro build passes in 71.77 seconds
+(RAM 113,068 bytes; flash 5,696,342 bytes); the twelve-flag profile passes in
+76.96 seconds (RAM 113,100 bytes; flash 5,803,398 bytes). These are local adapter
+and filesystem-image checks, not simultaneous-task or device timing evidence.
+Cumulative security/storage review and backed-up device validation remain.
+
+The app and its tests are published on the private second-brain branch
+[`codex/x4pro-library-sync-20261113`](https://github.com/heychad/second-brain/tree/codex/x4pro-library-sync-20261113),
+checkpoint `9f4db2f4c0957486809c482318243b0f22e6560d`. Its code and tests match
+canonical local checkpoint `6c94b59`; its README records the different test
+scope. The code-only branch passes 73 tests and validates five unchanged base
+concepts. It excludes the canonical checkout's 244 unrelated unpublished
+commits; no knowledge-history push or main-branch merge occurred.
 
 ## Execution and resource limits
 
@@ -161,8 +212,8 @@ Logs: `/tmp/x4-checksum-final-checks.log`,
 `/tmp/x4-checksum-http-sanitizers.log`, and
 `/tmp/x4-checksum-firmware-final.log`.
 
-Cumulative firmware review, client integration, and a backed-up device handoff
-remain required before use. This firmware has not been installed or device-tested.
+Cumulative firmware review and a backed-up device handoff remain required
+before installed-device use. This firmware has not been installed or device-tested.
 Use `/zDev/` for firmware and development artifacts on the reader's card.
 
 The near-end completion prompt integration was queued behind this reader-side

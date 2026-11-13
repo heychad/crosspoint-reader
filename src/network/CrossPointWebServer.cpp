@@ -1781,6 +1781,13 @@ static String uploadWritePath(const CrossPointWebServer::UploadState& state) {
   return state.staged ? uploadDestPath(state) + ".part" : uploadDestPath(state);
 }
 
+static bool openUploadFile(const String& path, const bool replacing, HalFile& file) {
+  if (replacing) return Storage.openFileForWrite("WEB", path.c_str(), file);
+  // Another writer may create the destination after the collision check.
+  file = Storage.openChecked(path.c_str(), O_RDWR | O_CREAT | O_EXCL);
+  return static_cast<bool>(file);
+}
+
 // Drop a partially written upload so a truncated book never lands in the library.
 // An overwritten file is untouched: only its staged copy is removed.
 static void removeUploadedFile(const CrossPointWebServer::UploadState& state) {
@@ -1872,7 +1879,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
 
     // Open file for writing - this can be slow due to FAT cluster allocation
     resetTaskWatchdogIfSubscribed();
-    if (!Storage.openFileForWrite("WEB", uploadWritePath(state), state.file)) {
+    if (!openUploadFile(uploadWritePath(state), state.staged, state.file)) {
       state.error = "Failed to create file on SD card";
       LOG_DBG("WEB", "[UPLOAD] FAILED to create file: %s", uploadWritePath(state).c_str());
       state.buffer.reset();
