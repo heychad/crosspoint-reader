@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace dc = readingstats::deferredcompletion;
@@ -719,6 +720,41 @@ TEST_F(DeferredCompletionIntentIO, MovePreparationCancelsIfBookWasUnfinished) {
   EXPECT_EQ(dc::prepareMove(BOOK, "/read/Book.epub", {2026, 11, 11}), dc::PrepareMoveResult::Cancelled);
   EXPECT_TRUE(Storage.exists(BOOK));
   EXPECT_EQ(dc::assess(BOOK), dc::MoveAssessment::Missing);
+}
+
+TEST_F(DeferredCompletionIntentIO, CancelledRequestLeavesTheNextFinishedBookResumable) {
+  using namespace readingstats;
+  constexpr char other[] = "/Authors/Other/Second.epub";
+  start();
+  ASSERT_EQ(finalizeClosedBookCompletion(BOOK, true), CompletionFinalizeResult::Finalized);
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", other, file));
+  ASSERT_TRUE(file.close());
+  const auto cache = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(other));
+  ASSERT_TRUE(saveBook(bookDirectory(cache), BookReadingStats{}));
+  ASSERT_EQ(setClosedBookCompletionStats(other, true, {2026, 11, 11}, cj::DEFER_MOVE_TO_READ),
+            ClosedCompletionResult::Applied);
+  ASSERT_EQ(finalizeClosedBookCompletion(other, true), CompletionFinalizeResult::Finalized);
+  ASSERT_EQ(setClosedBookCompletionStats(BOOK, false, {2026, 11, 11}), ClosedCompletionResult::Applied);
+  ASSERT_EQ(finalizeClosedBookCompletion(BOOK, false), CompletionFinalizeResult::Finalized);
+  ASSERT_EQ(dc::prepareMove(BOOK, "/read/Book.epub", {2026, 11, 11}), dc::PrepareMoveResult::Cancelled);
+  auto record = std::make_unique<dc::Record>();
+  size_t size = 0;
+  unsigned slot = 0;
+  ASSERT_EQ(dc::discoverResumable(*record, size, slot), dc::FindResult::Found);
+  uint64_t origin = 0;
+  std::string_view path;
+  ASSERT_TRUE(dc::decodeWithHash(record->data(), size, origin, path));
+  EXPECT_EQ(path, other);
+  ASSERT_EQ(dc::prepareMove(other, "/read/Second.epub", {2026, 11, 11}), dc::PrepareMoveResult::Prepared);
+  ASSERT_EQ(completionmove::movePreparedFiles(), completionmove::MoveFilesResult::Moved);
+  ASSERT_EQ(completionmove::verifyPreparedFiles(), completionmove::VerifyFilesResult::ContentMatches);
+  EXPECT_TRUE(Storage.exists(BOOK));
+  EXPECT_FALSE(Storage.exists("/read/Book.epub"));
+  EXPECT_FALSE(Storage.exists(other));
+  EXPECT_TRUE(Storage.exists("/read/Second.epub"));
+  // The second request remains recoverable until references are finalized.
+  EXPECT_EQ(dc::discoverResumable(*record, size, slot), dc::FindResult::Found);
 }
 
 TEST_F(DeferredCompletionIntentIO, RefusesMissingMismatchedAndActiveTransactions) {

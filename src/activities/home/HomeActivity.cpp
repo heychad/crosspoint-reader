@@ -551,8 +551,8 @@ void HomeActivity::onEnter() {
   const ReadingStatsDate today = getCurrentLocalReadingStatsDateTime(now) ? now.date : ReadingStatsDate{};
   const auto pending = readingstats::deferredcompletion::executeOnePending(today, showDeferredMove, this);
   using MoveResult = readingstats::deferredcompletion::ExecuteMoveResult;
-  deferredMoveRetryPending =
-      pending == MoveResult::Moved || pending == MoveResult::Busy || pending == MoveResult::Unavailable;
+  deferredMoveRetryPending = pending == MoveResult::Moved || pending == MoveResult::Cancelled ||
+                             pending == MoveResult::Busy || pending == MoveResult::Unavailable;
   if (deferredMoveRetryPending) deferredMoveRetryAt = millis() + 500;
   deferredMoveNeedsReview = pending == MoveResult::Blocked || pending == MoveResult::RecoveryRequired;
   deferredMoveOverlayShown = false;
@@ -660,21 +660,37 @@ void HomeActivity::loop() {
       const ReadingStatsDate today = getCurrentLocalReadingStatsDateTime(now) ? now.date : ReadingStatsDate{};
       const auto result = readingstats::deferredcompletion::executeOnePending(today, showDeferredMove, this);
       using MoveResult = readingstats::deferredcompletion::ExecuteMoveResult;
-      if (result == MoveResult::Moved) {
-        activityManager.goHome();
-        return;
+      switch (result) {
+        case MoveResult::Moved:
+          activityManager.goHome();
+          return;
+        case MoveResult::Cancelled:
+          deferredMoveRetryPending = true;
+          deferredMoveRetryAt = millis() + 500;
+          break;
+        case MoveResult::Missing:
+          break;
+        case MoveResult::Busy:
+        case MoveResult::Blocked:
+        case MoveResult::RecoveryRequired:
+        case MoveResult::Unavailable:
+          deferredMoveNeedsReview = true;
+          break;
       }
       if (deferredMoveOverlayShown) {
         deferredMoveOverlayShown = false;
         requestUpdate();
       }
-      deferredMoveNeedsReview =
-          result == MoveResult::Blocked || result == MoveResult::RecoveryRequired || result == MoveResult::Unavailable;
     }
     if (deferredMoveNeedsReview) {
       deferredMoveNeedsReview = false;
-      const char* options[] = {tr(STR_OK_BUTTON)};
-      popup.showMessage(tr(STR_READING_STATISTICS), tr(STR_FINISHED_MOVE_REVIEW), options, 1, 0, [](int) {});
+      const char* options[] = {tr(STR_RETRY), tr(STR_OK_BUTTON)};
+      popup.showMessage(tr(STR_READING_STATISTICS), tr(STR_FINISHED_MOVE_REVIEW), options, 2, 1, [this](int choice) {
+        if (choice == 0) {
+          deferredMoveRetryPending = true;
+          deferredMoveRetryAt = millis() + 500;
+        }
+      });
       requestUpdate();
       return;
     }

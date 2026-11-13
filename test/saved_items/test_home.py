@@ -99,7 +99,7 @@ struct Popup {
  void show(const char*,const char*const* options,int n,int,std::function<void(int)> f){active=true;count=n;callback=std::move(f);labels.assign(options,options+n);}
  void choose(int index){assert(index>=0&&index<count);active=false;callback(index);}
  bool isActive()const{return active;}
- template<class F>void showMessage(const char*,const char*,const char**,int,int,F){shown=true;}
+ template<class F>void showMessage(const char*,const char*,const char** options,int n,int current,F f){shown=true;show("message",options,n,current,std::move(f));}
  template<class F>bool handleInput(MappedInputManager&,F){return active;}
 };
 bool renderLocked=false;int errors=0;
@@ -147,6 +147,7 @@ struct HomeActivity {
  int homeCoverTileHeight()const;
  MenuPage menuPage()const;
  void loop();
+ void beginDeferredWork();
 '''
 code+=method(header,'  static HomeMenuItem indexToMenuItem(')+'\n};\n'
 code+=method(source,'bool usesCompactHome(')+'\n'
@@ -156,6 +157,10 @@ for file,signature in [('MinimalHomeTheme.cpp','Rect MinimalHomeTheme::coverRect
     code+=method(theme_source,signature)+'\n'
 for signature in ['void HomeActivity::activateSelection(', 'void HomeActivity::showCompactMenu(', 'void HomeActivity::openCompactStatistics(', 'void HomeActivity::showNextCompactBook(', 'bool HomeActivity::handleCompactHome(', 'int HomeActivity::getMenuItemCount(', 'int HomeActivity::homeCoverTileHeight(', 'HomeActivity::MenuPage HomeActivity::menuPage(', 'void HomeActivity::loop(']:
     code+=method(source,signature)+'\n'
+entry=method(source,'void HomeActivity::onEnter(')
+start=entry.index('#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)')
+end=entry.index('#endif',start)+len('#endif')
+code+='void HomeActivity::beginDeferredWork(){\n'+entry[start:end]+'\n}\n'
 code+=r'''
 int main(){
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
@@ -163,6 +168,11 @@ int main(){
  warning.deferredMoveNeedsReview=true;
  warning.loop();
  assert(warning.popup.shown && !warning.deferredMoveNeedsReview && warning.updates==1);
+ HomeActivity entryCancelled;
+ readingstats::deferredcompletion::result=readingstats::deferredcompletion::ExecuteMoveResult::Cancelled;
+ entryCancelled.beginDeferredWork();
+ assert(entryCancelled.deferredMoveRetryPending && entryCancelled.deferredMoveRetryAt==clockMs+500);
+ readingstats::deferredcompletion::attempts=0;
  HomeActivity retry;
  retry.deferredMoveRetryPending=true;retry.deferredMoveRetryAt=500;
  clockMs=499;retry.loop();
@@ -174,6 +184,19 @@ int main(){
  failed.deferredMoveRetryPending=true;failed.deferredMoveRetryAt=500;
  readingstats::deferredcompletion::result=readingstats::deferredcompletion::ExecuteMoveResult::Unavailable;
  failed.loop();assert(failed.popup.shown && !failed.deferredMoveRetryPending);
+ failed.popup.choose(0);assert(failed.deferredMoveRetryPending && failed.deferredMoveRetryAt==clockMs+500);
+ HomeActivity busy;busy.deferredMoveRetryPending=true;busy.deferredMoveRetryAt=clockMs;
+ readingstats::deferredcompletion::result=readingstats::deferredcompletion::ExecuteMoveResult::Busy;
+ busy.loop();assert(busy.popup.shown && !busy.deferredMoveRetryPending);busy.popup.choose(1);
+ HomeActivity dismissed;dismissed.deferredMoveNeedsReview=true;dismissed.loop();dismissed.popup.choose(1);
+ assert(!dismissed.deferredMoveRetryPending);
+ HomeActivity unfinished;unfinished.deferredMoveRetryPending=true;unfinished.deferredMoveRetryAt=clockMs;
+ readingstats::deferredcompletion::result=readingstats::deferredcompletion::ExecuteMoveResult::Cancelled;
+ unfinished.loop();assert(unfinished.deferredMoveRetryPending && unfinished.deferredMoveRetryAt==clockMs+500);
+ const int afterCancel=readingstats::deferredcompletion::attempts;
+ clockMs+=499;unfinished.loop();assert(readingstats::deferredcompletion::attempts==afterCancel);
+ ++clockMs;readingstats::deferredcompletion::result=readingstats::deferredcompletion::ExecuteMoveResult::Moved;
+ opened.clear();unfinished.loop();assert(opened=="home" && !unfinished.deferredMoveRetryPending && readingstats::deferredcompletion::attempts==afterCancel+1);
  HomeActivity rollover;
  rollover.deferredMoveRetryPending=true;rollover.deferredMoveRetryAt=0x20;
  clockMs=0xfffffff0u;const int before=readingstats::deferredcompletion::attempts;
