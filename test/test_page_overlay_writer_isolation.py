@@ -1,5 +1,7 @@
 """Exercise the real writer with isolated sleep and book-move artifacts."""
 from pathlib import Path
+import os
+import shlex
 import subprocess
 import tempfile
 
@@ -62,8 +64,23 @@ int main() {
  assert(Storage.exists(sleepTemp) && Storage.exists(sleepBackup));
  Storage.reset(); put(primary,"{\"openEpubPath\":\"/old.epub\"}");
  assert(movereference::writeSleepPreferences(next,sizeof(next)-1));
- assert(Storage.exists("/.crosspoint/state.json.sleep-history-0000"));
+ assert(!Storage.exists("/.crosspoint/state.json.sleep-history-0000"));
  assert(!Storage.exists(sleepTemp) && !Storage.exists(sleepBackup));
+ for(unsigned n=0;n<128;++n){
+  const auto value="{\"readerActivityLoadCount\":"+std::to_string(n)+"}";
+  assert(movereference::writeSleepPreferences(value.data(),value.size()));
+  std::string actual;assert(readText(primary,actual) && actual==value);
+  assert(!Storage.exists(sleepTemp) && !Storage.exists(sleepBackup));
+  assert(!Storage.exists("/.crosspoint/state.json.sleep-history-0000"));
+ }
+ // A full historical namespace must not prevent ordinary state saves.
+ for(unsigned n=0;n<10000;++n){
+  char path[80];snprintf(path,sizeof(path),"/.crosspoint/state.json.sleep-history-%04u",n);put(path,"history");
+ }
+ assert(movereference::writeSleepPreferences(next,sizeof(next)-1));
+ std::string history;
+ assert(readText("/.crosspoint/state.json.sleep-history-0000",history) && history=="history");
+ assert(readText("/.crosspoint/state.json.sleep-history-9999",history) && history=="history");
  Storage.reset(); put(primary,"{\"openEpubPath\":\"/old.epub\"}"); put(sleepTemp,"partial");
  assert(movereference::recoverSleepPreferences(validState));
  assert(Storage.exists(primary) && !Storage.exists(sleepTemp));
@@ -98,7 +115,8 @@ int main() {
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(program)
-    subprocess.run(['c++', '-std=c++20', '-DCROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY=1',
+    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-DCROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY=1',
+                    *shlex.split(os.environ.get('CXXFLAGS', '')),
                     '-I', str(root / 'test/book_reading_stats_atomic/stubs'),
                     '-I', str(root / 'lib/Serialization'), str(path / 'test.cpp'),
                     str(root / 'lib/Serialization/MoveReferenceSafeWrite.cpp'), '-o', str(path / 'test')], check=True)

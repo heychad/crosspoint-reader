@@ -30,7 +30,13 @@ source changes have not been installed or tested on the reader.
 
 Before a reviewed device update, back up and verify the entire hidden
 `/.crosspoint` directory, including settings, progress, bookmarks and clippings.
-Also preserve `/.crossink-stats-backup` if present and keep the original books.
+Also preserve `/.crossink-stats-backup`, `/.completion-journal`,
+`/.completion-deferred`, and every `/.completion-history-*` directory if present.
+Stop reading and file transfers before taking one snapshot of these directories,
+affected books at their current paths (including `/read`), and their companion
+files, such as `.key` and `.rights`. Record paths, sizes, hashes, and directories
+confirmed absent. A full card copy is the simplest coherent snapshot. A partial
+copy must include every source and destination named by pending completion work.
 The official CrossPoint 2.0.0 X4 Pro image is saved
 under `.cache/device-test/rollback/`; its SHA-256 matches the GitHub release.
 Do not install until the candidate and backup are reviewed.
@@ -72,5 +78,11 @@ Update** and select that file. Keep the reader powered through the restart.
 If it cannot start that menu, the official USB flasher may be needed; this
 wireless test plan does not establish a recovery path for a nonbooting device.
 Before restoring saved files, preserve any new reading progress made during the
-test. Restore the verified `.crosspoint` backup only with the reader shut down
-and the card accessed separately, then restart and check a known book's place.
+test. Shut down the reader and access the card separately. Restore the verified
+snapshot's books, paths, companion files, `/.crosspoint`, and all completion and
+statistics directories together. A completed move can change book paths after
+the snapshot; restoring old metadata alone would refer to files at the wrong
+locations. If books or transaction artifacts have since changed, preserve the
+current card and reconcile those changes before restoring. Do not combine
+journals from one snapshot with books or settings from another. Restart and
+check a known book's place after the coherent restore.

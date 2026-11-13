@@ -110,7 +110,8 @@ int main(int argc,char** argv){
    assert(preserved);if(saved)assert(read(v,PRIMARY)==text(18));if(fault<0)assert(saved);
    if(injected)++injections;
    // Retry a different preference, then force later allocation and remount.
-   save(20);put(v,"/later.bin",std::string(32768,'z'));unmount(v);mount(v,d);
+   const bool retried=save(20);put(v,"/later.bin",std::string(32768,'z'));unmount(v);mount(v,d);
+   if(retried)assert(read(v,PRIMARY)==text(20));
    preserved=false;for(auto p:{PRIMARY,TEMP,BACKUP}){const auto bytes=read(v,p);preserved|=bytes==text(16)||bytes==text(18)||bytes==text(20);}
    assert(preserved && read(v,"/.crosspoint/progress.bin")=="reading position");unmount(v);
    if(fault>=0&&!injected)break;

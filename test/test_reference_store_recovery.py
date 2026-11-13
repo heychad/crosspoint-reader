@@ -68,7 +68,7 @@ void checkSleepRecovery() {
       assert(doc["readerActivityLoadCount"]==7);
       assert(!Storage.exists(temp));
       assert(read("/.crosspoint/state.sleep-recovered-0000")=="partial");
-      assert(read("/.crosspoint/state.json.sleep-history-0000")==before);
+      assert(!Storage.exists("/.crosspoint/state.json.sleep-history-0000"));
     } else {
       assert(read(primary)==before && read(temp)=="partial");
       assert(!Storage.exists("/.crosspoint/state.sleep-recovered-0000"));

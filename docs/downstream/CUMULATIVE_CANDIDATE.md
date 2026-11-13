@@ -85,13 +85,13 @@ resolved by the passing pre-correction suite.
 | ID | Finding | Current status |
 | --- | --- | --- |
 | R1, P1 | Per-book JSON retries can delete a `.tmp`/`.bak` alias sharing the live primary's chain. | Corrected under one storage lock with checked lookups, disjoint-chain checks, exclusive staging, sync/close/readback, and checked rename results. Real FAT/exFAT alias regressions fail before the fix and pass afterward. Awaiting targeted cumulative review. |
-| R2, P1 | Completion accepts deep existing book paths, but its later source-reference audit applies staged-publication's 16-component limit after moving files. | Open; separate source validation from publication policy and exercise the production guard through move/remount. |
-| R3, P2 | Routine application-state saves consume permanent history slots; exhaustion blocks later saves and causes increasing scan work. | Open; distinguish verified clean-save retirement from uncertain-artifact preservation. |
+| R2, P1 | Completion accepts deep existing book paths, but its later source-reference audit applies staged-publication's 16-component limit after moving files. | Corrected: source audits use the existing reference validator; publication retains its narrower policy. Production guard, move, retry, retirement, and remount checks pass for a 17-component source on FAT/exFAT. |
+| R3, P2 | Routine application-state saves consume permanent history slots; exhaustion blocks later saves and causes increasing scan work. | Corrected: clean routine saves retire only their checked independent backup. Existing history and uncertain recovery artifacts remain preserved; move history keeps its separate policy. |
 | R4, P2 | Rotated Quick Lock activation and unlock resolve asymmetric side holds differently. | Corrected with the shared orientation mapping; regression failed before the fix and passes afterward across all four orientations. |
 | R5, P2 | Completion shortcuts retain the old `/read` restriction despite deferred automation. | Corrected to match the menu's feature gate; disabled, legacy, and deferred profiles are tested. |
-| R6, P2 | Backup/rollback instructions omit root-level completion journals, deferred intents, and history. | Open; include a coherent transaction/book/sidecar backup and restore plan. |
-| R7, P2 | Dashboard month abbreviations bypass translation. | Open; use English translation keys and `tr()`. |
-| R8, P3 | Minimal Home QA still describes the older screen without statistics. | Open; align checks with saved time/progress and unavailable-data behavior. |
+| R6, P2 | Backup/rollback instructions omit root-level completion journals, deferred intents, and history. | Corrected: backup and restore instructions cover a coherent snapshot of transaction directories, books at source/destination paths, sidecars, and reading state. |
+| R7, P2 | Dashboard month abbreviations bypass translation. | Corrected: twelve short-month keys use `tr()` with English fallback. Native checks cover all months, invalid dates, and translated UTF-8 text. |
+| R8, P3 | Minimal Home QA still describes the older screen without statistics. | Corrected: checks now cover the reading-time footer, progress bar/percentage, and missing values. |
 
 R4/R5 add no persisted field, task, or allocation. The new host settings fields
 exist only in a test stub. Twenty-one focused checks pass in 0.55 seconds; twenty
@@ -130,6 +130,43 @@ temporarily allocate at most two 64-cluster lists (512 bytes), plus their file
 handles and bounded path lookup buffers. No cache, task, or retained allocation
 is added. For device verification, change a disposable book's layout twice,
 close and reopen it, and confirm the layout and reading position survive sleep.
+
+R2's native regression and real production-store regression both fail before
+the correction. The real test runs both Recents policies on FAT/exFAT with the
+production source-reference guard, state/Recents stores, move transaction,
+clipping/bookmark stores, and reader progress loader. It checks interrupted
+moves and retries, retirement receipts, companion files, remounts, and acquiring
+a normal statistics session after retirement. Publication's 16-component limit
+is unchanged. Logs use `/tmp/x4-deep-*.log`.
+
+R3 changes only retirement after a verified clean routine state save. The
+primary has been synced, closed, reopened, compared with the requested bytes,
+and checked independent from the old backup before that backup is removed.
+Failed or ambiguous transactions still use explicit recovery and preserve their
+artifacts. Old `.sleep-history-*` files are left untouched. Native tests cover
+128 repeated changes and a full 10,000-slot history namespace. ASan real
+FAT/exFAT tests cover 128 changes per filesystem and 88 interrupted writes with
+changed-value retry, later allocation, remount, and preserved history/progress.
+No allocation, state format, or background task is added. Logs use
+`/tmp/x4-state-history-*.log`. Check repeated sleep/wake and saved position on
+the next reviewed device candidate.
+
+R6/R8 were checked against the transaction paths and current Minimal Home
+rendering. R7 adds translation keys without changing saved dates, date formats,
+or persistent settings. Missing translations use English rather than slicing
+full month names. All corrections still need the targeted second cumulative
+review; this table does not claim release or device acceptance.
+
+The R2/R3/R7 correction set passes 19 focused native ASan/UBSan checks in
+0.37 seconds, both native state-store profiles under both sanitizers, and six
+translation checks. The initial firmware compile caught a dynamic-key `tr()`
+macro mismatch; literal-key month dispatch and a matching host macro corrected
+it. The final default X4 Pro build passes in 86.33 seconds (RAM 113068, flash
+5698078), and the twelve-flag build passes in 103.85 seconds (RAM 113100,
+flash 5804870). Logs use `/tmp/x4-review-storage-*.log` and
+`/tmp/x4-review-i18n-*.log`. R1's real-filesystem retry checks also pass with
+explicit requested-byte verification after successful changed-value retries.
+No post-correction full-suite or second-review pass is claimed.
 
 The embedded review also triaged retained vendor reports. X4 Pro selects the
 bytewise little-endian helper path, so the Mac's alignment reports do not follow

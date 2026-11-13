@@ -320,6 +320,8 @@ inline unsigned long millis() { static unsigned long now = 0; return ++now; }
     lease_sources = [str(lease_stub)]
     if real_move_stores:
         flags += ['-DSDFAT_REAL_MOVE_STORES=1', '-DCONFIG_IDF_TARGET_ESP32S3=1']
+        if os.environ.get('SDFAT_DEEP_SOURCE') == '1':
+            flags.append('-DSDFAT_DEEP_SOURCE=1')
         if os.environ.get('SDFAT_LIVE_COMPLETION') == '1':
             flags.append('-DSDFAT_LIVE_COMPLETION=1')
         prompt_completion = os.environ.get('SDFAT_PROMPT_COMPLETION') == '1'

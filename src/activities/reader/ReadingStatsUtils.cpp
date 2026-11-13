@@ -2,14 +2,43 @@
 #include "ReadingStatsUtils.h"
 
 #include <HalClock.h>
+#include <I18n.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <limits>
 
 namespace {
-constexpr const char* MONTH_NAMES[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+const char* shortMonth(uint8_t month) {
+  switch (month) {
+    case 1:
+      return tr(STR_MONTH_JAN_SHORT);
+    case 2:
+      return tr(STR_MONTH_FEB_SHORT);
+    case 3:
+      return tr(STR_MONTH_MAR_SHORT);
+    case 4:
+      return tr(STR_MONTH_APR_SHORT);
+    case 5:
+      return tr(STR_MONTH_MAY_SHORT);
+    case 6:
+      return tr(STR_MONTH_JUN_SHORT);
+    case 7:
+      return tr(STR_MONTH_JUL_SHORT);
+    case 8:
+      return tr(STR_MONTH_AUG_SHORT);
+    case 9:
+      return tr(STR_MONTH_SEP_SHORT);
+    case 10:
+      return tr(STR_MONTH_OCT_SHORT);
+    case 11:
+      return tr(STR_MONTH_NOV_SHORT);
+    case 12:
+      return tr(STR_MONTH_DEC_SHORT);
+    default:
+      return "-";
+  }
+}
 
 bool isBitSet(const std::array<uint8_t, READING_HISTORY_BYTES>& bits, const size_t bitIndex) {
   if (bitIndex >= READING_HISTORY_DAYS) {
@@ -291,7 +320,7 @@ void formatReadingStatsShortDate(const ReadingStatsDate& date, char* buf, const 
     snprintf(buf, len, "-");
     return;
   }
-  snprintf(buf, len, "%s %u", MONTH_NAMES[date.month - 1], static_cast<unsigned>(date.day));
+  snprintf(buf, len, "%s %u", shortMonth(date.month), static_cast<unsigned>(date.day));
 }
 
 void formatReadingStatsMonthToken(const ReadingStatsDate& date, char* buf, const size_t len) {
@@ -302,7 +331,7 @@ void formatReadingStatsMonthToken(const ReadingStatsDate& date, char* buf, const
     snprintf(buf, len, "-");
     return;
   }
-  snprintf(buf, len, "%s", MONTH_NAMES[date.month - 1]);
+  snprintf(buf, len, "%s", shortMonth(date.month));
 }
 
 void formatCompactReadingDuration(const uint32_t seconds, char* buf, const size_t len) {

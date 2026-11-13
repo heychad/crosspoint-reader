@@ -284,7 +284,8 @@ ReferenceGuardResult inspectFile(HalStorage& storage, const HalStorage::Mutation
 }
 ReferenceGuardResult inspectReferences(HalStorage& storage, std::string_view destination, syncstage::DigestTick tick,
                                        void* context, bool wholePath) {
-  if (!validDestination(destination) || !tick) return ReferenceGuardResult::Invalid;
+  if (!(wholePath ? validReference(destination) : validDestination(destination)) || !tick)
+    return ReferenceGuardResult::Invalid;
   HalStorage::MutationSnapshot snapshot;
   if (!storage.beginMutationSnapshot(snapshot)) return ReferenceGuardResult::Unavailable;
   struct Source {

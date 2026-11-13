@@ -108,4 +108,13 @@ TEST_F(ReferenceTest, SourceCheckUsesWholePathAndStillRejectsAmbiguousReferences
   fake::failRead = false;
   EXPECT_EQ(inspectStoredSourceReferences(storage, DEST, mutate, nullptr), ReferenceGuardResult::Changed);
 }
+TEST_F(ReferenceTest, DeepExistingSourceUsesReferencePolicyRatherThanPublicationPolicy) {
+  constexpr char deep[] = "/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/verify.epub";
+  EXPECT_EQ(inspectStoredSourceReferences(storage, deep, proceed, nullptr), ReferenceGuardResult::Clear);
+  EXPECT_EQ(inspectStoredReferences(storage, deep, proceed, nullptr), ReferenceGuardResult::Invalid);
+  put("/.crosspoint/state.json", std::string("{\"openEpubPath\":\"") + deep + "\"}");
+  EXPECT_EQ(inspectStoredSourceReferences(storage, deep, proceed, nullptr), ReferenceGuardResult::Conflict);
+  put("/.crosspoint/state.json", R"({"openEpubPath":"/read/verify.epub"})");
+  EXPECT_EQ(inspectStoredSourceReferences(storage, deep, proceed, nullptr), ReferenceGuardResult::Clear);
+}
 }  // namespace

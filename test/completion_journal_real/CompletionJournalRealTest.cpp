@@ -1375,7 +1375,11 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     FatFormatter formatter;
     assert(formatter.format(&disk, scratch));
   }
+#if defined(SDFAT_DEEP_SOURCE)
+  constexpr char source[] = "/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/verify.epub";
+#else
   constexpr char source[] = "/books/verify.epub";
+#endif
   constexpr char target[] = "/read/verify.epub";
   decltype(disk.sectors) beforeRetirement;
   decltype(disk.sectors) retiredBaseline;
@@ -1386,7 +1390,8 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     assert(volume.begin(&disk));
     Storage.attach(volume);
     const auto directory = "/.crosspoint/reading_stats/epub_" + std::to_string(std::hash<std::string>{}(source));
-    assert(volume.mkdir("/books", true) && volume.mkdir("/read", true) && volume.mkdir(directory.c_str(), true) &&
+    const auto parent = std::string(source).substr(0, std::string(source).find_last_of('/'));
+    assert(volume.mkdir(parent.c_str(), true) && volume.mkdir("/read", true) && volume.mkdir(directory.c_str(), true) &&
            volume.mkdir("/.completion-journal", true) && volume.mkdir("/.completion-deferred", true));
     const auto write = [](const std::string& path, const uint8_t* data, size_t size) {
       auto file = Storage.open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY);
@@ -1594,6 +1599,8 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
       }
     }
     movedstate::editMovedItems(target, expectedClipping);
+    StatsSessionLease resumed;
+    assert(resumed.acquire() && resumed.release());
 #endif
   }
   int moveFaults = 0;
@@ -2931,6 +2938,12 @@ void rolloverFaults(bool exfat, bool failStop) {
 }
 
 int main() {
+#if defined(SDFAT_DEEP_SOURCE)
+  for (bool exfat : {false, true})
+    for (bool removeRecent : {false, true}) verifyMovedFilesOnRealFilesystem(exfat, removeRecent);
+  std::puts("Deep-source completion, retry, retirement, and reading state passed on FAT/exFAT");
+  return 0;
+#endif
   for (bool exfat : {false, true})
     for (bool failStop : {false, true}) {
 #if defined(SDFAT_IMPORT_SNAPSHOT)

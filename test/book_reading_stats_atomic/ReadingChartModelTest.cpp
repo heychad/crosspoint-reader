@@ -1,8 +1,32 @@
+#include <I18n.h>
 #include <gtest/gtest.h>
 
 #include "activities/reader/ReadingChartModel.h"
 
 using namespace readingcharts;
+
+TEST(ReadingStatsDateLabels, FormatsAllEnglishMonthsAndInvalidDates) {
+  constexpr const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  char text[32];
+  for (uint8_t month = 1; month <= 12; ++month) {
+    formatReadingStatsMonthToken({2026, month, 1}, text, sizeof(text));
+    EXPECT_STREQ(text, months[month - 1]);
+  }
+  formatReadingStatsShortDate({2026, 2, 3}, text, sizeof(text));
+  EXPECT_STREQ(text, "Feb 3");
+  formatReadingStatsMonthToken({}, text, sizeof(text));
+  EXPECT_STREQ(text, "-");
+}
+
+TEST(ReadingStatsDateLabels, UsesTranslatedUtf8MonthForBothLabels) {
+  testMonthTranslation = "févr.";
+  char text[32];
+  formatReadingStatsShortDate({2026, 2, 3}, text, sizeof(text));
+  EXPECT_STREQ(text, "févr. 3");
+  formatReadingStatsMonthToken({2026, 2, 3}, text, sizeof(text));
+  EXPECT_STREQ(text, "févr.");
+  testMonthTranslation = nullptr;
+}
 
 TEST(ReadingChartModel, BoundsBarScalingAndPreservesSmallValues) {
   EXPECT_EQ(barWidth(0, 0, 400), 0);

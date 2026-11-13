@@ -30,13 +30,13 @@ struct Context {
   bool finishPublishedOnly = false;
 };
 
-bool archiveBackup(const std::string& primary, const std::string& backup, bool sleepPreferences) {
+bool archiveBackup(const std::string& primary, const std::string& backup) {
   if (!Storage.settingsChainEligible(backup.c_str()) ||
       !Storage.distinctSettingsChains(primary.c_str(), backup.c_str()))
     return false;
   char suffix[24];
   for (unsigned index = 0; index < 10000; ++index) {
-    std::snprintf(suffix, sizeof(suffix), sleepPreferences ? ".sleep-history-%04u" : ".move-history-%04u", index);
+    std::snprintf(suffix, sizeof(suffix), ".move-history-%04u", index);
     const std::string archive = primary + suffix;
     const auto status = Storage.lookupPath(archive.c_str());
     if (status == HalStorage::PathStatus::Failed) return false;
@@ -70,7 +70,7 @@ bool writeLocked(void* raw) {
   if (current == HalStorage::PathStatus::Present) {
     if (!Storage.settingsChainEligible(primary.c_str())) return false;
     if (matches(primary.c_str(), context.bytes, context.size))
-      return backupStatus == HalStorage::PathStatus::Missing || archiveBackup(primary, backup, false);
+      return backupStatus == HalStorage::PathStatus::Missing || archiveBackup(primary, backup);
   }
   if (backupStatus != HalStorage::PathStatus::Missing || context.finishPublishedOnly) return false;
   HalFile staged = Storage.openChecked(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL);
@@ -95,7 +95,11 @@ bool writeLocked(void* raw) {
       !matches(primary.c_str(), context.bytes, context.size))
     return false;
   if (current != HalStorage::PathStatus::Present) return true;
-  return archiveBackup(primary, backup, context.sleepPreferences);
+  if (context.sleepPreferences)
+    return Storage.settingsChainEligible(backup.c_str()) &&
+           Storage.distinctSettingsChains(primary.c_str(), backup.c_str()) && Storage.remove(backup.c_str()) &&
+           Storage.lookupPath(backup.c_str()) == HalStorage::PathStatus::Missing;
+  return archiveBackup(primary, backup);
 }
 }  // namespace
 

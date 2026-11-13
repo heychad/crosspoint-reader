@@ -15,10 +15,13 @@ run on the device yet.
 - Store firmware images, checksums, exported logs, and development test files in
   `/zDev/` on the SD card. Open `zDev` in the firmware picker.
 
-- Back up and verify the reader's hidden `.crosspoint` folder, including reading
-  positions, settings, bookmarks, and statistics; preserve
-  `.crossink-stats-backup` if present. Keep the books on the card and a known-good
-  X4 Pro firmware image available for rollback. Older firmware may clear the new
+- With reading and transfers stopped, back up and verify `/.crosspoint`,
+  `/.crossink-stats-backup`, `/.completion-journal`, `/.completion-deferred`, and
+  every `/.completion-history-*` directory that exists. Preserve affected books
+  at their current paths, `/read` copies, and companion files such as `.key` and
+  `.rights` in the same snapshot. Keep a known-good X4 Pro firmware image
+  available for rollback. Follow [the coherent restore procedure](DEVICE_TEST.md)
+  rather than restoring metadata alone. Older firmware may clear the new
   File Transfer shortcut assignment and reset newer theme or sleep-screen
   choices; reconfigure those choices after returning to this build.
 - Confirm the candidate's SHA-256 against its `SHA256SUMS`. Keep the reader
@@ -120,8 +123,10 @@ cover, title, and author fit, the current book opens at the saved position by
 touch and buttons, and each menu entry remains reachable. Check a book with no
 cover, both UI sizes, leaving and returning Home, and switching back to the
 previous theme. Check internal and PSRAM free and largest blocks before and
-after first Home render, thumbnail generation, and repeated navigation. This
-first layout does not yet provide the CrossInk Minimal dashboard or statistics.
+after first Home render, thumbnail generation, and repeated navigation. Check
+the saved reading-time footer and progress percentage/bar. A missing or zero
+reading-time value should leave that text absent; unavailable progress should
+hide its bar and percentage, while a known 0% still displays 0%.
 
 ## Dashboard Home
 
