@@ -18,6 +18,78 @@ std::string json(const JsonDocument& document) {
 }
 
 int main() {
+  constexpr unsigned nativeTabs[] = {255, 1, 2, 255, 255, 3, 4};
+  for (unsigned method = 0; method < 256; ++method) {
+    for (unsigned direction = 0; direction < 2; ++direction) {
+      const bool supported = method < 7 && nativeTabs[method] != 255;
+      JsonDocument legacy, current;
+      legacy["librarySortMethod"] = method;
+      legacy["librarySortDescending"] = direction;
+      const auto source = json(legacy);
+      current.to<JsonObject>();
+      assert(crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, false) == supported);
+      if (!supported) {
+        assert(current.size() == 0);
+        continue;
+      }
+      const unsigned tab = nativeTabs[method];
+      assert(current["libraryViewTab"] == tab);
+      assert(current["libraryViewDescendingTabs"] == (1 | (direction << tab)));
+      assert(current["librarySortMethod"].isUnbound() && current["librarySortDescending"].isUnbound());
+      assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+      for (unsigned bits = 0; bits < 32; ++bits) {
+        current["libraryViewTab"] = 0;
+        current["libraryViewDescendingTabs"] = bits;
+        current["unrelated"] = "preserved";
+        const auto original = json(current);
+        assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, false));
+        assert(json(current) == original);
+        assert(crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+        assert(current["libraryViewTab"] == tab);
+        assert(current["libraryViewDescendingTabs"] == ((bits & ~(1u << tab)) | (direction << tab)));
+        assert(current["unrelated"] == "preserved" && json(legacy) == source);
+      }
+      for (const char* key : {"libraryViewTab", "libraryViewDescendingTabs"}) {
+        current.clear();
+        current[key] = nullptr;
+        const auto original = json(current);
+        assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, false));
+        assert(json(current) == original);
+        assert(crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+        assert(current["libraryViewTab"] == tab);
+        assert(current["libraryViewDescendingTabs"] == (1 | (direction << tab)));
+      }
+    }
+  }
+  for (const char* key : {"librarySortMethod", "librarySortDescending"}) {
+    for (const char* invalid : {"-1", "256", "1.0", "true", "null", "\"1\"", "[]", "{}"}) {
+      JsonDocument legacy, current;
+      legacy["librarySortMethod"] = 1;
+      legacy["librarySortDescending"] = 1;
+      JsonDocument bad;
+      assert(!deserializeJson(bad, invalid));
+      legacy[key] = bad.as<JsonVariantConst>();
+      current["libraryViewTab"] = 4;
+      current["libraryViewDescendingTabs"] = 31;
+      const auto original = json(current);
+      assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+      assert(json(current) == original);
+    }
+    JsonDocument legacy, current;
+    legacy["librarySortMethod"] = 1;
+    legacy["librarySortDescending"] = 1;
+    legacy.remove(key);
+    current.to<JsonObject>();
+    assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+    assert(current.size() == 0);
+  }
+  for (int invalid : {2, 255}) {
+    JsonDocument legacy, current;
+    legacy["librarySortMethod"] = 1;
+    legacy["librarySortDescending"] = invalid;
+    current.to<JsonObject>();
+    assert(!crossinkimport::stageLibrary(legacy.as<JsonVariantConst>(), current, true));
+  }
   constexpr const char* keys[] = {
     "libraryUseMetadata", "showHiddenFiles", "removeReadBooksFromRecents", "moveFinishedToReadFolder",
     "libraryShowSeries", "libraryShowGenre", "libraryShowEpub", "libraryShowXtc", "libraryShowTxt",

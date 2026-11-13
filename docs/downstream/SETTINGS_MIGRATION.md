@@ -49,7 +49,8 @@ save; the original CrossInk source stays intact.
 These mappings and `libraryListExpanded` reuse the existing settings snapshot,
 source reader, staging document, and recoverable writer. The timeout lookup has
 five immutable bytes; no new retained buffer or persistent format is introduced.
-The compiled S3 staging frames are 352 bytes for Preferences and 192 for Library.
+At that checkpoint, the compiled S3 staging frames were 352 bytes for Preferences
+and 192 for Library.
 These cold import paths still need runtime stack-headroom and heap-peak
 measurement on the device.
 
@@ -63,12 +64,56 @@ bytes). Logs are `/tmp/x4-migration-alias-checks.log`,
 `/tmp/x4-migration-alias-library-sanitizers.log`, and
 `/tmp/x4-migration-alias-firmware.log`. Independent review and device checks remain.
 
-The next semantic gap is Library sort/direction. Tagged RC2 stores
-`librarySortMethod` and `librarySortDescending`, including Date added,
-Recently read, and distinct author-name orders. The native Library currently
-keeps its active tab and direction mask on the activity. Its enum values must
-not be copied directly. G3 remains partial while that mapping and the other
-compatibility boundaries below are resolved.
+## Library sort and direction
+
+The native Library now saves its selected tab and each tab's direction in
+`libraryViewTab` and `libraryViewDescendingTabs`. A changed tab or direction
+uses the existing checked settings writer. Selecting the same tab without
+toggling does not write. Failed saves keep the choice in RAM and use the existing
+settings warning and retry path. Reopening Library restores the saved view
+before filtering or painting. Older settings retain the Recent/newest-first
+default.
+
+The explicit Library import translates tagged RC2's `librarySortMethod` and
+`librarySortDescending` as one choice:
+
+| RC2 method | Native tab |
+| --- | --- |
+| 1 Title | Title |
+| 2 Author last name | Author, using the canonical display name's surname |
+| 5 Series | Series |
+| 6 Genre | Genre |
+
+Both source fields must be valid integers; direction must be 0 or 1. The import
+changes only the selected tab's direction bit. Missing-only staging preserves
+the whole native pair when either key exists, including null or invalid values.
+Confirmed replacement can replace it. The existing transaction backs up the
+native settings and preserves the CrossInk source byte for byte.
+
+Date added (0), Author first name (3), and Recently opened (4) remain unchanged
+on import. The native Recent tab combines newly arrived books with a pinned
+reading-history overlay; it is not either RC2 list. G3 stays partial until these
+semantics and the compatibility boundaries below are resolved.
+
+The two settings occupy two bytes before enclosing-structure padding. There is
+no new task, retained buffer, index version, or reading-state write. The two JSON
+members share the existing 32 KiB settings limit and overflow checks. Runtime
+save latency and heap/stack headroom still need measurement on the X4 Pro.
+
+For the next reviewed firmware test: select a different Library tab, toggle its
+direction, leave and reopen Library, then sleep/wake and reopen it again. Check
+that the tab and direction persist and that a previously open book still resumes.
+
+The 205 affected checks passed in 3.92 seconds. The import and extracted
+production view-change methods passed AddressSanitizer and
+UndefinedBehaviorSanitizer. The default X4 Pro build passed in 106.43 seconds,
+with 113,140 static RAM bytes and 5,674,470 flash bytes. The older tab-lock
+fixture needed the new settings dependency and a method-bounded extraction;
+its checks pass. Logs are `/tmp/x4-library-view-checks-final.log`,
+`/tmp/x4-library-view-sanitizers.log`,
+`/tmp/x4-library-sort-import-sanitizers.log`, and
+`/tmp/x4-library-view-firmware.log`. This is a checked WIP checkpoint;
+cumulative release review and physical-device validation remain.
 
 ## Open compatibility boundaries
 

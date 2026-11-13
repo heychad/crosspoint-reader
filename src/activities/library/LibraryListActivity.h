@@ -101,6 +101,7 @@ class LibraryListActivity final : public UiTabListActivity {
   void expandGroup(int groupEntry);
   void restoreExpandedList();
   void selectTab(int index, bool toggleIfActive);
+  void loadViewPreferences();
   void toggleSortDirection();
   // Sub-screens act on button press, so a button still held when we resume must
   // not also act here. Records what to swallow on the next release.

@@ -225,12 +225,13 @@ TEST_F(BookSettings, CrossInkControlsTransactionPublishesTouchGesturesAndKeepsSo
 TEST_F(BookSettings, CrossInkLibraryImportPreservesOtherSettingsAndBacksUpOriginal) {
   constexpr char primary[] = "/.crosspoint/settings.json";
   const std::string original =
-      R"({"libraryShowEpub":1,"fileBrowserDisplay":1,"libraryListExpanded":1,"pluginsEnabled":1})";
+      R"({"libraryShowEpub":1,"fileBrowserDisplay":1,"libraryListExpanded":1,"pluginsEnabled":1,"libraryViewTab":4,"libraryViewDescendingTabs":17})";
   const std::string legacy =
       R"({"libraryShowSeries":0,"libraryShowGenre":1,"libraryShowEpub":0,"libraryShowXtc":0,"libraryShowTxt":1,
     "libraryShowMarkdown":0,"libraryHideFinishedBooks":1,"hideFileExtension":1,"fileBrowserPreview":0,
     "recentBooksView":1,"uiTheme":5,"swapLibraryFileBrowser":1,"pluginsEnabled":0,
-    "libraryUseMetadata":0,"showHiddenFiles":1,"removeReadBooksFromRecents":1,"moveFinishedToReadFolder":1,"libraryListExpanded":0})";
+    "libraryUseMetadata":0,"showHiddenFiles":1,"removeReadBooksFromRecents":1,"moveFinishedToReadFolder":1,"libraryListExpanded":0,
+    "librarySortMethod":5,"librarySortDescending":1})";
   put(primary, original);
   put(crossinkimport::SOURCE_PATH, legacy);
   JsonDocument proposed;
@@ -252,6 +253,14 @@ TEST_F(BookSettings, CrossInkLibraryImportPreservesOtherSettingsAndBacksUpOrigin
   EXPECT_EQ(persisted["hideFileExtension"].as<int>(), 1);
   EXPECT_EQ(persisted["fileBrowserDisplay"].as<int>(), 0);
   EXPECT_EQ(persisted["libraryListExpanded"].as<int>(), 0);
+  EXPECT_EQ(persisted["libraryViewTab"].as<int>(), 3);
+  EXPECT_EQ(persisted["libraryViewDescendingTabs"].as<int>(), 25);
+  libraryview::Preferences view;
+  view.read(persisted.as<JsonVariantConst>());
+  EXPECT_EQ(view.tab, 3);
+  EXPECT_EQ(view.descendingTabs, 25);
+  EXPECT_TRUE(persisted["librarySortMethod"].isUnbound());
+  EXPECT_TRUE(persisted["librarySortDescending"].isUnbound());
   EXPECT_TRUE(persisted["fileBrowserPreview"].isUnbound());
   EXPECT_EQ(persisted["recentBooksView"].as<int>(), 1);
   EXPECT_EQ(persisted["uiTheme"].as<int>(), 5);

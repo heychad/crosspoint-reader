@@ -10,6 +10,7 @@
 #include "personalization/BookReaderSettings.h"
 #include "personalization/CrossInkImportGuard.h"
 #include "personalization/CrossInkImportTransaction.h"
+#include "personalization/LibraryViewSettings.h"
 #include "personalization/ReaderBars.h"
 #include "personalization/ReaderShortcuts.h"
 #include "personalization/UiScale.h"
@@ -456,6 +457,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // filename. Users can disable this to make index rebuilds skip EPUB parsing.
   uint8_t libraryUseMetadata = 1;
   uint8_t libraryListExpanded = 1;
+  libraryview::Preferences libraryView;
   uint8_t recentBooksView = RECENT_BOOKS_LIST;
   uint8_t libraryTitleCoverGrid = 0;
   uint8_t libraryFirstOnHome = 0;

@@ -295,6 +295,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   };
   forEachBaseSetting(visit);
 
+  libraryView.write(doc);
+
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
   doc["frontButtonConfirm"] = frontButtonConfirm;
@@ -408,6 +410,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   };
   forEachBaseSetting(visit);
+  libraryView.read(doc);
   // Older saves used one margin for both axes. Explicit axis values win.
   const auto legacyMargin = doc["screenMargin"];
   if (legacyMargin.is<uint8_t>()) {

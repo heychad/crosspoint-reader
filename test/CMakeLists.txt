@@ -154,6 +154,7 @@ add_test(NAME CompletionReaderTeardown COMMAND ${Python3_EXECUTABLE} ${CMAKE_CUR
 add_test(NAME CompletionReferenceStoreRecovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reference_store_recovery.py)
 add_test(NAME CrossInkPreferencesImport COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_crossink_preferences.py)
 add_test(NAME CrossInkLibraryImport COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_crossink_library.py)
+add_test(NAME LibraryViewPersistence COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_library_view.py)
 add_test(NAME CrossInkFlatBarsImport COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_crossink_flat_bars.py)
 add_test(NAME SleepStatePreservation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_state_preservation.py)
 add_test(NAME SleepImageCache COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_image_cache.py)

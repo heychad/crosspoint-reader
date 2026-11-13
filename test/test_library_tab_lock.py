@@ -6,7 +6,11 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / 'src/activities/library/LibraryListActivity.cpp').read_text()
 start = source.index('void LibraryListActivity::selectTab(')
-end = source.index('void LibraryListActivity::toggleSortDirection(', start)
+end = source.index('{', start) + 1
+depth = 1
+while depth:
+    depth += (source[end] == '{') - (source[end] == '}')
+    end += 1
 body = source[start:end]
 code = r'''
 #include <atomic>
@@ -15,6 +19,11 @@ code = r'''
 #include <mutex>
 #include <thread>
 #define FREEINK_CAP_TOUCH 0
+#define LOG_ERR(...) ((void)0)
+struct Settings {
+  struct View { uint8_t tab = 0, descendingTabs = 1; } libraryView;
+  bool saveToFile() { return true; }
+} SETTINGS;
 std::mutex renderMutex;
 class LibraryListActivity;
 struct RenderLock {

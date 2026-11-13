@@ -4,10 +4,41 @@
 
 #include <cstdint>
 
+#include "LibraryViewSettings.h"
+
 namespace crossinkimport {
+inline bool stageLibraryView(JsonVariantConst legacy, JsonDocument& proposed, const bool replaceExisting) {
+  const auto method = legacy["librarySortMethod"];
+  const auto direction = legacy["librarySortDescending"];
+  if (!method.is<uint8_t>() || !direction.is<uint8_t>() || direction.as<uint8_t>() > 1) return false;
+  using libraryview::Tab;
+  // RC2: Added, title, surname, first name, recently opened, series, genre.
+  // Count marks views whose behavior does not match a native tab.
+  static constexpr Tab tabs[] = {Tab::Count, Tab::Title, Tab::Author, Tab::Count, Tab::Count, Tab::Series, Tab::Genre};
+  const uint8_t raw = method.as<uint8_t>();
+  if (raw >= sizeof(tabs) / sizeof(tabs[0]) || tabs[raw] == Tab::Count) return false;
+  const uint8_t tab = static_cast<uint8_t>(tabs[raw]);
+  const auto currentTab = proposed["libraryViewTab"];
+  const auto currentDirections = proposed["libraryViewDescendingTabs"];
+  // The tab and its direction are one choice; missing-only import owns neither
+  // when either native field already exists.
+  if (!replaceExisting && (!currentTab.isUnbound() || !currentDirections.isUnbound())) return false;
+  uint8_t directions = currentDirections.is<uint8_t>() && currentDirections.as<uint8_t>() <= libraryview::DIRECTION_MASK
+                           ? currentDirections.as<uint8_t>()
+                           : 1;
+  const uint8_t bit = 1u << tab;
+  directions = direction.as<uint8_t>() ? directions | bit : directions & ~bit;
+  if (currentTab.is<uint8_t>() && currentTab.as<uint8_t>() == tab && currentDirections.is<uint8_t>() &&
+      currentDirections.as<uint8_t>() == directions)
+    return false;
+  proposed["libraryViewTab"] = tab;
+  proposed["libraryViewDescendingTabs"] = directions;
+  return true;
+}
+
 inline bool stageLibrary(JsonVariantConst legacy, JsonDocument& proposed, bool replaceExisting) {
   if (!legacy.is<JsonObjectConst>() || !proposed.is<JsonObject>()) return false;
-  bool changed = false;
+  bool changed = stageLibraryView(legacy, proposed, replaceExisting);
   for (const char* key : {"libraryUseMetadata", "showHiddenFiles", "removeReadBooksFromRecents",
                           "moveFinishedToReadFolder", "libraryShowSeries", "libraryShowGenre", "libraryShowEpub",
                           "libraryShowXtc", "libraryShowTxt", "libraryShowMarkdown", "libraryHideFinishedBooks",

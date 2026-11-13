@@ -49,12 +49,13 @@ int bottomCornerClearance() {
 
 constexpr unsigned long LONG_PRESS_MS = 1000;
 
-constexpr int RECENT_TAB = 0;
-constexpr int TITLE_TAB = 1;
-constexpr int AUTHOR_TAB = 2;
-constexpr int SERIES_TAB = 3;
-constexpr int GENRE_TAB = 4;
+constexpr int RECENT_TAB = static_cast<int>(libraryview::Tab::Recent);
+constexpr int TITLE_TAB = static_cast<int>(libraryview::Tab::Title);
+constexpr int AUTHOR_TAB = static_cast<int>(libraryview::Tab::Author);
+constexpr int SERIES_TAB = static_cast<int>(libraryview::Tab::Series);
+constexpr int GENRE_TAB = static_cast<int>(libraryview::Tab::Genre);
 constexpr int TAB_SLOTS = GENRE_TAB + 1;
+static_assert(TAB_SLOTS == libraryview::TAB_COUNT);
 
 constexpr bool isDescending(const library::SortOrder order) {
   return order == library::SortOrder::RecentDesc || order == library::SortOrder::TitleDesc ||
@@ -111,6 +112,7 @@ void LibraryListActivity::onEnter() {
   // render task's SD-loaded fonts read glyph data at draw time, and the walk
   // needs the card to itself.
   RenderLock lock(*this);
+  loadViewPreferences();
   rowFileScratch.reserve(512);
   seriesScratch.reserve(128);
   genreScratch.reserve(128);
@@ -646,6 +648,18 @@ void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) 
   nav.selected = 0;
   nav.top = 0;
   requestUpdate();
+  auto& saved = SETTINGS.libraryView;
+  if (saved.tab != activeTabIndex || saved.descendingTabs != descendingTabs) {
+    saved.tab = static_cast<uint8_t>(activeTabIndex);
+    saved.descendingTabs = descendingTabs;
+    if (!SETTINGS.saveToFile()) LOG_ERR("LIB", "Cannot save Library view");
+  }
+}
+
+void LibraryListActivity::loadViewPreferences() {
+  activeTabIndex = SETTINGS.libraryView.tab;
+  descendingTabs = SETTINGS.libraryView.descendingTabs;
+  sortOrder = orderForTab(activeTabIndex, descendingTabs);
 }
 
 void LibraryListActivity::toggleSortDirection() { selectTab(activeTab(), true); }
