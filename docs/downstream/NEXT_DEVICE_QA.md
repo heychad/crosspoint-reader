@@ -202,6 +202,16 @@ Verify that the source file and the pre-import settings snapshot are unchanged.
 With Quick Actions assigned to an edge, importing a disabled-touch preference
 must leave touch On and keep that action usable. Restore the original settings.
 
+## Paragraph-indent policy
+
+In a disposable book, check Indent style in Reader Menu → Layout and global
+Text Settings. Fixed spaces should retain the previous appearance and width.
+Choose Book's Style with extra spacing off, then Force indent with spacing on.
+Check the first line, hanging indents, centered text, and a paragraph split by
+`br`. Reopen/sleep/wake and confirm the policy and passage; reset per-book layout
+and confirm another book still uses its own/global choice. Repeat with one TXT
+or Markdown book and the orientations you use. Derived section caches rebuild.
+
 ## Section time remaining
 
 With tracking on and a book that has recorded forward-page pace, assign

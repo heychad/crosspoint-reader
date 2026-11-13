@@ -23,6 +23,9 @@ for version in (11, 12, 13):
     records.append(test_preview.record(version, mask=1 << (version + 9)))
     records.append(test_preview.record(version, flags=0))
 records.append(test_preview.record(13, publisher_fonts=3))
+for version in (3, 8, 10, 13):
+    for raw in range(256):
+        records.append(test_preview.record(version, mask=1 << 14, force_indents=raw))
 for method in (0, 1, 2, 255):
     records.append(test_preview.record(10, mask=1 << 17, indexing_method=method))
 for version in range(2, 14):
@@ -78,15 +81,17 @@ with tempfile.TemporaryDirectory() as directory:
             assert line == 'invalid', index
             continue
         tokens = line.split()
-        values = [int(value) for value in tokens[:20]]
+        values = [int(value) for value in tokens[:21]]
         actual = {name: values[position + 1] for position, name in enumerate(FIELDS)
                   if values[0] & (1 << position)}
         if values[0] & (1 << 17):
             actual['indexingMethod'] = values[18]
         if values[0] & (1 << 18):
             actual['screenMarginVertical'] = values[19]
+        if values[0] & (1 << 19):
+            actual['paragraphIndentMode'] = values[20]
         if values[0] & (1 << 15):
-            actual['sdFontFamilyName'] = bytes.fromhex(tokens[20]).decode('utf-8')
+            actual['sdFontFamilyName'] = bytes.fromhex(tokens[21]).decode('utf-8')
         assert actual == expected, (index, actual, expected)
         version = data[0]
         fields = module.MASK_FIELDS

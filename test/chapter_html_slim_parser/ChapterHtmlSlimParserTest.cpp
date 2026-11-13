@@ -1,5 +1,6 @@
 #include <Epub.h>
 #include <Epub/Page.h>
+#include <Epub/ReaderRenderSpec.h>
 #include <Epub/converters/ImageDimsProbe.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
@@ -2541,4 +2542,101 @@ TEST_F(ChapterHtmlSlimParserTest, SyntheticFlagKeepsFontSlotsAndSplitWordStyles)
     EXPECT_GE(synthetic, 3u);
     EXPECT_EQ(actual, 1u);
   }
+}
+
+TEST(ParagraphIndentation, BookModesRespectCssSpacingHangingIndentsAndChunkedLines) {
+  GfxRenderer renderer;
+  for (const auto mode : {ParagraphIndentMode::FixedSpaces, ParagraphIndentMode::Book, ParagraphIndentMode::Force}) {
+    for (bool spacing : {false, true}) {
+      for (bool hyphenation : {false, true}) {
+        for (int css : {-6, 0, 13}) {
+          BlockStyle style;
+          style.alignment = CssTextAlign::Left;
+          style.textIndentDefined = true;
+          style.textIndent = css;
+          ParsedText text(hyphenation, false, style, 2, mode, spacing);
+          text.addWord("alpha", EpdFontFamily::REGULAR);
+          text.addWord("beta", EpdFontFamily::REGULAR);
+          const int expected = css < 0                                        ? css
+                               : mode == ParagraphIndentMode::FixedSpaces     ? 8
+                               : mode == ParagraphIndentMode::Book && spacing ? 0
+                                                                              : css;
+          unsigned count = 0;
+          text.layoutAndExtractLines(renderer, 0, 200, [&](std::unique_ptr<TextBlock> line, auto) {
+            ++count;
+            EXPECT_EQ(line->wordXpos(0), expected);
+          });
+          EXPECT_EQ(count, 1u);
+        }
+      }
+    }
+    BlockStyle style;
+    style.alignment = CssTextAlign::Left;
+    style.textIndentDefined = true;
+    style.textIndent = 8;
+    ParsedText text(false, false, style, 2, mode);
+    for (const char* word : {"one", "two", "three", "four"}) text.addWord(word, EpdFontFamily::REGULAR);
+    unsigned lines = 0;
+    text.layoutAndExtractLines(
+        renderer, 0, 40, [&](std::unique_ptr<TextBlock> line, auto) { EXPECT_EQ(line->wordXpos(0), lines++ ? 0 : 8); },
+        false, 0, 100, 1);
+    ASSERT_EQ(lines, 1u);
+    text.layoutAndExtractLines(renderer, 0, 200, [&](std::unique_ptr<TextBlock> line, auto) {
+      ++lines;
+      EXPECT_EQ(line->wordXpos(0), 0);
+    });
+    EXPECT_EQ(lines, 2u);
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ForcedParagraphFallbackPreservesPublisherAndInheritedIndents) {
+  parser.paragraphAlignment = static_cast<uint8_t>(CssTextAlign::None);
+  for (const char* css : {"", "text-indent:0", "text-indent:20px", "text-indent:-6px", "text-align:center"}) {
+    parser.abortParse();
+    parser.currentTextBlock.reset();
+    parser.setParagraphIndentMode(ParagraphIndentMode::Force);
+    parser.extraParagraphSpacing = true;
+    parser.beginParse();
+    const XML_Char* attrs[] = {"style", css, nullptr};
+    ChapterHtmlSlimParser::startElement(&parser, "body", nullptr);
+    ChapterHtmlSlimParser::startElement(&parser, "p", attrs);
+    ASSERT_NE(parser.currentTextBlock, nullptr);
+    const auto style = parser.currentTextBlock->getBlockStyle();
+    if (std::string(css) == "text-align:center") {
+      EXPECT_FALSE(style.textIndentDefined);
+    } else {
+      EXPECT_TRUE(style.textIndentDefined);
+      EXPECT_EQ(style.textIndent, std::string(css) == "text-indent:20px"   ? 20
+                                  : std::string(css) == "text-indent:-6px" ? -6
+                                                                           : renderer.getFontAscenderSize(0));
+    }
+    EXPECT_EQ(parser.currentTextBlock->paragraphIndentMode, ParagraphIndentMode::Force);
+    EXPECT_TRUE(parser.currentTextBlock->extraParagraphSpacing);
+  }
+  for (const auto mode : {ParagraphIndentMode::Book, ParagraphIndentMode::Force}) {
+    parser.abortParse();
+    parser.currentTextBlock.reset();
+    parser.setParagraphIndentMode(mode);
+    parser.beginParse();
+    const XML_Char* inherited[] = {"style", "text-indent:20px", nullptr};
+    ChapterHtmlSlimParser::startElement(&parser, "body", inherited);
+    ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+    ASSERT_NE(parser.currentTextBlock, nullptr);
+    EXPECT_EQ(parser.currentTextBlock->getBlockStyle().textIndent, 20);
+  }
+}
+
+TEST(ParagraphIndentation, LayoutSignatureTracksModeAndFixedWidth) {
+  ReaderRenderSpec base;
+  const auto original = readerRenderSpecSignature(base);
+  for (auto mode : {ParagraphIndentMode::Book, ParagraphIndentMode::Force}) {
+    auto changed = base;
+    changed.paragraphIndentMode = mode;
+    EXPECT_NE(original, readerRenderSpecSignature(changed));
+  }
+  auto changed = base;
+  changed.paragraphIndentSpaces = 0;
+  EXPECT_NE(original, readerRenderSpecSignature(changed));
+  changed.paragraphIndentSpaces = 5;
+  EXPECT_NE(original, readerRenderSpecSignature(changed));
 }

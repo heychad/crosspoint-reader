@@ -143,6 +143,7 @@ These are check durations, not coding speed or total development time.
 | November 13 XTC bar placements and render passes | 2364 full: 96.24 s. Overlays, 70 policy cases, legacy imports in both profiles, and padded render/sleep passes passed both sanitizers | 102.62 s; standard X4 Pro, RAM 113148, flash 5681958; initial 53.40 s attempt failed on a local-header include, then corrected |
 | November 13 settings inventory and source-drift audit | All 157 catalog/save keys classified once; RC2 matches all eight reviewed blobs; earlier RC correctly flags six changed files. Snapshot checks took about 0.4 s each | Not repeated: host-only script and documentation; firmware inputs unchanged |
 | November 13 RC2 reader-touch import | 59 affected: 0.09 s; 21 control/catalog cases passed both sanitizers. Production publication preserves exact source and native snapshot | 68.85 s; default X4 Pro, RAM 113148, flash 5681970 |
+| November 13 Book/Force paragraph indents | Full 2371: 80.23 s. Ten parser/scope sanitizer cases, three-profile preference imports, and 4367 decoder records pass both sanitizers. Initial five fixture failures corrected; fresh consistent sanitizer build replaces the mixed startup attempt | 116.41 s; default X4 Pro, RAM 113148, flash 5683630 |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

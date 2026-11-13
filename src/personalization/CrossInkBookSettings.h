@@ -13,6 +13,7 @@ struct BookSettingsPreview {
   char font[32]{};
   uint8_t indexingMethod = 0;
   uint8_t verticalMargin = 5;
+  uint8_t paragraphIndentMode = 0;
   uint8_t version = 0;
   uint8_t extraFlags = 0;
 };

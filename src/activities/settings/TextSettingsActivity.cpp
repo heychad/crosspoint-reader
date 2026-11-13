@@ -28,12 +28,13 @@ namespace {
 // Tab labels for Font | Size | Layout | Style.
 constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
 
-constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,          StrId::STR_WORD_SPACING,
-                                         StrId::STR_CHARACTER_SPACING,     StrId::STR_EXTRA_SPACING,
-                                         StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_ALIGNMENT,
-                                         StrId::STR_MARGIN_HORIZONTAL,     StrId::STR_MARGIN_VERTICAL};
+constexpr StrId LAYOUT_ROW_NAME_IDS[] = {
+    StrId::STR_LINE_SPACING,  StrId::STR_WORD_SPACING,          StrId::STR_CHARACTER_SPACING,
+    StrId::STR_EXTRA_SPACING, StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_INDENT_STYLE,
+    StrId::STR_ALIGNMENT,     StrId::STR_MARGIN_HORIZONTAL,     StrId::STR_MARGIN_VERTICAL};
 constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION_NO_PREVIEW,
                                         StrId::STR_EMBEDDED_STYLE_NO_PREVIEW, StrId::STR_TEXT_AA_NO_PREVIEW};
+constexpr StrId INDENT_STYLE_IDS[] = {StrId::STR_FIXED_SPACES, StrId::STR_BOOK_S_STYLE, StrId::STR_FORCE_INDENT};
 
 int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
   if (sdFontFamilyName[0] != '\0' && registry) {
@@ -414,6 +415,15 @@ void TextSettingsActivity::applySize(int listIndex) {
 
 void TextSettingsActivity::confirmLayoutRow(int row) {
   switch (static_cast<LayoutRow>(row)) {
+    case LayoutRow::IndentStyle:
+      optionPopup_.show(StrId::STR_INDENT_STYLE, INDENT_STYLE_IDS, static_cast<int>(std::size(INDENT_STYLE_IDS)),
+                        SETTINGS.paragraphIndentMode, [](int idx) {
+                          if (idx < 0 || idx >= static_cast<int>(std::size(INDENT_STYLE_IDS))) return;
+                          SETTINGS.paragraphIndentMode = static_cast<uint8_t>(idx);
+                          SETTINGS.saveToFile();
+                        });
+      requestUpdate();
+      break;
     case LayoutRow::ParaSpacing:
       SETTINGS.extraParagraphSpacing = !SETTINGS.extraParagraphSpacing;
       SETTINGS.saveToFile();
@@ -496,6 +506,10 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
 
 std::string TextSettingsActivity::layoutValueText(int row) const {
   switch (static_cast<LayoutRow>(row)) {
+    case LayoutRow::IndentStyle: {
+      const uint8_t mode = SETTINGS.paragraphIndentMode;
+      return I18N.get(INDENT_STYLE_IDS[mode < std::size(INDENT_STYLE_IDS) ? mode : 0]);
+    }
     case LayoutRow::LineSpacing: {
       const uint8_t v = SETTINGS.lineSpacing;
       return I18N.get(LINE_SPACING_IDS[v < std::size(LINE_SPACING_IDS) ? v : CrossPointSettings::LINE_SPACING_120]);

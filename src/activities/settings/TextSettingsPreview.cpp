@@ -41,10 +41,16 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
   BlockStyle style;
   style.alignment = toCssAlign(SETTINGS.paragraphAlignment);
   style.textAlignDefined = true;
+  if (SETTINGS.paragraphIndentMode == static_cast<uint8_t>(ParagraphIndentMode::Force) &&
+      (style.alignment == CssTextAlign::Left || style.alignment == CssTextAlign::Justify)) {
+    style.textIndentDefined = true;
+    style.textIndent = renderer.getFontAscenderSize(fontId);
+  }
   const char* paragraph = text;
   while (*paragraph && layout.lines.size() < MAX_PREVIEW_LINES) {
     ParsedText parsed(SETTINGS.hyphenationEnabled != 0, SETTINGS.focusReadingEnabled != 0, style,
-                      SETTINGS.paragraphIndentSpaces);
+                      SETTINGS.paragraphIndentSpaces, static_cast<ParagraphIndentMode>(SETTINGS.paragraphIndentMode),
+                      SETTINGS.extraParagraphSpacing != 0);
     const char* end = paragraph;
     while (*end && *end != '\n') ++end;
     std::string word;
@@ -117,6 +123,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .alignment = SETTINGS.paragraphAlignment,
                        .extraParagraphSpacing = SETTINGS.extraParagraphSpacing != 0,
                        .paragraphIndentSpaces = SETTINGS.paragraphIndentSpaces,
+                       .paragraphIndentMode = SETTINGS.paragraphIndentMode,
                        .characterSpacing = SETTINGS.getCharacterSpacing(),
                        .wordSpacingPercent = SETTINGS.wordSpacing,
                        .focusReading = SETTINGS.focusReadingEnabled != 0,

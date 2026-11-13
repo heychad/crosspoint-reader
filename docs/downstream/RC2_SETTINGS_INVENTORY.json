@@ -272,14 +272,18 @@
       ]
     },
     {
-      "handling": "open",
+      "handling": "mapped",
       "keys": [
         "forceParagraphIndents"
       ],
-      "behavior": "RC2 conditionally keeps embedded CSS indents with extra paragraph spacing. Native paragraphIndentSpaces controls a fixed space count and is not equivalent. Resolve selected-layout compatibility before closing G3.",
+      "behavior": "Import valid 0/1 as native Book/Force modes, globally and in owned per-book formats 2-13. Existing native files retain fixed-space mode 0. Book mode follows CSS when extra spacing is off and keeps hanging indents. Force fills missing/zero paragraph indents with one em, preserves publisher/inherited nonzero indents, and works with extra spacing. Native width remains independent; caches/signatures track the policy.",
       "evidence": [
+        "lib/Epub/Epub/ParagraphIndentMode.h",
         "lib/Epub/Epub/ParsedText.cpp",
-        "docs/downstream/SETTINGS_MIGRATION.md"
+        "lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp",
+        "src/personalization/CrossInkPreferencesImport.h",
+        "src/personalization/CrossInkBookSettings.cpp",
+        "test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp"
       ]
     },
     {

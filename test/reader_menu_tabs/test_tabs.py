@@ -46,7 +46,7 @@ struct CrossPointSettings {
  WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
  uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
  screenMargin=5,screenMarginVertical=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
- paragraphIndentSpaces=0,embeddedStyle=0,imageRendering=0;
+ paragraphIndentSpaces=0,paragraphIndentMode=0,embeddedStyle=0,imageRendering=0;
 };
 constexpr StrId LINE_SPACING_IDS[7]{};
 struct {char dictionaryName[2]={'x',0};struct {char peerAddr[2]={'x',0};} ble;bool moveFinishedToReadFolder=false;} SETTINGS;

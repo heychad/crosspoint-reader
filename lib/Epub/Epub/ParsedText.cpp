@@ -860,8 +860,19 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
     return 0;
   }
   if (blockStyle.textIndentDefined && blockStyle.textIndent < 0) return blockStyle.textIndent;
-  if (paragraphIndentSpaces == 0) return 0;
-  return scaleSpace(renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR), wordSpacingPercent) * paragraphIndentSpaces;
+  switch (paragraphIndentMode) {
+    case ParagraphIndentMode::FixedSpaces:
+      if (paragraphIndentSpaces == 0) return 0;
+      return scaleSpace(renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR), wordSpacingPercent) *
+             paragraphIndentSpaces;
+    case ParagraphIndentMode::Book:
+      return blockStyle.textIndentDefined && !extraParagraphSpacing ? blockStyle.textIndent : 0;
+    case ParagraphIndentMode::Force:
+      return blockStyle.textIndentDefined ? blockStyle.textIndent : 0;
+    case ParagraphIndentMode::Count:
+      return 0;
+  }
+  return 0;
 }
 // Consumes data to minimize memory usage
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,

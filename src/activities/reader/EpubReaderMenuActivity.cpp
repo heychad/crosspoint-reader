@@ -38,6 +38,7 @@ constexpr StrId ALIGNMENT[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId:
 constexpr StrId IMAGES[] = {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS,
                             StrId::STR_IMAGES_DISPLAY_BW};
 constexpr const char* INDENTS[] = {"0", "1", "2", "3", "4", "5"};
+constexpr StrId INDENT_STYLES[] = {StrId::STR_FIXED_SPACES, StrId::STR_BOOK_S_STYLE, StrId::STR_FORCE_INDENT};
 static_assert(CrossPointSettings::SCREEN_MARGIN_MIN == 5 && CrossPointSettings::SCREEN_MARGIN_MAX == 150 &&
               CrossPointSettings::SCREEN_MARGIN_STEP == 1);
 static_assert(CrossPointSettings::WORD_SPACING_MIN == 50 && CrossPointSettings::WORD_SPACING_MAX == 200 &&
@@ -68,6 +69,7 @@ constexpr TextControl TEXT_CONTROLS[] = {
     {MA::PARAGRAPH_SPACING, StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing},
     {MA::PARAGRAPH_INDENT, StrId::STR_PARAGRAPH_INDENTATION, &CrossPointSettings::paragraphIndentSpaces, nullptr,
      INDENTS, 6},
+    {MA::INDENT_STYLE, StrId::STR_INDENT_STYLE, &CrossPointSettings::paragraphIndentMode, INDENT_STYLES, nullptr, 3},
     {MA::EMBEDDED_STYLE, StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle},
     {MA::IMAGES, StrId::STR_IMAGES, &CrossPointSettings::imageRendering, IMAGES, nullptr, 4}};
 const TextControl* textControl(MA action) {
@@ -146,6 +148,7 @@ EpubReaderMenuActivity::Tab EpubReaderMenuActivity::tabForAction(MenuAction acti
     case MenuAction::HYPHENATION:
     case MenuAction::PARAGRAPH_SPACING:
     case MenuAction::PARAGRAPH_INDENT:
+    case MenuAction::INDENT_STYLE:
     case MenuAction::EMBEDDED_STYLE:
     case MenuAction::IMAGES:
       return Tab::Layout;

@@ -129,6 +129,9 @@ def decode(data: bytes) -> dict:
     image_pair = (version >= 11 and overrides.get('imageRendering') == 0
                   and 'imageGrayscale' in overrides)
     for key, value in overrides.items():
+        if key == 'forceParagraphIndents' and value in (0, 1):
+            preview['paragraphIndentMode'] = value + 1
+            continue
         if key == 'sdFontFamilyName' and compatible_font_name(value):
             preview[key] = value
             continue

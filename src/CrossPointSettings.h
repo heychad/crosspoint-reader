@@ -362,6 +362,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Text rendering settings
   uint8_t extraParagraphSpacing = 1;
   uint8_t paragraphIndentSpaces = 2;
+  uint8_t paragraphIndentMode = static_cast<uint8_t>(ParagraphIndentMode::FixedSpaces);
   static constexpr uint8_t WORD_SPACING_MIN = 50;
   static constexpr uint8_t WORD_SPACING_MAX = 200;
   static constexpr uint8_t WORD_SPACING_STEP = 25;

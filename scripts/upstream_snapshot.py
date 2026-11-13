@@ -141,7 +141,7 @@ def main():
         print('Overlap is a review hint, not proof of a conflict or an unported feature.')
         audit = report['crossink']['settings_inventory']
         print(f'Settings inventory: {audit["catalog_and_save_keys"]} classified catalog/save keys')
-        print('Open compatibility keys: ' + ', '.join(audit['open_keys']))
+        print('Open compatibility keys: ' + (', '.join(audit['open_keys']) or 'none recorded'))
         if audit['source_review_required']:
             print('Settings source review required:')
             for path in audit['changed_sources']:

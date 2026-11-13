@@ -26,6 +26,7 @@ struct PreviewKey {
   uint8_t alignment = 0xFF;
   bool extraParagraphSpacing = false;
   uint8_t paragraphIndentSpaces = 2;
+  uint8_t paragraphIndentMode = 0;
   int8_t characterSpacing = 0;
   uint8_t wordSpacingPercent = 100;
   bool focusReading = false;

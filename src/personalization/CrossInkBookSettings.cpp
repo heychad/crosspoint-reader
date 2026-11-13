@@ -134,6 +134,11 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     result.unmappedMask &= ~(1UL << 6);
   }
   map(8, 6, 4);
+  if ((mask & (1UL << 14)) && old[14] <= 1) {
+    result.paragraphIndentMode = old[14] + 1;  // Native Book / Force; fixed-space mode stays 0.
+    result.nativeMask |= 1UL << 19;
+    result.unmappedMask &= ~(1UL << 14);
+  }
   map(9, 10, 1);
   map(10, 9, 1);
   map(11, 11, 1);

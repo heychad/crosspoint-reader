@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "ParagraphIndentMode.h"
 #include "WordStore.h"
 #include "blocks/BlockStyle.h"
 #include "blocks/TextBlock.h"
@@ -113,6 +114,8 @@ class ParsedText {
   BlockStyle blockStyle;
   uint8_t wordSpacingPercent = 100;
   uint8_t paragraphIndentSpaces;
+  ParagraphIndentMode paragraphIndentMode;
+  bool extraParagraphSpacing;
   bool hyphenationEnabled;
   bool focusReadingEnabled;
   bool isNaturalAlign;
@@ -163,9 +166,13 @@ class ParsedText {
 
  public:
   explicit ParsedText(const bool hyphenationEnabled = false, const bool focusReadingEnabled = false,
-                      const BlockStyle& blockStyle = BlockStyle(), const uint8_t paragraphIndentSpaces = 2)
+                      const BlockStyle& blockStyle = BlockStyle(), const uint8_t paragraphIndentSpaces = 2,
+                      const ParagraphIndentMode paragraphIndentMode = ParagraphIndentMode::FixedSpaces,
+                      const bool extraParagraphSpacing = false)
       : blockStyle(blockStyle),
         paragraphIndentSpaces(paragraphIndentSpaces),
+        paragraphIndentMode(paragraphIndentMode),
+        extraParagraphSpacing(extraParagraphSpacing),
         hyphenationEnabled(hyphenationEnabled),
         focusReadingEnabled(focusReadingEnabled),
         isNaturalAlign(false),

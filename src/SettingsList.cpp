@@ -144,6 +144,10 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Value(StrId::STR_PARAGRAPH_INDENTATION, &CrossPointSettings::paragraphIndentSpaces, {0, 5, 1},
                           "paragraphIndentSpaces", StrId::STR_CAT_READER)
            .withTextSettings());
+  emit(SettingInfo::Enum(StrId::STR_INDENT_STYLE, &CrossPointSettings::paragraphIndentMode,
+                         {StrId::STR_FIXED_SPACES, StrId::STR_BOOK_S_STYLE, StrId::STR_FORCE_INDENT},
+                         "paragraphIndentMode", StrId::STR_CAT_READER)
+           .withTextSettings());
   emit(SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
                            StrId::STR_CAT_READER)
            .withTextSettings());

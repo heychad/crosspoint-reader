@@ -14,6 +14,7 @@ class CrossPointSettings {
   uint8_t paragraphAlignment = 0;
   uint8_t extraParagraphSpacing = 1;
   uint8_t paragraphIndentSpaces = 2;
+  uint8_t paragraphIndentMode = 0;
   uint8_t hyphenationEnabled = 1;
   uint8_t embeddedStyle = 1;
   uint8_t textAntiAliasing = 1;

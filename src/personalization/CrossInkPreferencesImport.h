@@ -63,6 +63,9 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     changed = true;
   };
   // A present modern source field owns its value, even when malformed.
+  const auto forceIndents = legacy["forceParagraphIndents"];
+  if (forceIndents.is<uint8_t>() && forceIndents.as<uint8_t>() <= 1)
+    stageMapped("paragraphIndentMode", forceIndents.as<uint8_t>() + 1);
   const auto oldDark = legacy["readerDarkMode"];
   if (legacy["screenInverted"].isUnbound() && oldDark.is<uint8_t>() && oldDark.as<uint8_t>() <= 1)
     stageMapped("screenInverted", oldDark.as<uint8_t>());

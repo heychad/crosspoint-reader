@@ -34,7 +34,8 @@ Unreadable records and recovery artifacts block writes. A named SD
 font can import with its point size when the book owns both fields. Without a
 compatible owned font name, the size stays in the original record. Finished-book
 moves are blocked while a legacy settings file remains at the old path. Other
-unsupported values remain in the source; full migration is still pending.
+unsupported values remain in the source under the explicit Later/compatibility
+boundaries in [the selected migration inventory](RC2_SETTINGS_INVENTORY.json).
 
 `scripts/preview_crossink_book_settings.py` inspects a local copy of a CrossInk
 record without writing settings. It reports directly comparable values as
@@ -45,7 +46,7 @@ a patch or apply a migration.
 
 ## Resource budget
 
-Each preference snapshot is 81 bytes; the scope is 176 bytes, including its two snapshots, masks, Safe Mode flag, and two underlying values. A complete book setting is 92 bytes. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
+Each preference snapshot is 82 bytes; the scope is 176 bytes, including its two snapshots, masks, Safe Mode flag, and two underlying values. A complete book setting is 92 bytes. The reader store adds two path strings and a Boolean. No task, framebuffer, or per-page allocation is added. JSON parsing and serialization allocate only during cold settings/file operations. Input and output use checked fixed-size buffers of at most 4097 bytes. JSON nodes coexist with the input buffer during parsing and with the output buffer during save. Exact allocator overhead and runtime stack/heap headroom still require device measurement. The byte verification uses a 64-byte stack buffer. The menu adds one row to the existing reserved list.
 
 ## Hardware checks
 
@@ -249,3 +250,33 @@ fixture, it and the two additional global/native migration checks passed in
 The final default X4 Pro build passed in 65.85 seconds, with 113,124 bytes of
 static RAM and 5,654,298 bytes of flash. These are host/build results; no new
 firmware has been installed and no device acceptance is claimed.
+
+## Paragraph-indent policy
+
+Indent style has three choices: Fixed spaces, Book's Style, and Force indent.
+Existing native settings stay in Fixed spaces and retain their saved width.
+Book uses CSS indents when extra paragraph spacing is off. Force keeps nonzero
+publisher/inherited indents and adds a one-em fallback to paragraphs with zero
+or missing indents. Both book policies preserve hanging indents. The text
+preview has no publisher CSS, so Book shows no indent and Force shows its
+fallback. Embedded-style and render-mode controls retain their existing role.
+
+The policy is a separate optional per-book field, `paragraphIndentMode` (0–2).
+Its mask is bit 19; existing field/font/dictionary/indexing/margin bits do not
+move. The scope captures, projects, saves, resets, and restores it alongside
+other native book choices. Global saves during a book override retain the
+global policy. CrossInk formats 2–13 import only a valid owned Force field;
+source binaries and existing native preference priority remain intact.
+
+The compiled X4 Pro snapshot is 82 bytes; the scope is still 176 bytes and the
+complete book setting is still 92 bytes. `ReaderRenderSpec` is 24 bytes,
+`ParsedText` 440, and the parser 1,668. These are object sizes, not runtime heap
+or stack peaks. The mode adds no task, framebuffer, or retained dynamic buffer.
+The reader menu reserves one more existing row; its object is 5,332 bytes.
+Section headers grow by one byte. Native settings retain their layout, while
+version 81 invalidates derived completed and partial section caches.
+
+Clipping signature version 2 now covers indent width and mode. Source-offset
+clippings retain their text anchors. Older page-only highlights require a
+matching layout signature; the saved clipping text and navigation entry are
+preserved. No reading-progress or clipping file is rewritten by migration.

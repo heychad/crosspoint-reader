@@ -55,6 +55,7 @@ class ChapterHtmlSlimParser {
   float lineCompression;
   bool extraParagraphSpacing;
   uint8_t paragraphIndentSpaces = 2;
+  ParagraphIndentMode paragraphIndentMode = ParagraphIndentMode::FixedSpaces;
   int8_t characterSpacing = 0;
   uint8_t wordSpacingPercent = 100;
   uint8_t paragraphAlignment;
@@ -333,6 +334,7 @@ class ChapterHtmlSlimParser {
     wordSpacingPercent = wordPercent;
   }
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
+  void setParagraphIndentMode(const ParagraphIndentMode mode) { paragraphIndentMode = mode; }
   void setRenderMode(EpubRenderMode mode) { renderMode = mode; }
 
   // One-shot parse: builds every page before returning (begin + step* + finish).

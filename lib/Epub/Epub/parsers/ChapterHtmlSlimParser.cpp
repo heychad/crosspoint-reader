@@ -864,13 +864,13 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle, cons
   if (stopRequested) return;
   dropCap.firstLetterPending = false;
   inlineSize = InlineSizeState{};
-  currentTextBlock =
-      makeUniqueNoThrow<ParsedText>(hyphenationEnabled, focusReadingEnabled, blockStyle, paragraphIndentSpaces);
+  currentTextBlock = makeUniqueNoThrow<ParsedText>(hyphenationEnabled, focusReadingEnabled, blockStyle,
+                                                   paragraphIndentSpaces, paragraphIndentMode, extraParagraphSpacing);
   if (!currentTextBlock) {
     // Evict rebuildable caches and retry once before failing the build.
     freeink::MemoryManager::instance().ensureFree(4 * 1024);
-    currentTextBlock =
-        makeUniqueNoThrow<ParsedText>(hyphenationEnabled, focusReadingEnabled, blockStyle, paragraphIndentSpaces);
+    currentTextBlock = makeUniqueNoThrow<ParsedText>(hyphenationEnabled, focusReadingEnabled, blockStyle,
+                                                     paragraphIndentSpaces, paragraphIndentMode, extraParagraphSpacing);
   }
   if (!currentTextBlock) {
     LOG_ERR("EHP", "OOM: ParsedText");
@@ -1671,7 +1671,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     }
 
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->hyphenationEnabled, self->focusReadingEnabled,
-                                                           tableCellBlockStyle, self->paragraphIndentSpaces);
+                                                           tableCellBlockStyle, self->paragraphIndentSpaces,
+                                                           self->paragraphIndentMode, self->extraParagraphSpacing);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: table cell");
       self->skipUntilDepth = self->depth;
@@ -2123,8 +2124,30 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   }
 
   const float emSize = static_cast<float>(self->renderer.getFontAscenderSize(self->fontId));
-  const auto userAlignmentBlockStyle = BlockStyle::fromCssStyle(
+  auto userAlignmentBlockStyle = BlockStyle::fromCssStyle(
       cssStyle, emSize, static_cast<CssTextAlign>(self->paragraphAlignment), self->viewportWidth);
+
+  if (self->paragraphIndentMode != ParagraphIndentMode::FixedSpaces &&
+      (strcmp(name, "html") == 0 || strcmp(name, "body") == 0) && !self->blockStyleStack.empty() &&
+      userAlignmentBlockStyle.textIndentDefined) {
+    auto& root = self->blockStyleStack.front();
+    root.textIndent = userAlignmentBlockStyle.textIndent;
+    root.textIndentDefined = true;
+  }
+  if (self->paragraphIndentMode == ParagraphIndentMode::Force && strcmp(name, "p") == 0 &&
+      (userAlignmentBlockStyle.alignment == CssTextAlign::Left ||
+       userAlignmentBlockStyle.alignment == CssTextAlign::Justify ||
+       userAlignmentBlockStyle.alignment == CssTextAlign::None)) {
+    if (!userAlignmentBlockStyle.textIndentDefined && !self->blockStyleStack.empty() &&
+        self->blockStyleStack.back().textIndentDefined) {
+      userAlignmentBlockStyle.textIndentDefined = true;
+      userAlignmentBlockStyle.textIndent = self->blockStyleStack.back().textIndent;
+    }
+    if (!userAlignmentBlockStyle.textIndentDefined || userAlignmentBlockStyle.textIndent == 0) {
+      userAlignmentBlockStyle.textIndentDefined = true;
+      userAlignmentBlockStyle.textIndent = static_cast<int16_t>(emSize);
+    }
+  }
 
   if (strcmp(name, "hr") == 0) {
     auto hrBlockStyle = BlockStyle::fromCssStyle(cssStyle, emSize, CssTextAlign::Left, self->viewportWidth);
@@ -2423,7 +2446,8 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->hyphenationEnabled, self->focusReadingEnabled,
-                                                           flowStyle, self->paragraphIndentSpaces);
+                                                           flowStyle, self->paragraphIndentSpaces,
+                                                           self->paragraphIndentMode, self->extraParagraphSpacing);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block for character data");
       return;
@@ -2830,7 +2854,8 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->hyphenationEnabled, self->focusReadingEnabled,
-                                                           flowStyle, self->paragraphIndentSpaces);
+                                                           flowStyle, self->paragraphIndentSpaces,
+                                                           self->paragraphIndentMode, self->extraParagraphSpacing);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block after table");
     }

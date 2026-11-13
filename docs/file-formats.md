@@ -90,6 +90,18 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 81
+
+The header adds one byte, `paragraphIndentMode`, after `paragraphIndentSpaces`:
+0 Fixed spaces, 1 Book's Style, 2 Force indent. Header validation and partial
+resume compare it with the requested layout. Both completed and partial caches
+from older versions rebuild. Source EPUB/TXT/Markdown content, reading progress,
+book preferences, bookmarks, and clippings are preserved.
+
+Clipping layout signature version 2 includes both indent width and mode. Saved
+source-offset highlights remain portable; page-only highlights must match the
+current signature. The older ImHex example below remains pinned to version 64.
+
 ### Version 80
 
 The serialized layout is unchanged. Generated list markers and image fallback

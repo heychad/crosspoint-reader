@@ -1776,6 +1776,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     case EpubReaderMenuActivity::MenuAction::HYPHENATION:
     case EpubReaderMenuActivity::MenuAction::PARAGRAPH_SPACING:
     case EpubReaderMenuActivity::MenuAction::PARAGRAPH_INDENT:
+    case EpubReaderMenuActivity::MenuAction::INDENT_STYLE:
     case EpubReaderMenuActivity::MenuAction::EMBEDDED_STYLE:
     case EpubReaderMenuActivity::MenuAction::IMAGES:
     case EpubReaderMenuActivity::MenuAction::BLUETOOTH:

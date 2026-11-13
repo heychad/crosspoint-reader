@@ -14,6 +14,26 @@ program = r'''
 #include <ArduinoJson.h>
 #include "personalization/CrossInkPreferencesImport.h"
 int main() {
+
+  for (unsigned raw=0; raw<256; ++raw) {
+    JsonDocument old,next; old["forceParagraphIndents"]=raw;next["keep"]=42;
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,false)==(raw<=1));
+    assert(raw<=1 ? next["paragraphIndentMode"]==raw+1 : next["paragraphIndentMode"].isUnbound());
+    assert(next["keep"]==42);
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+    next["paragraphIndentMode"]=nullptr;
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,false));
+    assert(next["paragraphIndentMode"].isNull());
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true)==(raw<=1));
+  }
+  for(const char* invalid:{"null","true","0.0","-1","256","\"0\"","[]","{}"}) {
+    JsonDocument old,next;
+    assert(!deserializeJson(old,std::string("{\"forceParagraphIndents\":")+invalid+"}"));
+    next["paragraphIndentMode"]=0;
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
+    assert(next["paragraphIndentMode"]==0);
+  }
+
   for (const auto field : {std::tuple{"readerDarkMode","screenInverted",1},
                            std::tuple{"sleepTimeout","sleepTimeoutMinutes",4}}) {
     const auto [legacyKey,nativeKey,high] = field;

@@ -47,6 +47,42 @@ class BookSettings : public testing::Test {
 };
 }  // namespace
 
+TEST_F(BookSettings, ParagraphIndentModeIsOwnedPerBookWithoutMovingExistingMaskBits) {
+  static_assert(ReaderPreferences::FONT_BIT == (1U << 15));
+  static_assert(ReaderPreferences::VERTICAL_MARGIN_BIT == (1U << 18));
+  static_assert(ReaderPreferences::INDENT_MODE_BIT == (1U << 19));
+  CrossPointSettings settings;
+  settings.paragraphIndentSpaces = 5;
+  const auto base = ReaderPreferences::capture(settings);
+  auto book = base;
+  book.paragraphIndentMode = 2;
+  EXPECT_EQ(book.difference(base), ReaderPreferences::INDENT_MODE_BIT);
+  JsonDocument doc;
+  book.write(doc.to<JsonObject>(), ReaderPreferences::INDENT_MODE_BIT);
+  EXPECT_EQ(doc["paragraphIndentMode"].as<int>(), 2);
+  EXPECT_TRUE(doc["paragraphIndentSpaces"].isUnbound());
+  ReaderPreferences loaded;
+  uint32_t mask;
+  ASSERT_TRUE(loaded.read(doc.as<JsonObjectConst>(), mask));
+  EXPECT_EQ(mask, ReaderPreferences::INDENT_MODE_BIT);
+  BookReaderSettingsScope scope;
+  scope.begin(settings, {loaded, mask});
+  EXPECT_EQ(settings.paragraphIndentMode, 2);
+  EXPECT_EQ(settings.paragraphIndentSpaces, 5);
+  JsonDocument global;
+  scope.writeGlobal(global.to<JsonObject>());
+  EXPECT_EQ(global["paragraphIndentMode"].as<int>(), 0);
+  EXPECT_EQ(scope.capture(settings).mask, ReaderPreferences::INDENT_MODE_BIT);
+  scope.reset(settings);
+  EXPECT_EQ(settings.paragraphIndentMode, 0);
+  scope.end(settings);
+  EXPECT_EQ(settings.paragraphIndentSpaces, 5);
+  for (int raw : {-1, 3, 255}) {
+    doc["paragraphIndentMode"] = raw;
+    EXPECT_FALSE(loaded.read(doc.as<JsonObjectConst>(), mask));
+  }
+}
+
 TEST_F(BookSettings, Rc2TouchEnablePublishesWithoutTheRetiredFieldAndPreservesExactInputs) {
   const std::string original = R"({"touchReaderControls":0,"other":42})";
   const std::string legacy = R"({"disableReaderTouchscreen":0,"pageTurnGesture":2,"previousPageGesture":3})";

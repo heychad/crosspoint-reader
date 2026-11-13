@@ -9,7 +9,7 @@ preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
 
 
-def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0, indexing_method=2):
+def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0, indexing_method=2, force_indents=0):
     if mask is None:
         mask = (1 << (19 if version < 11 else version + 9)) - 1
     if version == 1:
@@ -22,7 +22,7 @@ def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, 
     data.extend([1, 2, 1, 0, 1])  # page number, alignment, style, hyphenation, AA
     if version <= 8:
         data.append(1)  # obsolete dark mode
-    data.extend([2, 1, 0, 1, 0, 1])  # image, spacing, indent, focus, guide, render
+    data.extend([2, 1, force_indents, 1, 0, 1])  # image, spacing, indent, focus, guide, render
     if version >= 4:
         data.append(indexing_method)
     data.extend(b'Font\0' + bytes(59))

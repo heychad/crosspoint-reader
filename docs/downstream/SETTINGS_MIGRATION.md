@@ -2,7 +2,8 @@
 
 The fork translates compatible settings from tagged CrossInk RC2
 (`959e3d1575cf`) into CrossPoint 2.0.0 settings. Numeric IDs are not interchangeable.
-G3 remains partial; this audit does not declare every old preference supported.
+The selected G3 mapping core is built with the compatibility limits below.
+Cumulative review and physical-device validation remain.
 
 ## Library-policy import
 
@@ -101,7 +102,7 @@ without reparsing unchanged metadata. The combined Recent shelf keeps its
 modification-time behavior. Recently opened uses logical view 6, quick-tab slot
 0, and direction bit 6, reading resident history rather than the combined shelf.
 New defaults start all three time views newest first; existing native masks are
-retained. G3 remains partial pending the remaining migration audit.
+retained. The selected RC2 inventory is reconciled below; runtime validation remains.
 
 The first-name view and import are now built, with independent saved direction
 and the native scrolling sort picker. Its logical view ID is 5; it uses Author's
@@ -153,10 +154,10 @@ separately. Nested bar codecs and per-book formats retain their own checks.
 
 | Handling | Keys |
 | --- | ---: |
-| Compatible mappings | 73 |
+| Compatible mappings | 74 |
 | Conditional mappings or feature gates | 17 |
 | Partial mappings with explicit compatibility limits | 6 |
-| Open selected compatibility | 1 |
+| Open selected compatibility | 0 |
 | Selected for Later | 19 |
 | Inputs absent from the pinned X4 Pro profile | 21 |
 | Existing native configuration retained | 19 |
@@ -201,12 +202,30 @@ and 5,681,970 flash bytes. Logs are `/tmp/x4-rc2-touch-final-checks.log`,
 `/tmp/x4-rc2-touch-sanitizers.log`, and `/tmp/x4-rc2-touch-firmware.log`.
 Cumulative review and device validation remain.
 
-`forceParagraphIndents` remains open. RC2 keeps an embedded CSS indent when
-extra paragraph spacing is off, or when forcing is enabled; negative hanging
-indents are retained either way. Native `paragraphIndentSpaces` sets a fixed
-space count instead. Copying the Boolean into that number would change its
-meaning. Resolve this selected-layout compatibility before closing G3; do not
-silently count it as deferred font-engine work.
+`forceParagraphIndents` now selects explicit native Book/Force policies. The
+new Indent style control keeps Fixed spaces as the default for native settings;
+its width remains independently saved. Book follows embedded CSS when extra
+paragraph spacing is off and retains negative hanging indents either way.
+Force preserves nonzero publisher/inherited indents and gives zero/missing
+paragraph indents a one-em fallback, including when extra spacing is on.
+Centered text remains centered. Existing layout/render-mode gates still apply.
+
+The global import accepts only integer 0/1 and preserves native ownership in
+missing-only staging. The per-book decoder maps only an owned, valid source
+bit 14 from formats 2–13, using new native bit 19 without shifting old bits.
+The source binary stays unchanged; native preference files still take priority.
+The reader menu, global text controls, live preview, per-book reset/projection,
+section caches, and clipping layout signatures use the policy. See
+[per-book behavior](BOOK_SETTINGS.md#paragraph-indent-policy) and
+[cache version 81](../file-formats.md#version-81). All 2,371 host checks pass (80.23 seconds).
+The ten parser/scope checks, three global-import configurations, and 4,367
+independent binary decoder records pass AddressSanitizer and
+UndefinedBehaviorSanitizer. The default X4 Pro build passes (116.41 seconds),
+with 113,148 static RAM bytes and 5,683,630 flash bytes. Logs are
+`/tmp/x4-indent-full-final.log`, `/tmp/x4-indent-sanitizers.log`,
+`/tmp/x4-indent-import-sanitizers.log`, `/tmp/x4-indent-decoder-sanitizers.log`,
+and `/tmp/x4-indent-firmware.log`. Enabled-profile cumulative review and device
+validation remain; this is a checked WIP checkpoint.
 
 ## Completed mappings from the RC2 audit
 
@@ -227,8 +246,8 @@ at 113,140 static RAM bytes and 5,678,098 flash bytes. The shared transaction is
 unchanged; this bounded mapping change did not require repeating the full host
 suite. No device installation or runtime validation is claimed.
 
-The following audit findings now have implementations. G3 stays open for the
-paragraph-indent compatibility described above:
+The selected audit findings now have implementations. Release review and
+device validation remain:
 
 | RC2 field | Required follow-up |
 | --- | --- |

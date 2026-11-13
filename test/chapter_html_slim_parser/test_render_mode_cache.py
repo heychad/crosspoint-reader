@@ -64,13 +64,16 @@ struct Section {
 int main() {
   ReaderRenderSpec original; original.viewportWidth=480;original.viewportHeight=800;
   auto signature=readerRenderSpecSignature(original);
+  for(auto indent : {ParagraphIndentMode::FixedSpaces,ParagraphIndentMode::Book,ParagraphIndentMode::Force}) {
   for (auto mode : {EpubRenderMode::Default, EpubRenderMode::Balanced, EpubRenderMode::Light}) {
-    ReaderRenderSpec spec=original;spec.renderMode=mode;Section written;assert(written.writeSectionFileHeader(spec));
+    ReaderRenderSpec spec=original;spec.renderMode=mode;spec.paragraphIndentMode=indent;Section written;assert(written.writeSectionFileHeader(spec));
     assert(written.file.bytes.size()==HEADER_SIZE);Storage.saved=written.file.bytes;
     Storage.saved[0]=SECTION_FILE_VERSION;
     Section match;assert(match.loadSectionFile(spec));assert(match.pageCount==2);assert(!match.cleared);
     ReaderRenderSpec other=spec;other.renderMode=mode==EpubRenderMode::Light?EpubRenderMode::Default:EpubRenderMode::Light;
     Section mismatch;assert(!mismatch.loadSectionFile(other));assert(!mismatch.cleared);
+    ReaderRenderSpec otherIndent=spec;otherIndent.paragraphIndentMode=indent==ParagraphIndentMode::Book?ParagraphIndentMode::Force:ParagraphIndentMode::Book;
+    Section differentIndent;assert(!differentIndent.loadSectionFile(otherIndent));assert(!differentIndent.cleared);
     if(mode!=EpubRenderMode::Default) assert(readerRenderSpecSignature(spec)!=signature);
     Storage.saved[0]=SECTION_FILE_VERSION-1;Section old;assert(!old.loadSectionFile(spec));assert(old.cleared);
     Storage.saved[0]=0xFE - (SECTION_FILE_VERSION-1-28);Section oldPartial;
@@ -82,6 +85,8 @@ int main() {
     memcpy(Storage.saved.data()+visible+2*4,&consumed,4);memcpy(Storage.saved.data()+visible+2*4+4,&total,4);
     Section partial;assert(partial.loadSectionFile(spec));assert(partial.partial_);
     assert(partial.partialPageCount_==2 && partial.partialBytesConsumed_==200 && partial.partialTotalBytes_==400);
+    Section otherPartial;assert(!otherPartial.loadSectionFile(otherIndent));
+  }
   }
 }
 '''

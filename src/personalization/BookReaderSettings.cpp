@@ -50,6 +50,7 @@ ReaderPreferences ReaderPreferences::capture(const CrossPointSettings& settings)
   result.dictionary[sizeof(result.dictionary) - 1] = '\0';
   result.indexingMethod = settings.indexingMethod;
   result.verticalMargin = settings.screenMarginVertical;
+  result.paragraphIndentMode = settings.paragraphIndentMode;
   return result;
 }
 
@@ -60,6 +61,7 @@ void ReaderPreferences::apply(CrossPointSettings& settings, uint32_t mask) const
   if (mask & DICTIONARY_BIT) memcpy(settings.dictionaryName, dictionary, sizeof(dictionary));
   if (mask & INDEXING_BIT) settings.indexingMethod = indexingMethod;
   if (mask & VERTICAL_MARGIN_BIT) settings.screenMarginVertical = verticalMargin;
+  if (mask & INDENT_MODE_BIT) settings.paragraphIndentMode = paragraphIndentMode;
 }
 
 uint32_t ReaderPreferences::difference(const ReaderPreferences& other) const {
@@ -70,6 +72,7 @@ uint32_t ReaderPreferences::difference(const ReaderPreferences& other) const {
   if (strcmp(dictionary, other.dictionary) != 0) mask |= DICTIONARY_BIT;
   if (indexingMethod != other.indexingMethod) mask |= INDEXING_BIT;
   if (verticalMargin != other.verticalMargin) mask |= VERTICAL_MARGIN_BIT;
+  if (paragraphIndentMode != other.paragraphIndentMode) mask |= INDENT_MODE_BIT;
   return mask;
 }
 
@@ -81,6 +84,8 @@ void ReaderPreferences::write(JsonObject object, uint32_t mask) const {
   }
   object.remove("indexingMethod");
   object.remove("screenMarginVertical");
+  object.remove("paragraphIndentMode");
+  if (mask & INDENT_MODE_BIT) object["paragraphIndentMode"] = paragraphIndentMode;
   if (mask & VERTICAL_MARGIN_BIT) object["screenMarginVertical"] = verticalMargin;
   if (mask & INDEXING_BIT) object["indexingMethod"] = indexingMethod;
   object.remove("sdFontFamilyName");
@@ -121,6 +126,12 @@ bool ReaderPreferences::read(JsonObjectConst object, uint32_t& mask) {
     mask |= FONT_BIT;
   }
   const auto indexing = object["indexingMethod"];
+  const auto indentMode = object["paragraphIndentMode"];
+  if (!indentMode.isNull()) {
+    if (!indentMode.is<uint8_t>() || indentMode.as<uint8_t>() > 2) return false;
+    paragraphIndentMode = indentMode.as<uint8_t>();
+    mask |= INDENT_MODE_BIT;
+  }
   const auto margin = object["screenMarginVertical"];
   if (!margin.isNull()) {
     if (!margin.is<uint8_t>() || margin.as<uint8_t>() < 5 || margin.as<uint8_t>() > 150) return false;

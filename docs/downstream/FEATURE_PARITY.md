@@ -54,7 +54,7 @@ inventory below records an earlier stage and is not the current status.
 | E4 Small/large UI scale | Built; display fit needs hardware checks. |
 | G1 Rendering controls and recovery | Manual Default, Balanced, and Light profiles built. Known chapter-build memory failures retry progressively with simpler profiles, then without embedded styling or focus mode, for the current session. Disabling styles can reveal text hidden by the publisher's CSS. The last known text offset is preserved when available. Other failures do not trigger this retry. The fallback, message, and device behavior need review and testing. |
 | G2 Silent next-chapter prefetch | Experimental scheduler builds the next EPUB section near the end of the current one, with input cancellation and heap/radio guards. It requires the experimental build flag; review, responsiveness measurements, and device validation remain. |
-| G3 Complete old-settings migration | Partial. Compatible global, controls, bars, Library, and per-book formats 1–13 use the existing source-preserving migration/recovery paths. All seven RC2 Library sorts, clock format, common-margin aliases, bar text size/hiding, and XTC placements import. The [157-key inventory](RC2_SETTINGS_INVENTORY.json) separates supported mappings, gates, Later/Skip choices, native configuration, and controls absent from the X4 Pro. Directional/Classic navigation is front-button-only in RC2, so native X4 Pro navigation is retained. RC2 touch-enable import now works without its retired helper field. Embedded paragraph-indent compatibility remains open; the [migration audit](SETTINGS_MIGRATION.md) records its different semantics and existing font/spacing limits. Cumulative review and device validation remain. |
+| G3 Complete old-settings migration | Selected mapping core built. The [157-key RC2 inventory](RC2_SETTINGS_INVENTORY.json) classifies supported global, controls, bars, Library, and owned per-book formats 1–13. All seven Library sorts, named SD fonts, Safe Mode, margins, clock format, XTC placements, touch enable, and Book/Force paragraph indents have native mappings and checks. Existing native ownership and source files remain protected. Font/spacing limits, Later/Skip choices, retained native service configuration, and inputs absent from X4 Pro remain explicit. Cumulative review, enabled-profile integration, and device validation remain. |
 | G4 Personal automatic update channel | Fork release configuration prepared, but online checking and installation are disabled pending authentication. |
 | G5 Optional developer diagnostics | Read-only X4 Pro memory diagnostics built; hardware checks remain. |
 
@@ -205,7 +205,7 @@ Home, Rotate 180°, Select Chapter, and Cycle Auto Turn.
 
 The subsequent batch adds the independent page-gesture toggle and direct
 network-mode entry points described below. Guide dots remain in the Later
-scope; Nearby stays skipped. This earlier checkpoint left A2, A9, and G3 open; the later [RC catalog audit](RC_SHORTCUT_AUDIT.md) closes selected X4 Pro mapping coverage. G3 remains open.
+scope; Nearby stays skipped. This earlier checkpoint left A2, A9, and G3 open; the later [RC catalog audit](RC_SHORTCUT_AUDIT.md) closes selected X4 Pro mapping coverage. The current G3 row above records the later selected-scope completion.
 
 The mapping follow-up passed 41 focused input, navigation, and migration checks
 and the X4 Pro firmware build (120.34 seconds). It has not been tested on the
@@ -254,7 +254,7 @@ maps only with a matching explicit image-display override. Named SD font migrati
 was added in the November 12 WIP. Safe Mode now imports while retaining its
 underlying style and Focus Reading choices. Built-in fonts, half-pixel tracking,
 and other unsupported per-book fields remain
-open; this does not complete G3.
+open at that checkpoint; the current G3 row above records subsequent work.
 
 The RC decoder passed 1,808 reference and malformed-record cases, 43 relevant
 host checks, and the X4 Pro build (69.94 seconds). Device validation remains

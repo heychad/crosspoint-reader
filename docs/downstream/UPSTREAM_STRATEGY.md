@@ -84,8 +84,8 @@ Its 157 catalog/save keys have explicit scope and compatibility classifications.
 Changed reviewed source files require a new semantic audit, including changes
 to defaults, enum values, nested codecs, or behavior with the same key names.
 Matching hashes mean the reviewed sources are unchanged, not that every
-preference migrates or that device validation is complete. The inventory keeps
-the remaining paragraph-indent compatibility gap visible.
+preference migrates or that device validation is complete. The inventory records compatible paragraph-indent policies and the remaining
+font/spacing limits; no selected key remains classified Open.
 Use the [development process](DEVELOPMENT_PROCESS.md) for verification depth.
 Keep the known device-tested revision available for rollback.
 

@@ -47,20 +47,21 @@ render=r'''
 #include <vector>
 struct Rect{int x,y,width,height;};
 enum class CssTextAlign{Left,Center,Right,Justify};
+enum class ParagraphIndentMode:uint8_t{FixedSpaces,Book,Force,Count};
 struct CrossPointSettings{static constexpr int BOOK_STYLE=4;};
-struct{int fontPointSize=14,screenMargin=5,screenMarginVertical=0;uint8_t paragraphAlignment=0,paragraphIndentSpaces=2,wordSpacing=100;bool hyphenationEnabled=false,focusReadingEnabled=false,extraParagraphSpacing=true;
+struct{int fontPointSize=14,screenMargin=5,screenMarginVertical=0;uint8_t paragraphAlignment=0,paragraphIndentSpaces=2,paragraphIndentMode=0,wordSpacing=100;bool hyphenationEnabled=false,focusReadingEnabled=false,extraParagraphSpacing=true;
  char sdFontFamilyName[32]="First";int getReaderFontId(){return 7;}int8_t getCharacterSpacing(){return 0;}float getReaderLineCompression(){return 1;}}SETTINGS;
 enum class StrId{STR_FONT_PREVIEW_TEXT};struct{const char*get(StrId){return "sample words";}}I18N;
 constexpr int UI_10_FONT_ID=1;
 struct FontCacheManager{int calls=0;void prewarmCache(int,const char*,int){++calls;}};
 struct GfxRenderer{mutable FontCacheManager cache;mutable std::vector<std::string>body;
- int getTextHeight(int)const{return 10;}int getLineHeight(int,float)const{return 12;}
+ int getFontAscenderSize(int)const{return 12;}int getTextHeight(int)const{return 10;}int getLineHeight(int,float)const{return 12;}
  FontCacheManager*getFontCacheManager()const{return &cache;}void drawText(int,int,int,const char*)const{}};
 struct EpdFontFamily{static constexpr int REGULAR=0;};
-struct BlockStyle{CssTextAlign alignment;bool textAlignDefined;};
+struct BlockStyle{CssTextAlign alignment;bool textAlignDefined;bool textIndentDefined=false;int textIndent=0;};
 struct TextBlock{std::string text;void render(const GfxRenderer&r,int,int,int)const{r.body.push_back(text);}};
 int layouts=0;
-struct ParsedText{std::string words;ParsedText(bool,bool,BlockStyle,unsigned){}
+struct ParsedText{std::string words;ParsedText(bool,bool,BlockStyle,unsigned,ParagraphIndentMode,bool){}
  void addWord(const std::string&w,int){if(!words.empty())words+=' ';words+=w;}
  template<class F>void layoutAndExtractLines(const GfxRenderer&,int,uint16_t,F callback,bool,int,int){++layouts;if(!words.empty())callback(std::make_unique<TextBlock>(TextBlock{words}),0);}};
 namespace textsettings {

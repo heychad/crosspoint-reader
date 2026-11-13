@@ -84,7 +84,7 @@ namespace {
 // v73: TrueType vector fonts load and advance .notdef for missing glyphs.
 // v78: Rendering mode is included in the header.
 // v79: Preserve clipping source ranges across hidden text inside a word.
-constexpr uint8_t SECTION_FILE_VERSION = 80;
+constexpr uint8_t SECTION_FILE_VERSION = 81;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -106,7 +106,7 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) +
                                  sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(int8_t) +
-                                 sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint8_t);
+                                 sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(ParagraphIndentMode);
 
 bool recoverSectionCache(const std::string& path) {
   const auto current = Storage.lookupPath(path.c_str());
@@ -210,12 +210,13 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   }
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
                                    sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndentSpaces) +
-                                   sizeof(spec.paragraphAlignment) + sizeof(spec.viewportWidth) +
-                                   sizeof(spec.viewportHeight) + sizeof(pageCount) + sizeof(spec.hyphenationEnabled) +
-                                   sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
-                                   sizeof(spec.focusReadingEnabled) + sizeof(spec.characterSpacing) +
-                                   sizeof(spec.wordSpacingPercent) + sizeof(uint8_t) + sizeof(uint32_t) +
-                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
+                                   sizeof(spec.paragraphIndentMode) + sizeof(spec.paragraphAlignment) +
+                                   sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
+                                   sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
+                                   sizeof(spec.imageRendering) + sizeof(spec.focusReadingEnabled) +
+                                   sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(uint8_t) +
+                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
+                                   sizeof(uint32_t),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -223,6 +224,7 @@ bool Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
          serialization::tryWritePod(file, spec.fontId) && serialization::tryWritePod(file, spec.lineCompression) &&
          serialization::tryWritePod(file, spec.extraParagraphSpacing) &&
          serialization::tryWritePod(file, spec.paragraphIndentSpaces) &&
+         serialization::tryWritePod(file, spec.paragraphIndentMode) &&
          serialization::tryWritePod(file, spec.paragraphAlignment) &&
          serialization::tryWritePod(file, spec.viewportWidth) &&
          serialization::tryWritePod(file, spec.viewportHeight) &&
@@ -263,6 +265,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     float fileLineCompression;
     bool fileExtraParagraphSpacing;
     uint8_t fileParagraphIndentSpaces;
+    ParagraphIndentMode fileParagraphIndentMode;
     uint8_t fileParagraphAlignment;
     bool fileHyphenationEnabled;
     bool fileEmbeddedStyle;
@@ -275,6 +278,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     serialization::readPod(file, fileLineCompression);
     serialization::readPod(file, fileExtraParagraphSpacing);
     serialization::readPod(file, fileParagraphIndentSpaces);
+    serialization::readPod(file, fileParagraphIndentMode);
     serialization::readPod(file, fileParagraphAlignment);
     serialization::readPod(file, fileViewportWidth);
     serialization::readPod(file, fileViewportHeight);
@@ -288,7 +292,8 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
 
     if (spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing ||
-        spec.paragraphIndentSpaces != fileParagraphIndentSpaces || spec.paragraphAlignment != fileParagraphAlignment ||
+        spec.paragraphIndentSpaces != fileParagraphIndentSpaces ||
+        spec.paragraphIndentMode != fileParagraphIndentMode || spec.paragraphAlignment != fileParagraphAlignment ||
         spec.viewportWidth != fileViewportWidth || spec.viewportHeight != fileViewportHeight ||
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
         spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
@@ -578,6 +583,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
 
   ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
   ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
+  ctx->parser->setParagraphIndentMode(spec.paragraphIndentMode);
   ctx->parser->setRenderMode(spec.renderMode);
   Hyphenator::setPreferredLanguage(epub->getLanguage());
   build_ = std::move(ctx);
