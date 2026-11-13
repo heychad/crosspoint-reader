@@ -165,6 +165,54 @@ TEST_F(PhysicalShortcuts, HomeDoubleTapRequiresSameGesture) {
   EXPECT_EQ(tick(), O::Handled);
   EXPECT_FALSE(manager.locked);
 }
+
+TEST_F(PhysicalShortcuts, SideHoldUnlockFollowsReaderOrientationWithAsymmetricBindings) {
+  struct Mapping {
+    bool follows;
+    uint8_t orientation;
+    bool logicalUpIsPhysicalUp;
+  };
+  const Mapping mappings[] = {{false, 0, true}, {false, 1, true}, {false, 2, true}, {false, 3, true},
+                              {true, 0, true},  {true, 1, false}, {true, 2, false}, {true, 3, false}};
+  for (const auto mapping : mappings) {
+    for (const bool quickLockOnUp : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << mapping.follows << '/' << unsigned(mapping.orientation) << '/'
+                                        << quickLockOnUp);
+      physicalshortcuts::beforeSleep(manager);
+      manager = {};
+      input = {};
+      gpio = {};
+      settings = {};
+      now = 0;
+      settings.readerSideFollowOrientation = mapping.follows;
+      settings.orientation = mapping.orientation;
+      settings.readerUpHold = static_cast<uint8_t>(quickLockOnUp ? A::QuickLock : A::Disabled);
+      settings.readerDownHold = static_cast<uint8_t>(quickLockOnUp ? A::Disabled : A::QuickLock);
+      const bool physicalUp = quickLockOnUp == mapping.logicalUpIsPhysicalUp;
+      const unsigned matching = physicalUp ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN;
+      const unsigned other = physicalUp ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
+      manager.pending = {ActivityManager::ControlKind::ToggleLock,
+                         physicalUp ? QuickLockTrigger::SideUpLong : QuickLockTrigger::SideDownLong};
+      EXPECT_EQ(tick(), O::Handled);
+      ASSERT_TRUE(manager.locked);
+      neutral();
+      gpio.down[other] = gpio.pressed[other] = true;
+      tick();
+      gpio.pressed[other] = false;
+      now = 800;
+      tick();
+      EXPECT_TRUE(manager.locked);
+      neutral();
+      gpio.down[matching] = gpio.pressed[matching] = true;
+      tick();
+      gpio.pressed[matching] = false;
+      now = 1600;
+      EXPECT_EQ(tick(), O::Handled);
+      EXPECT_FALSE(manager.locked);
+      EXPECT_EQ(tick(), O::Consumed);
+    }
+  }
+}
 TEST_F(PhysicalShortcuts, FrontHoldUsesLogicalRemapAndDoesNotLeakRelease) {
   input.touch = false;
   settings.backHoldAction = static_cast<uint8_t>(A::QuickLock);

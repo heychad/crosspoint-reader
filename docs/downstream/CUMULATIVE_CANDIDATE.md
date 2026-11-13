@@ -1,6 +1,7 @@
 # Combined X4 Pro candidate
 
-November 13, 2026. This is the cumulative review record, not installation approval.
+November 13, 2026. This is the cumulative review record, not installation approval. Round-one
+review is complete; corrections are in progress.
 
 ## Requirement and frozen inputs
 
@@ -70,8 +71,48 @@ and a checked-in reproducible candidate profile before handoff.
 | Update path | 43 focused checks and both sanitizers pass. Real host pinned-root API/redirect/CDN and rejection checks pass; firmware TLS cryptography and runtime resources remain untested. See [update contract](PERSONAL_UPDATES.md). |
 | Sync client | Eight full-queue HTTP cases; all 303 canonical tests and 68 concepts pass. Code-only publication passes 73 tests and five base concepts. These use a host reader fixture. |
 | Exclusive upload | Nine focused firmware checks; real FAT/exFAT remount and ASan pass. UBSan reports retained SdFat alignment/null-pointer findings; it is not a clean UBSan pass. See [sync contract](FILE_CHECKSUM_API.md). |
-| Cumulative host suite | Running against the frozen source: `/tmp/x4-candidate-host-build.log` and `/tmp/x4-candidate-host-tests.log`. Do not treat this row as passed until the terminal result is recorded. |
+| Cumulative host suite | Frozen source `f3b28c79` passed all 2431 checks in 447.16 s. Logs: `/tmp/x4-candidate-host-build.log` and `/tmp/x4-candidate-host-tests.log`. Later corrections need their own checks. |
 | Physical reader | Clipfix2 is the last accepted baseline. No later source in this packet has been installed or physically validated. |
+
+## Round-one findings and corrections
+
+All four independent axes completed read-only review of the pinned source.
+They inspected central contracts and selected callers; this was not exhaustive
+line-by-line inspection of all 459 production/build/script paths. No reviewer
+ran tests, builds, writes, or device operations. The findings below are not
+resolved by the passing pre-correction suite.
+
+| ID | Finding | Current status |
+| --- | --- | --- |
+| R1, P1 | Per-book JSON retries can delete a `.tmp`/`.bak` alias sharing the live primary's chain. | Open; needs checked transaction ownership and real FAT/exFAT alias regressions. |
+| R2, P1 | Completion accepts deep existing book paths, but its later source-reference audit applies staged-publication's 16-component limit after moving files. | Open; separate source validation from publication policy and exercise the production guard through move/remount. |
+| R3, P2 | Routine application-state saves consume permanent history slots; exhaustion blocks later saves and causes increasing scan work. | Open; distinguish verified clean-save retirement from uncertain-artifact preservation. |
+| R4, P2 | Rotated Quick Lock activation and unlock resolve asymmetric side holds differently. | Corrected with the shared orientation mapping; regression failed before the fix and passes afterward across all four orientations. |
+| R5, P2 | Completion shortcuts retain the old `/read` restriction despite deferred automation. | Corrected to match the menu's feature gate; disabled, legacy, and deferred profiles are tested. |
+| R6, P2 | Backup/rollback instructions omit root-level completion journals, deferred intents, and history. | Open; include a coherent transaction/book/sidecar backup and restore plan. |
+| R7, P2 | Dashboard month abbreviations bypass translation. | Open; use English translation keys and `tr()`. |
+| R8, P3 | Minimal Home QA still describes the older screen without statistics. | Open; align checks with saved time/progress and unavailable-data behavior. |
+
+R4/R5 add no persisted field, task, or allocation. The new host settings fields
+exist only in a test stub. Twenty-one focused checks pass in 0.55 seconds; twenty
+Quick Lock tests pass both sanitizers in 0.35 seconds, and all three completion
+profiles pass both sanitizers. The existing oriented-side harness passes ASan.
+The tests exercise production control code, with hardware/activity adapters.
+The default X4 Pro build passes in 68.52 seconds (RAM 113068, flash 5696414);
+the twelve-flag build passes in 70.20 seconds (RAM 113100, flash 5803354).
+Logs use `/tmp/x4-review-input-*.log` and `/tmp/x4-review-completion-*.log`.
+These are scoped correction checks, not a second cumulative review or a
+post-correction full-suite pass.
+
+The embedded review also triaged retained vendor reports. X4 Pro selects the
+bytewise little-endian helper path, so the Mac's alignment reports do not follow
+that target configuration. Null-pointer arithmetic in `FatFile.cpp:871` and
+signed overflow in `ExFatName.cpp:42–44` remain target-reachable C++ undefined
+behavior; physical consequences are unproven. No category is suppressed.
+A failed exclusive writable open can also poison the mutation fence until
+restart. These storage issues need resolution or an explicit supported recovery
+boundary before handoff. Slow-card synchronous hashes and runtime headroom need
+measurement; the review does not establish a measured watchdog failure.
 
 ## Review and remaining gates
 
@@ -81,7 +122,8 @@ independent review axes: correctness, architecture, embedded, and i18n/docs.
 Reviewers read the pinned code, history, and recorded checks only. The main agent
 owns fixes and verification; source stays frozen during review.
 
-- [ ] Complete cumulative host checks and record the terminal result.
+- [x] Complete cumulative host checks for the round-one frozen source and record the terminal result.
+- [ ] Revalidate the final correction set before device handoff.
 - [ ] Complete all four review axes and resolve material findings.
 - [ ] Triage retained vendor UBSan findings against the target and affected paths.
 - [ ] Stamp a unique test version and record a reproducible candidate profile.

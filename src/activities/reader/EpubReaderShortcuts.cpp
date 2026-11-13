@@ -128,7 +128,11 @@ bool EpubReaderActivity::handleReaderShortcut(Action action, QuickLockTrigger tr
         RenderLock lock(*this);
         known = readingStats.completionStatus(completed);
       }
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+      if (known)
+#else
       if (known && (completed || !SETTINGS.moveFinishedToReadFolder || isInReadFolder(bookPath)))
+#endif
         handleCompletionAttempt(false, !completed);
 #endif
       return true;

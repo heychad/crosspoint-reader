@@ -1,5 +1,7 @@
 """Check the reader completion shortcut's dispatch and move guard."""
 from pathlib import Path
+import os
+import shlex
 import subprocess
 import tempfile
 
@@ -32,8 +34,14 @@ int main(){
  reader.readingStats.finished=true;reader.dispatch(Action::ToggleCompletion);assert(reader.calls==2 && !reader.target);
  reader.readingStats.known=false;reader.dispatch(Action::ToggleCompletion);assert(reader.calls==2);
  reader.readingStats.known=true;reader.readingStats.finished=false;SETTINGS.moveFinishedToReadFolder=true;
- reader.dispatch(Action::ToggleCompletion);assert(reader.calls==2);
+ reader.dispatch(Action::ToggleCompletion);
+#if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
+ assert(reader.calls==3 && reader.target);
+ reader.bookPath="/READ/book.epub";reader.dispatch(Action::ToggleCompletion);assert(reader.calls==4 && reader.target);
+#else
+ assert(reader.calls==2);
  reader.bookPath="/READ/book.epub";reader.dispatch(Action::ToggleCompletion);assert(reader.calls==3 && reader.target);
+#endif
 #else
  assert(reader.calls==0);
 #endif
@@ -42,8 +50,10 @@ int main(){
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(code)
-    for flags in ([], ['-DCROSSPOINT_EXPERIMENTAL_COMPLETION', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT']):
-        subprocess.run(['c++', '-std=c++20', '-I', str(root / 'src'), *flags,
+    completion = ['-DCROSSPOINT_EXPERIMENTAL_COMPLETION', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT']
+    for flags in ([], completion, [*completion, '-DCROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION']):
+        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', *shlex.split(os.environ.get('CXXFLAGS', '')),
+                        '-I', str(root / 'src'), *flags,
                         str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)
 print('Completion shortcut dispatch and move guards passed')

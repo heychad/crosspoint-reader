@@ -147,8 +147,10 @@ Outcome update(ActivityManager& manager, MappedInputManager& input, HalGPIO& gpi
       changed(manager);
       return Outcome::Handled;
     }
+    const bool swapped = readershortcuts::swapSideBindings(SETTINGS.readerSideFollowOrientation, SETTINGS.orientation);
     const auto resolvedHold = [&](bool upButton) {
-      const auto action = static_cast<Action>(upButton ? SETTINGS.readerUpHold : SETTINGS.readerDownHold);
+      const bool logicalUp = readershortcuts::logicalSideUp(upButton, swapped);
+      const auto action = static_cast<Action>(logicalUp ? SETTINGS.readerUpHold : SETTINGS.readerDownHold);
       return action == Action::Default
                  ? readershortcuts::defaultAction(upButton, true, SETTINGS.sideButtonLayout,
                                                   input.isNavDirectionSwapped(), SETTINGS.longPressButtonBehavior)
