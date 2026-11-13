@@ -21,6 +21,7 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
       {"screenInverted", 0, 1},
       {"hideBatteryPercentage", 0, 2},
       {"clockFormat", 0, 1},
+      {"tapToHideStatusBar", 0, 1},
       {"sleepTimeoutMinutes", 1, 31},
       {"readingIdleTimeThresholdUnits", 3, 60},
       {"paragraphAlignment", 0, 4},

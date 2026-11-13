@@ -244,6 +244,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          {StrId::STR_FRONTLIGHT, StrId::STR_NIGHT_MODE, StrId::STR_TOUCH_READER_CONTROLS},
                          "slideSwitchAction", StrId::STR_CAT_CONTROLS));
 #endif
+  if (BoardConfig::hasTouch())
+    emit(SettingInfo::Toggle(StrId::STR_TAP_HIDE_STATUS_BAR, &CrossPointSettings::tapToHideStatusBar,
+                             "tapToHideStatusBar", StrId::STR_CAT_CONTROLS));
   // The reader menu style stays available on button boards (the toolbar
   // chrome is button-navigable); only the touch controls are hidden.
   if (BoardConfig::hasTouch()) {

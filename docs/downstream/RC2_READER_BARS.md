@@ -77,3 +77,39 @@ change the separator and battery display, then select chapter percentage.
 Confirm the expected items and no overlap in both portrait and landscape.
 Turn pages, create/cancel a clipping, then sleep/wake and check reading position.
 Run the remaining orientations during the release regression.
+
+## Temporary tap-to-hide
+
+Enable Settings → Controls → Tap to hide reader bars. A tap in an enabled top
+or bottom bar's 64-pixel edge strip hides both bars. Tap either enabled strip
+again to restore them. The hit targets remain available while hidden. EPUB
+keeps its reserved bar space and page layout; XTC redraws the same page without
+the overlay. Persistent hidden bars have no tap target. Disabling this option
+restores the bars, and opening a new reader starts visible.
+
+The option defaults off for existing native settings. Import CrossInk
+preferences carries the validated 0/1 source value. The toggle uses the existing
+settings catalog and writer. Temporary visibility is a reader-owned atomic
+flag; it is not written to settings or reading state. There is no new heap
+buffer or worker. Existing menu/selection overlays and the global input lock
+retain input ownership. This does not add RC2's fourth XTC placement mode.
+
+The controls remain available when page-turn gestures are disabled, provided
+reader touch is enabled. Inside an enabled edge strip, the bar interaction takes
+priority over page taps and links. Outside it, normal reader actions apply.
+
+Production tap handling passes host checks across four logical orientations,
+viewable margins, edge boundaries, disabled reader touch, missing hardware touch,
+disabled bars, hiding/restoration, and XTC menu input. Tap routing and preference
+imports pass AddressSanitizer and UndefinedBehaviorSanitizer; imports cover
+default, backup, and Page Overlay configurations.
+
+The full host run passed 2,359 of 2,360 checks in 110.46 seconds. Its one failure
+was the XTC menu fixture missing the new bar-height dependency. After updating
+the fixture, 32 affected checks passed in 3.18 seconds, including both XTC menu
+configurations. Firmware source was unchanged by that correction. The default
+X4 Pro build passed in 135.32 seconds at 113,140 static RAM bytes and 5,678,794
+flash bytes. Compiled object sizes are ReaderActivity 912, EpubReaderActivity
+3,016, and XtcReaderActivity 928 bytes, excluding their owned allocations.
+Logs use `/tmp/x4-bar-tap-*.log`. Cumulative review, runtime headroom, and physical
+render/input behavior remain unverified; no installation was performed.

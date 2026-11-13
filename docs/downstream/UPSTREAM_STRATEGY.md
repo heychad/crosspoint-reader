@@ -1,6 +1,6 @@
 # Upstream maintenance strategy
 
-Checked November 12, 2026.
+Checked November 13, 2026.
 
 ## Release channels
 
@@ -28,6 +28,11 @@ The November 12 release check found CrossInk `v2.0.0-rc2`,
 the fork has not adopted its SDK or full change set. See the
 [RC2 review](RC2_AUDIT.md) for the integration order. CrossPoint stable remains
 2.0.0.
+
+The November 13 fresh fetch and GitHub Releases API check found no newer stable
+CrossPoint or tagged CrossInk RC. The references remain CrossPoint 2.0.0 and
+CrossInk v2.0.0-rc2. The migration audit compares RC2 source directly; this does
+not adopt either moving development branch or change the SDK pin.
 
 Review new releases at integration milestones. Pin the selected tag and SDK,
 review its changes, and test on a development branch. Promote an RC only after
@@ -68,7 +73,7 @@ pending integration task. Evaluate future updates against the pinned release.
 At the next integration milestone, run:
 
 ```sh
-python3 scripts/upstream_snapshot.py --fetch
+python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc2
 ```
 
 Inspect newly reported changes, prioritize fixes to already-ported behavior, and update the comparison baseline after recording

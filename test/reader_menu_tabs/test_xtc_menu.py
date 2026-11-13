@@ -59,7 +59,9 @@ struct Input {enum class Button{Back,Confirm};bool back=false,confirm=false;bool
 using MappedInputManager=Input;
 namespace ReaderUtils {bool touch=false;bool isTouchMenuGesture(int&,Input&){return touch;}}
 namespace haptic_feedback {int events=0;void touchAction(){++events;}}
-struct {uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;unsigned char trackReadingStats=1,readingIdleTimeThresholdUnits=30;int saves=0;void saveToFile(){++saves;}}SETTINGS;
+struct CrossPointSettings {enum {XTC_STATUS_BAR_HIDE,XTC_STATUS_BAR_BOTTOM,XTC_STATUS_BAR_TOP};};
+struct UITheme {static UITheme& getInstance(){static UITheme t;return t;}int getStatusBarHeight()const{return 24;}};
+struct {struct Spec{int xtcMode;};Spec statusBarSpec()const{return {CrossPointSettings::XTC_STATUS_BAR_HIDE};}uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;unsigned char trackReadingStats=1,readingIdleTimeThresholdUnits=30;int saves=0;void saveToFile(){++saves;}}SETTINGS;
 struct XtcReaderMenuActivity {
  static constexpr int kind=1,MAX_ITEMS=12;
  enum class MenuAction {__ACTIONS__};struct MenuItem{MenuAction action;StrId label;};
@@ -109,6 +111,8 @@ struct XtcReaderActivity {
  template<class T,class F>void startActivityForResult(std::unique_ptr<T>,F f){lastKind=T::kind;callback=std::move(f);}
  void complete(ActivityResult result){auto done=callback;done(result);}
  void confirmCacheReset(bool retry=false);
+ bool barHandled=false;int barCalls=0;
+ bool handleStatusBarTap(int top,int bottom){assert(top==0 && bottom==0);++barCalls;return barHandled;}
  void openChapterSelection(bool returnToMenu=false);void openPercentSelection();void openReaderMenu();bool handleFormatInput();
 };
 ''' + reader_methods + r'''
@@ -127,6 +131,9 @@ int main(){
  }
  XtcReaderActivity reader;reader.xtc->chapters=false;reader.openReaderMenu();assert(reader.lastKind==M::kind);
  reader.lastKind=0;reader.mappedInput.confirm=true;assert(reader.handleFormatInput()&&reader.lastKind==1);
+ reader.barHandled=true;reader.lastKind=0;
+ assert(reader.handleFormatInput() && reader.lastKind==0);
+ reader.barHandled=false;
  reader.mappedInput.confirm=false;ReaderUtils::touch=true;assert(reader.handleFormatInput()&&haptic_feedback::events==1);
  ReaderUtils::touch=false;
  reader.complete({true,{}});assert(reader.currentPage==23);

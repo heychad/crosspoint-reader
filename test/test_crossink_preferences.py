@@ -145,7 +145,7 @@ int main() {
     assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
     assert(next["sdFontFamilyName"] == "Literata" && next["fontSize"].isUnbound());
   }
-  for (const auto& field : {std::tuple{"refreshFrequency",0,5}, {"screenInverted",0,1}, {"clockFormat",0,1},
+  for (const auto& field : {std::tuple{"refreshFrequency",0,5}, {"screenInverted",0,1}, {"clockFormat",0,1}, {"tapToHideStatusBar",0,1},
                             {"hideBatteryPercentage",0,2}, {"sleepTimeoutMinutes",1,31},
                             {"indexingMethod",0,1}, {"fadingFix",0,1},
                             {"pwrBtnFootnoteBack",0,1}, {"frontlightRestoreOnWake",0,1}}) {

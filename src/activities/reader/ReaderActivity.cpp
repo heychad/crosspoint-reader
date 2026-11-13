@@ -15,6 +15,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "EpubReaderActivity.h"
+#include "ReaderStatusBarTapTarget.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
@@ -252,6 +253,25 @@ void ReaderActivity::pollSettingsSaveWarning() {
   const uint32_t stateWarning = stateSaveNotice().pending();
   if (stateWarning && stateWarning != shownStateNotice.load() && !homeButtonFeedbackVisible.load()) requestUpdate();
 #endif
+}
+
+bool ReaderActivity::handleStatusBarTap(const int topHeight, const int bottomHeight, const int topOffset) {
+  if (!SETTINGS.tapToHideStatusBar) {
+    statusBarsVisible.store(true);
+    return false;
+  }
+  if (!SETTINGS.touchReaderControls || !mappedInput.hasTouch()) return false;
+  int x = 0, y = 0;
+  if (!mappedInput.wasScreenTapped(x, y)) return false;
+  int mt, mr, mb, ml;
+  renderer.getOrientedViewableTRBL(&mt, &mr, &mb, &ml);
+  const int screenHeight = renderer.getScreenHeight();
+  if (!ReaderStatusBarTapTarget::containsTop(y, screenHeight, std::max(0, mt + topOffset), topHeight) &&
+      !ReaderStatusBarTapTarget::containsBottom(y, screenHeight, mb, bottomHeight))
+    return false;
+  statusBarsVisible.store(!statusBarsVisible.load());
+  requestUpdate();
+  return true;
 }
 
 void ReaderActivity::loop() {

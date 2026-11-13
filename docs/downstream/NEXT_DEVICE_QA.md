@@ -37,6 +37,11 @@ run on the device yet.
    Quick Actions menu. Record any accidental page turn or failure to unlock.
    Restore any temporary test bindings afterward.
 
+For the new bar interaction, enable Settings → Controls → Tap to hide reader
+bars. Tap a visible bar to hide it, then tap the same edge to restore it. The
+page and reading position should stay fixed. Turn the option off afterward if
+you prefer normal edge taps.
+
 ## Library and saved content
 
 4. From an open EPUB, open **Browse Files** from Reader Menu. Return Home and

@@ -16,6 +16,8 @@ class ReaderActivity : public Activity {
   friend class ActivityManager;  // turns pages for a Bluetooth remote (ActivityManager::remoteTurn)
 
  protected:
+  std::atomic<bool> statusBarsVisible{true};
+  bool handleStatusBarTap(int topHeight, int bottomHeight, int topOffset = 0);
 #if FREEINK_CAP_TOUCH
   readergestures::Controller gestureController;
   readergestures::Frame gestureFrame;

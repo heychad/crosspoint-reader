@@ -221,6 +221,12 @@ bool XtcReaderActivity::handleFormatInput() {
     return false;
   }
 
+  const auto mode = SETTINGS.statusBarSpec().xtcMode;
+  const int barHeight = UITheme::getInstance().getStatusBarHeight();
+  if (handleStatusBarTap(mode == CrossPointSettings::XTC_STATUS_BAR_TOP ? barHeight : 0,
+                         mode == CrossPointSettings::XTC_STATUS_BAR_BOTTOM ? barHeight : 0))
+    return true;
+
   // Open the menu on Confirm release or the reader's touch menu gesture.
   const bool touchMenu = ReaderUtils::isTouchMenuGesture(renderer, mappedInput);
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || touchMenu) {
@@ -270,6 +276,7 @@ XtcReaderActivity::StatusBarInfo XtcReaderActivity::getStatusBarInfo() const {
 }
 
 void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const StatusBarOverlayPosition position) const {
+  if (SETTINGS.tapToHideStatusBar && !statusBarsVisible.load()) return;
   const auto sb = SETTINGS.statusBarSpec();
   const bool drawBottom = sb.xtcMode == CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_BOTTOM &&
                           position == StatusBarOverlayPosition::Bottom;

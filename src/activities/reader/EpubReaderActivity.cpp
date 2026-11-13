@@ -1120,6 +1120,11 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  if (!atEndOfBook && !endOfBookMenuActive() &&
+      handleStatusBarTap(UITheme::getReaderTopBarHeight(), UITheme::getReaderBottomBarHeight(automaticPageTurnActive),
+                         -5))
+    return;
+
   int selectionX = 0;
   int selectionY = 0;
   if (!atEndOfBook && SETTINGS.touchReaderControls && mappedInput.wasScreenLongPress(selectionX, selectionY)) {
@@ -3225,6 +3230,7 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
 }
 
 void EpubReaderActivity::renderStatusBar() {
+  if (SETTINGS.tapToHideStatusBar && !statusBarsVisible.load()) return;
   const int currentPage = section ? section->currentPage + 1 : 1;
   const float pageCount = section ? section->estimatedTotalPages() : 1;
   const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;

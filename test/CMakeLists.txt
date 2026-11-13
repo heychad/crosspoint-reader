@@ -316,6 +316,8 @@ endif()
 
 add_test(NAME ChapterShortcut COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_chapter_shortcut.py)
 
+add_test(NAME ReaderBarTap COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_bar_tap.py)
+
 add_test(NAME ReaderGlobalShortcuts COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_global_shortcuts.py)
 add_test(NAME PageGestureToggle COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_gesture_toggle.py)
 

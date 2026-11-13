@@ -57,7 +57,7 @@ A missing key is a discovery lead, not proof of a missing feature: renamed setti
 | `statusBarBookPercentageFormat` | Pending semantic comparison |
 | `statusBarTimeLeft` | Pending semantic comparison |
 | `swapLibraryFileBrowser` | Library import maps the effective order for CrossInk Minimal and Dashboard themes. |
-| `tapToHideStatusBar` | Pending semantic comparison |
+| `tapToHideStatusBar` | Native EPUB/XTC edge-tap hiding/restoration and preferences import are implemented; cumulative review and device checks remain. |
 | `tiltPageTurnDirection` | Pending semantic comparison |
 | `trackReadingStats` | Separate preferences import maps the master tracking toggle; device verification pending. |
 | `twoFingerRotationEnabled` | Implemented; separate-file controls import stages compatible values; device checks remain. |
