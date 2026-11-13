@@ -37,6 +37,7 @@ source field is absent:
 | --- | --- | --- |
 | `readerDarkMode` | `screenInverted` | 0 or 1 |
 | `sleepTimeout` | `sleepTimeoutMinutes` | IDs 0–4 map to 1, 5, 10, 15, or 30 minutes |
+| `screenMargin` | `screenMarginHorizontal`, `screenMarginVertical` | 5–150 pixels; each present source axis takes priority |
 | `fileBrowserPreview` | `fileBrowserDisplay` | 0/1 select one/two text rows |
 
 A present modern source field takes precedence, including malformed or null
@@ -140,6 +141,41 @@ cumulative release review and physical-device validation remain.
 | Status bars | The explicit bars import translates supported custom slots and legacy flat fields. Unsupported stable-page or disabled chapter-time requests leave the current bars unchanged. RC2 centering, separators, hidden-bar state, per-bar battery styles, and chapter percentage now import through the [native bar controls](RC2_READER_BARS.md). |
 | Device, date, frontlight schedule, and dictionary typography | Their additional CrossInk controls are Later; do not copy raw IDs into different native fields. |
 | Clock synchronization, credentials, and plugin state | These are not restored by the library/preferences import. Retain the current CrossPoint configuration. |
+
+## Remaining selected gaps from the RC2 audit
+
+The audit found supported native fields whose explicit imports were missing.
+Preferences now imports the 0/1 clock format (24-hour/12-hour) and the older
+single `screenMargin` into each missing source axis. Present source axes retain
+priority, including malformed or null values, so a stale common value cannot
+silently replace them. Missing-only staging also preserves native axis values
+and the ownership of an older native common-margin save. Confirmed replacement
+can update the compatible values. The source and exact native snapshot use the
+existing recoverable transaction; no books or reading state are changed.
+
+The 73 affected checks passed in 2.83 seconds, including production publication
+with exact source and snapshot preservation. Preference staging passed
+AddressSanitizer and UndefinedBehaviorSanitizer in the default, automatic-backup,
+and Page Overlay configurations. The default X4 Pro build passed in 67.64 seconds
+at 113,140 static RAM bytes and 5,678,098 flash bytes. The shared transaction is
+unchanged; this bounded mapping change did not require repeating the full host
+suite. No device installation or runtime validation is claimed.
+
+The wider audit remains open. These fields need behavior comparison or work
+inside the selected features before G3 can close:
+
+| RC2 field | Required follow-up |
+| --- | --- |
+| `tapToHideStatusBar` | The fork has persistent hidden-bar controls but lacks RC2's temporary tap-to-hide interaction. Resolve the reader touch ownership and restore behavior. |
+| `statusBarTextSize` | Custom bars currently use the native small UI font. Add the compatible size control without importing CrossInk font IDs or requiring the deferred font pack. |
+| `xtcStatusBarMode`, `readerStatusBars.xtcMode`, `legacyXtcTopUsesBottom` | Compare the four RC2 placements and compatibility flag with the native three-mode XTC bar contract before copying values. |
+| `menuNavigation` | Compare Directional/Classic global navigation against the native SDK controls; it is not the reader menu-style enum. |
+
+The historical [key-gap list](SETTING_GAPS.md) is a discovery list, not the
+current implementation status. A literal key missing from an import file is
+not by itself proof of a missing behavior: helper mappings, board scope,
+credentials, generated language state, and the explicitly deferred features
+must be checked separately.
 
 The controls, bar, global-preference, and per-book import paths retain separate
 checks and confirmations. See [import behavior](SHORTCUT_MIGRATION_PREVIEW.md)

@@ -20,6 +20,7 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
       {"refreshFrequency", 0, 5},
       {"screenInverted", 0, 1},
       {"hideBatteryPercentage", 0, 2},
+      {"clockFormat", 0, 1},
       {"sleepTimeoutMinutes", 1, 31},
       {"readingIdleTimeThresholdUnits", 3, 60},
       {"paragraphAlignment", 0, 4},
@@ -148,7 +149,9 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     }
   }
   for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
-    const auto value = legacy[key];
+    auto value = legacy[key];
+    // A present axis owns its source value, including null or malformed values.
+    if (value.isUnbound()) value = legacy["screenMargin"];
     const auto current = proposed[key];
     // A native single-margin save already owns both axes.
     if (value.is<uint8_t>() && value.as<uint8_t>() >= 5 && value.as<uint8_t>() <= 150 &&

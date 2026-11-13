@@ -1824,3 +1824,30 @@ TEST_F(BookSettings, IndependentLegacyMarginsSurviveNativeSaveWithoutChangingSou
   ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
   EXPECT_EQ(after, original);
 }
+
+TEST_F(BookSettings, CrossInkClockAndCommonMarginImportPreservesSourceAndNativeSnapshot) {
+  constexpr char primary[] = "/.crosspoint/settings.json";
+  const std::string original =
+      R"({"clockFormat":0,"screenMarginHorizontal":9,"screenMarginVertical":11,"pluginsEnabled":1})";
+  const std::string legacy = R"({"clockFormat":1,"screenMargin":25,"screenMarginVertical":35})";
+  put(primary, original);
+  put(crossinkimport::SOURCE_PATH, legacy);
+  JsonDocument proposed;
+  ASSERT_FALSE(deserializeJson(proposed, original));
+  char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+  ASSERT_EQ(crossinkimport::publishPreferences(proposed, original.data(), original.size(), snapshot),
+            crossinkimport::ApplyResult::Published);
+  std::string saved, backup, source;
+  ASSERT_TRUE(Storage.readFileToString("TEST", primary, 32768, saved));
+  ASSERT_TRUE(Storage.readFileToString("TEST", snapshot, 32768, backup));
+  ASSERT_TRUE(Storage.readFileToString("TEST", crossinkimport::SOURCE_PATH, 32768, source));
+  JsonDocument persisted;
+  ASSERT_FALSE(deserializeJson(persisted, saved));
+  EXPECT_EQ(persisted["clockFormat"].as<int>(), 1);
+  EXPECT_EQ(persisted["screenMarginHorizontal"].as<int>(), 25);
+  EXPECT_EQ(persisted["screenMarginVertical"].as<int>(), 35);
+  EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
+  EXPECT_TRUE(persisted["screenMargin"].isUnbound());
+  EXPECT_EQ(source, legacy);
+  EXPECT_EQ(backup, original);
+}

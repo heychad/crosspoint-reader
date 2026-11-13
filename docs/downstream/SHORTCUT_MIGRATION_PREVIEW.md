@@ -66,10 +66,11 @@ check and rebuilds when Library or Saved Items next opens.
 
 **Import CrossInk preferences** under Settings > Reader imports UI scale,
 statistics tracking, the reading idle threshold, refresh frequency, night mode
-(including older `readerDarkMode` saves), battery-percentage visibility, sleep
+(including older `readerDarkMode` saves), battery-percentage visibility, 12/24-hour clock format, sleep
 timeout (minutes or the older five-value enum), supported sleep settings, frontlight brightness, warmth, and on/off state, and compatible reading layout
 settings. Line spacing imports only when it matches a supported preset. Each
-margin axis imports independently within the native 5–150-pixel range. Only the default word
+margin axis imports independently within the native 5–150-pixel range, with the
+older common margin used only when that source axis is absent. Only the default word
 spacing maps directly. RC character spacing imports when it represents an
 exact whole-pixel value. Image display and its separate grayscale toggle map
 together to the native grayscale or black-and-white mode; invalid combinations

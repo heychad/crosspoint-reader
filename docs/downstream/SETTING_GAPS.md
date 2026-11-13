@@ -1,4 +1,8 @@
-# Candidate setting-key gaps
+# Historical candidate setting-key gaps
+
+This is the initial discovery list, not the current feature checklist. Use the
+[RC2 migration audit](SETTINGS_MIGRATION.md) for current mappings, remaining
+selected behavior, and the user-selected Later/Skip boundaries.
 
 Source: CrossInk v1.6.1 (`9914146`) compared with unmodified CrossPoint 2.0.0 (`42d58da`).
 
@@ -39,8 +43,8 @@ A missing key is a discovery lead, not proof of a missing feature: renamed setti
 | `readingIdleTimeThresholdUnits` | Separate preferences import maps valid 10-second units; device verification pending. |
 | `rightEdgeDown` | Embedded and separate-file controls imports map compatible values; device checks remain. |
 | `rightEdgeUp` | Embedded and separate-file controls imports map compatible values; device checks remain. |
-| `screenMarginHorizontal` | Preferences import maps equal horizontal and vertical margins from 5 to 40 pixels. |
-| `screenMarginVertical` | Preferences import maps equal horizontal and vertical margins from 5 to 40 pixels. |
+| `screenMarginHorizontal` | Preferences imports independent 5–150-pixel axes and the older common-margin fallback. |
+| `screenMarginVertical` | Preferences imports independent 5–150-pixel axes and the older common-margin fallback. |
 | `sdFontSizeRange` | Pending semantic comparison |
 | `shortPwrBtn` | Pending semantic comparison |
 | `sideButtonChordAction` | Initial EPUB reader bindings implemented under reader-prefixed keys; full catalog/XTC parity pending |

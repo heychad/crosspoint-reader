@@ -9,6 +9,7 @@ root = Path(__file__).resolve().parents[1]
 program = r'''
 #include <cassert>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <ArduinoJson.h>
 #include "personalization/CrossInkPreferencesImport.h"
@@ -48,6 +49,57 @@ int main() {
     JsonDocument old,next;old[legacyKey]=high+1;next.to<JsonObject>();
     assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(),next,true));
     assert(next[nativeKey].isUnbound());
+  }
+
+  for (unsigned value = 0; value < 256; ++value) {
+    JsonDocument old, next;
+    old["screenMargin"] = value;
+    next["unrelated"] = 42;
+    std::string source; serializeJson(old, source);
+    const bool supported = value >= 5 && value <= 150;
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false) == supported);
+    for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
+      assert(supported ? next[key] == value : next[key].isUnbound());
+    }
+    assert(next["screenMargin"].isUnbound() && next["unrelated"] == 42);
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    std::string after; serializeJson(old, after); assert(after == source);
+  }
+  for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
+    const char* other = std::string_view(key) == "screenMarginHorizontal" ? "screenMarginVertical" : "screenMarginHorizontal";
+    for (const char* invalid : {"-1", "4", "151", "256", "1.0", "true", "null", "\"25\"", "[]", "{}"}) {
+      JsonDocument old, next, bad;
+      old["screenMargin"] = 25;
+      assert(!deserializeJson(bad, invalid));
+      old[key] = bad.as<JsonVariantConst>();
+      next.to<JsonObject>();
+      assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+      assert(next[key].isUnbound() && next[other] == 25);
+    }
+    for (const char* current : {R"({"screenMargin":12})", R"({"screenMargin":null})"}) {
+      JsonDocument old, next;
+      old["screenMargin"] = 25;
+      assert(!deserializeJson(next, current));
+      assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+      assert(next[key].isUnbound() && next[other].isUnbound());
+      assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
+      assert(next[key] == 25 && next[other] == 25);
+    }
+    JsonDocument old, next;
+    old["screenMargin"] = 25;
+    old[key] = 30;
+    next[key] = nullptr;
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
+    assert(next[key].isNull() && next[other] == 25);
+    assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
+    assert(next[key] == 30 && next[other] == 25);
+  }
+  for (const char* invalid : {"-1", "256", "1.0", "true", "null", "\"25\"", "[]", "{}"}) {
+    JsonDocument old, next;
+    assert(!deserializeJson(old, std::string("{\"screenMargin\":") + invalid + "}"));
+    next.to<JsonObject>();
+    assert(!crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, true));
+    assert(next.size() == 0);
   }
   for (const auto& name : {std::string("Literata"), std::string("Font Name"), std::string("caf\xc3\xa9"), std::string(31, 'a')}) {
     JsonDocument old, next;
@@ -93,7 +145,7 @@ int main() {
     assert(crossinkimport::stagePreferences(old.as<JsonVariantConst>(), next, false));
     assert(next["sdFontFamilyName"] == "Literata" && next["fontSize"].isUnbound());
   }
-  for (const auto& field : {std::tuple{"refreshFrequency",0,5}, {"screenInverted",0,1},
+  for (const auto& field : {std::tuple{"refreshFrequency",0,5}, {"screenInverted",0,1}, {"clockFormat",0,1},
                             {"hideBatteryPercentage",0,2}, {"sleepTimeoutMinutes",1,31},
                             {"indexingMethod",0,1}, {"fadingFix",0,1},
                             {"pwrBtnFootnoteBack",0,1}, {"frontlightRestoreOnWake",0,1}}) {
