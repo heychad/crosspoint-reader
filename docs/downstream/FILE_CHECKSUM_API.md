@@ -75,7 +75,9 @@ leaves the uploaded file for review.
 ## Library client integration
 
 The client is `apps/book-library/device_sync.py` in Chad's second-brain
-repository, local checkpoint `4f68baf6cdca9eef6609bf5e0abb1450b00e52ac`.
+repository, local checkpoint `050334fbefddf13cdf5cc0866ca18dc08c6c6f70`
+(checksum integration `4f68baf`). Missing serial numbers, including the firmware's
+`Not found` sentinel, block sync instead of sharing an unknown reader identity.
 Its existing `Reader.digest(path, size, progress)` interface now selects the
 checksum API only when `Reader.status()` advertises integer version 1:
 
@@ -92,10 +94,11 @@ checksum API only when `Reader.status()` advertises integer version 1:
    receipt. Files stay intact. A retry verifies the existing destination instead
    of uploading it again. Reader identity is checked before recording success.
 
-Seventeen protocol tests use real local HTTP, including capability fallback,
+Eighteen protocol tests use real local HTTP, including capability fallback,
 malformed results, mismatched jobs, HTTP errors, redirects, cancellation,
-deadlines, and receipt failure/retry. Four additional queue regressions cover
-reruns, a lost upload response, hash failures, and same-size conflicts. All 294
+deadlines, missing reader identity, and receipt failure/retry. Four additional
+queue regressions cover reruns, a lost upload response, hash failures, and
+same-size conflicts. All 295
 second-brain host tests and its authoring validator pass. These tests use a host
 server, not reader hardware. Cumulative review, client publication, and measured
 end-to-end transfer timing remain pending. The installed clipfix2 firmware uses
