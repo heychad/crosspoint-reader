@@ -244,6 +244,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          {StrId::STR_FRONTLIGHT, StrId::STR_NIGHT_MODE, StrId::STR_TOUCH_READER_CONTROLS},
                          "slideSwitchAction", StrId::STR_CAT_CONTROLS));
 #endif
+  emit(SettingInfo::Enum(StrId::STR_STATUS_BAR_TEXT_SIZE, &CrossPointSettings::statusBarTextSize,
+                         {StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE}, "statusBarTextSize",
+                         StrId::STR_CUSTOMISE_STATUS_BAR));
   if (BoardConfig::hasTouch())
     emit(SettingInfo::Toggle(StrId::STR_TAP_HIDE_STATUS_BAR, &CrossPointSettings::tapToHideStatusBar,
                              "tapToHideStatusBar", StrId::STR_CAT_CONTROLS));

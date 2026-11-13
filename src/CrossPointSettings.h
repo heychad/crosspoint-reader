@@ -326,6 +326,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t readerRightEdgeDown = 0;
 
   bool readerBarsEnabled = false;
+  uint8_t statusBarTextSize = 0;
   uint8_t tapToHideStatusBar = 0;
   ReaderBar readerTopBar;
   ReaderBar readerBottomBar;

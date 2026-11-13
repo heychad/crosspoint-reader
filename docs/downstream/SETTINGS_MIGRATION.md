@@ -167,7 +167,7 @@ inside the selected features before G3 can close:
 | RC2 field | Required follow-up |
 | --- | --- |
 | `tapToHideStatusBar` | Implemented: validated preferences import and temporary EPUB/XTC edge-tap hiding/restoration. See [bar behavior](RC2_READER_BARS.md); cumulative review and device validation remain. |
-| `statusBarTextSize` | Custom bars currently use the native small UI font. Add the compatible size control without importing CrossInk font IDs or requiring the deferred font pack. |
+| `statusBarTextSize` | Implemented: 0/1/2 map to existing Small/UI 10/UI 12 custom-bar fonts, with matching lane height and preferences import. Legacy/XTC bar compatibility remains below. |
 | `xtcStatusBarMode`, `readerStatusBars.xtcMode`, `legacyXtcTopUsesBottom` | Compare the four RC2 placements and compatibility flag with the native three-mode XTC bar contract before copying values. |
 | `menuNavigation` | Compare Directional/Classic global navigation against the native SDK controls; it is not the reader menu-style enum. |
 

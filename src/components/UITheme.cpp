@@ -211,12 +211,12 @@ int UITheme::getStatusBarHeight() {
          (sb.showsProgressBar() ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0);
 }
 
-int UITheme::getReaderTopBarHeight() {
-  return SETTINGS.readerBarsEnabled ? readerbars::height(SETTINGS.readerTopBar) : 0;
+int UITheme::getReaderTopBarHeight(const GfxRenderer& renderer) {
+  return SETTINGS.readerBarsEnabled ? readerbars::height(renderer, SETTINGS.readerTopBar) : 0;
 }
 
-int UITheme::getReaderBottomBarHeight(bool forceText) {
-  if (SETTINGS.readerBarsEnabled) return readerbars::height(SETTINGS.readerBottomBar, forceText);
+int UITheme::getReaderBottomBarHeight(const GfxRenderer& renderer, bool forceText) {
+  if (SETTINGS.readerBarsEnabled) return readerbars::height(renderer, SETTINGS.readerBottomBar, forceText);
   const int legacy = getStatusBarHeight();
   return legacy + (forceText && !SETTINGS.statusBarSpec().textLaneVisible(true)
                        ? getInstance().getMetrics().statusBarVerticalMargin

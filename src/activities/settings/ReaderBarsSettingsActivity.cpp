@@ -33,6 +33,7 @@ constexpr StrId ITEM_LABELS[] = {
     StrId::STR_BAR_CHAPTER_PERCENT,
 };
 static_assert(std::size(ITEM_LABELS) == static_cast<size_t>(ReaderBarItem::Count));
+constexpr StrId SIZE_LABELS[] = {StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE};
 constexpr StrId PROGRESS_LABELS[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 constexpr StrId THICKNESS_LABELS[] = {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM,
                                       StrId::STR_PROGRESS_BAR_THICK};
@@ -79,6 +80,12 @@ void ReaderBarsSettingsActivity::activateIndex(int index) {
     if (index == 0) {
       SETTINGS.readerBarsEnabled = !SETTINGS.readerBarsEnabled;
       SETTINGS.saveToFile();
+    } else if (index == 3) {
+      popup.show(StrId::STR_STATUS_BAR_TEXT_SIZE, SIZE_LABELS, 3, SETTINGS.statusBarTextSize, [this](int selected) {
+        if (selected < 0 || selected > 2) return;
+        SETTINGS.statusBarTextSize = selected;
+        SETTINGS.saveToFile();
+      });
     } else {
       view = index == 1 ? View::Top : View::Bottom;
       nav.reset();
@@ -153,7 +160,11 @@ void ReaderBarsSettingsActivity::buildScreen(UiScreen& screen) {
     rows[i] = {};
     rows[i].actionValue = i;
     if (view == View::Root) {
-      rows[i].label = i == 0 ? tr(STR_BAR_USE_CUSTOM) : i == 1 ? tr(STR_BAR_TOP) : tr(STR_BAR_BOTTOM);
+      rows[i].label = i == 0   ? tr(STR_BAR_USE_CUSTOM)
+                      : i == 1 ? tr(STR_BAR_TOP)
+                      : i == 2 ? tr(STR_BAR_BOTTOM)
+                               : tr(STR_STATUS_BAR_TEXT_SIZE);
+      if (i == 3) rows[i].value = I18N.get(SIZE_LABELS[std::min<unsigned>(SETTINGS.statusBarTextSize, 2)]);
       if (i == 0) GUI.setCheckboxRow(rows[i], SETTINGS.readerBarsEnabled);
     } else if (i < 7) {
       rows[i].label = I18N.get(SLOT_LABELS[i]);

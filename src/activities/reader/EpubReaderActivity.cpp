@@ -953,8 +953,9 @@ ReaderPageLayout EpubReaderActivity::readerPageLayout() const {
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   return makeReaderPageLayout(renderer.getScreenWidth(), renderer.getScreenHeight(), top, right, bottom, left,
-                              SETTINGS.screenMargin, SETTINGS.screenMarginVertical, UITheme::getReaderTopBarHeight(),
-                              UITheme::getReaderBottomBarHeight(automaticPageTurnActive));
+                              SETTINGS.screenMargin, SETTINGS.screenMarginVertical,
+                              UITheme::getReaderTopBarHeight(renderer),
+                              UITheme::getReaderBottomBarHeight(renderer, automaticPageTurnActive));
 }
 
 void EpubReaderActivity::loop() {
@@ -1121,8 +1122,8 @@ void EpubReaderActivity::loop() {
   }
 
   if (!atEndOfBook && !endOfBookMenuActive() &&
-      handleStatusBarTap(UITheme::getReaderTopBarHeight(), UITheme::getReaderBottomBarHeight(automaticPageTurnActive),
-                         -5))
+      handleStatusBarTap(UITheme::getReaderTopBarHeight(renderer),
+                         UITheme::getReaderBottomBarHeight(renderer, automaticPageTurnActive), -5))
     return;
 
   int selectionX = 0;
@@ -2080,7 +2081,7 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
   pageTurnDuration = (1UL * 60 * 1000) / PAGE_TURN_RATES[selectedPageTurnOption];
   automaticPageTurnActive = true;
 
-  const int statusBarHeight = UITheme::getReaderBottomBarHeight(automaticPageTurnActive);
+  const int statusBarHeight = UITheme::getReaderBottomBarHeight(renderer, automaticPageTurnActive);
   if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
     RenderLock lock;
     if (section) {

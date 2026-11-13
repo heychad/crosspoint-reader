@@ -1044,3 +1044,9 @@ STR_LIBRARY_DATE_ADDED: "Date added"
 STR_LIBRARY_ADDED_TAB: "Added"
 
 STR_TAP_HIDE_STATUS_BAR: "Tap to hide reader bars"
+
+STR_STATUS_BAR_TEXT_SIZE: "Bar text size"
+
+STR_SMALL: "Small"
+STR_MEDIUM: "Medium"
+STR_LARGE: "Large"

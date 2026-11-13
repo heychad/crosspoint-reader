@@ -21,10 +21,10 @@ code=r'''
 #define tr(key) "label"
 #define LOG_ERR(...) ((void)0)
 bool failAllocation=false;
-enum class StrId { STR_PROGRESS_BAR, STR_PROGRESS_BAR_THICKNESS, STR_BAR_PERCENT_FORMAT, STR_BAR_BATTERY_STYLE };
+enum class StrId { STR_PROGRESS_BAR, STR_PROGRESS_BAR_THICKNESS, STR_BAR_PERCENT_FORMAT, STR_BAR_BATTERY_STYLE, STR_STATUS_BAR_TEXT_SIZE };
 const StrId SLOT_LABELS[7]={};const StrId ITEM_LABELS[static_cast<unsigned>(ReaderBarItem::Count)]={};
-const StrId PROGRESS_LABELS[3]={},THICKNESS_LABELS[3]={},DECIMAL_LABELS[3]={},BATTERY_LABELS[4]={};
-struct Settings {bool readerBarsEnabled=false;int saves=0;void saveToFile(){++saves;}} SETTINGS;
+const StrId PROGRESS_LABELS[3]={},THICKNESS_LABELS[3]={},DECIMAL_LABELS[3]={},BATTERY_LABELS[4]={},SIZE_LABELS[3]={};
+struct Settings {unsigned statusBarTextSize=0;bool readerBarsEnabled=false;int saves=0;void saveToFile(){++saves;}} SETTINGS;
 struct MenuResult{int action;};struct ActivityResult{bool isCancelled=false;std::variant<std::monostate,MenuResult> data;};
 struct Popup {std::function<void(int)> callback;bool isActive(){return false;}template<class T,class O>void show(T,O,int,int,std::function<void(int)> action) {callback=action;}};
 struct App{void clearTapFlash(){}};struct Nav{void reset(){}};struct Input{};
@@ -52,6 +52,12 @@ int main(){
  screen.activateIndex(11);assert(screen.top.centered && SETTINGS.saves==3);
  screen.activateIndex(12);screen.popup.callback(3);assert(screen.top.batteryStyle==ReaderBarBatteryStyle::PercentOnly && SETTINGS.saves==4);
  screen.activateIndex(13);screen.popup.callback(2);assert(screen.top.separator==ReaderBarSeparator::Pipe && SETTINGS.saves==5);
+ ReaderBarsSettingsActivity rootScreen;rootScreen.view=ReaderBarsSettingsActivity::View::Root;
+ rootScreen.activateIndex(3);assert(rootScreen.popup.callback);
+ for(int size:{0,1,2}){rootScreen.popup.callback(size);assert(SETTINGS.statusBarTextSize==static_cast<unsigned>(size));}
+ const int saves=SETTINGS.saves;
+ for(int invalid:{-1,3,255})rootScreen.popup.callback(invalid);
+ assert(SETTINGS.statusBarTextSize==2 && SETTINGS.saves==saves);
  failAllocation=true;ReaderBarsSettingsActivity oom;oom.activateIndex(0);assert(!oom.child && oom.updates==1);
 }
 '''

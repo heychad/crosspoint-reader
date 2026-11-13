@@ -108,23 +108,24 @@ void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t
   }
 }
 
-void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
+void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage, int fontId) const {
+  if (fontId == 0) fontId = SMALL_FONT_ID;
   // Left aligned: icon on left, percentage on right (reader mode)
   const uint16_t percentage = powerManager.getBatteryPercentage();
   // Center the icon on the digits' ink, which sits a font-dependent distance
   // below the text line's top (the font scales with uiScale).
   int y = rect.y + 6;
-  const auto fontIt = renderer.getFontMap().find(SMALL_FONT_ID);
+  const auto fontIt = renderer.getFontMap().find(fontId);
   if (fontIt != renderer.getFontMap().end()) {
     if (const auto glyph = fontIt->second.getGlyph('0', EpdFontFamily::REGULAR)) {
-      const int inkTop = renderer.getFontAscenderSize(SMALL_FONT_ID) - static_cast<int>(glyph->top);
+      const int inkTop = renderer.getFontAscenderSize(fontId) - static_cast<int>(glyph->top);
       y = rect.y + inkTop + (static_cast<int>(glyph->height) - rect.height) / 2;
     }
   }
 
   if (showPercentage) {
     const auto percentageText = std::to_string(percentage) + "%";
-    renderer.drawText(SMALL_FONT_ID, rect.x + batteryPercentSpacing + rect.width, rect.y, percentageText.c_str());
+    renderer.drawText(fontId, rect.x + batteryPercentSpacing + rect.width, rect.y, percentageText.c_str());
   }
 
   const Rect iconRect{rect.x, y, rect.width, rect.height};

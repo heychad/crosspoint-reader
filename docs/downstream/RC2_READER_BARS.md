@@ -113,3 +113,45 @@ flash bytes. Compiled object sizes are ReaderActivity 912, EpubReaderActivity
 3,016, and XtcReaderActivity 928 bytes, excluding their owned allocations.
 Logs use `/tmp/x4-bar-tap-*.log`. Cumulative review, runtime headroom, and physical
 render/input behavior remain unverified; no installation was performed.
+
+## Custom-bar text size
+
+Reader bar layouts now offers Bar text size with Small, Medium, and Large.
+The choice applies to both custom bars. Small preserves their existing font
+and lane height. Medium and Large use the already registered UI 10 and UI 12
+font families. The lane grows to at least the chosen line height plus four
+pixels, keeping text inside its reserved space. Clipping, separators, titles,
+and battery percentages use that font consistently.
+
+Changing the size through Reader bar layouts uses the existing content-offset
+handoff and layout rebuild. Native bar JSON keeps its current format; the
+new global `statusBarTextSize` value is an integer from 0 through 2 in the
+existing settings catalog. Preferences import maps the same RC2 values with
+strict validation and native ownership. Source files and the exact settings
+snapshot retain the existing protection.
+
+The native legacy bar path keeps its existing font. RC2's XTC placement and
+legacy top-uses-bottom compatibility remain a separate audit item. This stage
+adds no font files, font registry, task, or retained rendering buffer. Battery
+drawing accepts an optional font ID; existing callers retain the small UI font.
+The four-row root uses the existing fourteen-row storage.
+
+Geometry checks cover all sizes, both positions, four rotated inset sets,
+centered/un-centered layouts, and narrow/portrait/landscape widths, including
+long text, progress-only bars, transient text, and selected-font battery calls.
+Size selection rejects invalid results. The production preferences transaction
+checks the published size and exact source/backup preservation.
+
+The default X4 Pro build passed in 130.85 seconds, using 113,140 static RAM
+bytes and 5,679,894 flash bytes. The bar-settings activity is 2,720 bytes;
+CrossPointSettings is 752 bytes, excluding transaction documents and buffers.
+No additional font allocation is introduced: all three families were already
+registered at startup.
+
+The full host run passed 2,359 of 2,360 checks in 108.89 seconds. The added
+geometry test assumed a thinner progress line than its fixture configured.
+After correcting that fixture, 91 affected checks passed in 2.65 seconds.
+The expanded orientation/position matrix also passes. Geometry and imports
+pass AddressSanitizer and UndefinedBehaviorSanitizer. Logs use
+`/tmp/x4-bar-size-*.log`. Firmware inputs were unchanged by the fixture-only
+correction. Cumulative review and X4 Pro rendering/reflow checks remain.

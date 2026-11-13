@@ -19,11 +19,11 @@ code = r'''
 #include <vector>
 #include "personalization/ReaderBarRenderer.h"
 
-constexpr int SMALL_FONT_ID = 1;
+constexpr int SMALL_FONT_ID = 1, UI_10_FONT_ID = 2, UI_12_FONT_ID = 3;
 struct Rect { int x, y, width, height; };
 struct Board { int cornerRadius = 0, bottomCornerRadius = 0; };
 namespace BoardConfig { inline Board ACTIVE; }
-struct CrossPointSettings { static constexpr int HIDE_NEVER = 0; int hideBatteryPercentage = 0, clockFormat = 0; };
+struct CrossPointSettings { static constexpr int HIDE_NEVER = 0; int hideBatteryPercentage = 0, clockFormat = 0, statusBarTextSize = 0; };
 CrossPointSettings SETTINGS;
 struct Clock { void formatTime(char* out, size_t, bool) { std::strcpy(out, "12:00"); }
                bool localTime(std::tm&) { return false; } } halClock;
@@ -38,18 +38,19 @@ struct GfxRenderer {
   mutable std::vector<Rect> batteries;
   mutable std::vector<bool> batteryPercents;
   mutable std::vector<Rect> text;
+  mutable std::vector<int> textFonts, batteryFonts;
   mutable std::vector<std::string> textValues;
   void getOrientedViewableTRBL(int* t, int* r, int* b, int* l) const { *t=top; *r=right; *b=bottom; *l=left; }
   int getScreenWidth() const { return width; }
   int getScreenHeight() const { return height; }
-  int getLineHeight(int) const { return 10; }
-  int getTextWidth(int, const char* s) const { return static_cast<int>(std::strlen(s)) * 5; }
+  int getLineHeight(int font) const { return font==UI_12_FONT_ID?25:font==UI_10_FONT_ID?18:10; }
+  int getTextWidth(int font, const char* s) const { return static_cast<int>(std::strlen(s)) * (font==UI_12_FONT_ID?9:font==UI_10_FONT_ID?7:5); }
   void drawRect(int, int, int, int) const {}
   void drawLine(int, int, int, int) const {}
-  void drawText(int, int x, int y, const char* s) const { text.push_back({x,y,getTextWidth(0,s),10}); textValues.emplace_back(s); }
+  void drawText(int font, int x, int y, const char* s) const { text.push_back({x,y,getTextWidth(font,s),getLineHeight(font)}); textValues.emplace_back(s);textFonts.push_back(font); }
   void fillRect(int x, int y, int w, int h, bool) const { fills.push_back({x,y,w,h}); }
 };
-struct Gui { void drawBatteryLeft(GfxRenderer& screen, Rect rect, bool percent) {screen.batteries.push_back(rect);screen.batteryPercents.push_back(percent);} } GUI;
+struct Gui { void drawBatteryLeft(GfxRenderer& screen, Rect rect, bool percent, int font) {screen.batteries.push_back(rect);screen.batteryPercents.push_back(percent);screen.batteryFonts.push_back(font);} } GUI;
 size_t utf8SafeTruncateBuffer(const char*, size_t n) { return n; }
 ''' + source + r'''
 
@@ -105,7 +106,7 @@ int main() {
   // A hidden bar reserves no lane, even for transient titles, and paints nothing.
   ReaderBar hidden; hidden.hidden=true;hidden.progress=0;hidden.slots[0]=ReaderBarItem::BookTitle;
   GfxRenderer blank;
-  assert(readerbars::height(hidden,true)==0);
+  assert(readerbars::height(blank,hidden,true)==0);
   readerbars::draw(blank,hidden,ReaderBarPosition::Top,50,2,4,false,"Book","",true,"Notice");
   assert(blank.fills.empty() && blank.text.empty() && blank.batteries.empty());
   for (auto style : {ReaderBarBatteryStyle::IconAndPercent,ReaderBarBatteryStyle::IconOnly,ReaderBarBatteryStyle::PercentOnly}) {
@@ -133,6 +134,35 @@ int main() {
   assert(group.textValues.size()==3 && group.textValues[0]=="|");
   assert(group.text[1].x==209 && group.text[0].x==240 && group.text[2].x==251);
 
+
+  for(int size:{0,1,2}) for(bool centeredValue:{false,true}) for(int width:{80,480,800})
+  for(bool lower:{false,true}) for(const auto inset:{std::array<int,4>{9,7,3,7},std::array<int,4>{3,7,9,7},
+                                                     std::array<int,4>{7,9,7,3},std::array<int,4>{7,3,7,9}}) {
+    SETTINGS.statusBarTextSize=size;
+    const int font=size==0?SMALL_FONT_ID:size==1?UI_10_FONT_ID:UI_12_FONT_ID;
+    GfxRenderer scaled;scaled.width=width;scaled.height=width==800?480:800;
+    scaled.top=inset[0];scaled.right=inset[1];scaled.bottom=inset[2];scaled.left=inset[3];
+    ReaderBar bar;bar.progress=0;bar.thickness=0;bar.centered=centeredValue;
+    bar.slots[0]=ReaderBarItem::ChapterPages;bar.slots[3]=ReaderBarItem::BookTitle;
+    bar.slots[6]=ReaderBarItem::BookPercent;
+    const int expectedText=size==0?19:std::max(19,scaled.getLineHeight(font)+4);
+    assert(readerbars::height(scaled,bar)==expectedText+3);
+    readerbars::draw(scaled,bar,lower?ReaderBarPosition::Bottom:ReaderBarPosition::Top,42,12,100,false,"A title much too long for its slot","",true);
+    for(size_t i=0;i<scaled.text.size();++i){
+      assert(scaled.textFonts[i]==font);
+      assert(scaled.text[i].x>=0 && scaled.text[i].x+scaled.text[i].width<=width);
+      const int origin=lower?scaled.height-scaled.bottom-readerbars::height(scaled,bar):std::max(0,scaled.top-5);
+      assert(scaled.text[i].y>=origin && scaled.text[i].y+scaled.text[i].height<=origin+expectedText);
+    }
+    GfxRenderer batteryScreen;ReaderBar battery; battery.slots[3]=ReaderBarItem::Battery;
+    battery.batteryStyle=ReaderBarBatteryStyle::IconAndPercent;
+    readerbars::draw(batteryScreen,battery,ReaderBarPosition::Bottom,0,0,0,false,"","",false);
+    assert(batteryScreen.batteryFonts.size()==1 && batteryScreen.batteryFonts[0]==font);
+    ReaderBar progressOnly;progressOnly.progress=0;progressOnly.thickness=0;
+    assert(readerbars::height(scaled,progressOnly)==3);
+    assert(readerbars::height(scaled,progressOnly,true)==expectedText+3);
+  }
+  SETTINGS.statusBarTextSize=0;
   // The viewable insets rotate with the panel, including the short upper inset.
   for (const auto insets : {std::array<int,4>{3,7,9,7}, std::array<int,4>{7,9,7,3},
                             std::array<int,4>{7,3,7,9}}) {

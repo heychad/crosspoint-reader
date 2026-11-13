@@ -37,6 +37,9 @@ run on the device yet.
    Quick Actions menu. Record any accidental page turn or failure to unlock.
    Restore any temporary test bindings afterward.
 
+For bar sizing, select Medium in Reader bar layouts, then restore Small.
+Text should fit, and the same passage should remain visible after reflow.
+
 For the new bar interaction, enable Settings → Controls → Tap to hide reader
 bars. Tap a visible bar to hide it, then tap the same edge to restore it. The
 page and reading position should stay fixed. Turn the option off afterward if

@@ -139,6 +139,7 @@ These are check durations, not coding speed or total development time.
 | November 13 creation-based Date added | 2358 full: 80.49 s; native builder/sorter, controls, imports, and filter/rows passed both sanitizers; real FAT/exFAT timestamps and font layouts passed | 160.48 s; standard X4 Pro, RAM 113140, flash 5678054; initial YAML validation failure corrected |
 | November 13 clock and legacy common-margin imports | 73 affected: 2.83 s; preference staging passed both sanitizers in default, backup, and Page Overlay profiles; source/backup publication passed | 67.64 s; default X4 Pro, RAM 113140, flash 5678098 |
 | November 13 temporary reader-bar hiding | Full run 2359/2360 in 110.46 s; stale XTC menu fixture fixed, then 32 affected passed in 3.18 s. Tap routing and three-profile preference imports passed both sanitizers | 135.32 s; standard X4 Pro, RAM 113140, flash 5678794; test-only fixture correction reused this build |
+| November 13 custom-bar text sizes | Full run 2359/2360 in 108.89 s; progress-thickness assumption corrected in the new fixture, then 91 affected passed in 2.65 s. Expanded geometry and imports passed both sanitizers | 130.85 s; standard X4 Pro, RAM 113140, flash 5679894; final fixture-only matrix reused the firmware build |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
