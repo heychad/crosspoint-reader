@@ -304,6 +304,8 @@ bool FatFile::experimentUnlinkOneSector() {
     stub_directory = ROOT / 'test/completion_journal_real/stubs'
     store_sources = []
     store_includes = []
+    probe_sources = [str(ROOT / 'test/completion_journal_real/CompletionMoveProbeStub.cpp')]
+    lease_sources = [str(lease_stub)]
     if real_move_stores:
         flags.append('-DSDFAT_REAL_MOVE_STORES=1')
         stub_directory = Path(temporary) / 'real-store-stubs'
@@ -325,11 +327,21 @@ bool FatFile::experimentUnlinkOneSector() {
                                    + focused_read + '\n' + persist[write_start:write_end])
         store_sources = [str(focused_persist), str(ROOT / 'src/CrossPointState.cpp'), str(ROOT / 'src/RecentBooksStore.cpp'),
                          str(ROOT / 'src/network/sync/StoredReferenceGuard.cpp')]
-        store_includes = ['-I', str(ROOT / 'src'), '-I', str(ROOT / 'lib/FsHelpers'),
+        # Exercise the transaction identity check and real session ownership,
+        # rather than declaring every moved destination a matching transaction.
+        store_sources += [str(ROOT / 'src/activities/reader' / name) for name in (
+            'CompletionTransaction.cpp', 'CompletionEdit.cpp', 'BookReadingStats.cpp',
+            'GlobalReadingStats.cpp', 'ReadingStatsStore.cpp', 'BookTracking.cpp',
+            'StatsSessionLease.cpp', 'StatsAccessGate.cpp')]
+        probe_sources = []
+        lease_sources = []
+        store_includes = ['-I', str(ROOT / 'src'), '-I', str(ROOT / 'lib/Memory'),
+                          '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'),
+                          '-I', str(ROOT / 'lib/FsHelpers'),
                           '-I', str(ROOT / '.pio/libdeps/x4pro/ArduinoJson/src')]
     command = [os.environ.get('CXX', 'c++'), *flags, *shlex.split(os.environ.get('CXXFLAGS', '')),
                '-include', str(host_compat), '-I', str(stub_directory), *store_includes, '-I', str(ROOT / 'lib/Memory'), '-I', str(ROOT / 'lib/Serialization'), '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'), '-I', str(ROOT / 'src/activities/reader'), '-I', str(ROOT / 'lib/hal'), '-I', str(source),
-               str(real_test_cpp), str(journal_cpp), str(ROOT / 'test/CompletionArchiveInventoryStub.cpp'), str(ROOT / 'test/completion_journal_real/CompletionMoveProbeStub.cpp'), str(ROOT / 'lib/Serialization/MoveReferenceSafeWrite.cpp'), str(ROOT / 'src/activities/reader/CompletionLibraryDirty.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionIntentIO.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionMoveRetirement.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveReferences.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveFile.cpp'), str(ROOT / 'src/activities/reader/CompletionMovePlanIO.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkMove.cpp'), str(ROOT / 'src/activities/reader/StatsSafeReplace.cpp'), str(ROOT / 'src/activities/reader/ReadingStatsUtils.cpp'), str(lease_stub), str(production_lookup), *map(str, cpp_files),
+               str(real_test_cpp), str(journal_cpp), str(ROOT / 'test/CompletionArchiveInventoryStub.cpp'), *probe_sources, str(ROOT / 'lib/Serialization/MoveReferenceSafeWrite.cpp'), str(ROOT / 'src/activities/reader/CompletionLibraryDirty.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionIntentIO.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionMoveRetirement.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveReferences.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveFile.cpp'), str(ROOT / 'src/activities/reader/CompletionMovePlanIO.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkMove.cpp'), str(ROOT / 'src/activities/reader/StatsSafeReplace.cpp'), str(ROOT / 'src/activities/reader/ReadingStatsUtils.cpp'), *lease_sources, str(production_lookup), *map(str, cpp_files),
                '-o', str(executable)]
     command += store_sources
     if snapshot_experiment or transaction_experiment:

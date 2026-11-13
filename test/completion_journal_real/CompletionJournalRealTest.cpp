@@ -14,6 +14,11 @@
 #include <HalStorage.h>
 #include <MoveReferenceSafeWrite.h>
 #include <RecentBooksStore.h>
+#if defined(SDFAT_REAL_MOVE_STORES)
+#include <CompletionTransaction.h>
+#include <ReadingStatsUtils.h>
+#include <StatsSessionLease.h>
+#endif
 #if defined(SDFAT_IMPORT_SNAPSHOT)
 #include <CrossInkImportSnapshot.h>
 #endif
@@ -1344,7 +1349,7 @@ void exfatFailedSyncRetainsMetadata(bool readFault) {
               readFault ? "read" : "write");
 }
 
-void verifyMovedFilesOnRealFilesystem(bool exfat) {
+void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
   namespace cm = readingstats::completionmove;
   namespace dc = readingstats::deferredcompletion;
   Disk disk;
@@ -1389,8 +1394,9 @@ void verifyMovedFilesOnRealFilesystem(bool exfat) {
     cj::Record record{};
     size_t recordSize = 0;
     constexpr uint64_t origin = 0x12345678;
-    assert(cj::encode(directory, book, global, previous, record, recordSize, cj::MOVE_TO_READ | cj::MOVE_FROM_DEFERRED,
-                      source, origin));
+    assert(cj::encode(directory, book, global, previous, record, recordSize,
+                      cj::MOVE_TO_READ | cj::MOVE_FROM_DEFERRED | (removeRecent ? cj::REMOVE_RECENTS : 0), source,
+                      origin));
     dc::Record intent{};
     size_t intentSize = 0;
     dc::Seal seal{};
@@ -1398,6 +1404,17 @@ void verifyMovedFilesOnRealFilesystem(bool exfat) {
     assert(dc::encodeSeal(0, intent, intentSize, seal));
     write("/.completion-deferred/.defer-00", intent.data(), intentSize);
     write("/.completion-deferred/.dseal-00", seal.data(), seal.size());
+#if defined(SDFAT_REAL_MOVE_STORES)
+    {
+      StatsSessionLease reader;
+      assert(reader.acquire() && StatsSessionLease::anyActive());
+      assert(readingstats::setClosedBookCompletionStats(source, true, {}, cj::MOVE_TO_READ) ==
+             readingstats::ClosedCompletionResult::Busy);
+      assert(Storage.lookupPath("/.completion-journal/.completion-00") == HalStorage::PathStatus::Missing);
+      assert(Storage.lookupPath(source) == HalStorage::PathStatus::Present);
+      assert(reader.release() && !StatsSessionLease::anyActive());
+    }
+#endif
     assert(cj::start(record, recordSize) == cj::StartResult::Started);
     assert(cj::replay() == cj::ReplayResult::AppliedUnretired);
     assert(cm::preparePlan(source, target) == cm::PlanResult::Ready);
@@ -1436,11 +1453,24 @@ void verifyMovedFilesOnRealFilesystem(bool exfat) {
       auto entry = recent["books"].to<JsonArray>().add<JsonObject>();
       entry["path"] = source;
       entry["title"] = "Book";
+      entry["author"] = "Writer";
+      entry["coverBmpPath"] = "/.crosspoint/old-cover.bmp";
+      auto other = recent["books"].add<JsonObject>();
+      other["path"] = "/other.epub";
+      other["title"] = "Other";
+      other["author"] = "Else";
       assert(RECENT_BOOKS.fromJson(recent.as<JsonVariantConst>()));
+      APP_STATE.favoriteSleepImagePath = "/favorite.bmp";
+      APP_STATE.readerActivityLoadCount = 7;
       for (const auto& pair :
-           {std::pair{"/.crosspoint/state.json", std::string("{\"openEpubPath\":\"") + source + "\"}"},
-            std::pair{"/.crosspoint/recent.json",
-                      std::string("{\"books\":[{\"path\":\"") + source + "\",\"title\":\"Book\"}]}"}}) {
+           {std::pair{"/.crosspoint/state.json",
+                      std::string("{\"openEpubPath\":\"") + source +
+                          "\",\"favoriteSleepImagePath\":\"/favorite.bmp\",\"readerActivityLoadCount\":7}"},
+            std::pair{
+                "/.crosspoint/recent.json",
+                std::string("{\"books\":[{\"path\":\"") + source +
+                    "\",\"title\":\"Book\",\"author\":\"Writer\",\"coverBmpPath\":\"/.crosspoint/old-cover.bmp\"},"
+                    "{\"path\":\"/other.epub\",\"title\":\"Other\",\"author\":\"Else\"}]}"}}) {
         auto file = Storage.open(pair.first, O_CREAT | O_EXCL | O_WRONLY);
         assert(file && file.write(pair.second.data(), pair.second.size()) == pair.second.size() && file.sync() &&
                file.close());
@@ -1467,7 +1497,14 @@ void verifyMovedFilesOnRealFilesystem(bool exfat) {
       assert(cm::updateMoveReferences() == cm::ReferenceResult::Updated);
       assert(dc::discoverResumable(request, requestSize, requestSlot) == dc::FindResult::Missing);
 #if defined(SDFAT_REAL_MOVE_STORES)
-      assert(APP_STATE.openEpubPath == target && RECENT_BOOKS.getBooks()[0].path == target);
+      assert(APP_STATE.openEpubPath == target);
+      assert(APP_STATE.favoriteSleepImagePath == "/favorite.bmp" && APP_STATE.readerActivityLoadCount == 7);
+      const auto& books = RECENT_BOOKS.getBooks();
+      assert(books.size() == (removeRecent ? 1 : 2));
+      assert(books.back().path == "/other.epub" && books.back().title == "Other" && books.back().author == "Else");
+      if (!removeRecent)
+        assert(books[0].path == target && books[0].title == "Book" && books[0].author == "Writer" &&
+               books[0].coverBmpPath == "/.crosspoint/old-cover.bmp");
       for (const auto& path : {"/.crosspoint/state.json", "/.crosspoint/recent.json"}) {
         auto file = Storage.open(path, O_RDONLY);
         assert(file);
@@ -1475,10 +1512,13 @@ void verifyMovedFilesOnRealFilesystem(bool exfat) {
         std::string bytes(file.fileSize(), '\0');
         assert(file.read(bytes.data(), bytes.size()) == static_cast<int>(bytes.size()) && file.close());
         assert(!deserializeJson(doc, bytes));
-        if (std::string_view(path).ends_with("state.json"))
+        if (std::string_view(path).ends_with("state.json")) {
           assert(doc["openEpubPath"] == target);
-        else
-          assert(doc["books"][0]["path"] == target);
+          assert(doc["favoriteSleepImagePath"] == "/favorite.bmp" && doc["readerActivityLoadCount"] == 7);
+        } else {
+          assert(doc["books"].size() == (removeRecent ? 1 : 2));
+          assert(doc["books"][0]["path"] == (removeRecent ? "/other.epub" : target));
+        }
       }
 #else
       assert(APP_STATE.openEpubPath == target && RECENT_BOOKS.books[0].path == target);
@@ -1500,10 +1540,13 @@ void verifyMovedFilesOnRealFilesystem(bool exfat) {
       assert(file.read(bytes.data(), bytes.size()) == static_cast<int>(bytes.size()) && file.close());
       JsonDocument doc;
       assert(!deserializeJson(doc, bytes));
-      if (std::string_view(path).ends_with("state.json"))
+      if (std::string_view(path).ends_with("state.json")) {
         assert(doc["openEpubPath"] == target);
-      else
-        assert(doc["books"][0]["path"] == target);
+        assert(doc["favoriteSleepImagePath"] == "/favorite.bmp" && doc["readerActivityLoadCount"] == 7);
+      } else {
+        assert(doc["books"].size() == (removeRecent ? 1 : 2));
+        assert(doc["books"][0]["path"] == (removeRecent ? "/other.epub" : target));
+      }
     }
 #endif
   }
@@ -2857,6 +2900,9 @@ int main() {
       }
       if (!failStop) {
         verifyMovedFilesOnRealFilesystem(exfat);
+#if defined(SDFAT_REAL_MOVE_STORES)
+        verifyMovedFilesOnRealFilesystem(exfat, true);
+#endif
         deferredSourceRemount(exfat);
         retiredIntentRecovery(exfat);
         emptyMoveCopies(exfat);

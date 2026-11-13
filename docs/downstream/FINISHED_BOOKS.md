@@ -139,8 +139,8 @@ Home, queue, and lifecycle checks include:
   until saved-path finalization. This test does not exercise the full reference
   coordinator or a physical FAT card.
 
-Remaining B5 work includes coordination with other writers, the complete
-saved-path finalization/recovery flow, and device checks. C6 still needs its
+Remaining B5 work includes validating the ownership boundaries below, the
+complete saved-path finalization/recovery flow, and device checks. C6 still needs its
 enabled prompt/save/move integration checked with that flow. File-scan latency
 and responsiveness also need measurement before enabling automatic moves for
 normal use. Cumulative release review remains required.
@@ -150,3 +150,59 @@ Queue two, mark the first unfinished before leaving its reader, and confirm
 that it stays put while the second moves once. Reopen the moved book and check
 its position, clippings, and bookmarks. Firmware and development artifacts stay
 under `/zDev/`; normal completion output follows the `/read` policy.
+
+## Current ownership audit
+
+The November 12 source audit found these owners and exclusion paths. It did
+not find an independent plugin or file-transfer worker writing book files.
+
+| Owner | Existing exclusion or cleanup |
+| --- | --- |
+| Reader, EPUB metadata, section, and clippings | [Activity replacement](../../src/activities/ActivityManager.cpp) calls `onExit`, destroys the current reader, and destroys stacked activities before Home enters. Destruction matters: `EpubReaderActivity::onExit` alone does not release its EPUB object. Reader exit flushes progress and ends statistics before plugin exit events. |
+| Library index and cover grid | [Library exit](../../src/activities/library/LibraryListActivity.cpp) closes its index and resets the recent grid. Activity replacement removes retained list owners. |
+| Reopen path and Recents in memory | Traced assignments are in boot, reader remember/exit, file-browser rename, library controls, and completion handlers. The coordinator requires the main task and takes a render lock before storage, excluding navigation and render-time remember updates. Persisted completion updates try the store mutex and refuse a conflicting owner. |
+| HTTP uploads, browser plugins, and sync publication | [File Transfer](../../src/activities/network/CrossPointWebServerActivity.cpp) serves requests synchronously in its main loop. [Plugin jobs](../../src/network/CrossPointWebServer.h) execute in the browser; firmware stores their bounded queue. Wi-Fi exit calls `silentRestart` on X4 Pro. Its deep-sleep exception leads to sleep, not Home. A browser job cannot keep executing firmware writes after this session ends. |
+| Catalog and Calibre sessions | Their exit paths disconnect Wi-Fi and request the same silent restart. Their request handlers do not run in a separate firmware worker. |
+| USB raw storage | `ActivityManager::requiresExclusiveStorageLoop` prevents pending activity transitions while the host owns the card. The USB path restarts before returning to ordinary filesystem use. |
+| BLE startup | The separate startup task initializes the page-turner radio. The traced BLE implementation does not open book/cache files or mutate the reopen path or Recents. |
+
+The storage mutex serializes filesystem operations; it does not prove that a
+different owner has released a long-lived file handle. The host lifecycle test
+checks destruction ordering with stand-ins. These source checks still need
+cumulative independent review and live handle/lifecycle validation before
+automatic moves are enabled for normal use. Plugin event outboxes retain the
+historical book paths in their events; they are not live reopen references.
+
+## Coordinator on FAT and exFAT
+
+`StatsCompletionMoveRealStores` now links the production transaction probe,
+statistics readers/codecs, tracking policy, session lease, and statistics access
+gate. It previously replaced the probe with an always-matching result and the
+lease registry with an always-idle result. The native state/Recents owners,
+bounded persistence methods, stored-reference guard, planner, mover, retirement,
+and patched SdFat implementation remain in the same executable.
+
+Both keep-in-Recents and remove-from-Recents policies now execute through the
+coordinator on FAT and exFAT. Checks cover active-reader refusal before journal
+creation, an unresolved Recents temporary file, a stored/memory reopen mismatch,
+Retry, exact destination paths, unrelated book metadata, cover-cache references,
+sleep preferences, journal/request retirement, and verification after remount.
+The enhanced check passed in 34.65 seconds; the unchanged stub-profile journal
+check passed in 28.15 seconds. Initial host-adapter and fixture compile failures
+were corrected before that pass. No firmware inputs changed in this stage.
+
+The harness still uses a single-threaded storage lock, main-task/render stand-ins,
+and an always-stable mutation snapshot. It exercises the real transaction probe
+and lease rules, but does not prove simultaneous-task exclusion or live handle
+release. Archive discovery uses its existing stand-in. Semantic reopening of
+the moved progress, clipping, and bookmark formats remains a separate check.
+
+The full AddressSanitizer/UndefinedBehaviorSanitizer attempt failed on vendor
+SdFat reports: unaligned accesses in `common/FsStructs.h`, null-pointer arithmetic
+in `FatLib/FatFile.cpp`, and signed overflow in `ExFatLib/ExFatName.cpp`.
+All three categories also reproduce in the older stub-profile journal test.
+These findings are retained for handoff triage. No sanitizer category is disabled
+and no driver patch is added by this stage. The AddressSanitizer-only run passed;
+it is not a full sanitizer pass. Logs are `/tmp/x4-full-move-stores-final.log`,
+`/tmp/x4-full-move-stores-asan.log`, `/tmp/x4-full-move-stores-sanitizers.log`,
+and `/tmp/x4-move-stub-baseline-ubsan.log`.
