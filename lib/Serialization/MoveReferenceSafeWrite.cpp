@@ -138,8 +138,7 @@ bool recoverSleepLocked(void* raw) {
   auto validate = *static_cast<bool (**)(const char*)>(raw);
   using Status = HalStorage::PathStatus;
   if (Storage.lookupPath("/.crosspoint/state.json.tmp") != Status::Missing ||
-      Storage.lookupPath("/.crosspoint/state.json.bak") != Status::Missing ||
-      Storage.lookupPath("/.completion-journal") != Status::Missing)
+      Storage.lookupPath("/.crosspoint/state.json.bak") != Status::Missing)
     return false;
   auto primary = Storage.lookupPath(STATE_PRIMARY);
   auto backup = Storage.lookupPath(SLEEP_BACKUP);

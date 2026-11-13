@@ -83,6 +83,41 @@ Both X4 Pro builds passed: standard in 125.21 seconds (113,140 static RAM bytes;
 static RAM bytes; 5,761,862 flash bytes). The older footprint above records
 the preceding queue stage. This remains host/build evidence, not a device result.
 
+## Sleep-state Retry after retirement
+
+A completed transaction retains its journal directory and retirement receipts.
+The directory alone therefore cannot block Home's sleep-state Retry. That
+operation now uses the existing statistics access gate under the recursive
+storage lock, holding it through artifact recovery and the following state
+save. Empty and prepared-only journals allow the retry. Active, conflicting,
+damaged, or unavailable journals refuse it. State artifacts belonging to a
+book move still block sleep recovery independently.
+
+The state owner is the only firmware caller of `recoverSleepPreferences` and
+now owns this journal policy; the lower writer retains its artifact and chain
+checks. The existing gate temporarily allocates up to three checked 1,642-byte
+journal buffers. They are released before recovery parses or serializes state.
+It adds no retained buffer, worker, or persistent format. Runtime scan latency
+and heap behavior remain unmeasured on the device.
+
+The native state/Recents integration harness now runs with Page Overlay off
+and on. The enabled run uses the real access gate with controlled scanner
+results, checking every journal outcome, failed lookup/lock/allocation, exact
+artifact preservation, successful archive/resave, and move-artifact refusal.
+The existing journal suite separately executes actual replay and retirement;
+it verifies that ordinary access resumes while the receipts remain. This is
+complementary host evidence, not a physical-card or complete coordinator test.
+The 206 affected checks passed in 28.87 seconds, and both native harness
+configurations passed AddressSanitizer and UndefinedBehaviorSanitizer.
+The automatic-completion X4 Pro build passed in 71.48 seconds, using 113,068
+static RAM bytes and 5,761,858 flash bytes. The firmware changes are confined
+to the Page Overlay gate; the standard-profile build was not repeated.
+
+At device validation, use a backed-up disposable book, finish its completion
+transaction, and confirm that a later sleep-state warning's Retry can save
+the current preferences while the retired journal remains. Do not create
+corrupt state on the reading card to force this case.
+
 ## Host evidence and limits
 
 The initial focused run passed 351 checks in 91.13 seconds. After the new queue

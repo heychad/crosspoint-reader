@@ -87,8 +87,9 @@ int main() {
  assert(!movereference::recoverSleepPreferences(validState));
  assert(Storage.exists(primary) && Storage.exists(sleepTemp));
  Storage.reset(); put(primary,"{}"); put(sleepTemp,"partial"); Storage.mkdir("/.completion-journal");
- assert(!movereference::recoverSleepPreferences(validState));
- assert(Storage.exists(primary) && Storage.exists(sleepTemp));
+ // The state owner checks journal policy while holding the storage lock.
+ assert(movereference::recoverSleepPreferences(validState));
+ assert(Storage.exists(primary) && !Storage.exists(sleepTemp) && Storage.exists("/.completion-journal"));
  Storage.reset(); put(sleepBackup,"not-json"); put(sleepTemp,"partial");
  assert(!movereference::recoverSleepPreferences(validState));
  assert(!Storage.exists(primary) && Storage.exists(sleepBackup) && Storage.exists(sleepTemp));

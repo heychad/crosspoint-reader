@@ -11,6 +11,8 @@ bool write(const char* path, const char* bytes, size_t size, bool finishPublishe
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
 bool writeSleepPreferences(const char* bytes, size_t size);
 // Preserves each interrupted sleep-write artifact in a numbered archive.
+// Caller holds the recursive storage lock and excludes active completion
+// transactions through recovery and the following state save.
 bool recoverSleepPreferences(bool (*isValidState)(const char*));
 #endif
 }  // namespace movereference

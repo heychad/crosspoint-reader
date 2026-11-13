@@ -5,6 +5,7 @@
 
 #include <utility>
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
+#include "activities/reader/StatsAccessGate.h"
 #include "activities/reader/StatsSaveNotice.h"
 #endif
 
@@ -73,17 +74,18 @@ bool CrossPointState::updateSleepFolderForPageOverlay(const std::string& path) {
 
 bool CrossPointState::recoverSleepStateForPageOverlay() {
   std::lock_guard<std::mutex> lock(storeMutex);
-  if (Storage.lookupPath("/.completion-journal") != HalStorage::PathStatus::Missing) {
-    stateSaveNotice().recordFailure();
-    return false;
-  }
-  // A failed write may leave no artifacts. The checked writer can retry it,
-  // but still refuses unresolved artifacts or an unreadable primary.
-  movereference::recoverSleepPreferences([](const char* path) {
-    JsonDocument doc;
-    return PersistableStoreBase::readDocFromFile(path, doc, 65536) && doc.is<JsonObject>();
-  });
-  const bool saved = saveSleepPreferencesLocked();
+  const bool saved = Storage.withStorageLock(
+      [](void* raw) {
+        if (!readingstats::normalStatsAllowed()) return false;
+        // A failed write may leave no artifacts. The writer still refuses
+        // unresolved artifacts or an unreadable primary before resaving.
+        movereference::recoverSleepPreferences([](const char* path) {
+          JsonDocument doc;
+          return PersistableStoreBase::readDocFromFile(path, doc, 65536) && doc.is<JsonObject>();
+        });
+        return static_cast<CrossPointState*>(raw)->saveSleepPreferencesLocked();
+      },
+      this);
   if (!saved) stateSaveNotice().recordFailure();
   return saved;
 }

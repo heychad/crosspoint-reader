@@ -21,13 +21,19 @@ namespace movereference { bool recoverSleepPreferences(bool (*)(const char*)){re
 struct MockStorage {
  std::map<std::string,std::string> files;
  bool lookupFailure=false, writeFailure=false;
- int directWrites=0, checkedWrites=0;
+ int directWrites=0, checkedWrites=0, lockDepth=0;
  HalStorage::PathStatus lookupPath(const char* path) {
    if (lookupFailure) return HalStorage::PathStatus::Failed;
    return files.count(path) ? HalStorage::PathStatus::Present : HalStorage::PathStatus::Missing;
  }
- bool withStorageLock(bool (*fn)(void*),void* arg) {return fn(arg);}
+ bool withStorageLock(bool (*fn)(void*),void* arg) {++lockDepth;bool result=fn(arg);--lockDepth;return result;}
 } Storage;
+namespace readingstats {
+ bool normalStatsAllowed() {
+   assert(Storage.lockDepth>0);
+   return Storage.lookupPath("/.completion-journal")==HalStorage::PathStatus::Missing;
+ }
+}
 struct PersistableStoreBase {
  static bool writeDocToFile(const char* path,const JsonDocument& doc) {
    ++Storage.directWrites;std::string result; serializeJson(doc,result); Storage.files[path]=result; return true;
