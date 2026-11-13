@@ -74,10 +74,16 @@ uint16_t LibraryIndexFile::ordinalForRow(const SortOrder order, const uint16_t r
     case SortOrder::TitleDesc:
       return static_cast<uint16_t>(head.bookCount - 1 - row);
     case SortOrder::AuthorAsc:
-    case SortOrder::AuthorDesc: {
-      const uint16_t k = order == SortOrder::AuthorAsc ? row : static_cast<uint16_t>(head.bookCount - 1 - row);
+    case SortOrder::AuthorDesc:
+    case SortOrder::AuthorFirstAsc:
+    case SortOrder::AuthorFirstDesc: {
+      const bool firstName = order == SortOrder::AuthorFirstAsc || order == SortOrder::AuthorFirstDesc;
+      if (firstName && head.formatVersion != CLIX_FORMAT_VERSION) return NONE;
+      const bool ascending = order == SortOrder::AuthorAsc || order == SortOrder::AuthorFirstAsc;
+      const uint16_t k = ascending ? row : static_cast<uint16_t>(head.bookCount - 1 - row);
       uint16_t ordinal = NONE;
-      return readAt(authorOrderOffset(head, k), &ordinal, sizeof(ordinal)) && ordinal < head.bookCount ? ordinal : NONE;
+      const uint32_t offset = firstName ? firstNameOrderOffset(head, k) : authorOrderOffset(head, k);
+      return readAt(offset, &ordinal, sizeof(ordinal)) && ordinal < head.bookCount ? ordinal : NONE;
     }
     case SortOrder::RecentAsc:
     case SortOrder::RecentDesc: {
@@ -92,7 +98,7 @@ uint16_t LibraryIndexFile::ordinalForRow(const SortOrder order, const uint16_t r
     case SortOrder::SeriesDesc:
     case SortOrder::GenreAsc:
     case SortOrder::GenreDesc: {
-      if (head.formatVersion != CLIX_FORMAT_VERSION) return NONE;
+      if (head.formatVersion == CLIX_LEGACY_FORMAT_VERSION) return NONE;
       const bool series = order == SortOrder::SeriesAsc || order == SortOrder::SeriesDesc;
       const bool ascending = order == SortOrder::SeriesAsc || order == SortOrder::GenreAsc;
       const uint16_t k = ascending ? row : static_cast<uint16_t>(head.bookCount - 1 - row);
@@ -258,19 +264,19 @@ bool LibraryIndexFile::readSourceAuthor(const ClixRecord& record, std::string& o
 bool LibraryIndexFile::readSeries(const ClixRecord& record, std::string& out) {
   out.clear();
   if (!opened) return false;
-  return head.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION || readBlobField(record, 3, out);
+  return head.formatVersion == CLIX_LEGACY_FORMAT_VERSION || readBlobField(record, 3, out);
 }
 
 bool LibraryIndexFile::readGenre(const ClixRecord& record, std::string& out) {
   out.clear();
   if (!opened) return false;
-  return head.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION || readBlobField(record, 4, out);
+  return head.formatVersion == CLIX_LEGACY_FORMAT_VERSION || readBlobField(record, 4, out);
 }
 
 bool LibraryIndexFile::readSeriesPosition(const ClixRecord& record, uint32_t& out) {
   out = CLIX_UNKNOWN_SERIES_POSITION;
   if (!opened) return false;
-  if (head.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION) return true;
+  if (head.formatVersion == CLIX_LEGACY_FORMAT_VERSION) return true;
   uint32_t offset = 0;
   uint8_t length = 0;
   if (!locateBlobField(record, 4, offset, length) || sizeof(out) > head.nameLen - offset - length) return false;

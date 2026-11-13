@@ -11,7 +11,7 @@
 //   header        64 bytes of struct, padded to 512
 //   folders       F variable-length records; the id of a folder IS its ordinal
 //   records       N x exactly 128 bytes, in folded-title order
-//   permutations  authorOrder[N] then arrivalOrder[N], both u16
+//   permutations  author, arrival, series, genre, first-name orders; each N x u16
 //   names         path hash, filename, display author, title, and source author blobs
 //
 // The fixed 128-byte record stride is the load-bearing choice: record k lives at
@@ -26,9 +26,10 @@
 namespace library {
 
 inline constexpr char CLIX_MAGIC[4] = {'C', 'L', 'X', '1'};
-// Version 2 is read only during reconciliation so rebuilding preserves arrivals.
-inline constexpr uint8_t CLIX_FORMAT_VERSION = 3;
-inline constexpr uint8_t CLIX_PREVIOUS_FORMAT_VERSION = 2;
+// Older layouts are read only during reconciliation to preserve arrival history.
+inline constexpr uint8_t CLIX_FORMAT_VERSION = 4;
+inline constexpr uint8_t CLIX_PREVIOUS_FORMAT_VERSION = 3;
+inline constexpr uint8_t CLIX_LEGACY_FORMAT_VERSION = 2;
 inline constexpr uint32_t CLIX_UNKNOWN_SERIES_POSITION = 0xFFFFFFFFu;
 
 // Bump when the fold or a permutation's sort key changes.
@@ -126,7 +127,9 @@ inline void layoutSections(ClixHeader& h, const uint32_t folderBytes, const uint
   h.folderLen = folderBytes;
   h.recordStart = alignUp(h.folderStart + folderBytes);
   h.permStart = alignUp(h.recordStart + static_cast<uint32_t>(h.bookCount) * sizeof(ClixRecord));
-  const uint32_t permutations = h.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION ? 2u : 4u;
+  const uint32_t permutations = h.formatVersion == CLIX_LEGACY_FORMAT_VERSION     ? 2u
+                                : h.formatVersion == CLIX_PREVIOUS_FORMAT_VERSION ? 4u
+                                                                                  : 5u;
   h.nameStart = alignUp(h.permStart + static_cast<uint32_t>(h.bookCount) * permutations * sizeof(uint16_t));
   h.nameLen = nameBytes;
   h.selfSize = h.nameStart + nameBytes;
@@ -146,6 +149,9 @@ inline uint32_t seriesOrderOffset(const ClixHeader& h, const uint16_t k) {
 }
 inline uint32_t genreOrderOffset(const ClixHeader& h, const uint16_t k) {
   return h.permStart + (static_cast<uint32_t>(h.bookCount) * 3u + k) * sizeof(uint16_t);
+}
+inline uint32_t firstNameOrderOffset(const ClixHeader& h, const uint16_t k) {
+  return h.permStart + (static_cast<uint32_t>(h.bookCount) * 4u + k) * sizeof(uint16_t);
 }
 
 // Why a loaded index was rejected. Reported rather than swallowed so a rebuild
@@ -168,7 +174,8 @@ inline ClixValidity validateHeaderStructure(const ClixHeader& h, const uint64_t 
   for (size_t i = 0; i < sizeof(CLIX_MAGIC); i++) {
     if (h.magic[i] != CLIX_MAGIC[i]) return ClixValidity::BadMagic;
   }
-  if (h.formatVersion != CLIX_FORMAT_VERSION && h.formatVersion != CLIX_PREVIOUS_FORMAT_VERSION)
+  if (h.formatVersion != CLIX_FORMAT_VERSION && h.formatVersion != CLIX_PREVIOUS_FORMAT_VERSION &&
+      h.formatVersion != CLIX_LEGACY_FORMAT_VERSION)
     return ClixValidity::UnknownFormatVersion;
   if (h.bookCount > CLIX_MAX_RECORDS) return ClixValidity::CountOutOfRange;
   if (h.metadataEnabled > 1) return ClixValidity::SectionsInconsistent;

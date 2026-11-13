@@ -95,6 +95,10 @@ on import. The native Recent tab combines newly arrived books with a pinned
 reading-history overlay; it is not either RC2 list. G3 stays partial until these
 semantics and the compatibility boundaries below are resolved.
 
+The first-name index order is now built and checked, including version 2/3
+reconciliation and full-name comparisons. Its UI selection and import remain
+part of the next view update; see [index details](LIBRARY_METADATA.md).
+
 The two settings occupy two bytes before enclosing-structure padding. There is
 no new task, retained buffer, index version, or reading-state write. The two JSON
 members share the existing 32 KiB settings limit and overflow checks. Runtime

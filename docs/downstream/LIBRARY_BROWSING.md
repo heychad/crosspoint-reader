@@ -31,7 +31,7 @@ default.
 ## State and resources
 
 The eight browsing preferences use the existing bounded settings serializer.
-Series and genre browsing upgrades the Library index to version 3; see
+The current author-ordering work upgrades the derived Library index to version 4; see
 [index migration](LIBRARY_METADATA.md). Active search or format/completion filtering uses
 the existing array of at most 4096 16-bit row positions, requiring at most
 8 KiB. The ordinary unfiltered view allocates no row-position array. Ten

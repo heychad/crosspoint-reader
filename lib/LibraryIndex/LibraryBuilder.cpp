@@ -605,7 +605,7 @@ uint32_t blobBytesFor(const StagedEntry& entry, const StagedEntry& canonical) {
          entry.authorLen + 1u + entry.seriesLen + 1u + entry.genreLen + sizeof(entry.seriesPosition);
 }
 
-enum class MetadataField { Series, Genre };
+enum class MetadataField { Series, Genre, AuthorFirst };
 
 struct MetadataOrderContext {
   HalFile& stage;
@@ -627,8 +627,23 @@ bool loadMetadataKey(void* context, const uint16_t source, const size_t offset, 
   auto& state = *static_cast<MetadataOrderContext*>(context);
   const bool series = state.field == MetadataField::Series;
   const uint64_t base = static_cast<uint64_t>(source) * STAGE_STRIDE;
-  const size_t lengthOffset = series ? offsetof(StagedEntry, seriesLen) : offsetof(StagedEntry, genreLen);
-  const size_t textOffset = series ? offsetof(StagedEntry, series) : offsetof(StagedEntry, genre);
+  size_t lengthOffset = 0;
+  size_t textOffset = 0;
+  switch (state.field) {
+    case MetadataField::Series:
+      lengthOffset = offsetof(StagedEntry, seriesLen);
+      textOffset = offsetof(StagedEntry, series);
+      break;
+    case MetadataField::Genre:
+      lengthOffset = offsetof(StagedEntry, genreLen);
+      textOffset = offsetof(StagedEntry, genre);
+      break;
+    case MetadataField::AuthorFirst:
+      lengthOffset = offsetof(StagedEntry, authorLen);
+      textOffset = offsetof(StagedEntry, author);
+      break;
+  }
+  static_assert(STAGE_AUTHOR_BYTES == STAGE_METADATA_BYTES);
   uint8_t length = 0;
   if (!state.read(base + lengthOffset, &length, sizeof(length)) || length > STAGE_METADATA_BYTES) return false;
   state.text.resize(length);
@@ -654,7 +669,7 @@ bool loadMetadataKey(void* context, const uint16_t source, const size_t offset, 
 }
 
 bool writeMetadataOrder(HalFile& stage, serialization::BufferedFileWriter& output, const uint16_t* order,
-                        const uint16_t count, const MetadataField field) {
+                        const uint16_t count, const MetadataField field, const uint16_t* canonicalFrom = nullptr) {
   MetadataOrderContext context{stage, output, field, {}, {}, 0};
   context.text.reserve(STAGE_METADATA_BYTES);
   context.key.reserve(STAGE_METADATA_BYTES * 4u + 5u);
@@ -668,7 +683,7 @@ bool writeMetadataOrder(HalFile& stage, serialization::BufferedFileWriter& outpu
   for (uint16_t ordinal = 0; ordinal < count; ordinal++) {
     SortEntry entry{};
     entry.ordinal = ordinal;
-    entry.source = order[ordinal];
+    entry.source = order[canonicalFrom ? canonicalFrom[ordinal] : ordinal];
     size_t valueBytes = 0;
     if (!loadMetadataKey(&context, entry.source, 0, entry.key, valueBytes) || !sorter.add(entry)) return false;
   }
@@ -1113,7 +1128,8 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
   spellingScratch.reset();
   arrivalOrder.reset();
   if (!writeMetadataOrder(stage, outBuffer, order, n, MetadataField::Series) ||
-      !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::Genre)) {
+      !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::Genre) ||
+      !writeMetadataOrder(stage, outBuffer, order, n, MetadataField::AuthorFirst, canonicalFrom.get())) {
     ioFailed = true;
   }
   padTo(header.nameStart);

@@ -133,6 +133,7 @@ These are check durations, not coding speed or total development time.
 | November 12 prompt-to-move integration | Full 2,350-test suite: 126.77 s; final native prompt/default and daily profiles: 46.15/47.05 s; AddressSanitizer passed | Nine-flag automation profile: 85.52 s; default firmware inputs unchanged since the checksum build |
 | November 12 older preference names and Library rows | 112 affected: 2.54 s; Preferences/Library staging passed AddressSanitizer and UndefinedBehaviorSanitizer | 70.12 s; default X4 Pro; nine-flag profile not repeated for these flag-independent mappings |
 | November 12 Library view persistence and exact sort imports | 205 affected: 3.92 s; staging and view-change paths passed both sanitizers; older tab-lock fixture updated | 106.43 s; no experimental-only path changed |
+| November 12 first-name index order | 2353 full: 92.69 s; 37 native builder/sorter cases passed both sanitizers | 85.32 s; UI selection remains a separate step |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
