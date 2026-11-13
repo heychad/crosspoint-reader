@@ -3,8 +3,9 @@
 B5 and C6 remain experimental. Marking, the near-end prompt, completion
 statistics, Recents policy, and deferred EPUB moves have separate gates. Host
 evidence covers queue behavior, reference finalization, and moved saved-state
-readers. The live-reader-to-Home path, cumulative review, and device validation
-still prevent installation readiness.
+readers, plus actual ReaderStats completion through deferred execution. The
+prompt wiring, cumulative review, and device validation still prevent installation
+readiness.
 
 ## Current flow
 
@@ -140,9 +141,10 @@ Home, queue, and lifecycle checks include:
   until saved-path finalization. This test does not exercise the full reference
   coordinator or a physical FAT card.
 
-Remaining B5 work includes validating the ownership boundaries below, the
-complete saved-path finalization/recovery flow, and device checks. C6 still needs its
-enabled prompt/save/move integration checked with that flow. File-scan latency
+The live ReaderStats/executor and native saved-path finalization checks now
+pass. Remaining B5 work includes cumulative review, retained recovery findings,
+and device checks of the ownership boundaries below. C6 still needs its
+enabled prompt/save/move wiring checked with that flow. File-scan latency
 and responsiveness also need measurement before enabling automatic moves for
 normal use. Cumulative release review remains required.
 
@@ -311,3 +313,7 @@ the failure to `FatFile::makeUniqueSfn`. The original EPUB, bookmarks, staging
 copy, and journal remained present. The fixture now advances its clock on each
 read and adds simulated reading intervals to that clock. No firmware or vendor
 code changed. This fixture failure does not establish a device regression.
+
+The new daily-enabled live fixture also passes AddressSanitizer. The earlier
+vendor UndefinedBehaviorSanitizer findings remain open; this is not a full
+sanitizer pass. Log: `/tmp/x4-live-completion-asan.log`.

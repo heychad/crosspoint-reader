@@ -128,7 +128,7 @@ These are check durations, not coding speed or total development time.
 | November 12 native move coordinator | FAT/exFAT, both Recents policies, real transaction probe and lease: 34.65 s; original journal profile: 28.15 s; AddressSanitizer passed; vendor UBSan findings reproduce in the older profile | Not repeated: tests and documentation only |
 | November 12 moved bookmark/progress readers | 96 affected: 35.34 s; final native reader check: 36.10 s; four binary bookmark versions and all three progress lengths; AddressSanitizer passed | 67.41 s; automatic-completion profile: 67.71 s |
 | November 12 native bookmarks, clippings, and Saved Items | 47 affected: 38.79 s; production save/load and per-book discovery, post-move edits, opaque sidecars; AddressSanitizer passed | Not repeated: tests and documentation only |
-| November 12 live-reader completion | FAT/exFAT, both Recents policies, undo, recovery, exact reading totals, and saved-state reopen: 42.52 s; daily profile: 43.13 s | Not repeated: tests and documentation only |
+| November 12 live-reader completion | FAT/exFAT, both Recents policies, undo, recovery, exact reading totals, and saved-state reopen: 42.52 s; daily profile: 43.13 s; AddressSanitizer passed | Not repeated: tests and documentation only |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
