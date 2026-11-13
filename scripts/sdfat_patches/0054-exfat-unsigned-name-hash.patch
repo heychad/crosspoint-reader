@@ -1,0 +1,22 @@
+--- a/src/ExFatLib/ExFatName.cpp
++++ b/src/ExFatLib/ExFatName.cpp
+@@ -32,15 +32,15 @@
+ //------------------------------------------------------------------------------
+ inline uint16_t exFatHash(char c, uint16_t hash) {
+   uint8_t u = toUpper(c);
+-  hash = ((hash << 15) | (hash >> 1)) + u;
+-  hash = ((hash << 15) | (hash >> 1));
++  hash = ((uint32_t{hash} << 15) | (hash >> 1)) + u;
++  hash = ((uint32_t{hash} << 15) | (hash >> 1));
+   return hash;
+ }
+ //------------------------------------------------------------------------------
+ inline uint16_t exFatHash(uint16_t u, uint16_t hash) {
+   uint16_t c = toUpcase(u);
+-  hash = ((hash << 15) | (hash >> 1)) + (c & 0XFF);
+-  hash = ((hash << 15) | (hash >> 1)) + (c >> 8);
++  hash = ((uint32_t{hash} << 15) | (hash >> 1)) + (c & 0XFF);
++  hash = ((uint32_t{hash} << 15) | (hash >> 1)) + (c >> 8);
+   return hash;
+ }
+ //------------------------------------------------------------------------------

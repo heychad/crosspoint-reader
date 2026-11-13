@@ -261,6 +261,7 @@ add_test(NAME MetadataCheckedLookup COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURREN
 if(EXISTS "${REPO_ROOT}/.pio/libdeps/x4pro/SdFat/src/FatLib/FatFileLFN.cpp")
   add_test(NAME PerBookAtomicReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/storage_fence_integration/test_perbook_atomic_real.py)
   add_test(NAME StateSleepReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/storage_fence_integration/test_state_sleep_real.py)
+  add_test(NAME SdFatDefinedArithmetic COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sdfat_defined_arithmetic.py)
   if(APPLE)
     add_test(NAME UploadCreateOnlyReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/storage_fence_integration/test_upload_create_only_real.py)
     add_test(NAME LegacyBookmarkEditReal COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_legacy_bookmark_edit_real.py)

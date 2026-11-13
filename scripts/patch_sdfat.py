@@ -4,7 +4,8 @@ PlatformIO post: script: apply CrossPoint's SdFat patches via `git apply`.
 The patches in `scripts/sdfat_patches/` make USE_SEPARATE_FAT_CACHE
 overridable, invalidate the sector cache after a failed read, and write the
 FAT cache before the data cache on sync, preserve exFAT file metadata after a failed sync while the handle remains open, preserve LFN lookup read errors, and
-provide scoped FAT and exFAT directory checks (see the patches). They target
+provide scoped FAT and exFAT directory checks, avoid null-pointer arithmetic in
+cached FAT reads, and use unsigned exFAT name-hash arithmetic. They target
 SdFat 2.3.1 only.
 
 Unlike JPEGDEC, SdFat is a registry dependency of the SDK, so the script
@@ -56,7 +57,10 @@ PATCHES = (
      "2f78988a33c5c3a828a287b239847db1d313882e1f5fc8fed21d94890dec24b3"),
     ("0017-fat-source-bounded-chain.patch", "src/FatLib/FatFile.cpp",
      "c1757a57ea134df2aab650d2db109b7d731f66cf309e5a070a9b50667c258948",
-     "6e22cddac127b6fd0acdebb1c4a7e5bb48f24d57d855f0bc1345fc0246aba2f6"),
+     "7c09e58a72ee9472f72ea15d36164e243813f17407443fc73e886f0a3b72e7ce"),
+    ("0054-exfat-unsigned-name-hash.patch", "src/ExFatLib/ExFatName.cpp",
+     "65b68473f51e97820fa6fd477addc14c247810902e3b77b5a4fe69849a6988a8",
+     "413552937ce1806b04177bc12c25d9e54a1a1da7cf2ba49615a25914cd3f99d9"),
     ("0026-fat-partition-strict-eoc.patch", "src/FatLib/FatPartition.cpp",
      "36163b3dc4ee985da9a6c6fb99b635fb5b63255d35fa5b3ccc1778db1534c0fe",
      "07f1656abc18b97cceb66913eac49212d354a4858c9e7d1450333431686d70ab"),
@@ -68,6 +72,8 @@ MIGRATIONS = {
             "0025-fat-partition-header-strict-eoc.patch",
     },
     "src/FatLib/FatFile.cpp": {
+        "6e22cddac127b6fd0acdebb1c4a7e5bb48f24d57d855f0bc1345fc0246aba2f6":
+            "0053-fat-cached-read-null-pointer.patch",
         "a3eced090c0a4f5dfb370bf6056a7f52d1b46940b5103102569443b3da225c51":
             "0051-fat-move-larger-chain.patch",
         "8384806cf747bf68ae5268863830c99dadb2b562dd02fe5973a3a03022030c0f":

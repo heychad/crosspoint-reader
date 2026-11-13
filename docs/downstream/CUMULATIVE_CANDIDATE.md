@@ -168,15 +168,34 @@ flash 5804870). Logs use `/tmp/x4-review-storage-*.log` and
 explicit requested-byte verification after successful changed-value retries.
 No post-correction full-suite or second-review pass is claimed.
 
-The embedded review also triaged retained vendor reports. X4 Pro selects the
-bytewise little-endian helper path, so the Mac's alignment reports do not follow
-that target configuration. Null-pointer arithmetic in `FatFile.cpp:871` and
-signed overflow in `ExFatName.cpp:42–44` remain target-reachable C++ undefined
-behavior; physical consequences are unproven. No category is suppressed.
-A failed exclusive writable open can also poison the mutation fence until
-restart. These storage issues need resolution or an explicit supported recovery
-boundary before handoff. Slow-card synchronous hashes and runtime headroom need
-measurement; the review does not establish a measured watchdog failure.
+The retained vendor reports now have pinned fixes. Cached FAT directory reads
+no longer advance their null copy destination; exFAT name hashing uses unsigned
+intermediates with the same 16-bit results. Both defects reproduce under
+ASan/UBSan before the patches. Afterward, 40 real FAT long-name files survive
+lookup/iteration and remount, and both hash overloads match an independent
+rotate/add calculation for all 65,536 seeds with ASCII and Unicode inputs.
+All 32 upstream/cache migration paths pass. The SDK revision and file formats
+are unchanged. Mac tests select X4 Pro's bytewise little-endian helper path;
+they do not disable any sanitizer category. Logs use `/tmp/x4-sdfat-*.log`.
+
+Create-only uploads now recheck the path and perform their exclusive open under
+one HAL storage lock. A known collision avoids the failed writable open that
+would poison checksum/inventory retries. Actual read failures still invalidate
+the fence; no health flag is reset. The real FAT/exFAT regression fails before
+the change and passes under both sanitizers afterward, preserving competitor
+files, explicit-overwrite staging, and reading state after remount. Existing
+HAL writer-lifetime checks also pass. The callback borrows the caller's path and
+file references on the stack. Its checked lookup's temporary path copy is
+released before returning; allocation failure stops before file creation.
+Logs use `/tmp/x4-upload-fence-*.log`.
+
+The per-book and routine-state real-filesystem failure suites now also pass
+both sanitizers with the vendor fixes. Slow-card synchronous hashes and runtime
+headroom still need measurement; no measured watchdog failure is established.
+The default X4 Pro build passes in 74.44 seconds (RAM 113068, flash 5698134);
+the twelve-flag build passes in 77.03 seconds (RAM 113100, flash 5804922).
+FAT, exFAT, and wrapper lookup suites also pass both sanitizers on the target's
+bytewise helper path. The full cumulative suite and second review remain open.
 
 ## Review and remaining gates
 
@@ -189,7 +208,7 @@ owns fixes and verification; source stays frozen during review.
 - [x] Complete cumulative host checks for the round-one frozen source and record the terminal result.
 - [ ] Revalidate the final correction set before device handoff.
 - [ ] Complete all four review axes and resolve material findings.
-- [ ] Triage retained vendor UBSan findings against the target and affected paths.
+- [x] Reproduce and correct retained vendor UBSan findings and benign upload-collision retry fencing, with target-path sanitizer checks.
 - [ ] Stamp a unique test version and record a reproducible candidate profile.
 - [ ] Measure runtime internal/PSRAM free bytes, largest blocks, and stack.
 - [ ] Package source, exact configuration, hashes, rollback, and the short QA plan.

@@ -1783,9 +1783,20 @@ static String uploadWritePath(const CrossPointWebServer::UploadState& state) {
 
 static bool openUploadFile(const String& path, const bool replacing, HalFile& file) {
   if (replacing) return Storage.openFileForWrite("WEB", path.c_str(), file);
-  // Another writer may create the destination after the collision check.
-  file = Storage.openChecked(path.c_str(), O_RDWR | O_CREAT | O_EXCL);
-  return static_cast<bool>(file);
+  struct Context {
+    const String& path;
+    HalFile& file;
+  } context{path, file};
+  // A known collision must not attempt a writable open and poison retries.
+  // Keep lookup and exclusive creation under the same HAL storage lock.
+  return Storage.withStorageLock(
+      [](void* raw) {
+        auto& c = *static_cast<Context*>(raw);
+        if (Storage.lookupPath(c.path.c_str()) != HalStorage::PathStatus::Missing) return false;
+        c.file = Storage.openChecked(c.path.c_str(), O_RDWR | O_CREAT | O_EXCL);
+        return static_cast<bool>(c.file);
+      },
+      &context);
 }
 
 // Drop a partially written upload so a truncated book never lands in the library.

@@ -1,5 +1,14 @@
 --- a/src/FatLib/FatFile.cpp
 +++ b/src/FatLib/FatFile.cpp
+@@ -868,7 +868,7 @@
+         goto fail;
+       }
+     }
+-    dst += n;
++    if (dst != nullptr) dst += n;
+     m_curPosition += n;
+     toRead -= n;
+   }
 @@ -1520,3 +1520,25 @@
    bool strictEoc = false;
    return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;

@@ -1,5 +1,14 @@
 --- a/src/FatLib/FatFile.cpp
 +++ b/src/FatLib/FatFile.cpp
+@@ -868,7 +868,7 @@
+         goto fail;
+       }
+     }
+-    dst += n;
++    if (dst != nullptr) dst += n;
+     m_curPosition += n;
+     toRead -= n;
+   }
 @@ -1522,12 +1522,12 @@
  }
  
