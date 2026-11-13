@@ -195,7 +195,8 @@ The harness still uses a single-threaded storage lock, main-task/render stand-in
 and an always-stable mutation snapshot. It exercises the real transaction probe
 and lease rules, but does not prove simultaneous-task exclusion or live handle
 release. Archive discovery uses its existing stand-in. Semantic reopening of
-the moved progress, clipping, and bookmark formats remains a separate check.
+moved native JSON bookmarks and clippings remains a separate check; progress
+and CrossInk binary bookmarks are covered below.
 
 The full AddressSanitizer/UndefinedBehaviorSanitizer attempt failed on vendor
 SdFat reports: unaligned accesses in `common/FsStructs.h`, null-pointer arithmetic
@@ -206,3 +207,41 @@ and no driver patch is added by this stage. The AddressSanitizer-only run passed
 it is not a full sanitizer pass. Logs are `/tmp/x4-full-move-stores-final.log`,
 `/tmp/x4-full-move-stores-asan.log`, `/tmp/x4-full-move-stores-sanitizers.log`,
 and `/tmp/x4-move-stub-baseline-ubsan.log`.
+
+## Moved progress and CrossInk bookmarks
+
+The planner now refuses `.bookmark-edit.bak` and `.bookmark-edit.guard` beside
+source or destination bookmark keys, for both CRC and native hash names. It
+previously checked only older `.tmp`/`.bak` recovery files. With a missing
+canonical file, the reader could recover entries from an edit backup while the
+planner treated that source as absent. A move then left those entries behind.
+A conflict now keeps the book and artifacts in place. Failed artifact lookups
+also refuse the plan. Existing Retry/OK controls keep that failure visible.
+
+Normal binary bookmark moves now reopen through the production
+`CrossInkBookmarks` loader after FAT/exFAT remount. Versions 2–5 cover both key
+schemes, destination-path rewriting, chapter/snippet text, spine, fractional
+progress, paragraph anchors, duplicate entries, and recovery flags. The fixture
+also loads a recovery-only source, confirms planning refuses it without moving
+the book, restores it, and completes the move. Planner checks cover both new
+suffixes at both ends and unreadable lookups.
+
+The same fixture executes the EPUB reader's actual progress-load block with
+its cache-path provider replaced. It covers supported 4-, 6-, and 10-byte files,
+native caches, and legacy CrossInk cache migration to the native destination.
+Assertions check spine, page, page count, and optional visible-text offset after
+move and remount. This proves persisted loader state; rendered pagination and
+physical-device resume remain untested.
+
+The planner reuses its existing path strings, lock, and plan format. It adds no
+task or retained buffer. Its enabled X4 Pro frame is 592 bytes in the ELF;
+device stack high-water remains unmeasured. Standard and automatic-completion
+builds passed in 67.41 and 67.71 seconds. Standard size remains 113,140 static
+RAM bytes and 5,668,454 flash bytes; enabled size is 113,068 RAM bytes and
+5,761,870 flash bytes.
+
+The 96 affected checks passed in 35.34 seconds. After extending the progress
+fixture, the final native reader check passed in 36.10 seconds, and
+AddressSanitizer passed. The preceding vendor UBSan findings remain open.
+Native JSON bookmark and clipping loaders, remaining recovery phases,
+cumulative review, and device validation still prevent a release-readiness claim.

@@ -314,6 +314,34 @@ bool FatFile::experimentUnlinkOneSector() {
         (stub_directory / 'RecentBooksStore.h').unlink()
         (stub_directory / 'network/sync/StoredReferenceGuard.h').unlink()
         (stub_directory / 'Arduino.h').write_text('#pragma once\n#include <cstdint>\n')
+        reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        progress_start = reader.index('  HalFile f;\n  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {')
+        brace_start = reader.index('{', progress_start)
+        depth = 1
+        progress_end = brace_start + 1
+        while depth:
+            if reader[progress_end] == '{':
+                depth += 1
+            elif reader[progress_end] == '}':
+                depth -= 1
+            progress_end += 1
+        # Execute the reader's progress-load block with only the cache provider replaced.
+        (stub_directory / 'MovedProgressLoader.h').write_text(r'''
+#pragma once
+#include <HalStorage.h>
+#include <Logging.h>
+#include <optional>
+#include <string>
+struct MovedProgress { int spine, cachedSpine, page, pages; std::optional<uint32_t> offset; };
+inline MovedProgress readMovedProgress(const std::string& cache) {
+  struct Book { const std::string& path; const std::string& getCachePath() const {return path;} } book{cache};
+  const auto* epub=&book;
+  int currentSpineIndex=0, cachedSpineIndex=0, nextPageNumber=0, cachedChapterTotalPageCount=0;
+  std::optional<uint32_t> cachedVisibleTextOffset;
+''' + reader[progress_start:progress_end] + r'''
+  return {currentSpineIndex,cachedSpineIndex,nextPageNumber,cachedChapterTotalPageCount,cachedVisibleTextOffset};
+}
+''')
         persist = (ROOT / 'lib/Serialization/PersistableStore.cpp').read_text()
         read_start = persist.index('bool PersistableStoreBase::readDocFromFile(')
         read_end = persist.index('\n  if (!Storage.exists(path))', read_start)
@@ -326,7 +354,8 @@ bool FatFile::experimentUnlinkOneSector() {
                                    'bool PersistableStoreBase::writeDocToFile(const char*,const JsonDocument&){return false;}\n'
                                    + focused_read + '\n' + persist[write_start:write_end])
         store_sources = [str(focused_persist), str(ROOT / 'src/CrossPointState.cpp'), str(ROOT / 'src/RecentBooksStore.cpp'),
-                         str(ROOT / 'src/network/sync/StoredReferenceGuard.cpp')]
+                         str(ROOT / 'src/network/sync/StoredReferenceGuard.cpp'),
+                         str(ROOT / 'src/util/CrossInkBookmarks.cpp')]
         # Exercise the transaction identity check and real session ownership,
         # rather than declaring every moved destination a matching transaction.
         store_sources += [str(ROOT / 'src/activities/reader' / name) for name in (

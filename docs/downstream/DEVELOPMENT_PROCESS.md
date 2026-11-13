@@ -126,6 +126,7 @@ These are check durations, not coding speed or total development time.
 | November 12 published-reference recovery | 2,301 full: 72.08 s; 18 affected including native store integration: 3.59 s; integration sanitizer checks passed | 125.21 s; automatic-completion profile: 108.68 s |
 | November 12 sleep recovery after completion | 206 affected: 28.87 s; native state/Recents and access-gate harness passed sanitizers with Page Overlay off/on | Automatic-completion profile: 71.48 s; standard build unchanged outside the Page Overlay gate |
 | November 12 native move coordinator | FAT/exFAT, both Recents policies, real transaction probe and lease: 34.65 s; original journal profile: 28.15 s; AddressSanitizer passed; vendor UBSan findings reproduce in the older profile | Not repeated: tests and documentation only |
+| November 12 moved bookmark/progress readers | 96 affected: 35.34 s; final native reader check: 36.10 s; four binary bookmark versions and all three progress lengths; AddressSanitizer passed | 67.41 s; automatic-completion profile: 67.71 s |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace cm = readingstats::completionmove;
@@ -234,6 +235,48 @@ TEST_F(CompletionMovePlanIO, RefusesToStrandLegacyBookmarks) {
   EXPECT_TRUE(Storage.exists(path.c_str()));
   EXPECT_FALSE(Storage.exists(PLAN));
 }
+
+class CompletionMoveBookmarkArtifacts : public CompletionMovePlanIO,
+                                        public testing::WithParamInterface<std::tuple<bool, bool, const char*>> {
+ protected:
+  std::string artifactPath() const {
+    const auto [destination, crcKey, suffix] = GetParam();
+    const std::string book = destination ? DEST : BOOK;
+    const size_t key = crcKey ? credential_integrity::crc32(book) : std::hash<std::string>{}(book);
+    return "/.crosspoint/bookmarks/epub_" + std::to_string(key) + ".bin" + suffix;
+  }
+};
+
+TEST_P(CompletionMoveBookmarkArtifacts, PreservesRecoveryArtifactsAndRefusesBookMove) {
+  const auto path = artifactPath();
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+  const uint8_t recovery[] = {0x31, 0x42, 0x53};
+  ASSERT_EQ(file.write(recovery, sizeof(recovery)), sizeof(recovery));
+  ASSERT_TRUE(file.close());
+  EXPECT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Conflict);
+  EXPECT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::NoPlan);
+  EXPECT_TRUE(Storage.exists(BOOK));
+  EXPECT_FALSE(Storage.exists(DEST));
+  EXPECT_FALSE(Storage.exists(PLAN));
+  ASSERT_TRUE(Storage.openFileForRead("TEST", path, file));
+  uint8_t preserved[sizeof(recovery)]{};
+  ASSERT_EQ(file.read(preserved, sizeof(preserved)), sizeof(preserved));
+  EXPECT_EQ(std::memcmp(preserved, recovery, sizeof(recovery)), 0);
+  EXPECT_TRUE(file.close());
+}
+
+TEST_P(CompletionMoveBookmarkArtifacts, UnreadableRecoveryLookupCannotAuthorizeMove) {
+  Storage.failReadsFor(artifactPath());
+  EXPECT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Unavailable);
+  EXPECT_TRUE(Storage.exists(BOOK));
+  EXPECT_FALSE(Storage.exists(DEST));
+  EXPECT_FALSE(Storage.exists(PLAN));
+}
+
+INSTANTIATE_TEST_SUITE_P(SourceAndDestination, CompletionMoveBookmarkArtifacts,
+                         testing::Combine(testing::Bool(), testing::Bool(),
+                                          testing::Values(".bookmark-edit.bak", ".bookmark-edit.guard")));
 
 TEST_F(CompletionMovePlanIO, MigratesLegacyBookmarksAndResumesPartialRewrite) {
   std::string oldPath, newPath, secondOld, secondNew;

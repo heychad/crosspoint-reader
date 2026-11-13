@@ -18,6 +18,8 @@
 #include <CompletionTransaction.h>
 #include <ReadingStatsUtils.h>
 #include <StatsSessionLease.h>
+
+#include "MovedReadingState.h"
 #endif
 #if defined(SDFAT_IMPORT_SNAPSHOT)
 #include <CrossInkImportSnapshot.h>
@@ -1352,6 +1354,11 @@ void exfatFailedSyncRetainsMetadata(bool readFault) {
 void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
   namespace cm = readingstats::completionmove;
   namespace dc = readingstats::deferredcompletion;
+#if defined(SDFAT_REAL_MOVE_STORES)
+  const auto progressFormat = removeRecent ? movedstate::ProgressFormat::TextOffset
+                              : exfat      ? movedstate::ProgressFormat::Legacy
+                                           : movedstate::ProgressFormat::PageCount;
+#endif
   Disk disk;
   uint8_t scratch[512];
   if (exfat) {
@@ -1380,6 +1387,11 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     };
     const uint8_t contents[] = {1, 3, 5, 7};
     write(source, contents, sizeof(contents));
+#if defined(SDFAT_REAL_MOVE_STORES)
+    movedstate::seedBookmarks(source, removeRecent ? 4 : 2);
+    movedstate::checkBookmarks(source, removeRecent ? 4 : 2);
+    movedstate::seedProgress(source, removeRecent, progressFormat);
+#endif
     cj::Baseline previous{};
     previous.book[0] = 5;
     previous.global[0] = 3;
@@ -1417,6 +1429,19 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
 #endif
     assert(cj::start(record, recordSize) == cj::StartResult::Started);
     assert(cj::replay() == cj::ReplayResult::AppliedUnretired);
+#if defined(SDFAT_REAL_MOVE_STORES)
+    {
+      const auto primary = movedstate::bookmarkPath(source, true);
+      const auto recovery = primary + (removeRecent ? ".bookmark-edit.guard" : ".bookmark-edit.bak");
+      assert(Storage.rename(primary.c_str(), recovery.c_str()));
+      movedstate::checkBookmarks(source, removeRecent ? 4 : 2, true);
+      assert(cm::preparePlan(source, target) == cm::PlanResult::Conflict);
+      assert(Storage.lookupPath(source) == HalStorage::PathStatus::Present &&
+             Storage.lookupPath(target) == HalStorage::PathStatus::Missing &&
+             Storage.lookupPath(recovery.c_str()) == HalStorage::PathStatus::Present);
+      assert(Storage.rename(recovery.c_str(), primary.c_str()));
+    }
+#endif
     assert(cm::preparePlan(source, target) == cm::PlanResult::Ready);
     beforeMove = disk.sectors;
     const int before = disk.writes;
@@ -1533,6 +1558,8 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     assert(cj::retiredDeferredMoveProof(source, 0x12345678, moveHash) == cj::DeferredRetirementProof::Retired);
     assert(cm::verifyRetiredFiles(source, target, 0x12345678, moveHash) == cm::VerifyFilesResult::ContentMatches);
 #if defined(SDFAT_REAL_MOVE_STORES)
+    movedstate::checkBookmarks(target, removeRecent ? 4 : 2);
+    movedstate::checkProgress(target, progressFormat);
     for (const auto& path : {"/.crosspoint/state.json", "/.crosspoint/recent.json"}) {
       auto file = Storage.open(path, O_RDONLY);
       assert(file);

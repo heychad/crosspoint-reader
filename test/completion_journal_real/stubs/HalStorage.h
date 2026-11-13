@@ -20,9 +20,13 @@ class HalFile {
   bool sync() { return file_->sync(); }
   bool close() { return file_->close(); }
   size_t fileSize() const { return file_->fileSize(); }
+  size_t size() const { return fileSize(); }
+  size_t position() const { return file_->curPosition(); }
+  int available() const { return file_->available(); }
   uint64_t fileSize64() const { return file_->fileSize(); }
   bool isDirectory() const { return file_->isDir(); }
   bool seekSet(size_t offset) { return file_->seekSet(offset); }
+  bool seek(size_t offset) { return seekSet(offset); }
   int read(void* out, size_t size) { return file_->read(out, size); }
   HalFile openNextFile() {
     auto next = std::make_unique<FsBaseFile>();
@@ -74,7 +78,7 @@ class HalStorage {
     if (!opened || !closed) return {};
     return HalFile(std::move(f));
   }
-  HalFile openChecked(const char* path, oflag_t flags) { return open(path, flags); }
+  HalFile openChecked(const char* path, oflag_t flags = O_RDONLY) { return open(path, flags); }
   bool openFileForRead(const char*, const char* path, HalFile& out) {
     out = open(path, O_RDONLY);
     return static_cast<bool>(out);
