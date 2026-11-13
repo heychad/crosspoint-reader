@@ -82,6 +82,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     XTC_STATUS_BAR_HIDE = 0,
     XTC_STATUS_BAR_BOTTOM = 1,
     XTC_STATUS_BAR_TOP = 2,
+    XTC_STATUS_BAR_BOTH = 3,
     XTC_STATUS_BAR_MODE_COUNT
   };
 
@@ -330,6 +331,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t tapToHideStatusBar = 0;
   ReaderBar readerTopBar;
   ReaderBar readerBottomBar;
+  bool legacyXtcTopUsesBottom = false;
 
   // Status bar settings
   uint8_t statusBarChapterPageCount = 1;

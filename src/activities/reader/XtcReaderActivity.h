@@ -28,8 +28,8 @@ class XtcReaderActivity final : public ReaderActivity {
   bool completionActionAvailable(bool& completed) const;
   void toggleCompletion();
 #endif
-  void renderStatusBarOverlay(GfxRenderer& renderer, StatusBarOverlayPosition position) const;
-  StatusBarInfo getStatusBarInfo() const;
+  void renderStatusBarOverlay(GfxRenderer& renderer, StatusBarOverlayPosition position, bool drawContent = true) const;
+  StatusBarInfo getStatusBarInfo(bool chapterTitle, bool bookTitle) const;
   void saveProgress() const;
   void loadProgress();
 

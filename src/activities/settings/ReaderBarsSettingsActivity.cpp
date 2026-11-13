@@ -33,6 +33,7 @@ constexpr StrId ITEM_LABELS[] = {
     StrId::STR_BAR_CHAPTER_PERCENT,
 };
 static_assert(std::size(ITEM_LABELS) == static_cast<size_t>(ReaderBarItem::Count));
+constexpr StrId XTC_LABELS[] = {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP, StrId::STR_BOTH};
 constexpr StrId SIZE_LABELS[] = {StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE};
 constexpr StrId PROGRESS_LABELS[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 constexpr StrId THICKNESS_LABELS[] = {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM,
@@ -45,6 +46,11 @@ constexpr StrId BATTERY_LABELS[] = {StrId::STR_BAR_BATTERY_GLOBAL, StrId::STR_BA
 
 ReaderBar& ReaderBarsSettingsActivity::bar() {
   return view == View::Top ? SETTINGS.readerTopBar : SETTINGS.readerBottomBar;
+}
+
+void ReaderBarsSettingsActivity::saveBar(bool layoutChanged) {
+  if (layoutChanged && view == View::Top) SETTINGS.legacyXtcTopUsesBottom = false;
+  SETTINGS.saveToFile();
 }
 
 const char* ReaderBarsSettingsActivity::headerTitle() const {
@@ -86,6 +92,13 @@ void ReaderBarsSettingsActivity::activateIndex(int index) {
         SETTINGS.statusBarTextSize = selected;
         SETTINGS.saveToFile();
       });
+    } else if (index == 4) {
+      popup.show(StrId::STR_XTC_STATUS_BAR, XTC_LABELS, 4, SETTINGS.xtcStatusBarMode, [this](int selected) {
+        if (selected < 0 || selected > 3) return;
+        if (SETTINGS.xtcStatusBarMode != selected) SETTINGS.legacyXtcTopUsesBottom = false;
+        SETTINGS.xtcStatusBarMode = selected;
+        SETTINGS.saveToFile();
+      });
     } else {
       view = index == 1 ? View::Top : View::Bottom;
       nav.reset();
@@ -104,43 +117,52 @@ void ReaderBarsSettingsActivity::activateIndex(int index) {
       const auto* selected = std::get_if<MenuResult>(&result.data);
       if (!result.isCancelled && selected && view == selectedView && selected->action >= 0 &&
           selected->action < static_cast<int>(ReaderBarItem::Count)) {
-        bar().slots[index] = static_cast<ReaderBarItem>(selected->action);
-        SETTINGS.saveToFile();
+        const auto item = static_cast<ReaderBarItem>(selected->action);
+        const bool changed = bar().slots[index] != item;
+        bar().slots[index] = item;
+        saveBar(changed);
       }
       requestUpdate();
     });
   } else if (index == 7) {
     popup.show(StrId::STR_PROGRESS_BAR, PROGRESS_LABELS, 3, bar().progress, [this](int selected) {
+      const bool changed = bar().progress != selected;
       bar().progress = selected;
-      SETTINGS.saveToFile();
+      saveBar(changed);
     });
   } else if (index == 8) {
     popup.show(StrId::STR_PROGRESS_BAR_THICKNESS, THICKNESS_LABELS, 3, bar().thickness, [this](int selected) {
+      const bool changed = bar().thickness != selected;
       bar().thickness = selected;
-      SETTINGS.saveToFile();
+      saveBar(changed);
     });
   } else if (index == 9) {
     popup.show(StrId::STR_BAR_PERCENT_FORMAT, DECIMAL_LABELS, 3, bar().percentageDecimals, [this](int selected) {
+      const bool changed = bar().percentageDecimals != selected;
       bar().percentageDecimals = selected;
-      SETTINGS.saveToFile();
+      saveBar(changed);
     });
   } else if (index == 10 || index == 11) {
     auto& value = index == 10 ? bar().hidden : bar().centered;
     value = !value;
-    SETTINGS.saveToFile();
+    saveBar(index != 10);
   } else if (index == 12) {
     popup.show(StrId::STR_BAR_BATTERY_STYLE, BATTERY_LABELS, 4, static_cast<int>(bar().batteryStyle),
                [this](int selected) {
-                 bar().batteryStyle = static_cast<ReaderBarBatteryStyle>(selected);
-                 SETTINGS.saveToFile();
+                 const auto value = static_cast<ReaderBarBatteryStyle>(selected);
+                 const bool changed = bar().batteryStyle != value;
+                 bar().batteryStyle = value;
+                 saveBar(changed);
                });
   } else {
     const char* labels[] = {
         readerBarSeparatorGlyph(ReaderBarSeparator::Bullet), readerBarSeparatorGlyph(ReaderBarSeparator::Dash),
         readerBarSeparatorGlyph(ReaderBarSeparator::Pipe), readerBarSeparatorGlyph(ReaderBarSeparator::MiddleDot)};
     popup.show(tr(STR_BAR_SEPARATOR), labels, 4, static_cast<int>(bar().separator), [this](int selected) {
-      bar().separator = static_cast<ReaderBarSeparator>(selected);
-      SETTINGS.saveToFile();
+      const auto value = static_cast<ReaderBarSeparator>(selected);
+      const bool changed = bar().separator != value;
+      bar().separator = value;
+      saveBar(changed);
     });
   }
   requestUpdate();
@@ -163,8 +185,10 @@ void ReaderBarsSettingsActivity::buildScreen(UiScreen& screen) {
       rows[i].label = i == 0   ? tr(STR_BAR_USE_CUSTOM)
                       : i == 1 ? tr(STR_BAR_TOP)
                       : i == 2 ? tr(STR_BAR_BOTTOM)
-                               : tr(STR_STATUS_BAR_TEXT_SIZE);
+                      : i == 3 ? tr(STR_STATUS_BAR_TEXT_SIZE)
+                               : tr(STR_XTC_STATUS_BAR);
       if (i == 3) rows[i].value = I18N.get(SIZE_LABELS[std::min<unsigned>(SETTINGS.statusBarTextSize, 2)]);
+      if (i == 4) rows[i].value = I18N.get(XTC_LABELS[std::min<unsigned>(SETTINGS.xtcStatusBarMode, 3)]);
       if (i == 0) GUI.setCheckboxRow(rows[i], SETTINGS.readerBarsEnabled);
     } else if (i < 7) {
       rows[i].label = I18N.get(SLOT_LABELS[i]);

@@ -324,6 +324,8 @@ add_test(NAME PageGestureToggle COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SO
 add_test(NAME ReaderTabbedMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_tabs.py)
 add_test(NAME ReaderInlineTextMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_inline_text.py)
 add_test(NAME ReaderFontPanes COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_font_panes.py)
+add_test(NAME XtcReaderBars COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_xtc_reader_bars.py)
+
 add_test(NAME XtcReaderMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_xtc_menu.py)
 add_test(NAME XtcImageCache COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_xtc_cache.py)
 add_test(NAME EpubReaderCache COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_epub_cache.py)

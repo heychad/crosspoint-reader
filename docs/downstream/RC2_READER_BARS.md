@@ -92,7 +92,7 @@ preferences carries the validated 0/1 source value. The toggle uses the existing
 settings catalog and writer. Temporary visibility is a reader-owned atomic
 flag; it is not written to settings or reading state. There is no new heap
 buffer or worker. Existing menu/selection overlays and the global input lock
-retain input ownership. This does not add RC2's fourth XTC placement mode.
+retain input ownership. The later XTC stage below adds RC2's fourth placement mode.
 
 The controls remain available when page-turn gestures are disabled, provided
 reader touch is enabled. Inside an enabled edge strip, the bar interaction takes
@@ -130,8 +130,8 @@ existing settings catalog. Preferences import maps the same RC2 values with
 strict validation and native ownership. Source files and the exact settings
 snapshot retain the existing protection.
 
-The native legacy bar path keeps its existing font. RC2's XTC placement and
-legacy top-uses-bottom compatibility remain a separate audit item. This stage
+The native legacy bar path keeps its existing font. The XTC stage below applies the same custom fonts to bitmap overlays and
+handles the legacy top-uses-bottom layout. This stage
 adds no font files, font registry, task, or retained rendering buffer. Battery
 drawing accepts an optional font ID; existing callers retain the small UI font.
 The four-row root uses the existing fourteen-row storage.
@@ -155,3 +155,57 @@ The expanded orientation/position matrix also passes. Geometry and imports
 pass AddressSanitizer and UndefinedBehaviorSanitizer. Logs use
 `/tmp/x4-bar-size-*.log`. Firmware inputs were unchanged by the fixture-only
 correction. Cumulative review and X4 Pro rendering/reflow checks remain.
+
+## XTC placements and compatibility
+
+XTC bars now offer Hide, Bottom, Top, and Both. Existing numeric values 0–2
+stay unchanged; Both is 3. Select placement in Reader bar layouts or the legacy
+status-bar settings. With custom bars enabled, each displayed position uses
+its configured layout, including text size, title, chapter page/percentage,
+progress, battery, clock/date, and available reading-time estimates. With custom
+bars disabled, the existing native footer is used at the selected positions.
+
+Older native Top saves without a compatibility field keep using bottom-layout
+content at the top. The native `readerBarsV1` object now saves
+`legacyXtcTopUsesBottom` as a boolean. The displayed top bar's own hidden state
+still wins. Changing placement on the device or editing top-bar content/style clears the
+compatibility flag; choosing the same value or only hiding the top bar retains
+it. Older firmware can ignore the new boolean. It cannot display Both and may
+reset that unsupported mode when saving; book progress is not part of this
+settings change.
+
+The explicit bars import carries RC2's nested `xtcMode` and compatibility flag.
+An absent nested mode falls back to the older global `xtcStatusBarMode`; a
+present malformed nested value rejects the import. Flat legacy Top saves use
+the bottom layout. Layouts, placement, and compatibility are staged together
+before the existing backed-up settings transaction writes. Original source
+files and reading-state files remain unchanged by import.
+
+Both 1-bit and 2-bit page paths now apply the overlays. The grayscale base and
+cleanup frames draw bar content; each grayscale mask pass clears the selected
+bitmap strips before its mask is copied. Persistent hidden bars and temporary
+hiding still clear those strips, keeping the bitmap's original status content
+from showing through. Hide placement leaves the original bitmap intact.
+Buffer-only sleep reconstruction applies the same base overlay without driving
+the display or advancing the refresh counter.
+
+The port reuses the existing page buffer, renderer, settings writer, and stats
+estimates. It adds no task or image-sized buffer. The overlay owns one small
+bar-config copy, two 32-byte time labels, and conditional title strings during
+drawing. These are released between passes. Runtime heap/stack headroom and
+physical grayscale output still need X4 Pro validation.
+
+All 2,364 host checks pass in 96.24 seconds. Overlay rendering, native compatibility
+policy, both 5,832-case legacy import matrices, and the actual padded 1/2-bit
+render/sleep path pass AddressSanitizer and UndefinedBehaviorSanitizer. The
+policy target includes 70 cases. Import publication preserves the exact native
+snapshot and unrelated settings. Same-value top selections retain compatibility.
+
+The default X4 Pro build passes in 102.62 seconds at 113,148 static RAM bytes
+and 5,681,958 flash bytes. CrossPointSettings is 756 bytes; XtcReaderActivity
+remains 928, and bar settings remains 2,720. The overlay function's S3 frame is
+272 bytes, excluding callees. Parsed metadata titles are bounded at 127 bytes
+and chapter names at 80; filename fallback uses the existing XTC/filesystem
+contract. No image buffer is added. Logs use `/tmp/x4-xtc-bars-*.log`.
+Cumulative review, runtime headroom, and physical grayscale/strip results remain
+pending. No firmware was installed.

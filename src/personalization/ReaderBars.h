@@ -62,6 +62,14 @@ struct ReaderBar {
   }
 };
 
+// RC2 preserves a legacy footer layout at the top without borrowing its hidden state.
+inline ReaderBar xtcReaderBarForDisplay(ReaderBarPosition position, bool legacyTopUsesBottom, const ReaderBar& top,
+                                        const ReaderBar& bottom) {
+  ReaderBar result = position == ReaderBarPosition::Top && !legacyTopUsesBottom ? top : bottom;
+  result.hidden = position == ReaderBarPosition::Top ? top.hidden : bottom.hidden;
+  return result;
+}
+
 struct ReaderBarLayout {
   std::array<int, ReaderBar::SLOT_COUNT> x{};
   int centerLeft = 0;

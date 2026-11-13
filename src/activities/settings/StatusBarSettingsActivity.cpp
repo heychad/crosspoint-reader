@@ -56,8 +56,9 @@ const StrId progressBarThicknessNames[PROGRESS_BAR_THICKNESS_ITEMS] = {
 constexpr int TITLE_ITEMS = 3;
 const StrId titleNames[TITLE_ITEMS] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 
-constexpr int XTC_STATUS_BAR_ITEMS = 3;
-const StrId xtcStatusBarNames[XTC_STATUS_BAR_ITEMS] = {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP};
+constexpr int XTC_STATUS_BAR_ITEMS = CrossPointSettings::XTC_STATUS_BAR_MODE_COUNT;
+const StrId xtcStatusBarNames[XTC_STATUS_BAR_ITEMS] = {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP,
+                                                       StrId::STR_BOTH};
 
 constexpr int STATUS_BAR_CLOCK_ITEMS = CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT;
 const StrId statusBarClockNames[STATUS_BAR_CLOCK_ITEMS] = {StrId::STR_HIDE, StrId::STR_DIR_RIGHT, StrId::STR_DIR_LEFT};
@@ -150,6 +151,8 @@ void StatusBarSettingsActivity::handleSelection() {
     case ITEM_XTC_STATUS_BAR:
       optionPopup.show(StrId::STR_XTC_STATUS_BAR, xtcStatusBarNames, XTC_STATUS_BAR_ITEMS, SETTINGS.xtcStatusBarMode,
                        [this](int idx) {
+                         if (idx < 0 || idx >= XTC_STATUS_BAR_ITEMS) return;
+                         if (SETTINGS.xtcStatusBarMode != idx) SETTINGS.legacyXtcTopUsesBottom = false;
                          SETTINGS.xtcStatusBarMode = idx;
                          SETTINGS.saveToFile();
                        });

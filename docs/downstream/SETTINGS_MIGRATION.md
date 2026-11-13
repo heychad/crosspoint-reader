@@ -168,7 +168,7 @@ inside the selected features before G3 can close:
 | --- | --- |
 | `tapToHideStatusBar` | Implemented: validated preferences import and temporary EPUB/XTC edge-tap hiding/restoration. See [bar behavior](RC2_READER_BARS.md); cumulative review and device validation remain. |
 | `statusBarTextSize` | Implemented: 0/1/2 map to existing Small/UI 10/UI 12 custom-bar fonts, with matching lane height and preferences import. Legacy/XTC bar compatibility remains below. |
-| `xtcStatusBarMode`, `readerStatusBars.xtcMode`, `legacyXtcTopUsesBottom` | Compare the four RC2 placements and compatibility flag with the native three-mode XTC bar contract before copying values. |
+| `xtcStatusBarMode`, `readerStatusBars.xtcMode`, `legacyXtcTopUsesBottom` | Implemented: four placements, nested-source priority, strict validation, and legacy top-layout mapping. Native cold-save migration and source/snapshot publication are checked. |
 | `menuNavigation` | Compare Directional/Classic global navigation against the native SDK controls; it is not the reader menu-style enum. |
 
 The historical [key-gap list](SETTING_GAPS.md) is a discovery list, not the

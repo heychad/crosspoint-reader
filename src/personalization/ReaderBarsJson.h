@@ -4,6 +4,13 @@
 
 #include "ReaderBars.h"
 
+inline bool readLegacyXtcTopLayout(JsonVariantConst source, bool legacyTopMode, bool& needsResave) {
+  const auto value = source["legacyXtcTopUsesBottom"];
+  if (value.is<bool>()) return value.as<bool>();
+  needsResave = true;
+  return value.isUnbound() && legacyTopMode;
+}
+
 inline void writeReaderBar(JsonObject target, const ReaderBar& bar) {
   auto slots = target["slots"].to<JsonArray>();
   uint8_t percentageMask = 0;

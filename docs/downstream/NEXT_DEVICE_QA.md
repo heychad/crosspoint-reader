@@ -45,6 +45,11 @@ bars. Tap a visible bar to hide it, then tap the same edge to restore it. The
 page and reading position should stay fixed. Turn the option off afterward if
 you prefer normal edge taps.
 
+For XTC/XTCH checks, use one 1-bit and one 2-bit book. Select Both in Reader bar
+layouts, then test temporary hiding/restoration. Check that the original bitmap
+strip does not show through, the middle of the page stays intact, and the saved
+page resumes. Restore the previous placement afterward.
+
 ## Library and saved content
 
 4. From an open EPUB, open **Browse Files** from Reader Menu. Return Home and

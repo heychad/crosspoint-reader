@@ -46,6 +46,7 @@ code = r'''
 #include <climits>
 #include "activities/reader/XtcReaderNavigation.h"
 #include "personalization/ReaderShortcuts.h"
+#include "personalization/ReaderBars.h"
 #define LOG_ERR(...) ((void)0)
 enum class StrId {__IDS__};
 struct Language{StrId get(StrId value){return value;}}I18N;
@@ -59,9 +60,10 @@ struct Input {enum class Button{Back,Confirm};bool back=false,confirm=false;bool
 using MappedInputManager=Input;
 namespace ReaderUtils {bool touch=false;bool isTouchMenuGesture(int&,Input&){return touch;}}
 namespace haptic_feedback {int events=0;void touchAction(){++events;}}
-struct CrossPointSettings {enum {XTC_STATUS_BAR_HIDE,XTC_STATUS_BAR_BOTTOM,XTC_STATUS_BAR_TOP};};
+struct CrossPointSettings {enum {XTC_STATUS_BAR_HIDE,XTC_STATUS_BAR_BOTTOM,XTC_STATUS_BAR_TOP,XTC_STATUS_BAR_BOTH};};
 struct UITheme {static UITheme& getInstance(){static UITheme t;return t;}int getStatusBarHeight()const{return 24;}};
-struct {struct Spec{int xtcMode;};Spec statusBarSpec()const{return {CrossPointSettings::XTC_STATUS_BAR_HIDE};}uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;unsigned char trackReadingStats=1,readingIdleTimeThresholdUnits=30;int saves=0;void saveToFile(){++saves;}}SETTINGS;
+namespace readerbars {int height(int,const ReaderBar&){return 24;}}
+struct {bool readerBarsEnabled=false,legacyXtcTopUsesBottom=false;ReaderBar readerTopBar,readerBottomBar;struct Spec{int xtcMode;};Spec statusBarSpec()const{return {CrossPointSettings::XTC_STATUS_BAR_HIDE};}uint8_t touchReaderControls=1;bool moveFinishedToReadFolder=false;unsigned char trackReadingStats=1,readingIdleTimeThresholdUnits=30;int saves=0;void saveToFile(){++saves;}}SETTINGS;
 struct XtcReaderMenuActivity {
  static constexpr int kind=1,MAX_ITEMS=12;
  enum class MenuAction {__ACTIONS__};struct MenuItem{MenuAction action;StrId label;};
@@ -112,7 +114,7 @@ struct XtcReaderActivity {
  void complete(ActivityResult result){auto done=callback;done(result);}
  void confirmCacheReset(bool retry=false);
  bool barHandled=false;int barCalls=0;
- bool handleStatusBarTap(int top,int bottom){assert(top==0 && bottom==0);++barCalls;return barHandled;}
+ bool handleStatusBarTap(int top,int bottom,int=0){assert(top==0 && bottom==0);++barCalls;return barHandled;}
  void openChapterSelection(bool returnToMenu=false);void openPercentSelection();void openReaderMenu();bool handleFormatInput();
 };
 ''' + reader_methods + r'''

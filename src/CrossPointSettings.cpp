@@ -333,6 +333,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   auto bars = doc["readerBarsV1"].to<JsonObject>();
   writeReaderBar(bars["top"].to<JsonObject>(), readerTopBar);
   writeReaderBar(bars["bottom"].to<JsonObject>(), readerBottomBar);
+  bars["legacyXtcTopUsesBottom"] = legacyXtcTopUsesBottom;
 
   readergestures::writeBindings(doc, twoFingerActions);
   readerquickactions::write(doc, readerQuickActions);
@@ -566,6 +567,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   } else {
     readerBarsEnabled = false;
   }
+  legacyXtcTopUsesBottom = readLegacyXtcTopLayout(bars, xtcStatusBarMode == XTC_STATUS_BAR_TOP, needsResave);
 
   if (!bleturner::readJson(ble, doc)) {
     needsResave = true;

@@ -15,11 +15,12 @@ class ReaderBarsSettingsActivity final : public UiListActivity {
   View view = View::Root;
   OptionPopup popup;
   freeink::ui::ListItem rows[14]{};
-  int listCount() const override { return view == View::Root ? 4 : 14; }
+  int listCount() const override { return view == View::Root ? 5 : 14; }
   const char* headerTitle() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleCustomInput() override;
   void onBackButton() override;
   ReaderBar& bar();
+  void saveBar(bool layoutChanged = true);
 };

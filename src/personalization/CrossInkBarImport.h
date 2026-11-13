@@ -151,15 +151,28 @@ inline BarResult stageBars(JsonVariantConst legacy, JsonDocument& proposed) {
           hideBattery.as<uint8_t>() ? ReaderBarBatteryStyle::IconOnly : ReaderBarBatteryStyle::IconAndPercent;
     }
   }
+  // The nested RC2 value owns placement; flat saves use the original global field.
+  auto mode = source["xtcMode"];
+  if (mode.isUnbound()) mode = legacy["xtcStatusBarMode"];
+  if (!mode.isUnbound() && (!mode.is<uint8_t>() || mode.as<uint8_t>() > 3)) return BarResult::Invalid;
+  const uint8_t xtcMode = mode.isUnbound() ? 0 : mode.as<uint8_t>();
+  const auto compatibility = source["legacyXtcTopUsesBottom"];
+  if (!compatibility.isUnbound() && !compatibility.is<bool>()) return BarResult::Invalid;
+  const bool legacyTop = source.isUnbound() ? xtcMode == 2 : compatibility.as<bool>();
   ReaderBar oldTop, oldBottom;
   if (proposed["readerBarsEnabled"].is<bool>() && proposed["readerBarsEnabled"].as<bool>() &&
       readReaderBar(proposed["readerBarsV1"]["top"], oldTop) &&
       readReaderBar(proposed["readerBarsV1"]["bottom"], oldBottom) && equalBars(top, oldTop) &&
-      equalBars(bottom, oldBottom))
+      equalBars(bottom, oldBottom) && proposed["xtcStatusBarMode"].is<uint8_t>() &&
+      proposed["xtcStatusBarMode"].as<uint8_t>() == xtcMode &&
+      proposed["readerBarsV1"]["legacyXtcTopUsesBottom"].is<bool>() &&
+      proposed["readerBarsV1"]["legacyXtcTopUsesBottom"].as<bool>() == legacyTop)
     return BarResult::Unchanged;
   auto bars = proposed["readerBarsV1"].to<JsonObject>();
   writeReaderBar(bars["top"].to<JsonObject>(), top);
   writeReaderBar(bars["bottom"].to<JsonObject>(), bottom);
+  bars["legacyXtcTopUsesBottom"] = legacyTop;
+  proposed["xtcStatusBarMode"] = xtcMode;
   proposed["readerBarsEnabled"] = true;
   return proposed.overflowed() ? BarResult::Unavailable : BarResult::Imported;
 }

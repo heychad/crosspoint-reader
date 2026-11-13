@@ -1167,3 +1167,84 @@ TEST(ReaderPageLayout, SingleMarginCompatibilityMatchesBothAxes) {
     EXPECT_EQ(old.height, pair.height);
   }
 }
+
+TEST(ReaderBars, XtcLegacyLayoutBorrowsContentButKeepsPositionVisibility) {
+  ReaderBar top, bottom;
+  top.slots[0] = ReaderBarItem::BookTitle;
+  bottom.slots[0] = ReaderBarItem::ChapterPages;
+  for (bool legacy : {false, true})
+    for (bool hideTop : {false, true})
+      for (bool hideBottom : {false, true}) {
+        top.hidden = hideTop;
+        bottom.hidden = hideBottom;
+        auto result = xtcReaderBarForDisplay(ReaderBarPosition::Top, legacy, top, bottom);
+        EXPECT_EQ(result.slots, legacy ? bottom.slots : top.slots);
+        EXPECT_EQ(result.hidden, hideTop);
+        result = xtcReaderBarForDisplay(ReaderBarPosition::Bottom, legacy, top, bottom);
+        EXPECT_EQ(result.slots, bottom.slots);
+        EXPECT_EQ(result.hidden, hideBottom);
+      }
+}
+
+TEST(ReaderBars, NativeXtcCompatibilityMigrationDistinguishesMissingAndInvalid) {
+  for (bool topMode : {false, true}) {
+    JsonDocument doc;
+    bool resave = false;
+    EXPECT_EQ(readLegacyXtcTopLayout(doc.as<JsonVariantConst>(), topMode, resave), topMode);
+    EXPECT_TRUE(resave);
+    for (const char* literal : {"true", "false", "0", "1", "null", "\"true\"", "[]", "{}"}) {
+      JsonDocument flag;
+      ASSERT_FALSE(deserializeJson(flag, literal));
+      doc["legacyXtcTopUsesBottom"] = flag.as<JsonVariantConst>();
+      resave = false;
+      EXPECT_EQ(readLegacyXtcTopLayout(doc.as<JsonVariantConst>(), topMode, resave), std::string(literal) == "true");
+      EXPECT_EQ(resave, std::string(literal) != "true" && std::string(literal) != "false");
+    }
+  }
+}
+
+TEST(ReaderBars, CrossInkXtcModeAndCompatibilityImportAreAtomic) {
+  JsonDocument source;
+  source["statusBarChapterPageCount"] = 1;
+  for (int mode = 0; mode < 4; ++mode) {
+    source["xtcStatusBarMode"] = mode;
+    JsonDocument next;
+    next.to<JsonObject>();
+    ASSERT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), next), crossinkimport::BarResult::Imported);
+    EXPECT_EQ(next["xtcStatusBarMode"].as<int>(), mode);
+    EXPECT_EQ(next["readerBarsV1"]["legacyXtcTopUsesBottom"].as<bool>(), mode == 2);
+    EXPECT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), next), crossinkimport::BarResult::Unchanged);
+  }
+  JsonDocument next;
+  next.to<JsonObject>();
+  ASSERT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), next), crossinkimport::BarResult::Imported);
+  auto bars = source["readerStatusBars"].to<JsonObject>();
+  bars["version"] = 1;
+  for (const char* key : {"top", "bottom"}) {
+    auto bar = bars[key].to<JsonObject>();
+    auto slots = bar["slots"].to<JsonArray>();
+    for (int i = 0; i < 7; ++i) slots.add(0);
+    bar["progressBar"] = 2;
+    bar["thickness"] = 0;
+    bar["percentageFormat"] = 0;
+  }
+  for (int mode = 0; mode < 4; ++mode)
+    for (bool compatibility : {false, true}) {
+      bars["xtcMode"] = mode;
+      bars["legacyXtcTopUsesBottom"] = compatibility;
+      ASSERT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), next), crossinkimport::BarResult::Imported);
+      EXPECT_EQ(next["xtcStatusBarMode"].as<int>(), mode);
+      EXPECT_EQ(next["readerBarsV1"]["legacyXtcTopUsesBottom"].as<bool>(), compatibility);
+    }
+  std::string before;
+  serializeJson(next, before);
+  for (const char* invalid : {"-1", "4", "256", "null", "true", "\"2\""}) {
+    JsonDocument value;
+    ASSERT_FALSE(deserializeJson(value, invalid));
+    bars["xtcMode"] = value.as<JsonVariantConst>();
+    EXPECT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), next), crossinkimport::BarResult::Invalid);
+    std::string after;
+    serializeJson(next, after);
+    EXPECT_EQ(after, before);
+  }
+}

@@ -483,7 +483,7 @@ TEST_F(BookSettings, CrossInkBarsTransactionPreservesSnapshotAndUnrelatedSetting
   constexpr char primary[] = "/.crosspoint/settings.json";
   const std::string original = R"({"pluginsEnabled":1,"custom":{"x":4}})";
   put(primary, original);
-  put(crossinkimport::SOURCE_PATH, R"({"readerStatusBars":{"version":1,
+  put(crossinkimport::SOURCE_PATH, R"({"readerStatusBars":{"version":1,"xtcMode":3,"legacyXtcTopUsesBottom":true,
     "top":{"slots":[1,2,3,8,9,10,0],"percentageFormat":1,"progressBar":0,"thickness":2},
     "bottom":{"slots":[5,7,0,8,2,1,10],"percentageFormat":2,"progressBar":1,"thickness":0}}})");
   JsonDocument proposed;
@@ -496,6 +496,8 @@ TEST_F(BookSettings, CrossInkBarsTransactionPreservesSnapshotAndUnrelatedSetting
   JsonDocument persisted;
   ASSERT_FALSE(deserializeJson(persisted, saved));
   EXPECT_TRUE(persisted["readerBarsEnabled"].as<bool>());
+  EXPECT_EQ(persisted["xtcStatusBarMode"].as<int>(), 3);
+  EXPECT_TRUE(persisted["readerBarsV1"]["legacyXtcTopUsesBottom"].as<bool>());
   EXPECT_EQ(persisted["custom"]["x"].as<int>(), 4);
   EXPECT_TRUE(persisted["readerBarsV1"]["top"]["slots"].is<JsonArrayConst>());
   ASSERT_TRUE(Storage.readFileToString("TEST", snapshot, 32768, saved));

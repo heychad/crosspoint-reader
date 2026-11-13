@@ -1,5 +1,7 @@
 """Execute the production XTC buffer path against 1/2-bit data, failures, and display output."""
 from pathlib import Path
+import os
+import shlex
 import subprocess
 import tempfile
 
@@ -26,12 +28,12 @@ struct Renderer{
  enum Orientation{Portrait,Landscape};Orientation orientation=Landscape;bool buffer=true;
  bool hasFrameBuffer()const{return buffer;}void setOrientation(Orientation o){orientation=o;}
  struct Capability{HalDisplay::GrayscaleBase base=HalDisplay::GrayscaleBase::Other;};
- int width=8,height=9,displays=0,marked=0;std::vector<bool>pixels=std::vector<bool>(72,false);
+ std::vector<std::string>events;int width=8,height=9,displays=0,marked=0;std::vector<bool>pixels=std::vector<bool>(72,false);
  void clearScreen(int fill=255){pixels.assign(72,fill==0);}void drawPixel(int x,int y,bool black){assert(x>=0&&x<width&&y>=0&&y<height);pixels[y*width+x]=black;}
  void drawCenteredText(int,int,const char*,bool,int){}void displayBuffer(int=0){++displays;}
- void displayGrayscaleBase(int){++displays;}Capability grayscaleCapabilities()const{return{};}
- void preconditionGrayscale(){}void copyGrayscaleLsbBuffers(){}void copyGrayscaleMsbBuffers(){}
- void displayGrayBuffer(){++displays;}void cleanupGrayscaleWithFrameBuffer(){}
+ void displayGrayscaleBase(int){++displays;events.push_back("base");}Capability grayscaleCapabilities()const{return{};}
+ void preconditionGrayscale(){}void copyGrayscaleLsbBuffers(){events.push_back("lsb");}void copyGrayscaleMsbBuffers(){events.push_back("msb");}
+ void displayGrayBuffer(){++displays;events.push_back("gray");}void cleanupGrayscaleWithFrameBuffer(){events.push_back("cleanup");}
 };
 struct CrossPointSettings{enum class XTC_STATUS_BAR_MODE{XTC_STATUS_BAR_TOP,XTC_STATUS_BAR_BOTTOM};};
 struct Settings{struct Spec{CrossPointSettings::XTC_STATUS_BAR_MODE xtcMode=CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_BOTTOM;};
@@ -53,7 +55,7 @@ struct XtcReaderActivity{
  bool restorePageForSleep(SleepPageTarget target);
  enum class PageRenderTarget{Display,Buffer};enum class StatusBarOverlayPosition{Top,Bottom};
  std::unique_ptr<Xtc>xtc=std::make_unique<Xtc>();uint32_t currentPage=2;int pagesUntilFullRefresh=7,status=0,marks=0;Renderer renderer;
- void renderStatusBarOverlay(Renderer&,StatusBarOverlayPosition){++status;}void markPageRendered(){++marks;}
+ std::vector<bool> overlayContent;void renderStatusBarOverlay(Renderer&,StatusBarOverlayPosition,bool content=true){++status;overlayContent.push_back(content);renderer.events.push_back(content?"bar":"strip");}void markPageRendered(){++marks;}
  bool renderPage(PageRenderTarget target=PageRenderTarget::Display);
 };
 ''' + method('bool XtcReaderActivity::renderPage(') + '\n' + method('bool XtcReaderActivity::restorePageForSleep(') + r'''
@@ -70,10 +72,15 @@ int main(){
     if(value&2)reader.xtc->data[offset]|=1<<bit;if(value&1)reader.xtc->data[planeBytes+offset]|=1<<bit;}
   }
   assert(reader.renderPage(display?Target::Display:Target::Buffer));
+  const std::vector<bool> passes=depth==1 || !display ? std::vector<bool>{true,true} : std::vector<bool>{true,true,false,false,false,false,true,true};
+  assert(reader.overlayContent==passes);
+  const std::vector<std::string> events=depth==1 || !display ? std::vector<std::string>{"bar","bar"} :
+    std::vector<std::string>{"bar","bar","base","strip","strip","lsb","strip","strip","msb","gray","bar","bar","cleanup"};
+  assert(reader.renderer.events==events);
   assert(reader.renderer.pixels==expected&&reader.currentPage==2&&reader.xtc->loads==1);
   if(display){assert(reader.renderer.displays>0&&reader.marks==1&&reader.pagesUntilFullRefresh==6);}
   else{assert(reader.renderer.displays==0&&reader.marks==0&&reader.pagesUntilFullRefresh==7);}
-  assert(reader.status==(depth==1?1:0));
+  assert(reader.status==static_cast<int>(passes.size()));
  }
  for(int output=0;output<2;++output){XtcReaderActivity reader;reader.xtc->data.assign(9,255);
   reader.renderer.buffer=false;assert(!reader.restorePageForSleep(XtcReaderActivity::SleepPageTarget::Buffer));assert(reader.xtc->loads==0);
@@ -94,6 +101,6 @@ int main(){
 '''
 with tempfile.TemporaryDirectory() as directory:
  path=Path(directory);(path/'test.cpp').write_text(program)
- subprocess.run(['c++','-std=c++20',str(path/'test.cpp'),'-o',str(path/'test')],check=True)
+ subprocess.run([os.environ.get('CXX','c++'),'-std=c++20',*shlex.split(os.environ.get('CXXFLAGS','')),str(path/'test.cpp'),'-o',str(path/'test')],check=True)
  subprocess.run([str(path/'test')],check=True)
 print('XTC sleep rendering preserves padded bitplanes, current page, refresh count, and display ownership')

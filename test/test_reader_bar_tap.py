@@ -23,8 +23,10 @@ code = r'''
 #include <atomic>
 #include <cassert>
 #include "activities/reader/ReaderStatusBarTapTarget.h"
-struct CrossPointSettings { enum { XTC_STATUS_BAR_HIDE, XTC_STATUS_BAR_BOTTOM, XTC_STATUS_BAR_TOP }; };
+#include "personalization/ReaderBars.h"
+struct CrossPointSettings { enum { XTC_STATUS_BAR_HIDE, XTC_STATUS_BAR_BOTTOM, XTC_STATUS_BAR_TOP,XTC_STATUS_BAR_BOTH }; };
 struct Settings {
+ bool readerBarsEnabled=false,legacyXtcTopUsesBottom=false;ReaderBar readerTopBar,readerBottomBar;
  int tapToHideStatusBar=1,touchReaderControls=1,mode=0;
  struct Spec {int xtcMode;};Spec statusBarSpec()const{return {mode};}
 } SETTINGS;
@@ -46,6 +48,7 @@ struct ReaderActivity {
  void requestUpdate(){++paints;}
  bool handleStatusBarTap(int,int,int=0);
 };
+namespace readerbars {int height(const Renderer&,const ReaderBar& bar){return bar.hidden?0:24;}}
 struct UITheme {static UITheme& getInstance(){static UITheme instance;return instance;}int getStatusBarHeight()const{return 24;}};
 namespace ReaderUtils {bool isTouchMenuGesture(const Renderer&,const MappedInputManager& input){return input.menu;}}
 namespace haptic_feedback {int taps=0;void touchAction(){++taps;}}
@@ -96,14 +99,14 @@ int main(){
    assert(!ReaderStatusBarTapTarget::containsBottom(0,height,margin,size));
   }
  }
- for(int mode:{CrossPointSettings::XTC_STATUS_BAR_HIDE,CrossPointSettings::XTC_STATUS_BAR_BOTTOM,CrossPointSettings::XTC_STATUS_BAR_TOP}){
+ for(int mode:{CrossPointSettings::XTC_STATUS_BAR_HIDE,CrossPointSettings::XTC_STATUS_BAR_BOTTOM,CrossPointSettings::XTC_STATUS_BAR_TOP,CrossPointSettings::XTC_STATUS_BAR_BOTH}){
   SETTINGS.mode=mode;XtcReaderActivity reader;reader.mappedInput.tap=true;
   reader.mappedInput.y=0;
-  assert(reader.handleFormatInput()==(mode==CrossPointSettings::XTC_STATUS_BAR_TOP));
-  assert(reader.statusBarsVisible==(mode!=CrossPointSettings::XTC_STATUS_BAR_TOP));
+  assert(reader.handleFormatInput()==(mode==CrossPointSettings::XTC_STATUS_BAR_TOP || mode==CrossPointSettings::XTC_STATUS_BAR_BOTH));
+  assert(reader.statusBarsVisible==(mode!=CrossPointSettings::XTC_STATUS_BAR_TOP && mode!=CrossPointSettings::XTC_STATUS_BAR_BOTH));
   reader.statusBarsVisible=true;reader.mappedInput.y=799;
-  assert(reader.handleFormatInput()==(mode==CrossPointSettings::XTC_STATUS_BAR_BOTTOM));
-  assert(reader.statusBarsVisible==(mode!=CrossPointSettings::XTC_STATUS_BAR_BOTTOM));
+  assert(reader.handleFormatInput()==(mode==CrossPointSettings::XTC_STATUS_BAR_BOTTOM || mode==CrossPointSettings::XTC_STATUS_BAR_BOTH));
+  assert(reader.statusBarsVisible==(mode!=CrossPointSettings::XTC_STATUS_BAR_BOTTOM && mode!=CrossPointSettings::XTC_STATUS_BAR_BOTH));
   reader.mappedInput.tap=false;reader.mappedInput.menu=true;
   assert(reader.handleFormatInput() && reader.menus==1);
   reader.mappedInput.menu=false;reader.mappedInput.confirm=true;
