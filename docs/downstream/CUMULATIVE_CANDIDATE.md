@@ -3,8 +3,8 @@
 November 13, 2026. This is the cumulative review record, not installation approval.
 Round-one corrections and retained storage fixes have checked checkpoints.
 The second review is complete. Its host adapter, provenance, and unsupported-move
-notification follow-ups are corrected and checked. Test59 is packaged for a fresh
-backup and reviewed device handoff; runtime/device acceptance remains pending.
+notification follow-ups are corrected and checked. Test59 is verified on the SD
+card after a scoped Wi-Fi state backup; runtime/device acceptance remains pending.
 The [handoff record](TEST59_HANDOFF.md) identifies the final image and checksums.
 
 ## Test59 configuration
@@ -305,8 +305,8 @@ owns fixes and verification; source stays frozen during review.
 - [x] Stamp a unique test version and record a reproducible candidate profile: test59, `x4pro-chad-test`.
 - [ ] Measure runtime internal/PSRAM free bytes, largest blocks, and stack.
 - [x] Package source provenance, exact configuration, hashes, rollback, and the short QA plan. All seven package checksums pass.
-- [ ] Reidentify the reader, back up its state, and verify the backup's coverage.
-- [ ] Prepare verified files under `/zDev/`; Chad performs installation.
+- [x] Reidentify the reader and verify 255 accessible state files by matching second reads. The handoff records Wi-Fi coverage limits and excluded caches/credentials.
+- [x] Transfer and read back `/zDev/TEST59.BIN`; verify the existing official rollback image. Chad performs installation.
 - [ ] Confirm reading state, inputs, clipping, and representative new features.
 
 The five-minute smoke test starts with a known book's resume position, clipping,

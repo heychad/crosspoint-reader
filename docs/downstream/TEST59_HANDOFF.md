@@ -1,7 +1,8 @@
 # Test59 X4 Pro handoff
 
-Prepared November 13, 2026. The software checks pass. Fresh reader backup,
-installation, runtime measurements, and physical acceptance are pending.
+Prepared November 13, 2026. The software checks pass. The accessible reading-state
+backup and firmware transfer are verified. Installation, runtime measurements,
+and physical acceptance are pending.
 
 | Item | Verified value |
 | --- | --- |
@@ -49,8 +50,28 @@ are not committed to Git.
 4. Confirm the About version and run the six steps in
    [the five-minute check](FIVE_MINUTE_DEVICE_QA.md).
 
-No reader backup, SD write, or installation has occurred for this candidate.
-Clipfix2 remains the last reported device-tested baseline.
+## Transfer completed November 13
+
+The reader identified as the expected X4 Pro running clipfix2. Its Wi-Fi backup
+contains 255 accessible state files totaling 537,557 bytes, each checked against
+a second download. It covers progress, settings, statistics, bookmarks,
+clippings, existing statistics backups, and other accessible non-derived state.
+The temporary hidden-file setting was restored to off; parsed settings match
+their original values. Finished-book moves remain off.
+
+This is not a whole-card backup. Rebuildable page/image caches and network
+credential stores remain on the SD card. Hidden leaf names are not downloadable,
+and successful Wi-Fi listings cannot prove every absence or storage read error.
+No completion journal, deferred-work, or history directory appeared in the root
+listing. Private manifests record the exact retrieved and omitted paths.
+
+`/zDev/TEST59.BIN` was uploaded without overwrite and downloaded again. Its size
+and SHA-256 match the candidate above. The existing
+`/zDev/crosspoint-2.0.0-x4pro.bin` was also downloaded and matches the official
+fallback hash. Existing firmware files were preserved.
+
+Installation remains Chad's next step. Clipfix2 remains the last reported
+device-tested baseline until the test59 checks pass.
 
 ## Rollback
 
