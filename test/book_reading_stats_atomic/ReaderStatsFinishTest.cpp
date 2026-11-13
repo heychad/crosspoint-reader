@@ -15,6 +15,30 @@ void createResetBook() {
 }
 }  // namespace
 
+TEST(ReaderStatsCompletion, UnsupportedMoveKeepsFinishedStatusAndTrackingIntact) {
+  Storage.reset();
+  const std::string source = "/Books/Part~1.epub";
+  const auto cache = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(source));
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", source, file));
+  ASSERT_TRUE(file.close());
+  testMillis = 0;
+  ReaderStats stats;
+  stats.begin(cache, source, true, 300, true);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 65000;
+  ASSERT_EQ(stats.editCompletionStats(cache, source, true, {2026, 11, 13}, false, nullptr, nullptr, true),
+            ReaderStats::CompletionResult::UnsupportedMoveSource);
+  EXPECT_FALSE(Storage.exists("/.completion-journal"));
+  EXPECT_FALSE(BookReadingStats::load(readingstats::bookDirectory(cache)).isCompleted);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().completedBooks, 0U);
+  stats.onRender(ReadingStatsFrame::Page);
+  testMillis = 85000;
+  ASSERT_TRUE(stats.finish());
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(cache)).totalReadingSeconds, 85U);
+  EXPECT_TRUE(Storage.exists(source.c_str()));
+}
+
 TEST(ReaderStatsReset, FlushesThenResumesWithoutRestoringOldBookCounters) {
   Storage.reset();
   createResetBook();

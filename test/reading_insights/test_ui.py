@@ -39,8 +39,9 @@ class FileBrowserActivity {public:
 #include <string>
 struct GfxRenderer; struct MappedInputManager;
 inline std::string confirmationBody;
+inline bool confirmationOnly=false;
 class ConfirmationActivity {public:
- ConfirmationActivity(GfxRenderer&,MappedInputManager&,const char*,const std::string& body,const char*,const char*){confirmationBody=body;}
+ ConfirmationActivity(GfxRenderer&,MappedInputManager&,const char*,const std::string& body,const char*,const char*,bool only=false){confirmationBody=body;confirmationOnly=only;}
 };
 ''')
     (path / "activities/reader/ReaderStats.h").write_text(r'''
@@ -221,6 +222,7 @@ inline Summary summarize(uint32_t){++dailyReads;return dailyFixture;}
 #include "CrossPointSettings.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) || defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
 #include "activities/reader/CompletionTransaction.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "activities/reader/ReadingStatsStore.h"
 #endif
 booktracking::State trackingFixture=booktracking::State::Disabled;bool trackingWriteOk=true;int trackingWrites=0;
@@ -676,6 +678,15 @@ int main(){
  exitMove.onExit();
  assert(completionCalls==writesBeforeExit && retainedFailures==failuresBeforeExit+1);
  SETTINGS.moveFinishedToReadFolder=0;
+ completionResult=readingstats::ClosedCompletionResult::UnsupportedMoveSource;
+ ReadingStatsActivity unsupported(renderer,input,"The Book",stats,localFixture,3888,true,true,
+                                 "cache:old","/Books/Part~1.epub",nullptr,true);
+ unsupported.onEnter();unsupported.activateIndex(completionRow);unsupported.loop();
+ assert(unsupported.completionFailed && !unsupported.completionPending && unsupported.launched==1);
+ assert(confirmationOnly && confirmationBody=="STR_COMPLETION_MOVE_UNSUPPORTED_BODY");
+ const int beforeDismiss=completionCalls;unsupported.handler(ActivityResult{false});
+ assert(completionCalls==beforeDismiss && unsupported.launched==1);
+ completionResult=readingstats::ClosedCompletionResult::Applied;
 #endif
 #endif
  book.activateIndex(startedRow);assert(book.launched==0);

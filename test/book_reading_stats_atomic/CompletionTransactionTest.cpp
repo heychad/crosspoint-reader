@@ -98,7 +98,8 @@ TEST_F(ClosedCompletionTransaction, RejectsAmbiguousMoveSourceBeforeChangingStat
   before.totalReadingSeconds = 1234;
   ASSERT_TRUE(saveBook(bookDirectory(cache), before));
   for (uint8_t policy : {cj::MOVE_TO_READ, cj::DEFER_MOVE_TO_READ}) {
-    ASSERT_EQ(setClosedBookCompletionStats(source, true, {2026, 11, 13}, policy), ClosedCompletionResult::Invalid);
+    ASSERT_EQ(setClosedBookCompletionStats(source, true, {2026, 11, 13}, policy),
+              ClosedCompletionResult::UnsupportedMoveSource);
     EXPECT_FALSE(Storage.exists("/.completion-journal"));
     EXPECT_TRUE(Storage.exists(source.c_str()));
     const auto after = BookReadingStats::load(bookDirectory(cache));

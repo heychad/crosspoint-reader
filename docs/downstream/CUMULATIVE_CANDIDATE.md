@@ -2,8 +2,9 @@
 
 November 13, 2026. This is the cumulative review record, not installation approval.
 Round-one corrections and retained storage fixes have checked checkpoints.
-The second review is complete. Host adapter/provenance corrections are checked;
-the unsupported-move notification remains to be corrected.
+The second review is complete. Its host adapter, provenance, and unsupported-move
+notification follow-ups are corrected and checked. Test59 is ready for packaging
+and a reviewed device handoff; runtime/device acceptance remains pending.
 
 ## Test59 configuration
 
@@ -167,7 +168,7 @@ is unchanged. Logs use `/tmp/x4-deep-*.log`.
 The follow-up source preflight shares that existing validator with completion
 entry and move execution. Names resembling 8.3 aliases (for example,
 `Part~1.epub`) previously could start a journal and move before the reference
-audit rejected them. New direct/deferred move requests now return Invalid
+audit rejected them. New direct/deferred move requests now return UnsupportedMoveSource
 before changing finished status/completed-book totals or starting a journal. Ordinary finished marking
 without a move still works. An older prepared unsupported plan returns Conflict
 before moving files or marking the index dirty; its book, journal, and plan stay
@@ -239,8 +240,8 @@ headroom still need measurement; no measured watchdog failure is established.
 The default X4 Pro build passes in 74.44 seconds (RAM 113068, flash 5698134);
 the twelve-flag build passes in 77.03 seconds (RAM 113100, flash 5804922).
 FAT, exFAT, and wrapper lookup suites also pass both sanitizers on the target's
-bytewise helper path. The second review is complete. Host adapter fixes clear the two failed checks;
-unsupported-move guidance and runtime/device gates remain.
+bytewise helper path. The second review is complete. Host adapter fixes clear the two failed checks. The final notification correction
+and its complete host run are recorded below; runtime/device gates remain.
 
 ## Second-review outcomes
 
@@ -250,9 +251,41 @@ correction diff. Two host harness include/link gaps are corrected and pass their
 rerun. The documentation review identified stale provenance (corrected above),
 an overbroad statistics guarantee (narrowed to finished status/completed-book
 totals), and a permanent unsupported-name error that still offers generic Retry.
-That notification is the remaining correction before packaging. The reviews
+That notification is corrected below. The reviews
 carry the first round's unchanged-code coverage limits; they do not prove
 physical behavior. No additional broad review round is planned.
+
+## Final notification correction and checks
+
+Unsupported automatic-move sources now retain a named result through the
+transaction and reader adapters. Reader and closed-book Statistics show a
+translated explanation naming Move Finished Books to Read Folder, with one OK
+button. Dismissal does not retry. Ordinary confirmations retain their two
+buttons. The Statistics path releases its render lock and temporary snapshot
+before opening the notice. Failed notice allocation keeps the current screen
+usable. Pending reading time can be saved; finished status and completed-book
+totals remain unchanged on rejection, and normal tracking continues.
+
+This bounded follow-up was reviewed by the main agent against all result and
+confirmation callers, with no third broad review round. Native ASan/UBSan checks
+cover 43 completion cases, continued tracking, normal marking without a move,
+notice dismissal/allocation failure, and unchanged two-button confirmation.
+The complete final host suite passes all **2451/2451** checks in **126.91 s**.
+Log: `/tmp/x4-test59-final-host-tests.log`; full build:
+`/tmp/x4-test59-notice-host-build.log`. The test59 firmware build passes in
+108.60 s (RAM 113100, flash 5805946), log `/tmp/x4-test59-notice-build.log`.
+GDB reports ConfirmationActivity growing from 900 to 904 bytes; there is no new
+reader buffer, retained cache, or task. English source labels regenerate normally;
+generated outputs remain ignored.
+
+The final application image is 5811216 bytes, ESP32-S3 chip ID 9, version
+`2.0.0-chad.3-test59-x4pro`, SHA-256
+`adda27fc50ffe070301f8d12ee1c4a8b35cd5834e6773ee83c0bbf52cf5ae0f4`.
+The package manifest records the final source checkpoint. The second-round
+review source above is the pre-notice base, not the final image's source.
+Official CrossPoint 2.0.0 X4 Pro rollback is downloaded and verified against its
+GitHub asset digest `eec8b22b96202da31c91ec73f4af3fa9e3149658c3cf38dab7aa2b810ff34b44`.
+No device installation or physical pass is claimed.
 
 ## Review and remaining gates
 
@@ -263,8 +296,8 @@ Reviewers read the pinned code, history, and recorded checks only. The main agen
 owns fixes and verification; source stays frozen during review.
 
 - [x] Complete cumulative host checks for the round-one frozen source and record the terminal result.
-- [ ] Revalidate the final correction set before device handoff.
-- [ ] Complete all four review axes and resolve material findings.
+- [x] Revalidate the final correction set with the full 2451-check host suite and intended X4 Pro build.
+- [x] Complete all four review axes and resolve known findings; two cumulative rounds plus checked bounded follow-ups.
 - [x] Reproduce and correct retained vendor UBSan findings and benign upload-collision retry fencing, with target-path sanitizer checks.
 - [x] Stamp a unique test version and record a reproducible candidate profile: test59, `x4pro-chad-test`.
 - [ ] Measure runtime internal/PSRAM free bytes, largest blocks, and stack.

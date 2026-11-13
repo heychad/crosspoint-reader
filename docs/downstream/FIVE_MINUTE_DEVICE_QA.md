@@ -1,19 +1,21 @@
 # Five-minute X4 Pro check
 
-Run after installing the reviewed clipping repair candidate. Keep this check at
-five minutes. Report the failed step, book, and action; a pass is `Passed 1–6`.
+Run after the verified backup and reviewed test59 installation. Keep this
+check at five minutes. Report the failed step, book, and action; a pass is
+`Passed 1–6`. Record a long first-time load separately rather than extending
+the check indefinitely.
 
-The reviewed repair is `/zDev/CLIPFIX2.BIN`, version
-`2.0.0-chad.3-test58-clipfix2-x4pro`. Open `zDev` in
-**Settings → System → SD Card Firmware Update** and select `CLIPFIX2.BIN`.
-Keep the reader powered through the restart, then start the timer.
+The candidate is `/zDev/TEST59.BIN`, version
+`2.0.0-chad.3-test59-x4pro`. Open `zDev` in
+**Settings → System → SD Card Firmware Update** and select `TEST59.BIN`.
+Keep the reader powered through restart, then start the timer.
 
 | Time | Check | Pass |
 | --- | --- | --- |
-| 0:00–0:30 | Check About, then reopen your in-progress book. | Repair version is shown; the passage matches where you stopped. |
+| 0:00–0:30 | Check About, then reopen your in-progress book. | Test59 version is shown; the passage matches where you stopped. |
 | 0:30–1:30 | Long-press book text to open clipping selection. Drag each handle across several lines, extend and shrink the selection, then save. | Controls appear without a reboot; selection follows the handles; saving returns to the book. |
 | 1:30–2:00 | Open Saved Items and inspect the new clipping. | The expected words and book are present, without duplicates. |
-| 2:00–3:30 | Long-press text, adjust, and cancel once in portrait, inverted portrait, landscape CW, and landscape CCW. In one orientation, hold at the bottom to extend onto the next page before cancelling. | All four orientations work; page extension and cancellation do not save or crash. |
+| 2:00–3:30 | Open the book's reading Statistics, inspect its status and reading time, then return. | The book and status match; available values are plausible. Record unavailable values. Returning keeps the same passage. |
 | 3:30–4:15 | Turn five pages forward and five back. Try Quick Lock and unlock. | Buttons and touch work; unlocking does not turn another page. |
 | 4:15–5:00 | Sleep, wake, and reopen the book. Then reopen Wi-Fi File Transfer. | The passage resumes correctly, and the web page is reachable. |
 
@@ -22,5 +24,6 @@ Preserve `crash_report.txt`; do not delete it or clear the book's cache. Record
 which step failed and whether the crash happened on opening selection,
 changing it, saving, or cancelling.
 
-For the next feature build, replace step 4 with one specific feature check.
-Keep the clipping, page-turn, and sleep/resume checks so the loop stays short.
+The broader checklist is a menu for later sessions. Orientation, completion
+moves, backup/restore, online updates, and throughput use disposable books and
+separate checks; they are not part of this five-minute assignment.

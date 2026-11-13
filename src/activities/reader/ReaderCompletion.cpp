@@ -43,6 +43,18 @@ void ReaderActivity::handleCompletionAttempt(bool recovery, bool completed) {
     requestUpdate();
     return;
   }
+  if (result == ReaderStats::CompletionResult::UnsupportedMoveSource) {
+    auto notice =
+        makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPLETION_MOVE_UNSUPPORTED_TITLE),
+                                                tr(STR_COMPLETION_MOVE_UNSUPPORTED_BODY), "", tr(STR_OK_BUTTON), true);
+    if (!notice) {
+      LOG_ERR("READER", "Could not allocate unsupported-move notice");
+      requestUpdate();
+      return;
+    }
+    startActivityForResult(std::move(notice), [this](const ActivityResult&) { requestUpdate(); });
+    return;
+  }
   auto retry = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPLETION_RETRY_TITLE),
                                                        tr(STR_COMPLETION_RETRY_BODY), tr(STR_CANCEL), tr(STR_RETRY));
   if (!retry) {

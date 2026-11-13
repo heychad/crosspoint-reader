@@ -145,6 +145,8 @@ ReaderStats::CompletionResult ReaderStats::editCompletionStats(const std::string
         w.result = CompletionResult::Busy;
       else if (result == readingstats::ClosedCompletionResult::RecoveryRequired)
         w.result = CompletionResult::RecoveryRequired;
+      else if (result == readingstats::ClosedCompletionResult::UnsupportedMoveSource)
+        w.result = CompletionResult::UnsupportedMoveSource;
       return false;
     }
     if (w.removeRecent && !w.remove(*w.path, w.removeContext)) {

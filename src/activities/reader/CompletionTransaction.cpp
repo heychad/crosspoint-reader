@@ -68,10 +68,13 @@ bool setClosedLocked(void* raw) {
     return true;
   }
   if ((context.policy & ~cj::POLICY_MASK) || (!context.completed && context.policy) ||
-      static_cast<bool>(context.policy & cj::MOVE_FROM_DEFERRED) != static_cast<bool>(context.deferredOrigin) ||
-      ((context.policy & (cj::MOVE_TO_READ | cj::DEFER_MOVE_TO_READ)) &&
-       !syncpublish::validReferencePath(context.bookPath))) {
+      static_cast<bool>(context.policy & cj::MOVE_FROM_DEFERRED) != static_cast<bool>(context.deferredOrigin)) {
     context.result = ClosedCompletionResult::Invalid;
+    return true;
+  }
+  if ((context.policy & (cj::MOVE_TO_READ | cj::DEFER_MOVE_TO_READ)) &&
+      !syncpublish::validReferencePath(context.bookPath)) {
+    context.result = ClosedCompletionResult::UnsupportedMoveSource;
     return true;
   }
   const std::string cache = cachePath(context.bookPath);

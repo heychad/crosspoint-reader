@@ -22,7 +22,10 @@ enum {
   STR_COMPLETION_RETRY_TITLE,
   STR_COMPLETION_RETRY_BODY,
   STR_CANCEL,
-  STR_RETRY
+  STR_RETRY,
+  STR_OK_BUTTON,
+  STR_COMPLETION_MOVE_UNSUPPORTED_TITLE,
+  STR_COMPLETION_MOVE_UNSUPPORTED_BODY
 };
 inline const char* tr(int) { return "test"; }
 inline bool renderHeld = false;
@@ -52,7 +55,7 @@ struct Txt {
 struct Renderer {};
 struct Input {};
 struct ConfirmationActivity {
-  ConfirmationActivity(Renderer&, Input&, const char*, const char*, const char* = "", const char* = "") {}
+  ConfirmationActivity(Renderer&, Input&, const char*, const char*, const char* = "", const char* = "", bool = false) {}
 };
 struct ActivityResult {
   bool isCancelled = false;

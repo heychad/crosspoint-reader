@@ -29,7 +29,8 @@ code = r'''
 #define CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT 1
 #define LOG_ERR(...) ((void)0)
 enum {STR_COMPLETION_PROMPT_TITLE, STR_COMPLETION_PROMPT_BODY, STR_COMPLETION_RETRY_TITLE,
-      STR_COMPLETION_RETRY_BODY, STR_CANCEL, STR_RETRY};
+      STR_COMPLETION_RETRY_BODY, STR_CANCEL, STR_RETRY, STR_OK_BUTTON,
+      STR_COMPLETION_MOVE_UNSUPPORTED_TITLE, STR_COMPLETION_MOVE_UNSUPPORTED_BODY};
 const char* tr(int){return "text";}
 unsigned long millis(){return 1;}
 namespace bleturner {void acknowledgeLinkNote(){}}
@@ -38,7 +39,8 @@ bool held=false, failAllocation=false;
 struct RenderLock {RenderLock(){assert(!held);held=true;} ~RenderLock(){held=false;}};
 struct Renderer{}; struct Input{};
 struct ConfirmationActivity {
- ConfirmationActivity(Renderer&,Input&,const char*,const char*,const char* = "",const char* = ""){}
+ bool confirmOnly=false;
+ ConfirmationActivity(Renderer&,Input&,const char*,const char*,const char* = "",const char* = "",bool only=false):confirmOnly(only){}
 };
 template<class T,class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... args){
  if(failAllocation){failAllocation=false;return {};}
@@ -46,7 +48,7 @@ template<class T,class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... a
 }
 struct ActivityResult {bool isCancelled=false;};
 struct ReaderStats {
- enum class CompletionResult {Applied,Unchanged,NotTracking,Busy,SaveFailed,RecoveryRequired,Unavailable};
+ enum class CompletionResult {Applied,Unchanged,NotTracking,Busy,SaveFailed,RecoveryRequired,Unavailable,UnsupportedMoveSource};
  bool known=true, done=false;int pauses=0;
  bool completionStatus(bool& out)const{if(!known)return false;out=done;return true;}
  void pause(){++pauses;}
@@ -75,13 +77,13 @@ public:
  Renderer renderer;Input mappedInput;int currentSpineIndex=1,footnoteDepth=0,pendingManualTurn=0;
  bool pendingManualTurnTouch=false,overlay=false;unsigned long lastPageTurnTime=0;
  int nextPageNumber=0;std::optional<uint16_t> pendingPageJump;
- int updates=0, edits=0, recoveries=0, dialogs=0;bool lastTarget=true;
+ int updates=0, edits=0, recoveries=0, dialogs=0;bool lastTarget=true,lastConfirmOnly=false;
  ReaderStats::CompletionResult nextResult=ReaderStats::CompletionResult::Applied;
  std::function<void(const ActivityResult&)> callback;
  bool inputOverPage()const{return overlay;}
  void clearDeferredReposition(){}
  void requestUpdate(){++updates;}
- void startActivityForResult(std::unique_ptr<ConfirmationActivity>,std::function<void(const ActivityResult&)> cb){++dialogs;callback=std::move(cb);}
+ void startActivityForResult(std::unique_ptr<ConfirmationActivity> dialog,std::function<void(const ActivityResult&)> cb){++dialogs;lastConfirmOnly=dialog->confirmOnly;callback=std::move(cb);}
  ReaderStats::CompletionResult setBookCompleted(bool completed){assert(!held);++edits;lastTarget=completed;return nextResult;}
  ReaderStats::CompletionResult recoverBookCompletion(){assert(!held);++recoveries;return nextResult;}
  void initializeCompletionPrompt();void observeCompletionPosition();bool showQueuedCompletionPrompt();
@@ -108,6 +110,10 @@ int main(){
  manual.handleCompletionAttempt(false,false);assert(manual.edits==1 && !manual.lastTarget && manual.dialogs==1);
  manual.nextResult=ReaderStats::CompletionResult::Applied;
  auto manualRetry=manual.callback;manualRetry({false});assert(manual.edits==2 && !manual.lastTarget);
+ EpubReaderActivity unsupported;unsupported.nextResult=ReaderStats::CompletionResult::UnsupportedMoveSource;
+ unsupported.handleCompletionAttempt(false,true);assert(unsupported.edits==1 && unsupported.dialogs==1 && unsupported.lastConfirmOnly);
+ auto dismiss=unsupported.callback;dismiss({false});assert(unsupported.edits==1 && unsupported.recoveries==0 && unsupported.dialogs==1 && unsupported.updates==1);
+ failAllocation=true;unsupported.handleCompletionAttempt(false,true);assert(unsupported.edits==2 && unsupported.dialogs==1 && unsupported.updates==2);
  EpubReaderActivity c;queue(c);SETTINGS.moveFinishedToReadFolder=true;
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION)
  assert(c.showQueuedCompletionPrompt() && c.dialogs==1);

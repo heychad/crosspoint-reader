@@ -7,12 +7,14 @@
 
 ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const std::string& heading, const std::string& body,
-                                           const std::string& cancelLabel, const std::string& confirmLabel)
+                                           const std::string& cancelLabel, const std::string& confirmLabel,
+                                           bool confirmOnly)
     : Activity("Confirmation", renderer, mappedInput),
       heading(heading),
       body(body),
       cancelLabel(cancelLabel),
-      confirmLabel(confirmLabel) {}
+      confirmLabel(confirmLabel),
+      confirmOnly(confirmOnly) {}
 
 void ConfirmationActivity::onEnter() {
   Activity::onEnter();
@@ -24,12 +26,13 @@ void ConfirmationActivity::onEnter() {
       cancelLabel.empty() ? I18N.get(StrId::STR_CANCEL) : cancelLabel.c_str(),
       confirmLabel.empty() ? I18N.get(StrId::STR_CONFIRM) : confirmLabel.c_str(),
   };
-  confirmPopup.show(heading.c_str(), body.c_str(), options, 2, 0, [this](int idx) {
-    ActivityResult res;
-    res.isCancelled = (idx != 1);
-    setResult(std::move(res));
-    finish();
-  });
+  confirmPopup.show(heading.c_str(), body.c_str(), confirmOnly ? options + 1 : options, confirmOnly ? 1 : 2, 0,
+                    [this](int idx) {
+                      ActivityResult res;
+                      res.isCancelled = !confirmOnly && idx != 1;
+                      setResult(std::move(res));
+                      finish();
+                    });
 
   requestUpdate(true);
 }

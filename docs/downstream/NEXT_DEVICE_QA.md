@@ -341,7 +341,7 @@ Failed backups must not be reported Saved or allow reset/restore to proceed.
 
 For a separate disposable-book check, use `/zDev/Part~1.epub`. With Move to read
 enabled, marking finished should fail without moving the book or changing its
-finished status/completed-book totals. Pending reading time may still be saved. Disable that move policy and confirm ordinary finished marking
+finished status/completed-book totals. Pending reading time may still be saved. The one-button notice should name Move Finished Books to Read Folder; dismissing it must not retry. Disable that move policy and confirm ordinary finished marking
 works. Normal reading and tracking should remain available. An older prepared
 transaction with an unsupported source is preserved for inspection; do not
 delete its journal to force a retry.

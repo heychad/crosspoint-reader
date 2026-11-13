@@ -11,7 +11,15 @@ namespace readingstats {
 // The caller handles Recents; deferred moves are recorded but not performed.
 // The caller must ensure this book has no active reader and coordinate every
 // statistics reader and writer before enabling this operation in the UI.
-enum class ClosedCompletionResult { Applied, Unchanged, Invalid, Busy, Unavailable, RecoveryRequired };
+enum class ClosedCompletionResult {
+  Applied,
+  Unchanged,
+  Invalid,
+  Busy,
+  Unavailable,
+  RecoveryRequired,
+  UnsupportedMoveSource
+};
 // Matches the firmware's current path-derived cache identity for this book.
 bool completionCacheMatchesBook(const std::string& bookPath, const std::string& cache);
 ClosedCompletionResult setClosedBookCompletionStats(const std::string& bookPath, bool completed,

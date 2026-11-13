@@ -17,6 +17,7 @@
 #include "RecentBooksStore.h"
 #include "activities/reader/CompletionJournal.h"
 #include "activities/reader/CompletionTransaction.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "util/ReadFolder.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE)
 #include <Epub.h>
@@ -782,26 +783,39 @@ void ReadingStatsActivity::loop() {
       snapshot->global = GlobalReadingStats::loadReadOnly();
       snapshot->aggregate = GlobalReadingStats::loadAggregated(snapshot->global);
     }
-    RenderLock lock(*this);
+    {
+      RenderLock lock(*this);
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE)
-    if (!movedPath.empty()) {
-      trackingBookPath = std::move(movedPath);
-      trackingCachePath = movedCache;
-    }
+      if (!movedPath.empty()) {
+        trackingBookPath = std::move(movedPath);
+        trackingCachePath = movedCache;
+      }
 #endif
-    completionPending = false;
-    completionFailed = !committed || !found || !known || !snapshot->book.writable || !snapshot->global.writable;
-    if (!completionFailed) {
-      book = snapshot->book;
-      local = snapshot->global;
-      aggregate = snapshot->aggregate;
-      saved = true;
+      completionPending = false;
+      completionFailed = !committed || !found || !known || !snapshot->book.writable || !snapshot->global.writable;
+      if (!completionFailed) {
+        book = snapshot->book;
+        local = snapshot->global;
+        aggregate = snapshot->aggregate;
+        saved = true;
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_RESTORE)
-      bookRestoreRecovery = BookRestoreRecovery::None;
+        bookRestoreRecovery = BookRestoreRecovery::None;
 #endif
-    } else {
-      saved = false;
-      statsSaveNotice().recordFailure();
+      } else {
+        saved = false;
+        statsSaveNotice().recordFailure();
+      }
+    }
+    if (result == readingstats::ClosedCompletionResult::UnsupportedMoveSource) {
+      snapshot.reset();
+      auto notice = makeUniqueNoThrow<ConfirmationActivity>(
+          renderer, mappedInput, tr(STR_COMPLETION_MOVE_UNSUPPORTED_TITLE), tr(STR_COMPLETION_MOVE_UNSUPPORTED_BODY),
+          "", tr(STR_OK_BUTTON), true);
+      if (notice) {
+        startActivityForResult(std::move(notice), [this](const ActivityResult&) { requestUpdate(); });
+        return;
+      }
+      LOG_ERR("STATS", "Could not allocate unsupported-move notice");
     }
     requestUpdate();
     return;

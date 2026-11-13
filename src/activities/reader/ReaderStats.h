@@ -31,7 +31,16 @@ class ReaderStats {
       const std::string& cachePath, const std::string& bookPath, bool globalTracking, uint16_t idleSeconds,
       bool enableCompletion = false, statsbackup::BookResetScope scope = statsbackup::BookResetScope::Statistics);
   bool snapshot(BookReadingStats& bookOut, GlobalReadingStats& globalOut, bool& saved, bool forceSave = false);
-  enum class CompletionResult { Applied, Unchanged, NotTracking, Busy, SaveFailed, RecoveryRequired, Unavailable };
+  enum class CompletionResult {
+    Applied,
+    Unchanged,
+    NotTracking,
+    Busy,
+    SaveFailed,
+    RecoveryRequired,
+    Unavailable,
+    UnsupportedMoveSource
+  };
   using RemoveRecent = bool (*)(const std::string& bookPath, void* context);
   // The caller supplies the persisted Recents removal. Moves remain deferred.
   CompletionResult editCompletionStats(const std::string& cachePath, const std::string& bookPath, bool completed,
