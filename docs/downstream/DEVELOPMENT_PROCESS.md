@@ -213,3 +213,17 @@ build_flags =
 
 Build with `pio run -e x4pro-personal-updates-wip`. This enables twelve WIP flags,
 including the update transport; it is not an installation or release profile.
+
+## Reproducible device candidate
+
+Test59 uses the tracked `x4pro-chad-test` environment in `platformio.ini`:
+
+```sh
+pio run -e x4pro-chad-test
+```
+
+It enables the same twelve flags as the checked WIP profile and identifies as
+`2.0.0-chad.3-test59-x4pro`. No local override file is required. The default
+`x4pro` environment keeps its existing feature gates. Build, full-suite,
+review, backup, and installation status belong to
+[the candidate record](CUMULATIVE_CANDIDATE.md).

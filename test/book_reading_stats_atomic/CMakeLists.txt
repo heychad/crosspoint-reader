@@ -103,6 +103,7 @@ target_include_directories(BookReadingStatsDailyTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/src/activities/reader
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/hal
 )
 target_compile_definitions(BookReadingStatsDailyTest PRIVATE CROSSPOINT_EXPERIMENTAL_DAILY_STATS=1)
 target_link_libraries(BookReadingStatsDailyTest PRIVATE crosspoint_test_common GTest::gtest_main)

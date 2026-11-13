@@ -1,7 +1,26 @@
 # Combined X4 Pro candidate
 
-November 13, 2026. This is the cumulative review record, not installation approval. Round-one
-review is complete; corrections are in progress.
+November 13, 2026. This is the cumulative review record, not installation approval.
+Round-one corrections and retained storage fixes have checked checkpoints.
+The versioned candidate is being prepared for the second review.
+
+## Test59 configuration
+
+The intended device image is `2.0.0-chad.3-test59-x4pro`, built with
+`pio run -e x4pro-chad-test`. The tracked environment in `platformio.ini`
+enables the twelve selected experimental flags listed below and inherits the
+X4 Pro board, USB, content-protection, and logging configuration. Its resolved
+flags match the checked twelve-flag WIP environment. Resolving the tracked
+configuration without `platformio.local.ini` produces the same flags, so this
+candidate needs no personal override file. Inventory/staged-publication
+prototypes remain disabled. A unique version is not installation approval.
+
+This profile builds successfully in 188.69 seconds (RAM 113100, flash 5804822).
+The application image has the ESP32-S3 chip ID and expected version string.
+The full host build passes after adding the shared-validator include path to
+its daily-statistics variant. Logs are `/tmp/x4-test59-build.log` and
+`/tmp/x4-test59-host-build2.log`. The cumulative host run and targeted second
+review follow this source/configuration checkpoint.
 
 ## Requirement and frozen inputs
 
@@ -228,7 +247,7 @@ owns fixes and verification; source stays frozen during review.
 - [ ] Revalidate the final correction set before device handoff.
 - [ ] Complete all four review axes and resolve material findings.
 - [x] Reproduce and correct retained vendor UBSan findings and benign upload-collision retry fencing, with target-path sanitizer checks.
-- [ ] Stamp a unique test version and record a reproducible candidate profile.
+- [x] Stamp a unique test version and record a reproducible candidate profile: test59, `x4pro-chad-test`.
 - [ ] Measure runtime internal/PSRAM free bytes, largest blocks, and stack.
 - [ ] Package source, exact configuration, hashes, rollback, and the short QA plan.
 - [ ] Reidentify the reader, back up its state, and verify the backup's coverage.
