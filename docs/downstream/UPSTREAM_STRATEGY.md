@@ -20,7 +20,7 @@ Current pins verified through GitHub Releases:
 
 - CrossPoint stable: `2.0.0`, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - CrossInk stable reference: `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`.
-- CrossInk RC reference: `v2.0.0-rc`, `b8feaec4d10ecb484ed80e326f01f2a3ea949331`.
+- CrossInk RC reference: `v2.0.0-rc2`, `959e3d1575cf1cf49475c4c4546e49adadf4d477`.
 - CrossPoint `2.0.0rc` is older than stable `2.0.0`; it is not an upgrade target.
 
 The November 12 release check found CrossInk `v2.0.0-rc2`,
@@ -57,7 +57,8 @@ in RELEASE_BASELINE.md. Keep the preserved branch as historical evidence.
 - Stable baseline: CrossPoint 2.0.0, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - Previously integrated upstream development tip: `0333cbbe4`, 45 commits beyond the stable baseline.
 - Original CrossInk reference: v1.6.1, `9914146ee`.
-- Active CrossInk feature comparison: v2.0.0-rc, `b8feaec4d`. Historical development audit: `1990a78f2`.
+- Active CrossInk feature comparison: v2.0.0-rc2, `959e3d157`.
+- Earlier RC comparison: v2.0.0-rc, `b8feaec4d`. Historical development audit: `1990a78f2`.
 
 These are dated observations, not moving version pins. Refresh before integration.
 
@@ -105,9 +106,9 @@ Keep the known device-tested revision available for rollback.
 - Use WIP checkpoint commits for backup. Releases and supported-branch merges
   require risk-based review and device handoff as defined in the handoff skill.
 
-## Current limitations
+## Historical checkpoint limitations
 
-The feature checkpoint is committed and pushed. The upstream merge passed the
+The earlier feature checkpoint was committed and pushed. Its upstream merge passed the
 X4 Pro build; 1,774 of 1,779 host tests passed initially, and focused reruns passed
 after correcting five stale fixtures. A later full suite passed all 1,784 tests.
 This is not a firmware release. Experimental features in the checkpoint remain
@@ -115,6 +116,8 @@ incomplete or unverified. The feature checklist is not proof
 of full CrossInk parity or release readiness. CrossInk's new release-candidate SDK submodule could not be fetched
 from its referenced upstream object during this check; the top-level source was
 fetched successfully. Do not substitute another SDK revision without review.
+The current test59 checks and remaining device gates are recorded in
+[the handoff](TEST59_HANDOFF.md).
 
 ## CrossInk follow-up audit
 

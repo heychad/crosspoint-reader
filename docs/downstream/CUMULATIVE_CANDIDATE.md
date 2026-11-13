@@ -3,8 +3,9 @@
 November 13, 2026. This is the cumulative review record, not installation approval.
 Round-one corrections and retained storage fixes have checked checkpoints.
 The second review is complete. Its host adapter, provenance, and unsupported-move
-notification follow-ups are corrected and checked. Test59 is ready for packaging
-and a reviewed device handoff; runtime/device acceptance remains pending.
+notification follow-ups are corrected and checked. Test59 is packaged for a fresh
+backup and reviewed device handoff; runtime/device acceptance remains pending.
+The [handoff record](TEST59_HANDOFF.md) identifies the final image and checksums.
 
 ## Test59 configuration
 
@@ -17,7 +18,7 @@ configuration without `platformio.local.ini` produces the same flags, so this
 candidate needs no personal override file. Inventory/staged-publication
 prototypes remain disabled. A unique version is not installation approval.
 
-This profile builds successfully in 188.69 seconds (RAM 113100, flash 5804822).
+The frozen pre-notice profile built in 188.69 seconds (RAM 113100, flash 5804822).
 The application image has the ESP32-S3 chip ID and expected version string.
 The full host build passes after adding the shared-validator include path to
 its daily-statistics variant. Logs are `/tmp/x4-test59-build.log` and
@@ -33,7 +34,9 @@ remain deferred; Nearby is skipped. Device performance tuning follows feature
 integration, with measurements required before claiming improvement.
 
 - Second-round frozen test59 source: `d93dce0ceaf73c4a40cef83502df2fdea65fe42b`.
-- Test59 source tree: `9364f092acac507bed91386193149ddf84080fb8`.
+- Second-round source tree: `9364f092acac507bed91386193149ddf84080fb8`.
+- Final packaged firmware source: `d8d6005a1d5dfae3be95507babe7f9b271800d70`,
+  tree `6c217f59776831c7691f3caa74b5d3f6376cfb66`.
 - Historical round-one source: `f3b28c79a4b75236404c3965dab3cefc4fcbfcb1`,
   tree `0e7f79cc951f152fdda9864dce65f0742013a0c5`.
 - Working branch: `codex/x4pro-release-baseline-20261111`.
@@ -301,7 +304,7 @@ owns fixes and verification; source stays frozen during review.
 - [x] Reproduce and correct retained vendor UBSan findings and benign upload-collision retry fencing, with target-path sanitizer checks.
 - [x] Stamp a unique test version and record a reproducible candidate profile: test59, `x4pro-chad-test`.
 - [ ] Measure runtime internal/PSRAM free bytes, largest blocks, and stack.
-- [ ] Package source, exact configuration, hashes, rollback, and the short QA plan.
+- [x] Package source provenance, exact configuration, hashes, rollback, and the short QA plan. All seven package checksums pass.
 - [ ] Reidentify the reader, back up its state, and verify the backup's coverage.
 - [ ] Prepare verified files under `/zDev/`; Chad performs installation.
 - [ ] Confirm reading state, inputs, clipping, and representative new features.
