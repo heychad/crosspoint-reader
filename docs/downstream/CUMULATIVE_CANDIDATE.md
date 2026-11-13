@@ -139,6 +139,25 @@ moves and retries, retirement receipts, companion files, remounts, and acquiring
 a normal statistics session after retirement. Publication's 16-component limit
 is unchanged. Logs use `/tmp/x4-deep-*.log`.
 
+The follow-up source preflight shares that existing validator with completion
+entry and move execution. Names resembling 8.3 aliases (for example,
+`Part~1.epub`) previously could start a journal and move before the reference
+audit rejected them. New direct/deferred move requests now return Invalid
+before changing statistics or starting a journal. Ordinary finished marking
+without a move still works. An older prepared unsupported plan returns Conflict
+before moving files or marking the index dirty; its book, journal, and plan stay
+available for inspection. This does not repair older in-flight transactions.
+The extraction adds no allocation, task, or persisted field.
+
+The new request regression fails before the fix. Sixty-four focused native
+checks pass under ASan/UBSan in 2.91 seconds, including ordinary completion,
+unsupported requests, older prepared plans, and reference audits. The real
+deep-source move test passes both sanitizers on FAT/exFAT. The default X4 Pro
+build passes in 72.02 seconds (RAM 113068, flash 5698134); the twelve-flag build
+passes in 71.96 seconds (RAM 113100, flash 5804982). Logs use
+`/tmp/x4-source-preflight-*.log`. Overlapping initial host builds were discarded;
+the final host build/check ran alone from the corrected files.
+
 R3 changes only retirement after a verified clean routine state save. The
 primary has been synced, closed, reopened, compared with the requested bytes,
 and checked independent from the old backup before that backup is removed.

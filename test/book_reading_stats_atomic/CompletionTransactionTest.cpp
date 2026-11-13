@@ -86,6 +86,32 @@ TEST_F(ClosedCompletionTransaction, RefusesToRetireUnverifiedBookMove) {
   EXPECT_EQ(policy, cj::MOVE_TO_READ);
 }
 
+TEST_F(ClosedCompletionTransaction, RejectsAmbiguousMoveSourceBeforeChangingStatsOrStartingJournal) {
+  using namespace readingstats;
+  namespace cj = completionjournal;
+  const std::string source = "/Authors/Writer/Part~1.epub";
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", source, file));
+  ASSERT_TRUE(file.close());
+  const auto cache = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(source));
+  BookReadingStats before;
+  before.totalReadingSeconds = 1234;
+  ASSERT_TRUE(saveBook(bookDirectory(cache), before));
+  for (uint8_t policy : {cj::MOVE_TO_READ, cj::DEFER_MOVE_TO_READ}) {
+    ASSERT_EQ(setClosedBookCompletionStats(source, true, {2026, 11, 13}, policy), ClosedCompletionResult::Invalid);
+    EXPECT_FALSE(Storage.exists("/.completion-journal"));
+    EXPECT_TRUE(Storage.exists(source.c_str()));
+    const auto after = BookReadingStats::load(bookDirectory(cache));
+    EXPECT_TRUE(after.writable && !after.isCompleted);
+    EXPECT_EQ(after.totalReadingSeconds, 1234U);
+    EXPECT_EQ(GlobalReadingStats::loadReadOnly().completedBooks, 0U);
+    StatsSessionLease reader;
+    ASSERT_TRUE(reader.acquire() && reader.release());
+  }
+  ASSERT_EQ(setClosedBookCompletionStats(source, true, {2026, 11, 13}), ClosedCompletionResult::Applied);
+  EXPECT_EQ(finalizeClosedBookCompletion(source, true), CompletionFinalizeResult::Finalized);
+}
+
 TEST_F(ClosedCompletionTransaction, DeferredMovePersistsSourceBeforeJournalRetirement) {
   namespace cj = readingstats::completionjournal;
   using namespace readingstats;

@@ -74,6 +74,43 @@ TEST_F(CompletionMovePlanIO, PublishesAndRecoversSamePlanWithoutOverwriting) {
   EXPECT_EQ(to, DEST);
 }
 
+TEST_F(CompletionMovePlanIO, PreservesOlderPreparedPlanWhoseSourceCannotBeAudited) {
+  Storage.reset();
+  const std::string source = "/Authors/Writer/Part~1.epub";
+  constexpr char target[] = "/read/Part~1.epub";
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", source, file));
+  ASSERT_TRUE(file.close());
+  const auto cache = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(source));
+  const auto directory = readingstats::bookDirectory(cache);
+  BookReadingStats book;
+  GlobalReadingStats global;
+  ASSERT_TRUE(readingstats::saveBook(directory, book) && global.save());
+  cj::Baseline before{};
+  before.bookSize = cj::BOOK_BYTES;
+  before.globalSize = cj::GLOBAL_BYTES;
+  ASSERT_TRUE(book.encode(before.book.data(), before.book.size()));
+  ASSERT_TRUE(global.encode(before.global));
+  book.isCompleted = true;
+  global.completedBooks = 1;
+  cj::Book afterBook{};
+  cj::Global afterGlobal{};
+  ASSERT_TRUE(book.encode(afterBook.data(), afterBook.size()));
+  ASSERT_TRUE(global.encode(afterGlobal));
+  cj::Record journal{};
+  size_t size = 0;
+  ASSERT_TRUE(cj::encode(directory, afterBook, afterGlobal, before, journal, size, cj::MOVE_TO_READ));
+  ASSERT_TRUE(Storage.mkdir("/.completion-journal"));
+  ASSERT_EQ(cj::start(journal, size), cj::StartResult::Started);
+  ASSERT_EQ(cj::replay(), cj::ReplayResult::AppliedUnretired);
+  ASSERT_EQ(cm::preparePlan(source, target), cm::PlanResult::Ready);
+  EXPECT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::Conflict);
+  EXPECT_TRUE(Storage.exists(source.c_str()));
+  EXPECT_FALSE(Storage.exists(target));
+  EXPECT_FALSE(Storage.exists("/.crosspoint/library.dirty"));
+  EXPECT_TRUE(Storage.exists(PLAN) && Storage.exists(SEAL));
+}
+
 TEST_F(CompletionMovePlanIO, ReadOnlyVerificationDetectsIncompleteAndChangedMoves) {
   EXPECT_EQ(cm::verifyPreparedFiles(), cm::VerifyFilesResult::NoPlan);
   std::string progressSource, progressTarget;

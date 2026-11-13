@@ -13,6 +13,7 @@
 #include "CompletionLibraryDirty.h"
 #include "CrossInkBookmarkMove.h"
 #include "StatsSessionLease.h"
+#include "network/sync/ReferencePath.h"
 
 namespace readingstats::completionmove {
 namespace {
@@ -517,6 +518,10 @@ bool moveFilesLocked(void* raw) {
   }
   if (!(*identities)[0].present) {
     result = MoveFilesResult::RecoveryRequired;
+    return true;
+  }
+  if (!syncpublish::validReferencePath(from)) {
+    result = MoveFilesResult::Conflict;
     return true;
   }
   cj::SnapshotState bookState, globalState;

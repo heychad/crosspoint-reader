@@ -336,3 +336,12 @@ Confirm the preview and verify totals and the unchanged passage. Test reset
 only on disposable statistics. For an RC2 v4 source, retain an external copy,
 check the integrity/identity notice, and verify all 175 source bytes remain.
 Failed backups must not be reported Saved or allow reset/restore to proceed.
+
+## Completion source names
+
+For a separate disposable-book check, use `/zDev/Part~1.epub`. With Move to read
+enabled, marking finished should fail without moving the book or changing its
+statistics. Disable that move policy and confirm ordinary finished marking
+works. Normal reading and tracking should remain available. An older prepared
+transaction with an unsupported source is preserved for inspection; do not
+delete its journal to force a retry.

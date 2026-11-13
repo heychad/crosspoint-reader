@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "PublishIntent.h"
+#include "ReferencePath.h"
 
 namespace syncpublish {
 namespace {
@@ -153,25 +154,6 @@ struct TrackedReader {
 };
 }  // namespace
 namespace {
-bool validReference(std::string_view reference) {
-  if (reference.size() < 2 || reference.size() > 4096 || reference.front() != '/' || reference.back() == '/' ||
-      reference.find('\0') != reference.npos || reference.find('\\') != reference.npos)
-    return false;
-  size_t start = 1;
-  while (start < reference.size()) {
-    const auto end = reference.find('/', start);
-    const auto component = reference.substr(start, end == reference.npos ? reference.size() - start : end - start);
-    if (component.empty() || component.size() > 765) return false;
-    if (!validCheckedStorageComponent(component)) return false;
-    for (unsigned char c : component)
-      if (c < 0x20 || c == 0x7f) return false;
-    if (end == reference.npos) break;
-    start = end + 1;
-  }
-  for (size_t i = 0; i + 1 < reference.size(); ++i)
-    if (reference[i] == '~' && reference[i + 1] >= '0' && reference[i + 1] <= '9') return false;
-  return true;
-}
 // Compare the same UTF-16 units and upcase table used by SdFat lookups.
 bool fatEqual(std::string_view left, std::string_view right) {
   struct Units {
@@ -204,7 +186,7 @@ bool fatEqual(std::string_view left, std::string_view right) {
 }  // namespace
 bool referenceMayConflict(std::string_view reference, std::string_view destination) {
   if (reference.empty()) return false;
-  if (!validReference(reference)) return true;
+  if (!validReferencePath(reference)) return true;
   const auto leaf = reference.substr(reference.find_last_of('/') + 1);
   const auto target = destination.substr(destination.find_last_of('/') + 1);
   if (!validCheckedStorageComponent(target)) return true;
@@ -212,7 +194,7 @@ bool referenceMayConflict(std::string_view reference, std::string_view destinati
 }
 bool referenceMayReferTo(std::string_view reference, std::string_view source) {
   if (reference.empty()) return false;
-  if (!validReference(reference) || !validReference(source)) return true;
+  if (!validReferencePath(reference) || !validReferencePath(source)) return true;
   return fatEqual(reference, source);
 }
 namespace {
@@ -284,7 +266,7 @@ ReferenceGuardResult inspectFile(HalStorage& storage, const HalStorage::Mutation
 }
 ReferenceGuardResult inspectReferences(HalStorage& storage, std::string_view destination, syncstage::DigestTick tick,
                                        void* context, bool wholePath) {
-  if (!(wholePath ? validReference(destination) : validDestination(destination)) || !tick)
+  if (!(wholePath ? validReferencePath(destination) : validDestination(destination)) || !tick)
     return ReferenceGuardResult::Invalid;
   HalStorage::MutationSnapshot snapshot;
   if (!storage.beginMutationSnapshot(snapshot)) return ReferenceGuardResult::Unavailable;

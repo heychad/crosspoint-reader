@@ -61,6 +61,7 @@ target_include_directories(BookReadingStatsAtomicTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/src/activities/reader
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/hal
 )
 
 target_link_libraries(BookReadingStatsAtomicTest PRIVATE
