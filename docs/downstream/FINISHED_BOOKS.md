@@ -1,11 +1,10 @@
 # Finished-book integration
 
-B5 and C6 remain experimental. Marking, the near-end prompt, completion
-statistics, Recents policy, and deferred EPUB moves have separate gates. Host
-evidence covers queue behavior, reference finalization, and moved saved-state
-readers, plus actual ReaderStats completion through deferred execution. The
-prompt wiring, cumulative review, and device validation still prevent installation
-readiness.
+B5 and C6 core implementations are built behind experimental gates. Host
+evidence now joins the prompt, statistics, Recents policy, reader destruction,
+deferred moves, and saved-state reopening on FAT and exFAT. Cumulative review,
+retained recovery findings, runtime measurements, and device validation still
+prevent installation readiness.
 
 ## Current flow
 
@@ -143,8 +142,8 @@ Home, queue, and lifecycle checks include:
 
 The live ReaderStats/executor and native saved-path finalization checks now
 pass. Remaining B5 work includes cumulative review, retained recovery findings,
-and device checks of the ownership boundaries below. C6 still needs its
-enabled prompt/save/move wiring checked with that flow. File-scan latency
+and device checks of the ownership boundaries below. The enabled
+prompt/save/move host integration below closes C6's implementation gap. File-scan latency
 and responsiveness also need measurement before enabling automatic moves for
 normal use. Cumulative release review remains required.
 
@@ -317,3 +316,48 @@ code changed. This fixture failure does not establish a device regression.
 The new daily-enabled live fixture also passes AddressSanitizer. The earlier
 vendor UndefinedBehaviorSanitizer findings remain open; this is not a full
 sanitizer pass. Log: `/tmp/x4-live-completion-asan.log`.
+
+## Prompt-to-move integration
+
+`StatsPromptCompletionReal` and `StatsPromptCompletionDailyReal` execute the
+production prompt initialization, position observation, page-turn interception,
+confirmation callback, reader completion adapter, and retry callback. The
+statistics writer and move executor are real; metadata, modal transport, and
+rendering are host stand-ins. Methods are extracted by their own closing brace.
+The native parser reads optimizer metadata through the controlled provider.
+
+Each profile checks 36 combinations: FAT/exFAT, keep/remove Recents, confirm,
+cancel or repeated Retry, and tracking on, globally off or off for that book.
+The remove-Recents cases use optimizer character metadata; the others use the
+byte-weighted fallback. A conflicting statistics temporary file tests Retry
+before completion starts. A conflicting Recents temporary file tests recovery
+after completion is recorded. Failed retries retain both artifacts and the
+original book. Removing the test blocker lets the same callback finish.
+
+Checks cover one prompt per open, continued page turning after the choice,
+lease retention through finish, release on destruction, deferred execution,
+request retirement, and exact saved paths after remount. Confirmed books move;
+cancelled books stay put. Reading totals include the 65-second session once,
+and disabled tracking adds no seconds or sessions. The daily-enabled profile
+checks the same counter, or missing daily data when tracking is off. Tracking
+markers, progress, both bookmark formats, clippings, Saved Items, and opaque
+sidecars survive. This is not physical EPUB-handle or display validation.
+
+The final cumulative run passes all 2,350 host tests in 126.77 seconds. It includes
+these two profiles in 46.15 and 47.05 seconds after the final assertions, plus
+the previous live-reader profiles and existing recovery tests. The new
+daily-enabled prompt fixture passes AddressSanitizer. Existing vendor UBSan
+findings remain open; no full sanitizer pass is claimed for the filesystem.
+
+The current nine-flag `x4pro-completion-automation-wip` build passes in 85.52
+seconds, with 113,068 static RAM bytes and 5,766,294 flash bytes. It includes
+completion, prompt, move, deferred automation, statistics restore, daily
+statistics, Page Overlay, Carousel, and chapter time. It does not enable every
+experimental option. This stage changes only host tests and documentation.
+The build also covers the preceding checksum API under those flags.
+
+Logs: `/tmp/x4-prompt-cumulative-host-tests.log`,
+`/tmp/x4-prompt-native-asan.log`, and `/tmp/x4-prompt-enabled-firmware.log`.
+B5 and C6 count as built cores under the tracker definition. Their experimental
+gates remain; the cumulative review, vendor triage, and backed-up device handoff
+are still open. Next implementation work returns to the migration gaps.

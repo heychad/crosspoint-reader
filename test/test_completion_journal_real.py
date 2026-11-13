@@ -322,6 +322,11 @@ inline unsigned long millis() { static unsigned long now = 0; return ++now; }
         flags += ['-DSDFAT_REAL_MOVE_STORES=1', '-DCONFIG_IDF_TARGET_ESP32S3=1']
         if os.environ.get('SDFAT_LIVE_COMPLETION') == '1':
             flags.append('-DSDFAT_LIVE_COMPLETION=1')
+        prompt_completion = os.environ.get('SDFAT_PROMPT_COMPLETION') == '1'
+        if prompt_completion:
+            flags += ['-DSDFAT_PROMPT_COMPLETION=1', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION=1',
+                      '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT=1',
+                      '-DCROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION=1']
         stub_directory = Path(temporary) / 'real-store-stubs'
         shutil.copytree(ROOT / 'test/completion_journal_real/stubs', stub_directory)
         (stub_directory / 'CrossPointState.h').unlink()
@@ -332,6 +337,28 @@ inline unsigned long millis() { static unsigned long now = 0; return ++now; }
         arduino = arduino.replace('inline uint32_t millis() { return hostMillis; }\n', '')
         (stub_directory / 'Arduino.h').write_text(arduino)
         shutil.copy2(ROOT / 'test/book_reader_settings/stubs/ObfuscationUtils.h', stub_directory)
+        if prompt_completion:
+            def method(text, signature):
+                start = text.index(signature)
+                end = text.index('{', start) + 1
+                depth = 1
+                while depth:
+                    depth += (text[end] == '{') - (text[end] == '}')
+                    end += 1
+                return text[start:end]
+            prompt = (ROOT / 'src/activities/reader/EpubCompletion.cpp').read_text()
+            adapter = (ROOT / 'src/activities/reader/ReaderCompletion.cpp').read_text()
+            epub_reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+            methods = ['namespace {\n' + method(adapter, 'bool removeRecent(') + '\n}']
+            methods += [method(adapter, signature) for signature in (
+                'ReaderStats::CompletionResult ReaderActivity::setBookCompleted(',
+                'ReaderStats::CompletionResult ReaderActivity::recoverBookCompletion(',
+                'void ReaderActivity::handleCompletionAttempt(')]
+            methods += [method(prompt, 'void EpubReaderActivity::initializeCompletionPrompt('),
+                        method(prompt, 'void EpubReaderActivity::observeCompletionPosition('),
+                        method(prompt, 'bool EpubReaderActivity::showQueuedCompletionPrompt('),
+                        method(epub_reader, 'bool EpubReaderActivity::pageTurn(')]
+            (stub_directory / 'PromptCompletionMethods.h').write_text('\n'.join(methods))
         reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
         progress_start = reader.index('  HalFile f;\n  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {')
         brace_start = reader.index('{', progress_start)
@@ -369,6 +396,8 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
                          str(ROOT / 'src/ClippingStore.cpp'), str(ROOT / 'lib/Utf8/Utf8.cpp'),
                          str(ROOT / 'freeink-sdk/libs/network/CatalogList/src/JsonListParser.cpp'),
                          str(ROOT / 'freeink-sdk/libs/network/JsonSax/src/StreamingJsonParser.cpp')]
+        if prompt_completion:
+            store_sources.append(str(ROOT / 'lib/Epub/Epub/ReferencePageMap.cpp'))
         # Exercise the transaction identity check and real session ownership,
         # rather than declaring every moved destination a matching transaction.
         store_sources += [str(ROOT / 'src/activities/reader' / name) for name in (
@@ -392,6 +421,8 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
                           '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'),
                           '-I', str(ROOT / 'lib/FsHelpers'),
                           '-I', str(ROOT / '.pio/libdeps/x4pro/ArduinoJson/src')]
+        if prompt_completion:
+            store_includes += ['-I', str(ROOT / 'lib/Epub')]
     command = [os.environ.get('CXX', 'c++'), *flags, *shlex.split(os.environ.get('CXXFLAGS', '')),
                '-include', str(host_compat), '-I', str(stub_directory), *store_includes, '-I', str(ROOT / 'lib/Memory'), '-I', str(ROOT / 'lib/Serialization'), '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'), '-I', str(ROOT / 'src/activities/reader'), '-I', str(ROOT / 'lib/hal'), '-I', str(source),
                str(real_test_cpp), str(journal_cpp), str(ROOT / 'test/CompletionArchiveInventoryStub.cpp'), *probe_sources, str(ROOT / 'lib/Serialization/MoveReferenceSafeWrite.cpp'), str(ROOT / 'src/activities/reader/CompletionLibraryDirty.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionIntentIO.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionMoveRetirement.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveReferences.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveFile.cpp'), str(ROOT / 'src/activities/reader/CompletionMovePlanIO.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkMove.cpp'), str(ROOT / 'src/activities/reader/StatsSafeReplace.cpp'), str(ROOT / 'src/activities/reader/ReadingStatsUtils.cpp'), *lease_sources, str(production_lookup), *map(str, cpp_files),

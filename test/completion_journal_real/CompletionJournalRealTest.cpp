@@ -23,6 +23,9 @@
 #if defined(SDFAT_LIVE_COMPLETION)
 #include "LiveCompletion.h"
 #endif
+#if defined(SDFAT_PROMPT_COMPLETION)
+#include "PromptedCompletion.h"
+#endif
 #endif
 #if defined(SDFAT_IMPORT_SNAPSHOT)
 #include <CrossInkImportSnapshot.h>
@@ -2945,6 +2948,16 @@ int main() {
         verifyMovedFilesOnRealFilesystem(exfat);
 #if defined(SDFAT_REAL_MOVE_STORES)
         verifyMovedFilesOnRealFilesystem(exfat, true);
+#if defined(SDFAT_PROMPT_COMPLETION)
+        for (bool removeRecents : {false, true})
+          for (auto choice :
+               {completionuitest::Choice::Confirm, completionuitest::Choice::Cancel, completionuitest::Choice::Retry})
+            for (auto tracking : {completionuitest::Tracking::On, completionuitest::Tracking::GlobalOff,
+                                  completionuitest::Tracking::BookOff}) {
+              Disk prompt;
+              completionuitest::exercise(prompt, exfat, removeRecents, choice, tracking);
+            }
+#endif
 #if defined(SDFAT_LIVE_COMPLETION)
         for (bool removeRecent : {false, true}) {
           for (bool undo : {false, true}) {

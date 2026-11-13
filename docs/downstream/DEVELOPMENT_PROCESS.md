@@ -130,6 +130,7 @@ These are check durations, not coding speed or total development time.
 | November 12 native bookmarks, clippings, and Saved Items | 47 affected: 38.79 s; production save/load and per-book discovery, post-move edits, opaque sidecars; AddressSanitizer passed | Not repeated: tests and documentation only |
 | November 12 live-reader completion | FAT/exFAT, both Recents policies, undo, recovery, exact reading totals, and saved-state reopen: 42.52 s; daily profile: 43.13 s; AddressSanitizer passed | Not repeated: tests and documentation only |
 | November 12 ordinary-file checksum API | 63 affected: 4.52 s; new unit and HTTP paths passed AddressSanitizer and UndefinedBehaviorSanitizer | 72.74 s; first attempt failed in 40.33 s on an Arduino macro collision, then corrected |
+| November 12 prompt-to-move integration | Full 2,350-test suite: 126.77 s; final native prompt/default and daily profiles: 46.15/47.05 s; AddressSanitizer passed | Nine-flag automation profile: 85.52 s; default firmware inputs unchanged since the checksum build |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
