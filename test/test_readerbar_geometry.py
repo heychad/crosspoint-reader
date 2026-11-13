@@ -1,6 +1,7 @@
 """Exercise the real reader-bar renderer with a recording display."""
 from pathlib import Path
 import os
+import shlex
 import subprocess
 import tempfile
 
@@ -34,6 +35,8 @@ struct UITheme { Metrics metrics; static UITheme& getInstance() { static UITheme
 struct GfxRenderer {
   int width = 480, height = 800, top = 9, right = 7, bottom = 3, left = 7;
   mutable std::vector<Rect> fills;
+  mutable std::vector<Rect> batteries;
+  mutable std::vector<bool> batteryPercents;
   mutable std::vector<Rect> text;
   mutable std::vector<std::string> textValues;
   void getOrientedViewableTRBL(int* t, int* r, int* b, int* l) const { *t=top; *r=right; *b=bottom; *l=left; }
@@ -46,7 +49,7 @@ struct GfxRenderer {
   void drawText(int, int x, int y, const char* s) const { text.push_back({x,y,getTextWidth(0,s),10}); textValues.emplace_back(s); }
   void fillRect(int x, int y, int w, int h, bool) const { fills.push_back({x,y,w,h}); }
 };
-struct Gui { void drawBatteryLeft(GfxRenderer&, Rect, bool) {} } GUI;
+struct Gui { void drawBatteryLeft(GfxRenderer& screen, Rect rect, bool percent) {screen.batteries.push_back(rect);screen.batteryPercents.push_back(percent);} } GUI;
 size_t utf8SafeTruncateBuffer(const char*, size_t n) { return n; }
 ''' + source + r'''
 
@@ -57,7 +60,7 @@ int main() {
   assert(screen.fills.size()==1);
   const auto first=screen.fills[0];
   // Progress reaches the screen edge and the top bar moves up one more pixel.
-  assert(first.x==0 && first.y==6 && first.width==196 && first.height==2);
+  assert(first.x==0 && first.y==5 && first.width==196 && first.height==2);
   screen.fills.clear();
   readerbars::draw(screen,top,ReaderBarPosition::Top,0,0,0,false,"","",false);
   assert(screen.fills.empty());  // No visible unfilled track.
@@ -98,6 +101,38 @@ int main() {
   readerbars::draw(screen,chapter,ReaderBarPosition::Top,0,0,0,false,"","",false);
   assert(screen.textValues.size()==1 && screen.textValues[0]=="-");
 #endif
+
+  // A hidden bar reserves no lane, even for transient titles, and paints nothing.
+  ReaderBar hidden; hidden.hidden=true;hidden.progress=0;hidden.slots[0]=ReaderBarItem::BookTitle;
+  GfxRenderer blank;
+  assert(readerbars::height(hidden,true)==0);
+  readerbars::draw(blank,hidden,ReaderBarPosition::Top,50,2,4,false,"Book","",true,"Notice");
+  assert(blank.fills.empty() && blank.text.empty() && blank.batteries.empty());
+  for (auto style : {ReaderBarBatteryStyle::IconAndPercent,ReaderBarBatteryStyle::IconOnly,ReaderBarBatteryStyle::PercentOnly}) {
+    ReaderBar battery;battery.batteryStyle=style;battery.centered=true;battery.slots[3]=ReaderBarItem::Battery;
+    GfxRenderer value;SETTINGS.hideBatteryPercentage=2;
+    readerbars::draw(value,battery,ReaderBarPosition::Top,0,0,0,false,"","",false);
+    if(style==ReaderBarBatteryStyle::PercentOnly) {
+      assert(value.batteries.empty() && value.textValues.size()==1 && value.textValues[0]=="75%");
+    } else {
+      assert(value.batteries.size()==1 && value.batteryPercents[0]==(style==ReaderBarBatteryStyle::IconAndPercent));
+    }
+  }
+  SETTINGS.hideBatteryPercentage=0;
+  ReaderBar percentage;percentage.slots[0]=ReaderBarItem::ChapterPercent;percentage.percentageDecimals=1;
+  GfxRenderer value;
+  readerbars::draw(value,percentage,ReaderBarPosition::Top,1,2,8,false,"","",false);
+  assert(value.textValues.size()==1 && value.textValues[0]=="25.0%");
+  value.textValues.clear();
+  readerbars::draw(value,percentage,ReaderBarPosition::Top,99,0,0,false,"","",false);
+  assert(value.textValues.size()==1 && value.textValues[0]=="-");
+  ReaderBar centered;centered.centered=true;centered.separator=ReaderBarSeparator::Pipe;
+  centered.slots[0]=ReaderBarItem::Clock;centered.slots[3]=ReaderBarItem::BookTitle;
+  GfxRenderer group;
+  readerbars::draw(group,centered,ReaderBarPosition::Top,0,0,0,false,"Book","",false);
+  assert(group.textValues.size()==3 && group.textValues[0]=="|");
+  assert(group.text[1].x==209 && group.text[0].x==240 && group.text[2].x==251);
+
   // The viewable insets rotate with the panel, including the short upper inset.
   for (const auto insets : {std::array<int,4>{3,7,9,7}, std::array<int,4>{7,9,7,3},
                             std::array<int,4>{7,3,7,9}}) {
@@ -117,7 +152,7 @@ int main() {
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(code)
-    subprocess.run(['c++', '-std=c++20', *(['-DCROSSPOINT_EXPERIMENTAL_CHAPTER_TIME=1'] if os.getenv('TEST_CHAPTER_TIME') else []), '-I', str(root / 'src'), str(path / 'test.cpp'), '-o', str(path / 'test')],
+    subprocess.run(['c++', '-std=c++20', *shlex.split(os.environ.get('CXXFLAGS', '')), *(['-DCROSSPOINT_EXPERIMENTAL_CHAPTER_TIME=1'] if os.getenv('TEST_CHAPTER_TIME') else []), '-I', str(root / 'src'), str(path / 'test.cpp'), '-o', str(path / 'test')],
                    check=True)
     subprocess.run([str(path / 'test')], check=True)
 print('Reader bar geometry checks passed')

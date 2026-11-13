@@ -48,6 +48,7 @@ const char* clipText(const GfxRenderer& renderer, const char* text, int width) {
 }  // namespace
 
 int readerbars::height(const ReaderBar& bar, bool forceText) {
+  if (bar.hidden) return 0;
   const auto& metrics = UITheme::getInstance().getMetrics();
   return bar.height(metrics.statusBarVerticalMargin, metrics.progressBarMarginTop) +
          (forceText && !bar.hasText() ? metrics.statusBarVerticalMargin : 0);
@@ -67,7 +68,7 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
   const int textHeight = bar.hasText() || overrideTitle ? metrics.statusBarVerticalMargin : 0;
   const int totalHeight = height(bar, overrideTitle != nullptr);
   if (totalHeight == 0) return;
-  const int origin = top ? std::max(0, mt - 4) : renderer.getScreenHeight() - mb - totalHeight;
+  const int origin = top ? std::max(0, mt - 5) : renderer.getScreenHeight() - mb - totalHeight;
   const int y = origin + std::max(0, (textHeight - renderer.getLineHeight(SMALL_FONT_ID)) / 2);
   const int corner = top ? BoardConfig::ACTIVE.cornerRadius
                          : std::max(BoardConfig::ACTIVE.cornerRadius, BoardConfig::ACTIVE.bottomCornerRadius);
@@ -79,7 +80,11 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
   auto& buffers = scratch.buffers;
   auto& text = scratch.text;
   auto& widths = scratch.widths;
-  const bool batteryPercent = SETTINGS.hideBatteryPercentage == CrossPointSettings::HIDE_NEVER;
+  const bool batteryIcon = bar.batteryStyle != ReaderBarBatteryStyle::PercentOnly;
+  const bool batteryPercent = bar.batteryStyle == ReaderBarBatteryStyle::IconAndPercent ||
+                              bar.batteryStyle == ReaderBarBatteryStyle::PercentOnly ||
+                              (bar.batteryStyle == ReaderBarBatteryStyle::FollowGlobal &&
+                               SETTINGS.hideBatteryPercentage == CrossPointSettings::HIDE_NEVER);
   for (unsigned i = 0; i < ReaderBar::SLOT_COUNT; ++i) {
     auto& buf = buffers[i];
     text[i] = buf.data();
@@ -103,6 +108,13 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
       case ReaderBarItem::BookPercent:
         snprintf(buf.data(), buf.size(), "%.*f%%", bar.percentageDecimals, std::clamp(bookPercent, 0.0f, 100.0f));
         break;
+      case ReaderBarItem::ChapterPercent:
+        if (pages > 0)
+          snprintf(buf.data(), buf.size(), "%.*f%%", bar.percentageDecimals,
+                   std::clamp(100.0 * page / pages, 0.0, 100.0));
+        else
+          std::strcpy(buf.data(), "-");
+        break;
       case ReaderBarItem::BookTitle:
         text[i] = bookTitle ? bookTitle : "";
         break;
@@ -124,36 +136,55 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
         break;
     }
     widths[i] = renderer.getTextWidth(SMALL_FONT_ID, text[i]);
-    if (bar.slots[i] == ReaderBarItem::Battery) widths[i] += metrics.batteryWidth + (batteryPercent ? 4 : 0);
+    if (bar.slots[i] == ReaderBarItem::Battery && batteryIcon)
+      widths[i] += metrics.batteryWidth + (batteryPercent ? 4 : 0);
   }
   if (overrideTitle) {
     text[ReaderBar::CENTER] = overrideTitle;
     widths[ReaderBar::CENTER] = renderer.getTextWidth(SMALL_FONT_ID, overrideTitle);
   }
   const int bookmarkReserve = bookmarked && !top && textHeight ? 12 : 0;
-  auto layout = layoutReaderBar(widths, left, right, bookmarkReserve);
+  const char* separator = readerBarSeparatorGlyph(bar.separator);
+  auto layout = bar.centered ? layoutCenteredReaderBar(widths, left, right, renderer.getScreenWidth() / 2,
+                                                       renderer.getTextWidth(SMALL_FONT_ID, separator), bookmarkReserve)
+                             : layoutReaderBar(widths, left, right, bookmarkReserve);
+  if (bar.centered && batteryIcon) {
+    bool omitted = false;
+    for (unsigned i = 0; i < widths.size(); ++i) {
+      if (bar.slots[i] == ReaderBarItem::Battery && !(overrideTitle && i == ReaderBar::CENTER) && widths[i] > 0 &&
+          widths[i] < metrics.batteryWidth) {
+        widths[i] = 0;
+        omitted = true;
+      }
+    }
+    if (omitted)
+      layout = layoutCenteredReaderBar(widths, left, right, renderer.getScreenWidth() / 2,
+                                       renderer.getTextWidth(SMALL_FONT_ID, separator), bookmarkReserve);
+  }
   if (bookmarkReserve) {
     // A compact ribbon fits the reserved space without a second bitmap buffer.
     renderer.drawRect(left, y + 2, 8, 10);
     renderer.drawLine(left, y + 12, left + 4, y + 9);
     renderer.drawLine(left + 4, y + 9, left + 7, y + 12);
   }
+  for (unsigned i = 0; i < layout.separatorCount; ++i)
+    renderer.drawText(SMALL_FONT_ID, layout.separatorX[i], y, separator);
   for (unsigned i = 0; i < ReaderBar::SLOT_COUNT; ++i) {
     int available = widths[i];
     int x = layout.x[i];
-    if (i == ReaderBar::CENTER) {
+    if (!bar.centered && i == ReaderBar::CENTER) {
       available = layout.centerRight - layout.centerLeft;
       x = layout.centerLeft;
     }
     if (available <= 0) continue;
-    if (bar.slots[i] == ReaderBarItem::Battery && !(overrideTitle && i == ReaderBar::CENTER)) {
+    if (bar.slots[i] == ReaderBarItem::Battery && batteryIcon && !(overrideTitle && i == ReaderBar::CENTER)) {
       // Never let a clipped battery overlap a neighboring slot.
       if (available >= metrics.batteryWidth) {
         const int fullWidth =
             metrics.batteryWidth + (batteryPercent ? 4 + renderer.getTextWidth(SMALL_FONT_ID, text[i]) : 0);
         const bool showPercent = batteryPercent && available >= fullWidth;
         const int drawnWidth = showPercent ? fullWidth : metrics.batteryWidth;
-        const int batteryX = x + (i == ReaderBar::CENTER ? (available - drawnWidth) / 2 : 0);
+        const int batteryX = x + (!bar.centered && i == ReaderBar::CENTER ? (available - drawnWidth) / 2 : 0);
         GUI.drawBatteryLeft(renderer, Rect{batteryX, y, metrics.batteryWidth, metrics.batteryHeight}, showPercent);
       }
       continue;
@@ -161,7 +192,8 @@ void readerbars::draw(GfxRenderer& renderer, const ReaderBar& bar, ReaderBarPosi
     if (!text[i] || !*text[i]) continue;
     const int natural = renderer.getTextWidth(SMALL_FONT_ID, text[i]);
     if (natural <= available) {
-      renderer.drawText(SMALL_FONT_ID, x + (i == ReaderBar::CENTER ? (available - natural) / 2 : 0), y, text[i]);
+      renderer.drawText(SMALL_FONT_ID, x + (!bar.centered && i == ReaderBar::CENTER ? (available - natural) / 2 : 0), y,
+                        text[i]);
     } else {
       renderer.drawText(SMALL_FONT_ID, x, y, clipText(renderer, text[i], available));
     }

@@ -21,8 +21,18 @@ enum class ReaderBarItem : uint8_t {
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
   TimeLeftChapter,
 #endif
+  ChapterPercent,
   Count
 };
+
+enum class ReaderBarBatteryStyle : uint8_t { FollowGlobal, IconAndPercent, IconOnly, PercentOnly, Count };
+enum class ReaderBarSeparator : uint8_t { Bullet, Dash, Pipe, MiddleDot, Count };
+
+inline const char* readerBarSeparatorGlyph(ReaderBarSeparator separator) {
+  static const char* const glyphs[] = {"\xe2\x80\xa2", "\xe2\x80\x93", "|", "\xc2\xb7"};
+  const auto index = static_cast<unsigned>(separator);
+  return index < std::size(glyphs) ? glyphs[index] : glyphs[0];
+}
 
 struct ReaderBar {
   static constexpr unsigned SLOT_COUNT = 7;
@@ -31,8 +41,13 @@ struct ReaderBar {
   uint8_t progress = 2;  // CrossPoint values: book, chapter, hidden.
   uint8_t thickness = 1;
   uint8_t percentageDecimals = 0;
+  ReaderBarBatteryStyle batteryStyle = ReaderBarBatteryStyle::FollowGlobal;
+  ReaderBarSeparator separator = ReaderBarSeparator::Bullet;
+  bool hidden = false;
+  bool centered = false;
 
   bool hasText(bool clockAvailable = true) const {
+    if (hidden) return false;
     for (auto item : slots) {
       if (item != ReaderBarItem::Empty &&
           ((item != ReaderBarItem::Clock && item != ReaderBarItem::Date) || clockAvailable))
@@ -42,6 +57,7 @@ struct ReaderBar {
   }
   bool contains(ReaderBarItem wanted) const { return std::find(slots.begin(), slots.end(), wanted) != slots.end(); }
   int height(int textHeight, int progressGap) const {
+    if (hidden) return 0;
     return (hasText() ? textHeight : 0) + (progress < 2 ? (thickness + 1) * 2 + progressGap : 0);
   }
 };
@@ -50,6 +66,8 @@ struct ReaderBarLayout {
   std::array<int, ReaderBar::SLOT_COUNT> x{};
   int centerLeft = 0;
   int centerRight = 0;
+  std::array<int, ReaderBar::SLOT_COUNT - 1> separatorX{};
+  unsigned separatorCount = 0;
 };
 
 inline ReaderBarLayout layoutReaderBar(std::array<int, ReaderBar::SLOT_COUNT>& widths, int left, int right,
@@ -103,9 +121,60 @@ inline ReaderBarLayout layoutReaderBar(std::array<int, ReaderBar::SLOT_COUNT>& w
   return result;
 }
 
+// Adapted from CrossInk's centered reader-bar geometry (MIT).
+inline ReaderBarLayout layoutCenteredReaderBar(std::array<int, ReaderBar::SLOT_COUNT>& widths, int left, int right,
+                                               int centerX, int separatorWidth, int reserve = 0, int gap = 6) {
+  ReaderBarLayout result;
+  const int minX = left + std::max(0, reserve);
+  const int available = std::max(0, right - minX);
+  const int join = std::max(0, separatorWidth) + 2 * std::max(0, gap);
+  int count = 0;
+  for (auto& width : widths) {
+    width = std::clamp(width, 0, available);
+    if (width) ++count;
+  }
+  // Keep separators and at least one pixel per retained item within the lane.
+  for (unsigned i = widths.size(); count && (count - 1) * join + count > available && i > 0;) {
+    if (widths[--i]) {
+      widths[i] = 0;
+      --count;
+    }
+  }
+  if (!count) return result;
+  const int budget = available - (count - 1) * join;
+  int low = 0, high = budget;
+  while (low < high) {
+    const int cap = low + (high - low + 1) / 2;
+    int used = 0;
+    for (const auto width : widths) used += std::min(width, cap);
+    if (used <= budget)
+      low = cap;
+    else
+      high = cap - 1;
+  }
+  int total = (count - 1) * join;
+  for (auto& width : widths) {
+    width = std::min(width, low);
+    total += width;
+  }
+  int cursor = std::clamp(centerX - total / 2, minX, right - total);
+  bool placed = false;
+  for (unsigned i = 0; i < widths.size(); ++i) {
+    if (!widths[i]) continue;
+    if (placed) {
+      result.separatorX[result.separatorCount++] = cursor + gap;
+      cursor += join;
+    }
+    result.x[i] = cursor;
+    cursor += widths[i];
+    placed = true;
+  }
+  return result;
+}
+
 inline ReaderBarPosition transientReaderBar(const ReaderBar& top, const ReaderBar& bottom, bool autoTurn) {
   const auto hasTitle = [](const ReaderBar& bar) {
-    return bar.contains(ReaderBarItem::BookTitle) || bar.contains(ReaderBarItem::ChapterTitle);
+    return !bar.hidden && (bar.contains(ReaderBarItem::BookTitle) || bar.contains(ReaderBarItem::ChapterTitle));
   };
   return !autoTurn && hasTitle(top) && !hasTitle(bottom) ? ReaderBarPosition::Top : ReaderBarPosition::Bottom;
 }

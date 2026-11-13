@@ -12,10 +12,10 @@ enum class BarResult { Imported, Unchanged, Missing, Unsupported, Invalid, Unava
 inline BarResult decodeLegacyBar(JsonVariantConst source, ReaderBar& output) {
   const auto slots = source["slots"].as<JsonArrayConst>();
   if (slots.size() != 6 && slots.size() != ReaderBar::SLOT_COUNT) return BarResult::Invalid;
-  static constexpr std::array<ReaderBarItem, 11> mapping = {
+  static constexpr std::array<ReaderBarItem, 12> mapping = {
       ReaderBarItem::Empty,     ReaderBarItem::Clock,        ReaderBarItem::Battery, ReaderBarItem::TimeLeftBook,
       ReaderBarItem::Empty,     ReaderBarItem::ChapterPages, ReaderBarItem::Empty,   ReaderBarItem::BookPercent,
-      ReaderBarItem::BookTitle, ReaderBarItem::ChapterTitle, ReaderBarItem::Date};
+      ReaderBarItem::BookTitle, ReaderBarItem::ChapterTitle, ReaderBarItem::Date,    ReaderBarItem::ChapterPercent};
   ReaderBar parsed;
   for (size_t i = 0; i < slots.size(); ++i) {
     if (!slots[i].is<uint8_t>() || slots[i].as<uint8_t>() >= mapping.size()) return BarResult::Invalid;
@@ -38,13 +38,23 @@ inline BarResult decodeLegacyBar(JsonVariantConst source, ReaderBar& output) {
   parsed.percentageDecimals = source["percentageFormat"].as<uint8_t>();
   parsed.progress = source["progressBar"].as<uint8_t>();
   parsed.thickness = source["thickness"].as<uint8_t>();
+  for (const char* key : {"hidden", "centered"})
+    if (!source[key].isUnbound() && !source[key].is<bool>()) return BarResult::Invalid;
+  parsed.hidden = source["hidden"] | false;
+  parsed.centered = source["centered"] | false;
+  const auto battery = source["battery"], separator = source["separator"];
+  if (!battery.isUnbound() && (!battery.is<uint8_t>() || battery.as<uint8_t>() > 2)) return BarResult::Invalid;
+  if (!separator.isUnbound() && (!separator.is<uint8_t>() || separator.as<uint8_t>() > 3)) return BarResult::Invalid;
+  parsed.batteryStyle = static_cast<ReaderBarBatteryStyle>((battery | uint8_t{0}) + 1);
+  parsed.separator = static_cast<ReaderBarSeparator>(separator | uint8_t{0});
   output = parsed;
   return BarResult::Imported;
 }
 
 inline bool equalBars(const ReaderBar& a, const ReaderBar& b) {
   return a.slots == b.slots && a.progress == b.progress && a.thickness == b.thickness &&
-         a.percentageDecimals == b.percentageDecimals;
+         a.percentageDecimals == b.percentageDecimals && a.batteryStyle == b.batteryStyle &&
+         a.separator == b.separator && a.hidden == b.hidden && a.centered == b.centered;
 }
 
 inline BarResult decodeFlatLegacyBars(JsonVariantConst source, ReaderBar& top, ReaderBar& bottom) {
@@ -90,10 +100,14 @@ inline BarResult decodeFlatLegacyBars(JsonVariantConst source, ReaderBar& top, R
     return BarResult::Invalid;
   }
   if (stable) return BarResult::Unsupported;
+  uint8_t hideBattery;
+  if (!choice("hideBatteryPercentage", 2, 0, hideBattery)) return BarResult::Invalid;
 #if !defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
   if (time == 1) return BarResult::Unsupported;
 #endif
   ReaderBar parsedTop, parsedBottom;
+  parsedTop.batteryStyle = parsedBottom.batteryStyle =
+      hideBattery ? ReaderBarBatteryStyle::IconOnly : ReaderBarBatteryStyle::IconAndPercent;
   if (clock == 0) parsedTop.slots[ReaderBar::CENTER] = ReaderBarItem::Clock;
   // Slot placement follows CrossInk's migrateBottomStatusBar (MIT).
   unsigned left = 0, right = ReaderBar::CENTER + 1;
@@ -129,6 +143,13 @@ inline BarResult stageBars(JsonVariantConst legacy, JsonDocument& proposed) {
     if (topResult != BarResult::Imported) return topResult;
     const auto bottomResult = decodeLegacyBar(source["bottom"], bottom);
     if (bottomResult != BarResult::Imported) return bottomResult;
+    const auto hideBattery = legacy["hideBatteryPercentage"];
+    for (const char* key : {"top", "bottom"}) {
+      if (!source[key]["battery"].isUnbound() || hideBattery.isUnbound()) continue;
+      if (!hideBattery.is<uint8_t>() || hideBattery.as<uint8_t>() > 2) return BarResult::Invalid;
+      (key[0] == 't' ? top : bottom).batteryStyle =
+          hideBattery.as<uint8_t>() ? ReaderBarBatteryStyle::IconOnly : ReaderBarBatteryStyle::IconAndPercent;
+    }
   }
   ReaderBar oldTop, oldBottom;
   if (proposed["readerBarsEnabled"].is<bool>() && proposed["readerBarsEnabled"].as<bool>() &&

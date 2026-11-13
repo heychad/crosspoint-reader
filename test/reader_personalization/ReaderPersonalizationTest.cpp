@@ -2,6 +2,7 @@
 
 #include <limits>
 
+#include "personalization/CrossInkBarImport.h"
 #include "personalization/ReaderBarsJson.h"
 #include "personalization/ReaderPageLayout.h"
 #include "personalization/ReaderShortcuts.h"
@@ -78,6 +79,123 @@ TEST(ReaderBars, CrowdedSideClustersFitAndLeaveNoNegativeCenter) {
       EXPECT_LE(layout.x[i] + widths[i], width);
     }
   }
+}
+
+TEST(ReaderBars, CenteredItemsFitWithSeparatorsAndBookmarkReserve) {
+  for (int size : {0, 1, 10, 40, 120, 448, 768}) {
+    std::array<int, 7> widths{300, 100, 20, 600, 50, 180, 400};
+    const auto layout = layoutCenteredReaderBar(widths, 0, size, size / 2, 5, 12);
+    int lastEnd = 0, count = 0;
+    for (unsigned i = 0; i < widths.size(); ++i) {
+      if (!widths[i]) continue;
+      EXPECT_GE(layout.x[i], 12);
+      EXPECT_GE(layout.x[i], lastEnd);
+      EXPECT_LE(layout.x[i] + widths[i], size);
+      lastEnd = layout.x[i] + widths[i];
+      ++count;
+    }
+    EXPECT_EQ(layout.separatorCount, count > 0 ? count - 1 : 0);
+    for (unsigned i = 0; i < layout.separatorCount; ++i) {
+      EXPECT_GE(layout.separatorX[i], 12);
+      EXPECT_LE(layout.separatorX[i] + 5, size);
+    }
+  }
+}
+
+TEST(ReaderBars, StylingAndChapterPercentagePreserveStoredIdsAndRejectBadFields) {
+  ReaderBar original;
+  original.slots[2] = ReaderBarItem::ChapterPercent;
+  original.slots[3] = ReaderBarItem::BookTitle;
+  original.hidden = original.centered = true;
+  original.batteryStyle = ReaderBarBatteryStyle::PercentOnly;
+  original.separator = ReaderBarSeparator::Pipe;
+  JsonDocument doc;
+  writeReaderBar(doc.to<JsonObject>(), original);
+  EXPECT_EQ(doc["slots"][2].as<unsigned>(), static_cast<unsigned>(ReaderBarItem::BookPercent));
+  EXPECT_EQ(doc["chapterPercentSlots"].as<unsigned>(), 4U);
+  ReaderBar loaded;
+  ASSERT_TRUE(readReaderBar(doc.as<JsonVariantConst>(), loaded));
+  EXPECT_EQ(loaded.slots, original.slots);
+  EXPECT_TRUE(loaded.hidden && loaded.centered);
+  EXPECT_EQ(loaded.batteryStyle, original.batteryStyle);
+  EXPECT_EQ(loaded.separator, original.separator);
+  EXPECT_EQ(loaded.height(20, 1), 0);
+  doc.remove("chapterPercentSlots");
+  ASSERT_TRUE(readReaderBar(doc.as<JsonVariantConst>(), loaded));
+  EXPECT_EQ(loaded.slots[2], ReaderBarItem::BookPercent);
+  for (const char* key : {"hidden", "centered", "batteryStyle", "separator"}) {
+    writeReaderBar(doc.to<JsonObject>(), original);
+    doc[key] = "invalid";
+    loaded = original;
+    EXPECT_FALSE(readReaderBar(doc.as<JsonVariantConst>(), loaded));
+    EXPECT_EQ(loaded.slots, original.slots);
+    EXPECT_EQ(loaded.batteryStyle, original.batteryStyle);
+  }
+  writeReaderBar(doc.to<JsonObject>(), original);
+  doc["chapterPercentSlots"] = 1;
+  ASSERT_TRUE(readReaderBar(doc.as<JsonVariantConst>(), loaded));
+  EXPECT_EQ(loaded.slots[2], ReaderBarItem::BookPercent);
+  doc["slots"][0] = 10;
+  EXPECT_FALSE(readReaderBar(doc.as<JsonVariantConst>(), loaded));
+}
+
+TEST(CrossInkBarImport, RcStylingAndChapterPercentageAreTranslatedExactly) {
+  for (int battery = 0; battery < 3; ++battery)
+    for (int separator = 0; separator < 4; ++separator)
+      for (bool hidden : {false, true})
+        for (bool centered : {false, true}) {
+          JsonDocument source, target;
+          ASSERT_FALSE(deserializeJson(source, R"({"readerStatusBars":{"version":1,
+      "top":{"slots":[11,0,0,8,0,0,0],"percentageFormat":1,"progressBar":2,"thickness":1},
+      "bottom":{"slots":[0,0,0,0,0,0,0],"percentageFormat":0,"progressBar":2,"thickness":1}}})"));
+          auto bar = source["readerStatusBars"]["top"];
+          bar["battery"] = battery;
+          bar["separator"] = separator;
+          bar["hidden"] = hidden;
+          bar["centered"] = centered;
+          target["unrelated"] = 42;
+          ASSERT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), target),
+                    crossinkimport::BarResult::Imported);
+          ReaderBar top;
+          ASSERT_TRUE(readReaderBar(target["readerBarsV1"]["top"], top));
+          EXPECT_EQ(top.slots[0], ReaderBarItem::ChapterPercent);
+          EXPECT_EQ(static_cast<int>(top.batteryStyle), battery + 1);
+          EXPECT_EQ(static_cast<int>(top.separator), separator);
+          EXPECT_EQ(top.hidden, hidden);
+          EXPECT_EQ(top.centered, centered);
+          EXPECT_EQ(target["unrelated"].as<int>(), 42);
+          EXPECT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), target),
+                    crossinkimport::BarResult::Unchanged);
+        }
+}
+
+TEST(CrossInkBarImport, MalformedRcStylesKeepExistingLayoutUnchanged) {
+  for (const char* field : {"hidden", "centered", "battery", "separator"}) {
+    JsonDocument source, target;
+    ASSERT_FALSE(deserializeJson(source, R"({"readerStatusBars":{"version":1,
+      "top":{"slots":[0,0,0,8,0,0,0],"percentageFormat":0,"progressBar":2,"thickness":1},
+      "bottom":{"slots":[0,0,0,0,0,0,0],"percentageFormat":0,"progressBar":2,"thickness":1}}})"));
+    ReaderBar before;
+    before.slots[3] = ReaderBarItem::Clock;
+    writeReaderBar(target["readerBarsV1"]["top"].to<JsonObject>(), before);
+    target["readerBarsEnabled"] = true;
+    std::string original;
+    serializeJson(target, original);
+    source["readerStatusBars"]["bottom"][field] = 255;
+    EXPECT_EQ(crossinkimport::stageBars(source.as<JsonVariantConst>(), target), crossinkimport::BarResult::Invalid);
+    std::string after;
+    serializeJson(target, after);
+    EXPECT_EQ(after, original);
+  }
+  JsonDocument legacy;
+  ReaderBar original;
+  writeReaderBar(legacy.to<JsonObject>(), original);
+  for (const char* field : {"hidden", "centered", "batteryStyle", "separator"}) legacy.remove(field);
+  ReaderBar loaded;
+  loaded.batteryStyle = ReaderBarBatteryStyle::PercentOnly;
+  ASSERT_TRUE(readReaderBar(legacy.as<JsonVariantConst>(), loaded));
+  EXPECT_EQ(loaded.batteryStyle, ReaderBarBatteryStyle::FollowGlobal);
+  EXPECT_FALSE(loaded.hidden || loaded.centered);
 }
 
 TEST(ReaderShortcuts, TapHoldAndInheritedRelease) {
@@ -280,7 +398,6 @@ TEST(ReaderQuickActions, FontFamilyAppendsWithoutChangingExistingValues) {
   EXPECT_EQ(restored, slots);
 }
 
-#include "personalization/CrossInkBarImport.h"
 #include "personalization/CrossInkControlImport.h"
 #include "personalization/LegacyHomeShortcut.h"
 #include "personalization/LegacyPowerShortcuts.h"

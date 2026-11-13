@@ -121,6 +121,7 @@ These are check durations, not coding speed or total development time.
 | November 12 sleep transition | Cumulative 2,259 checks: 82.37 s; stale-input regression checked with and without Page Overlay | 134.95 s |
 | November 12 library-policy import | 136 focused: 5.59 s; sanitizer and Carousel mapping checks passed | 66.81 s |
 | November 12 legacy reader bars | 148 focused: 10.88 s, including 5,832 combinations per flag configuration; sanitizer coverage passed | 71.23 s; combined eight-feature profile: 164.05 s, first build of that profile |
+| November 12 RC2 bar controls | 2,290 full: 73.26 s; 12 bar checks including the added malformed-style case: 0.09 s; sanitizer render checks passed | 128.61 s; combined eight-feature profile: 109.84 s |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

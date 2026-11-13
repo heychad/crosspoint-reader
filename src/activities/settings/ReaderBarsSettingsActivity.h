@@ -14,8 +14,8 @@ class ReaderBarsSettingsActivity final : public UiListActivity {
   enum class View { Root, Top, Bottom };
   View view = View::Root;
   OptionPopup popup;
-  freeink::ui::ListItem rows[10]{};
-  int listCount() const override { return view == View::Root ? 3 : 10; }
+  freeink::ui::ListItem rows[14]{};
+  int listCount() const override { return view == View::Root ? 3 : 14; }
   const char* headerTitle() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

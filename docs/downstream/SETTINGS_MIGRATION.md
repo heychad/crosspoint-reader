@@ -36,7 +36,7 @@ remain unmeasured.
 | RC character spacing | Exact whole-pixel values import; half-pixel values remain unsupported. |
 | Word and line spacing | Default word spacing and exact native line-height presets import. Other values remain unchanged. |
 | Focus/guide, publisher fonts/pages, and stable pagination | Preserve their source data. Deferred features need their own migration checks when enabled. |
-| Status bars | The explicit bars import translates supported custom slots and legacy flat fields. Unsupported stable-page or disabled chapter-time requests leave the current bars unchanged. Newer RC2 centering, separators, hidden-bar state, per-bar battery styles, and chapter percentage still need integration; do not treat their migration as complete. |
+| Status bars | The explicit bars import translates supported custom slots and legacy flat fields. Unsupported stable-page or disabled chapter-time requests leave the current bars unchanged. RC2 centering, separators, hidden-bar state, per-bar battery styles, and chapter percentage now import through the [native bar controls](RC2_READER_BARS.md). |
 | Device, date, frontlight schedule, and dictionary typography | Their additional CrossInk controls are Later; do not copy raw IDs into different native fields. |
 | Clock synchronization, credentials, and plugin state | These are not restored by the library/preferences import. Retain the current CrossPoint configuration. |
 
@@ -63,8 +63,7 @@ A present custom layout takes priority. A damaged or unknown custom version
 is rejected instead of falling back to stale flat fields. Invalid flat types
 and ranges also leave the current bars unchanged. Stable-page requests are
 unsupported; chapter time requires its experimental build flag. Both failures
-occur before snapshot or settings writes. This does not add the newer RC2
-bar styling controls listed above.
+occur before snapshot or settings writes. The later RC2 bar stage also adds the styling controls listed above.
 
 ## Verification
 

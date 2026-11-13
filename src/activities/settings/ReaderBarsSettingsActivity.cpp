@@ -30,6 +30,7 @@ constexpr StrId ITEM_LABELS[] = {
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
     StrId::STR_BAR_TIME_CHAPTER,
 #endif
+    StrId::STR_BAR_CHAPTER_PERCENT,
 };
 static_assert(std::size(ITEM_LABELS) == static_cast<size_t>(ReaderBarItem::Count));
 constexpr StrId PROGRESS_LABELS[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
@@ -37,6 +38,8 @@ constexpr StrId THICKNESS_LABELS[] = {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_P
                                       StrId::STR_PROGRESS_BAR_THICK};
 constexpr StrId DECIMAL_LABELS[] = {StrId::STR_BAR_PERCENT_WHOLE, StrId::STR_BAR_PERCENT_ONE,
                                     StrId::STR_BAR_PERCENT_TWO};
+constexpr StrId BATTERY_LABELS[] = {StrId::STR_BAR_BATTERY_GLOBAL, StrId::STR_BAR_BATTERY_ICON_PERCENT,
+                                    StrId::STR_BAR_BATTERY_ICON_ONLY, StrId::STR_BAR_BATTERY_PERCENT_ONLY};
 }  // namespace
 
 ReaderBar& ReaderBarsSettingsActivity::bar() {
@@ -109,9 +112,27 @@ void ReaderBarsSettingsActivity::activateIndex(int index) {
       bar().thickness = selected;
       SETTINGS.saveToFile();
     });
-  } else {
+  } else if (index == 9) {
     popup.show(StrId::STR_BAR_PERCENT_FORMAT, DECIMAL_LABELS, 3, bar().percentageDecimals, [this](int selected) {
       bar().percentageDecimals = selected;
+      SETTINGS.saveToFile();
+    });
+  } else if (index == 10 || index == 11) {
+    auto& value = index == 10 ? bar().hidden : bar().centered;
+    value = !value;
+    SETTINGS.saveToFile();
+  } else if (index == 12) {
+    popup.show(StrId::STR_BAR_BATTERY_STYLE, BATTERY_LABELS, 4, static_cast<int>(bar().batteryStyle),
+               [this](int selected) {
+                 bar().batteryStyle = static_cast<ReaderBarBatteryStyle>(selected);
+                 SETTINGS.saveToFile();
+               });
+  } else {
+    const char* labels[] = {
+        readerBarSeparatorGlyph(ReaderBarSeparator::Bullet), readerBarSeparatorGlyph(ReaderBarSeparator::Dash),
+        readerBarSeparatorGlyph(ReaderBarSeparator::Pipe), readerBarSeparatorGlyph(ReaderBarSeparator::MiddleDot)};
+    popup.show(tr(STR_BAR_SEPARATOR), labels, 4, static_cast<int>(bar().separator), [this](int selected) {
+      bar().separator = static_cast<ReaderBarSeparator>(selected);
       SETTINGS.saveToFile();
     });
   }
@@ -143,9 +164,18 @@ void ReaderBarsSettingsActivity::buildScreen(UiScreen& screen) {
     } else if (i == 8) {
       rows[i].label = tr(STR_PROGRESS_BAR_THICKNESS);
       rows[i].value = I18N.get(THICKNESS_LABELS[bar().thickness]);
-    } else {
+    } else if (i == 9) {
       rows[i].label = tr(STR_BAR_PERCENT_FORMAT);
       rows[i].value = I18N.get(DECIMAL_LABELS[bar().percentageDecimals]);
+    } else if (i == 10 || i == 11) {
+      rows[i].label = i == 10 ? tr(STR_BAR_HIDDEN) : tr(STR_BAR_CENTERED);
+      GUI.setCheckboxRow(rows[i], i == 10 ? bar().hidden : bar().centered);
+    } else if (i == 12) {
+      rows[i].label = tr(STR_BAR_BATTERY_STYLE);
+      rows[i].value = I18N.get(BATTERY_LABELS[static_cast<unsigned>(bar().batteryStyle)]);
+    } else {
+      rows[i].label = tr(STR_BAR_SEPARATOR);
+      rows[i].value = readerBarSeparatorGlyph(bar().separator);
     }
   }
   fui::ListProps props;
