@@ -307,13 +307,17 @@ bool FatFile::experimentUnlinkOneSector() {
     probe_sources = [str(ROOT / 'test/completion_journal_real/CompletionMoveProbeStub.cpp')]
     lease_sources = [str(lease_stub)]
     if real_move_stores:
-        flags.append('-DSDFAT_REAL_MOVE_STORES=1')
+        flags += ['-DSDFAT_REAL_MOVE_STORES=1', '-DCONFIG_IDF_TARGET_ESP32S3=1']
         stub_directory = Path(temporary) / 'real-store-stubs'
         shutil.copytree(ROOT / 'test/completion_journal_real/stubs', stub_directory)
         (stub_directory / 'CrossPointState.h').unlink()
         (stub_directory / 'RecentBooksStore.h').unlink()
         (stub_directory / 'network/sync/StoredReferenceGuard.h').unlink()
-        (stub_directory / 'Arduino.h').write_text('#pragma once\n#include <cstdint>\n')
+        arduino = (ROOT / 'test/book_reader_settings/stubs/Arduino.h').read_text()
+        # HostCompat already provides the test clock; reuse the existing String shim.
+        arduino = arduino.replace('inline uint32_t millis() { return hostMillis; }\n', '')
+        (stub_directory / 'Arduino.h').write_text(arduino)
+        shutil.copy2(ROOT / 'test/book_reader_settings/stubs/ObfuscationUtils.h', stub_directory)
         reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
         progress_start = reader.index('  HalFile f;\n  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {')
         brace_start = reader.index('{', progress_start)
@@ -342,20 +346,15 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
   return {currentSpineIndex,cachedSpineIndex,nextPageNumber,cachedChapterTotalPageCount,cachedVisibleTextOffset};
 }
 ''')
-        persist = (ROOT / 'lib/Serialization/PersistableStore.cpp').read_text()
-        read_start = persist.index('bool PersistableStoreBase::readDocFromFile(')
-        read_end = persist.index('\n  if (!Storage.exists(path))', read_start)
-        focused_read = persist[read_start:read_end] + '\n  return false;\n}\n'
-        write_start = persist.index('bool PersistableStoreBase::writeDocToFileForMove(')
-        write_end = persist.index('\nstd::string PersistableStoreBase::extractPassword(', write_start)
-        focused_persist = Path(temporary) / 'FocusedPersistableStore.cpp'
-        focused_persist.write_text('#include <PersistableStore.h>\n#include <HalStorage.h>\n#include <Memory.h>\n'
-                                   '#include <MoveReferenceSafeWrite.h>\n'
-                                   'bool PersistableStoreBase::writeDocToFile(const char*,const JsonDocument&){return false;}\n'
-                                   + focused_read + '\n' + persist[write_start:write_end])
-        store_sources = [str(focused_persist), str(ROOT / 'src/CrossPointState.cpp'), str(ROOT / 'src/RecentBooksStore.cpp'),
+        store_sources = [str(ROOT / 'lib/Serialization/PersistableStore.cpp'),
+                         str(ROOT / 'src/CrossPointState.cpp'), str(ROOT / 'src/RecentBooksStore.cpp'),
                          str(ROOT / 'src/network/sync/StoredReferenceGuard.cpp'),
-                         str(ROOT / 'src/util/CrossInkBookmarks.cpp')]
+                         str(ROOT / 'src/util/CrossInkBookmarks.cpp'),
+                         str(ROOT / 'src/util/BookmarkFile.cpp'), str(ROOT / 'src/util/BookmarkUtil.cpp'),
+                         str(ROOT / 'src/util/SavedItems.cpp'),
+                         str(ROOT / 'src/ClippingStore.cpp'), str(ROOT / 'lib/Utf8/Utf8.cpp'),
+                         str(ROOT / 'freeink-sdk/libs/network/CatalogList/src/JsonListParser.cpp'),
+                         str(ROOT / 'freeink-sdk/libs/network/JsonSax/src/StreamingJsonParser.cpp')]
         # Exercise the transaction identity check and real session ownership,
         # rather than declaring every moved destination a matching transaction.
         store_sources += [str(ROOT / 'src/activities/reader' / name) for name in (
@@ -365,6 +364,9 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
         probe_sources = []
         lease_sources = []
         store_includes = ['-I', str(ROOT / 'src'), '-I', str(ROOT / 'lib/Memory'),
+                          '-I', str(ROOT / 'test/clipping_store/stubs'), '-I', str(ROOT / 'lib/Utf8'),
+                          '-I', str(ROOT / 'freeink-sdk/libs/network/CatalogList/include'),
+                          '-I', str(ROOT / 'freeink-sdk/libs/network/JsonSax/include'),
                           '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'),
                           '-I', str(ROOT / 'lib/FsHelpers'),
                           '-I', str(ROOT / '.pio/libdeps/x4pro/ArduinoJson/src')]

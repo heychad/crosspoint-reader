@@ -1,6 +1,9 @@
 #pragma once
 #include <FsLib/FsFile.h>
 #include <FsLib/FsVolume.h>
+#if defined(SDFAT_REAL_MOVE_STORES)
+#include <Arduino.h>
+#endif
 
 #include <cstdio>
 #include <memory>
@@ -27,6 +30,8 @@ class HalFile {
   bool isDirectory() const { return file_->isDir(); }
   bool seekSet(size_t offset) { return file_->seekSet(offset); }
   bool seek(size_t offset) { return seekSet(offset); }
+  bool seekCur(int64_t offset) { return file_->seekCur(offset); }
+  bool truncate(size_t size) { return file_->truncate(size); }
   int read(void* out, size_t size) { return file_->read(out, size); }
   HalFile openNextFile() {
     auto next = std::make_unique<FsBaseFile>();
@@ -86,6 +91,24 @@ class HalStorage {
   bool openFileForRead(const char* tag, const std::string& path, HalFile& out) {
     return openFileForRead(tag, path.c_str(), out);
   }
+  bool openFileForWrite(const char*, const std::string& path, HalFile& out) {
+    out = open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY);
+    return static_cast<bool>(out);
+  }
+#if defined(SDFAT_REAL_MOVE_STORES)
+  String readFile(const char* path) {
+    auto file = open(path, O_RDONLY);
+    if (!file) return {};
+    String value;
+    value.resize(file.fileSize());
+    if (file.read(value.data(), value.size()) != static_cast<int>(value.size()) || !file.close()) return {};
+    return value;
+  }
+  bool writeFile(const char* path, const String& value) {
+    auto file = open(path, O_CREAT | O_TRUNC | O_WRONLY);
+    return file && file.write(value.data(), value.size()) == value.size() && file.sync() && file.close();
+  }
+#endif
   bool withStorageLock(bool (*operation)(void*), void* context) { return operation && operation(context); }
   bool rename(const char* from, const char* to) { return volume_->rename(from, to); }
   bool mkdir(const char* path, bool parents = true) { return volume_->mkdir(path, parents); }

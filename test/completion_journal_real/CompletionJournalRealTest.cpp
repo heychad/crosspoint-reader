@@ -1355,6 +1355,7 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
   namespace cm = readingstats::completionmove;
   namespace dc = readingstats::deferredcompletion;
 #if defined(SDFAT_REAL_MOVE_STORES)
+  movedstate::ClippingSnapshot expectedClipping;
   const auto progressFormat = removeRecent ? movedstate::ProgressFormat::TextOffset
                               : exfat      ? movedstate::ProgressFormat::Legacy
                                            : movedstate::ProgressFormat::PageCount;
@@ -1391,6 +1392,12 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     movedstate::seedBookmarks(source, removeRecent ? 4 : 2);
     movedstate::checkBookmarks(source, removeRecent ? 4 : 2);
     movedstate::seedProgress(source, removeRecent, progressFormat);
+    movedstate::seedSidecars(source);
+    movedstate::seedNativeBookmarks(source);
+    movedstate::checkNativeBookmarks(source);
+    expectedClipping = movedstate::seedClippings(source);
+    movedstate::checkClippings(source, expectedClipping);
+    movedstate::checkSavedKinds(source);
 #endif
     cj::Baseline previous{};
     previous.book[0] = 5;
@@ -1560,6 +1567,11 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
 #if defined(SDFAT_REAL_MOVE_STORES)
     movedstate::checkBookmarks(target, removeRecent ? 4 : 2);
     movedstate::checkProgress(target, progressFormat);
+    movedstate::checkNativeBookmarks(target);
+    movedstate::checkClippings(target, expectedClipping);
+    movedstate::checkSavedKinds(target);
+    movedstate::checkSidecars(target);
+    assert(Storage.lookupPath("/.crosspoint/library.dirty") == HalStorage::PathStatus::Present);
     for (const auto& path : {"/.crosspoint/state.json", "/.crosspoint/recent.json"}) {
       auto file = Storage.open(path, O_RDONLY);
       assert(file);
@@ -1575,6 +1587,7 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
         assert(doc["books"][0]["path"] == (removeRecent ? "/other.epub" : target));
       }
     }
+    movedstate::editMovedItems(target, expectedClipping);
 #endif
   }
   int moveFaults = 0;

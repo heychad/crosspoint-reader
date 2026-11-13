@@ -1,9 +1,10 @@
 # Finished-book integration
 
 B5 and C6 remain experimental. Marking, the near-end prompt, completion
-statistics, Recents policy, and deferred EPUB moves have separate gates. This
-stage fixes Home's queue advancement and Retry controls; it does not declare
-the whole move workflow ready for installation.
+statistics, Recents policy, and deferred EPUB moves have separate gates. Host
+evidence covers queue behavior, reference finalization, and moved saved-state
+readers. The live-reader-to-Home path, cumulative review, and device validation
+still prevent installation readiness.
 
 ## Current flow
 
@@ -194,9 +195,8 @@ were corrected before that pass. No firmware inputs changed in this stage.
 The harness still uses a single-threaded storage lock, main-task/render stand-ins,
 and an always-stable mutation snapshot. It exercises the real transaction probe
 and lease rules, but does not prove simultaneous-task exclusion or live handle
-release. Archive discovery uses its existing stand-in. Semantic reopening of
-moved native JSON bookmarks and clippings remains a separate check; progress
-and CrossInk binary bookmarks are covered below.
+release. Archive discovery uses its existing stand-in. The saved-state reader
+extensions below add semantic checks to the original coordinator fixture.
 
 The full AddressSanitizer/UndefinedBehaviorSanitizer attempt failed on vendor
 SdFat reports: unaligned accesses in `common/FsStructs.h`, null-pointer arithmetic
@@ -243,5 +243,44 @@ RAM bytes and 5,668,454 flash bytes; enabled size is 113,068 RAM bytes and
 The 96 affected checks passed in 35.34 seconds. After extending the progress
 fixture, the final native reader check passed in 36.10 seconds, and
 AddressSanitizer passed. The preceding vendor UBSan findings remain open.
-Native JSON bookmark and clipping loaders, remaining recovery phases,
-cumulative review, and device validation still prevent a release-readiness claim.
+The live-reader execution path, remaining recovery phases, cumulative review,
+and device validation still prevent a release-readiness claim.
+
+## Native bookmarks, clippings, and Saved Items
+
+The filesystem fixture now links the complete production `PersistableStore.cpp`
+instead of extracted read/write methods. Native `BookmarkFile` save/load,
+`ClippingStore`, and `saveditems::inspect` join the existing production readers.
+The X4 Pro clipping limit is selected explicitly. Arduino String, clock,
+credential, and random sources remain host adapters; no firmware code changed.
+
+After a move and remount on FAT/exFAT under both Recents policies, checks cover:
+
+- Native JSON bookmark names, Unicode, XPath, percentage, spine, page count,
+  page, and present/absent visible-text offsets.
+- Clipping text, Unicode and paragraph breaks, preview, chapter, spine/pages,
+  word and paragraph anchors, source offsets, timestamp, layout signature,
+  stable sync ID, revision, upload state, and pending deletion ID.
+- Saved Items detection of native bookmarks, CrossInk bookmarks, and clippings
+  at the destination, plus the library-dirty marker used to rebuild its index.
+- Renaming a bookmark and appending a clipping at the destination, followed by
+  reload. The original clipping text, sync identity, and uploaded state survive
+  the rewritten file header and updated text offsets.
+- Byte-identical synthetic `.key` and `.rights` sidecars. These are opaque test
+  bytes; decryption and license fulfillment are not exercised.
+
+The source audit of `BookKey.cpp` shows that the wrapping key uses the device
+secret and the authenticated data is the stored key header; the pathname selects
+the sidecar but is not part of those inputs. This supports keeping the wrapped
+key unchanged on the same device. Protected-book opening and plugin service
+behavior still need their normal cumulative/device checks.
+
+The 47 affected checks passed in 38.79 seconds, including the enhanced native
+filesystem case. AddressSanitizer passed. An initial preview assertion used
+256 bytes where the API requires 260; the fixture now uses the API's buffer
+constant. No preview implementation change was needed. Prior firmware builds
+remain applicable because only tests and documentation changed. Vendor UBSan
+findings remain open; this is not a full sanitizer pass.
+
+Full EPUB opening, XPath resolution, passage rendering, and on-device library
+index rebuilding remain for cumulative/device validation.
