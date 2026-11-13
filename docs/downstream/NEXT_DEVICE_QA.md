@@ -1,7 +1,10 @@
 # Next X4 Pro device test
 
-For the clipping repair, use the [five-minute check](FIVE_MINUTE_DEVICE_QA.md).
-The longer checklist below is for broader release testing.
+The reported clipping checks passed on clipfix2. The next candidate is tracked
+in [the combined review record](CUMULATIVE_CANDIDATE.md). Its distinct version,
+hashes, backup, and review must be ready before installation.
+Use a five-minute smoke test for the first feedback loop. The longer checklist
+below is a menu for later sessions, not one assignment.
 
 Use the latest reviewed, hash-verified local candidate and its matching source
 packet. Work through the checks one at a time. Nothing in this plan has been
@@ -82,7 +85,8 @@ page resumes. Restore the previous placement afterward.
    rely on those files. After a failed or interrupted backup from an older build, its
    `.part` and `.bin` can share storage. Preserve both and do not delete either.
    The book backup does not contain reading position or the EPUB; restore and reset
-   are not yet built.
+   are now built behind the backup/restore flags. Test them separately with a
+   disposable closed book and verified snapshots.
 9. Try the reading-statistics sleep screen and small/large UI scale. Wake,
    reopen the book, and check text and controls in the orientations you use.
 10. In an EPUB, try Default, Balanced, and Light from the reader menu. Compare
@@ -102,9 +106,12 @@ page resumes. Restore the previous placement afterward.
     Check existing plugins and protected-content controls without changing
     accounts or purchases.
 
-Google Drive wireless sync, full completion management, automatic updates, and
-other unfinished scope are not part of this test. Online firmware updates remain
-disabled until the transport and firmware can be authenticated.
+The selected-book Drive sync and completion/update cores are now implemented.
+Their flags and remaining review/device gates are recorded in the combined
+review record. The standard profile keeps experimental options disabled.
+Use disposable books for completion moves and restore/reset checks; preserve
+the known in-progress book for resume regression. Do not use an unreviewed
+online release as a substitute for the packaged device candidate.
 
 ## Minimal Home
 

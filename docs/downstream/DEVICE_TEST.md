@@ -1,9 +1,8 @@
-# First X4 Pro feedback build
+# Historical X4 Pro feedback builds
 
-The immediate goal is a reviewed firmware candidate that Chad can test on his
-Xteink X4 Pro, followed by small changes informed by that test. The larger
-CrossInk integration remains in the separate `crosspoint-reader-render-fallback`
-worktree for later stages.
+This records the earlier feedback builds. Current source, configuration, and
+review gates are in [the combined candidate record](CUMULATIVE_CANDIDATE.md);
+the current handoff uses [the next-device plan](NEXT_DEVICE_QA.md).
 
 The `2.0.0-chad.3-test1` candidate starts from the archived `2.0.0-chad.3`
 source patch. The distinct version identifies the later statistics fix. It adds
@@ -46,7 +45,7 @@ removing it; verify that it mounts and copy the state from there if available.
 For a Wi-Fi handoff, preview the state backup first so the transfer size is
 known. If hidden files were temporarily enabled, record the previous setting
 and restore it afterward. Once the backup and its limitations are reviewed,
-upload the application image to the card root under a fresh, unique `.bin`
+upload the application image under `/zDev/` with a fresh, unique `.bin`
 name without requesting overwrite. Keep other file transfers idle: the stock
 server's existence check and file creation are not atomic. Read the uploaded
 file back and compare its size and SHA-256 with the packaged image before
