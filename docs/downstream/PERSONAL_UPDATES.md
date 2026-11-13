@@ -49,15 +49,50 @@ with the TLS session. Hostname setup allocation failure stops the connection.
 The updater's future fixed-origin transport must budget those allocations with
 TLS and the active screen, using separate internal/PSRAM heap measurements.
 
+## Bounded release metadata
+
+The check path now clears its previous offer before fetching. On the X4 Pro it
+collects at most 64 KiB into a checked PSRAM allocation, with one terminator byte
+and no internal-RAM fallback. A larger response stops the request. The updater
+gate remains closed; the generic downloader will be replaced before enabling it.
+
+`PersonalRelease` validates JSON syntax, nesting, UTF-8, and a complete single
+document before using the existing ArduinoJson parser. A bounded SAX audit
+rejects duplicate critical keys, including escaped spellings. The syntax check
+is necessary because ArduinoJson also accepts single quotes and unquoted keys.
+The existing 16 KiB settings allocator caps both filter and document allocations
+together. The temporary SAX owner is released before that parser is created.
+Unknown release notes and uploader data do not become stored metadata.
+
+The record must describe a stable, non-draft personal tag, one exact
+`crosspoint-<tag>-x4pro.bin` asset, its canonical fork/tag download URL,
+`state: uploaded`, a positive image size fitting the inactive partition, and a
+lowercase `sha256:` digest. Duplicate matching assets, more than 16 assets,
+wrong field types, and incomplete records fail. Tag lengths and digit limits
+match the release workflow. Empty/nonmatching asset lists mean no update.
+Failed parsing clears every output field.
+
+The updater retains the validated digest in 32 additional bytes per update
+session. It does not yet compare that digest with downloaded firmware. The
+64 KiB response cap and 16-asset limit are release-maintenance constraints;
+larger release records must be shortened or the bounded policy reviewed.
+
+Sixteen metadata/version checks pass, including every truncated prefix of the
+fixture, duplicate keys, malformed/extended JSON, nested shadow fields, Unicode,
+memory limits, typed sizes, URL/tag binding, and malformed digests. Both
+AddressSanitizer and UndefinedBehaviorSanitizer pass. The standard X4 Pro build
+passes in 72.13 seconds (RAM 113,060 bytes; flash 5,682,130 bytes). The closed
+gate can remove unused updater code from the final image; a later enabled
+transport build and runtime measurements must cover its full working set.
+
 ## Remaining integration
 
 - A request path that selects trusted roots, checks the clock, restricts every
   redirect to the expected HTTPS origins, and never uses the generic insecure
   downloader for metadata or firmware.
-- Strict metadata binding between the personal tag, exact X4 Pro filename,
-  download URL, size, and digest. GitHub's [release-asset API](https://docs.github.com/en/rest/releases/assets)
-  exposes the asset's SHA-256 digest; missing or malformed values must stop
-  installation.
+- Streaming payload verification against the stored metadata. GitHub's
+  [release-asset API](https://docs.github.com/en/rest/releases/assets) exposes
+  the asset's SHA-256 digest; metadata parsing now requires it.
 - Exact byte count, SHA-256, image header, and X4 Pro board-tag checks before
   selecting the new boot partition. Failed downloads must abort the inactive
   slot and retain the current boot target.

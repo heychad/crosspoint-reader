@@ -1,6 +1,7 @@
 #include "PersonalUpdateVersion.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -9,10 +10,12 @@ struct Version {
   std::array<uint32_t, 4> parts{};
 };
 
-bool number(std::string_view& input, uint32_t& output) {
+bool number(std::string_view& input, uint32_t& output, size_t maxDigits = 10) {
   if (input.empty() || input.front() < '0' || input.front() > '9') return false;
   output = 0;
+  size_t digits = 0;
   do {
+    if (++digits > maxDigits) return false;
     const auto digit = static_cast<uint32_t>(input.front() - '0');
     if (output > (std::numeric_limits<uint32_t>::max() - digit) / 10) return false;
     output = output * 10 + digit;
@@ -28,9 +31,11 @@ bool consume(std::string_view& input, std::string_view prefix) {
 }
 
 bool parse(std::string_view input, bool current, Version& version) {
-  if (!number(input, version.parts[0]) || !consume(input, ".") || !number(input, version.parts[1]) ||
-      !consume(input, ".") || !number(input, version.parts[2]) || !consume(input, "-chad.") ||
-      !number(input, version.parts[3]))
+  if (!current && input.size() > 26) return false;
+  const size_t digits = current ? 10 : 9;
+  if (!number(input, version.parts[0], digits) || !consume(input, ".") || !number(input, version.parts[1], digits) ||
+      !consume(input, ".") || !number(input, version.parts[2], digits) || !consume(input, "-chad.") ||
+      !number(input, version.parts[3], digits))
     return false;
   if (!current) return input.empty();
   if (input.starts_with("-test")) {
@@ -41,6 +46,11 @@ bool parse(std::string_view input, bool current, Version& version) {
   return input.empty() || (consume(input, "-x4pro") && input.empty());
 }
 }  // namespace
+
+bool personalupdate::isReleaseTag(const std::string_view releaseTag) {
+  Version version;
+  return parse(releaseTag, false, version);
+}
 
 bool personalupdate::isNewer(std::string_view releaseTag, std::string_view currentVersion) {
   Version release;

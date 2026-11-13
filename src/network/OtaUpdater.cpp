@@ -7,7 +7,7 @@
 #include "HttpDownloader.h"
 #include <Logging.h>
 #include <Memory.h>
-#include <ReleaseJsonParser.h>
+#include <HalMemory.h>
 #include <esp_ota_ops.h>
 // clang-format on
 
@@ -17,73 +17,57 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
+#include "PersonalRelease.h"
 #include "PersonalUpdateVersion.h"
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+  updateAvailable = false;
+  latestVersion.clear();
+  otaUrl.clear();
+  otaSize = processedSize = totalSize = 0;
+  expectedSha256.fill(0);
   if (!personalupdate::AUTHENTICATED_TRANSPORT) return UNVERIFIED_TRANSPORT_ERROR;
-  LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
-
-  // Stream the ~32KB release JSON straight into the parser as it arrives.
-  // Buffering the whole body in a std::string would add a growing allocation
-  // on top of the TLS session's heap during the fetch; with -fno-exceptions an
-  // OOM there aborts. fetchUrl handles the GET, redirects, and User-Agent
-  // (see HttpDownloader). The transport guard above remains closed until
-  // peer and firmware authenticity are verified.
-  // Heap-allocated: the parser embeds a 2 KB JSON token buffer.
-  auto releaseParserPtr = makeUniqueNoThrow<ReleaseJsonParser>();
-  if (!releaseParserPtr) {
-    LOG_ERR("OTA", "OOM: release parser");
+  if (board_tag::boardNameLen() != 5 || std::memcmp(board_tag::boardName(), "x4pro", 5)) return WRONG_DEVICE_ERROR;
+  const auto* partition = esp_ota_get_next_update_partition(nullptr);
+  if (!partition) return INTERNAL_UPDATE_ERROR;
+  auto body = HalMemory::allocatePsram(personalupdate::MAX_RELEASE_BYTES + 1);
+  auto release = makeUniqueNoThrow<personalupdate::Release>();
+  if (!body || !release) {
+    LOG_ERR("OTA", "OOM: bounded release metadata");
     return OOM_ERROR;
   }
-  ReleaseJsonParser& releaseParser = *releaseParserPtr;
-  releaseParser.setFirmwareAssetName("");
-  // Each board updates from crosspoint-<version>-<device>.bin. The combined
-  // C3 image uses x3-x4; other asset suffixes match their firmware board tag.
-  const bool isX4 = board_tag::boardNameLen() == 2 && memcmp(board_tag::boardName(), "x4", 2) == 0;
-  char assetSuffix[20] = "-x3-x4";
-  if (!isX4) {
-    snprintf(assetSuffix, sizeof(assetSuffix), "-%.*s", static_cast<int>(board_tag::boardNameLen()),
-             board_tag::boardName());
-  }
-  char assetName[48] = {};
-  bool assetNameSet = false;
+  size_t received = 0;
+  bool tooLarge = false;
   const bool ok = HttpDownloader::fetchUrl(personalupdate::RELEASE_API, [&](const uint8_t* data, size_t len) {
-    size_t offset = 0;
-    while (!assetNameSet && offset < len) {
-      releaseParser.feed(reinterpret_cast<const char*>(data + offset), 1);
-      offset++;
-      if (releaseParser.foundTag()) {
-        const int length =
-            snprintf(assetName, sizeof(assetName), "crosspoint-%s%s.bin", releaseParser.getTagName(), assetSuffix);
-        if (length > 0 && static_cast<size_t>(length) < sizeof(assetName))
-          releaseParser.setFirmwareAssetName(assetName);
-        assetNameSet = true;
-      }
+    if (len > personalupdate::MAX_RELEASE_BYTES - received) {
+      tooLarge = true;
+      return false;
     }
-    if (offset < len) releaseParser.feed(reinterpret_cast<const char*>(data + offset), len - offset);
+    if (len) std::memcpy(body.get() + received, data, len);
+    received += len;
     return true;
   });
   if (!ok) {
     LOG_ERR("OTA", "Release check fetch failed");
-    return HTTP_ERROR;
+    return tooLarge ? JSON_PARSE_ERROR : HTTP_ERROR;
   }
-
-  LOG_DBG("OTA", "Parser results: tag=%s firmware=%s", releaseParser.foundTag() ? "yes" : "no",
-          releaseParser.foundFirmware() ? "yes" : "no");
-
-  if (!releaseParser.foundTag()) {
-    LOG_ERR("OTA", "No tag_name in release JSON");
-    return JSON_PARSE_ERROR;
+  body[received] = 0;
+  switch (personalupdate::parseRelease(reinterpret_cast<char*>(body.get()), received, partition->size, *release)) {
+    case personalupdate::ReleaseResult::Invalid:
+      LOG_ERR("OTA", "Invalid personal release metadata");
+      return JSON_PARSE_ERROR;
+    case personalupdate::ReleaseResult::NoMemory:
+      LOG_ERR("OTA", "OOM: release JSON parser");
+      return OOM_ERROR;
+    case personalupdate::ReleaseResult::MissingAsset:
+      return NO_UPDATE;
+    case personalupdate::ReleaseResult::Valid:
+      break;
   }
-
-  if (!releaseParser.foundFirmware()) {
-    LOG_INF("OTA", "No %s asset in latest release", assetName);
-    return NO_UPDATE;
-  }
-
-  latestVersion = releaseParser.getTagName();
-  otaUrl = releaseParser.getFirmwareUrl();
-  otaSize = releaseParser.getFirmwareSize();
+  latestVersion = release->version;
+  otaUrl = release->url;
+  otaSize = release->size;
+  expectedSha256 = release->sha256;
   totalSize = otaSize;
   updateAvailable = true;
 

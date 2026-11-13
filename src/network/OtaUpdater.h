@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <string>
 
 class OtaUpdater {
@@ -9,6 +11,7 @@ class OtaUpdater {
   size_t otaSize = 0;
   size_t processedSize = 0;
   size_t totalSize = 0;
+  std::array<uint8_t, 32> expectedSha256{};
 
  public:
   using ProgressCallback = void (*)(void* ctx);
