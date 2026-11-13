@@ -9,8 +9,8 @@
 // esp_partition_write + ota_boot::switchTo (no Arduino Update class, no
 // esp_image_verify — those reject our patched image on X4 silicon).
 //
-// Both the SD update activity and the OTA path land here. OTA first
-// downloads the firmware to an SD-card cache file, then calls this.
+// The SD update activity uses this path. Personal online updates validate the
+// stream separately and use the ESP-IDF OTA API for the inactive app slot.
 
 namespace firmware_flash {
 

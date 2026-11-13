@@ -1,15 +1,9 @@
 #include "OtaUpdater.h"
 
-// clang-format off
-// HttpDownloader.h pulls Arduino/SdFat, whose macros collide with lwip's
-// ip4_addr.h unless seen first. Pin this order; clang-format would otherwise sort
-// the local header last and break the build.
-#include "HttpDownloader.h"
+#include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <HalMemory.h>
 #include <esp_ota_ops.h>
-// clang-format on
 
 #include <algorithm>
 #include <cstring>
@@ -17,7 +11,9 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
+#include "PersonalImage.h"
 #include "PersonalRelease.h"
+#include "PersonalUpdateTransport.h"
 #include "PersonalUpdateVersion.h"
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
@@ -26,7 +22,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   otaUrl.clear();
   otaSize = processedSize = totalSize = 0;
   expectedSha256.fill(0);
-  if (!personalupdate::AUTHENTICATED_TRANSPORT) return UNVERIFIED_TRANSPORT_ERROR;
+  if (!personalupdate::transportAvailable()) return UNVERIFIED_TRANSPORT_ERROR;
   if (board_tag::boardNameLen() != 5 || std::memcmp(board_tag::boardName(), "x4pro", 5)) return WRONG_DEVICE_ERROR;
   const auto* partition = esp_ota_get_next_update_partition(nullptr);
   if (!partition) return INTERNAL_UPDATE_ERROR;
@@ -36,23 +32,30 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     LOG_ERR("OTA", "OOM: bounded release metadata");
     return OOM_ERROR;
   }
-  size_t received = 0;
-  bool tooLarge = false;
-  const bool ok = HttpDownloader::fetchUrl(personalupdate::RELEASE_API, [&](const uint8_t* data, size_t len) {
-    if (len > personalupdate::MAX_RELEASE_BYTES - received) {
-      tooLarge = true;
-      return false;
-    }
-    if (len) std::memcpy(body.get() + received, data, len);
-    received += len;
-    return true;
-  });
+  struct Download {
+    uint8_t* body;
+    size_t received = 0;
+    bool tooLarge = false;
+  } download{body.get()};
+  const bool ok = personalupdate::fetchRelease(
+      [](void* context, const uint8_t* data, size_t len) {
+        auto& value = *static_cast<Download*>(context);
+        if (len > personalupdate::MAX_RELEASE_BYTES - value.received) {
+          value.tooLarge = true;
+          return false;
+        }
+        if (len) std::memcpy(value.body + value.received, data, len);
+        value.received += len;
+        return true;
+      },
+      &download);
   if (!ok) {
     LOG_ERR("OTA", "Release check fetch failed");
-    return tooLarge ? JSON_PARSE_ERROR : HTTP_ERROR;
+    return download.tooLarge ? JSON_PARSE_ERROR : HTTP_ERROR;
   }
-  body[received] = 0;
-  switch (personalupdate::parseRelease(reinterpret_cast<char*>(body.get()), received, partition->size, *release)) {
+  body[download.received] = 0;
+  switch (
+      personalupdate::parseRelease(reinterpret_cast<char*>(body.get()), download.received, partition->size, *release)) {
     case personalupdate::ReleaseResult::Invalid:
       LOG_ERR("OTA", "Invalid personal release metadata");
       return JSON_PARSE_ERROR;
@@ -86,109 +89,123 @@ bool OtaUpdater::isUpdateNewer() const {
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
 
+namespace {
+OtaUpdater::OtaUpdaterError imageError(const personalupdate::ImageResult result) {
+  switch (result) {
+    case personalupdate::ImageResult::Verified:
+      return OtaUpdater::OK;
+    case personalupdate::ImageResult::WrongDevice:
+      return OtaUpdater::WRONG_DEVICE_ERROR;
+    case personalupdate::ImageResult::HashError:
+      return OtaUpdater::INTERNAL_UPDATE_ERROR;
+    case personalupdate::ImageResult::Pending:
+    case personalupdate::ImageResult::InvalidMetadata:
+    case personalupdate::ImageResult::InvalidHeader:
+    case personalupdate::ImageResult::TooLong:
+    case personalupdate::ImageResult::TooShort:
+    case personalupdate::ImageResult::DigestMismatch:
+      return OtaUpdater::INTEGRITY_ERROR;
+  }
+  return OtaUpdater::INTEGRITY_ERROR;
+}
+}  // namespace
+
 OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgress, void* ctx) {
-  if (!personalupdate::AUTHENTICATED_TRANSPORT) return UNVERIFIED_TRANSPORT_ERROR;
-  if (!isUpdateNewer()) {
-    return UPDATE_OLDER_ERROR;
+  if (!personalupdate::transportAvailable()) return UNVERIFIED_TRANSPORT_ERROR;
+  if (!isUpdateNewer()) return UPDATE_OLDER_ERROR;
+  const auto* partition = esp_ota_get_next_update_partition(nullptr);
+  if (!partition) return INTERNAL_UPDATE_ERROR;
+  if (otaSize < 24 || otaSize > partition->size) return INTEGRITY_ERROR;
+  auto image = makeUniqueNoThrow<personalupdate::ImageVerifier>(otaSize, expectedSha256,
+                                                                firmware_flash::runningPartitionChipId());
+  if (!image) {
+    LOG_ERR("OTA", "OOM: %u-byte image verifier", static_cast<unsigned>(sizeof(personalupdate::ImageVerifier)));
+    return OOM_ERROR;
   }
+  if (image->result() != personalupdate::ImageResult::Pending) return imageError(image->result());
 
-  // esp_https_ota is hardwired to esp-tls/mbedTLS, whose precompiled build on this
-  // package can't negotiate TLS 1.3 (see SecureClient.h). Drive the OTA partition
-  // ourselves and stream the firmware through HttpDownloader, which runs over
-  // wolfSSL when FREEINK_NET_WOLFSSL is set, reusing its redirect handling for the
-  // GitHub -> CDN hop.
-  const esp_partition_t* updatePartition = esp_ota_get_next_update_partition(nullptr);
-  if (!updatePartition) {
-    LOG_ERR("OTA", "No OTA partition available");
+  esp_ota_handle_t handle = 0;
+  esp_err_t error = esp_ota_begin(partition, otaSize, &handle);
+  if (error != ESP_OK) {
+    LOG_ERR("OTA", "esp_ota_begin failed: %s", esp_err_to_name(error));
     return INTERNAL_UPDATE_ERROR;
   }
-
-  esp_ota_handle_t otaHandle = 0;
-  esp_err_t esp_err = esp_ota_begin(updatePartition, OTA_SIZE_UNKNOWN, &otaHandle);
-  if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_ota_begin failed: %s", esp_err_to_name(esp_err));
-    return INTERNAL_UPDATE_ERROR;
-  }
-
+  bool handleOpen = true;
+  ScopedCleanup abortOnFailure{[&] {
+    if (handleOpen) esp_ota_abort(handle);
+  }};
   processedSize = 0;
-  int lastReportedPct = -1;
-  bool flashOk = true;
-  // The image streams in chunks; only the first bytes carry the header. Buffer
-  // the first 14 bytes so we can read chip_id (esp_image_header_t offset 12)
-  // and reject a wrong-MCU image before it overwrites the OTA partition.
-  uint8_t hdr[14];
-  size_t hdrLen = 0;
-  bool wrongChip = false;
-  // All S3 boards share a chip_id, so also scan the stream for the embedded
-  // board tag (FirmwareBoardTag.h). An untagged image passes; a tag naming a
-  // different board aborts the download. The wrong image may partially land in
-  // the inactive OTA slot, but esp_ota_abort() below means it never becomes
-  // the boot target.
-  board_tag::Scanner tagScanner;
-  const bool fetchOk = HttpDownloader::fetchUrl(otaUrl, [&](const uint8_t* data, size_t len) {
-    if (hdrLen < sizeof(hdr)) {
-      const size_t take = std::min(len, sizeof(hdr) - hdrLen);
-      std::memcpy(hdr + hdrLen, data, take);
-      hdrLen += take;
-      if (hdrLen == sizeof(hdr)) {
-        uint16_t imageChip;
-        std::memcpy(&imageChip, hdr + 12, sizeof(imageChip));
-        const uint16_t deviceChip = firmware_flash::runningPartitionChipId();
-        if (deviceChip != 0xFFFF && imageChip != deviceChip) {
-          LOG_ERR("OTA", "wrong chip: image=0x%04X device=0x%04X", imageChip, deviceChip);
-          wrongChip = true;
-          return false;  // abort the transfer
+  totalSize = otaSize;
+  struct Download {
+    OtaUpdater* updater;
+    personalupdate::ImageVerifier* image;
+    esp_ota_handle_t handle;
+    ProgressCallback callback;
+    void* context;
+    int lastPercent = -1;
+    bool flashOk = true;
+  } download{this, image.get(), handle, onProgress, ctx};
+  const bool fetched = personalupdate::fetchImage(
+      otaUrl.c_str(),
+      [](void* context, const uint8_t* data, size_t length) {
+        auto& value = *static_cast<Download*>(context);
+        const size_t before = value.image->received();
+        if (!value.image->feed(data, length)) return false;
+        size_t offset = 0;
+        const auto header = value.image->header();
+        if (before < 14) {
+          if (header.size() < 14) return true;
+          // Hold a split header until magic and chip identity have both passed.
+          if (esp_ota_write(value.handle, header.data(), header.size()) != ESP_OK) {
+            value.flashOk = false;
+            return false;
+          }
+          offset = header.size() - before;
         }
-      }
-    }
-    tagScanner.feed(data, len);
-    if (tagScanner.mismatch()) {
-      LOG_ERR("OTA", "wrong board: image=%s device=%.*s", tagScanner.foundName(),
-              static_cast<int>(board_tag::boardNameLen()), board_tag::boardName());
-      return false;  // abort the transfer
-    }
-    if (esp_ota_write(otaHandle, data, len) != ESP_OK) {
-      flashOk = false;
-      return false;  // abort the transfer
-    }
-    processedSize += len;
-    // Fire the callback only on whole-percent change. Per-chunk updates wake the
-    // render task, whose framebuffer work contends with TLS on the internal arena,
-    // and e-ink can't repaint faster than a percent tick anyway.
-    if (onProgress && totalSize > 0) {
-      const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
-      if (pct != lastReportedPct) {
-        lastReportedPct = pct;
-        onProgress(ctx);
-      }
-    }
-    return true;
-  });
-
-  if (wrongChip || tagScanner.mismatch()) {
-    LOG_ERR("OTA", "Firmware install aborted: wrong device");
-    esp_ota_abort(otaHandle);
-    return WRONG_DEVICE_ERROR;
-  }
-
-  if (!fetchOk || !flashOk) {
-    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
-    esp_ota_abort(otaHandle);
-    return flashOk ? HTTP_ERROR : INTERNAL_UPDATE_ERROR;
-  }
-
-  esp_err = esp_ota_end(otaHandle);  // verifies the written image
-  if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_ota_end failed: %s", esp_err_to_name(esp_err));
+        if (length > offset && esp_ota_write(value.handle, data + offset, length - offset) != ESP_OK) {
+          value.flashOk = false;
+          return false;
+        }
+        value.updater->processedSize = value.image->received();
+        if (value.callback) {
+          const int percent =
+              static_cast<int>(static_cast<uint64_t>(value.updater->processedSize) * 100 / value.updater->totalSize);
+          if (percent != value.lastPercent) {
+            value.lastPercent = percent;
+            value.callback(value.context);
+          }
+        }
+        return true;
+      },
+      &download);
+  if (!download.flashOk) {
+    LOG_ERR("OTA", "Inactive image write failed");
     return INTERNAL_UPDATE_ERROR;
   }
-
-  esp_err = esp_ota_set_boot_partition(updatePartition);
-  if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_ota_set_boot_partition failed: %s", esp_err_to_name(esp_err));
+  if (image->result() != personalupdate::ImageResult::Pending) {
+    LOG_ERR("OTA", "Image stream rejected: %u", static_cast<unsigned>(image->result()));
+    return imageError(image->result());
+  }
+  if (!fetched) {
+    LOG_ERR("OTA", "Image fetch failed");
+    return HTTP_ERROR;
+  }
+  const auto verified = image->finish();
+  if (verified != personalupdate::ImageResult::Verified) {
+    LOG_ERR("OTA", "Image verification failed: %u", static_cast<unsigned>(verified));
+    return imageError(verified);
+  }
+  error = esp_ota_end(handle);
+  handleOpen = false;  // The SDK frees the handle on both success and failure.
+  if (error != ESP_OK) {
+    LOG_ERR("OTA", "esp_ota_end failed: %s", esp_err_to_name(error));
     return INTERNAL_UPDATE_ERROR;
   }
-
-  LOG_INF("OTA", "Update completed");
+  error = esp_ota_set_boot_partition(partition);
+  if (error != ESP_OK) {
+    LOG_ERR("OTA", "esp_ota_set_boot_partition failed: %s", esp_err_to_name(error));
+    return INTERNAL_UPDATE_ERROR;
+  }
+  LOG_INF("OTA", "Verified update completed");
   return OK;
 }

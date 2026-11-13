@@ -1,3 +1,4 @@
+#include <PersonalUpdateTransport.h>
 #include <PersonalUpdateVersion.h>
 #include <gtest/gtest.h>
 
@@ -6,7 +7,7 @@ TEST(PersonalUpdateVersion, ReleaseEndpointBelongsToPersonalFork) {
 }
 
 TEST(PersonalUpdateVersion, OnlineUpdatesStayDisabledUntilAuthenticationIsImplemented) {
-  EXPECT_FALSE(personalupdate::AUTHENTICATED_TRANSPORT);
+  EXPECT_FALSE(personalupdate::transportAvailable());
 }
 
 TEST(PersonalUpdateVersion, OnlyNewerPersonalReleaseIsOffered) {

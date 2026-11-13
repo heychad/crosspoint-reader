@@ -10,7 +10,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
-#include "network/PersonalUpdateVersion.h"
+#include "network/PersonalUpdateTransport.h"
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
@@ -75,7 +75,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
-  if (!personalupdate::AUTHENTICATED_TRANSPORT) {
+  if (!personalupdate::transportAvailable()) {
     state = ONLINE_DISABLED;
     requestUpdate();
     return;

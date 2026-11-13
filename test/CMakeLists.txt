@@ -197,6 +197,7 @@ add_test(NAME recursive_dictionary COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT
 add_subdirectory(reader_personalization)
 FetchContent_GetProperties(ArduinoJson SOURCE_DIR personal_release_json_source)
 target_include_directories(PersonalReleaseTest PRIVATE ${personal_release_json_source}/src)
+target_include_directories(OtaPipelineTest PRIVATE ${personal_release_json_source}/src)
 add_subdirectory(reference_pages)
 FetchContent_GetProperties(ArduinoJson)
 target_include_directories(SyncStoredReferenceGuardTest PRIVATE ${arduinojson_SOURCE_DIR}/src)

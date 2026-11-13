@@ -10,7 +10,7 @@ For example, `2.0.0-chad.4` supplies
 the installed firmware is a test build.
 
 Online checking and installation remain disabled by
-`personalupdate::AUTHENTICATED_TRANSPORT`. This document tracks the components
+`personalupdate::transportAvailable()`. This document tracks the components
 needed before that gate can open. Nothing in this WIP publishes a release or
 installs firmware.
 The disabled update screen directs the reader to SD-card installation and does
@@ -54,7 +54,9 @@ TLS and the active screen, using separate internal/PSRAM heap measurements.
 The check path now clears its previous offer before fetching. On the X4 Pro it
 collects at most 64 KiB into a checked PSRAM allocation, with one terminator byte
 and no internal-RAM fallback. A larger response stops the request. The updater
-gate remains closed; the generic downloader will be replaced before enabling it.
+gate remains closed. Metadata and image requests now use a separate synchronous
+transport interface whose production implementation returns failure. The updater
+no longer uses the generic insecure downloader.
 
 `PersonalRelease` validates JSON syntax, nesting, UTF-8, and a complete single
 document before using the existing ArduinoJson parser. A bounded SAX audit
@@ -73,7 +75,7 @@ match the release workflow. Empty/nonmatching asset lists mean no update.
 Failed parsing clears every output field.
 
 The updater retains the validated digest in 32 additional bytes per update
-session. It does not yet compare that digest with downloaded firmware. The
+session. The image verifier now compares that digest with the streamed firmware. The
 64 KiB response cap and 16-asset limit are release-maintenance constraints;
 larger release records must be shortened or the bounded policy reviewed.
 
@@ -85,17 +87,40 @@ passes in 72.13 seconds (RAM 113,060 bytes; flash 5,682,130 bytes). The closed
 gate can remove unused updater code from the final image; a later enabled
 transport build and runtime measurements must cover its full working set.
 
+## Streamed image verification
+
+The installer hashes incoming bytes without retaining the full image. It requires
+an exact metadata length, SHA-256 match, ESP image magic, the running chip ID,
+and an explicit matching X4 Pro board tag. It holds the first 14 header bytes
+until the magic and chip checks pass. Legacy SD-card updates keep their existing
+untagged-image policy.
+
+One checked verifier allocation owns the hash state and board scanner during
+installation. No task, SD cache file, or whole-image buffer is added. Runtime
+TLS, flash-writer, and screen memory still need measurement together.
+
+The inactive-slot writer receives the exact image size. Transfer, verification,
+and write failures abort an owned pending handle. Only a verified stream reaches
+`esp_ota_end()`, and only a successful end reaches boot selection. The
+[ESP-IDF OTA contract](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32/api-reference/system/ota.html)
+frees the handle after `esp_ota_end()` on either result; the cleanup guard does
+not abort that freed handle.
+
+All 31 focused checks pass in 0.16 seconds and pass both sanitizers in 0.56
+seconds. They cover split headers, every fixture truncation, excess bytes,
+corruption, board/chip mismatch, allocation/hash/network/write failures, and SDK
+handle ownership. The pipeline tests compile the whole production updater with
+a fake transport and ESP writer, using real CommonCrypto or OpenSSL SHA-256.
+Their synthetic payload is not a bootable ESP image; these checks do not prove
+physical flashing, power-loss recovery, or certificate validation. The standard
+X4 Pro build passes in 74.59 seconds (RAM 113,068 bytes; flash 5,696,246 bytes).
+
 ## Remaining integration
 
 - A request path that selects trusted roots, checks the clock, restricts every
   redirect to the expected HTTPS origins, and never uses the generic insecure
   downloader for metadata or firmware.
-- Streaming payload verification against the stored metadata. GitHub's
-  [release-asset API](https://docs.github.com/en/rest/releases/assets) exposes
-  the asset's SHA-256 digest; metadata parsing now requires it.
-- Exact byte count, SHA-256, image header, and X4 Pro board-tag checks before
-  selecting the new boot partition. Failed downloads must abort the inactive
-  slot and retain the current boot target.
+- An enabled transport build and combined runtime heap/stack measurements.
 - Cumulative release review, reproducible release artifacts, and physical
   success/failure checks on the reader. No release is published by WIP pushes.
 
