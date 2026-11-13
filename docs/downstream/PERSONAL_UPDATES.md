@@ -86,6 +86,9 @@ libraries from that sibling checkout, even though patch scripts targeted this
 checkout. The initial default build therefore did not validate this TLS patch
 and is excluded from its build evidence. The combined-profile links already
 pointed here.
+Earlier default-profile records from this copied cache also do not prove this
+checkout's SDK inputs. The corrected build below supersedes those records for
+the current source. Historical timings remain recorded as such.
 
 The first pre-build hook, `scripts/repair_local_sdk_links.py`, now rebinds cached
 relative `freeink-sdk/` library references to the current checkout before library

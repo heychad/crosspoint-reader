@@ -68,9 +68,11 @@ cleanup contract. Host adapters do not establish device latency or heap peaks.
 
 Seven focused checks pass in 5.51 seconds. The scheduler, dispatch, and expanded
 destructor-suspension harnesses pass AddressSanitizer and UndefinedBehaviorSanitizer.
-The default X4 Pro build passes in 72.88 seconds (RAM 113,148 bytes; flash
-5,683,694 bytes). The eleven-flag combined profile passes in 160.20 seconds
-(RAM 113,092 bytes; flash 5,783,570 bytes). Compiled `EpubReaderActivity` size is
+The later [SDK link correction](PERSONAL_UPDATES.md#build-source-ownership)
+supersedes the original default build's SDK evidence. Current cumulative builds
+pass in 116.03 seconds for default (RAM 113,060 bytes; flash 5,682,114 bytes)
+and 71.21 seconds for the eleven-flag profile (RAM 113,092 bytes; flash
+5,783,834 bytes). Compiled `EpubReaderActivity` size is
 3,016 bytes in default and 3,328 bytes in the combined profile; that difference
 includes its other enabled features and is not the prefetch cost alone.
 The compiled prefetch method has a 96-byte stack frame; that excludes the
