@@ -202,14 +202,15 @@
       ]
     },
     {
-      "handling": "open",
+      "handling": "mapped",
       "keys": [
         "disableReaderTouchscreen"
       ],
-      "behavior": "Disabling maps directly, but enabling currently requires the older touchReaderControls field. RC2 no longer saves that field, so its normal enabled setting cannot enable native reader touch during replacement. Resolve this controls-import gap without removing Quick Actions ownership protections.",
+      "behavior": "Validate the RC2 disable flag and invert it to native reader-touch enable when the retired touchReaderControls field is absent. Keep compatible older combined state when present; malformed retained fields do not enable touch. Missing-only native ownership and all four edge Quick Actions owners remain protected.",
       "evidence": [
         "src/personalization/CrossInkControlImport.h",
-        "test/controls_menu/test_handoff.py"
+        "test/reader_personalization/ReaderPersonalizationTest.cpp",
+        "test/book_reader_settings/BookReaderSettingsTest.cpp"
       ]
     },
     {

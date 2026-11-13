@@ -20,8 +20,9 @@ inline bool stageGestureControls(JsonVariantConst legacy, JsonDocument& proposed
       (replaceExisting || currentTouch.isUnbound())) {
     const bool disabled = sourceDisabled.as<uint8_t>() != 0;
     const bool sourceTouchKnown = sourceTouch.is<uint8_t>() && sourceTouch.as<uint8_t>() <= 1;
-    if (disabled || sourceTouchKnown) {
-      const uint8_t value = disabled ? 0 : sourceTouch.as<uint8_t>();
+    if (disabled || sourceTouchKnown || sourceTouch.isUnbound()) {
+      // RC2 saves only the disable flag; older files can also carry a touch mode.
+      const uint8_t value = disabled ? 0 : sourceTouchKnown ? sourceTouch.as<uint8_t>() : 1;
       bool quickOnEdge = false;
       for (const char* key : {"readerLeftEdgeUp", "readerLeftEdgeDown", "readerRightEdgeUp", "readerRightEdgeDown"}) {
         const auto edge = proposed[key];

@@ -47,6 +47,30 @@ class BookSettings : public testing::Test {
 };
 }  // namespace
 
+TEST_F(BookSettings, Rc2TouchEnablePublishesWithoutTheRetiredFieldAndPreservesExactInputs) {
+  const std::string original = R"({"touchReaderControls":0,"other":42})";
+  const std::string legacy = R"({"disableReaderTouchscreen":0,"pageTurnGesture":2,"previousPageGesture":3})";
+  put("/.crosspoint/settings.json", original);
+  put(crossinkimport::SOURCE_PATH, legacy);
+  JsonDocument proposed;
+  ASSERT_FALSE(deserializeJson(proposed, original));
+  char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+  ASSERT_EQ(crossinkimport::publishControls(proposed, true, false, original.data(), original.size(), snapshot),
+            crossinkimport::ApplyResult::Published);
+  std::string saved, backup, source;
+  ASSERT_TRUE(Storage.readFileToString("TEST", "/.crosspoint/settings.json", 32768, saved));
+  ASSERT_TRUE(Storage.readFileToString("TEST", snapshot, 32768, backup));
+  ASSERT_TRUE(Storage.readFileToString("TEST", crossinkimport::SOURCE_PATH, 32768, source));
+  JsonDocument reloaded;
+  ASSERT_FALSE(deserializeJson(reloaded, saved));
+  EXPECT_EQ(reloaded["touchReaderControls"].as<int>(), 1);
+  EXPECT_EQ(reloaded["pageTurnGesture"].as<int>(), 2);
+  EXPECT_EQ(reloaded["previousPageGesture"].as<int>(), 3);
+  EXPECT_EQ(reloaded["other"].as<int>(), 42);
+  EXPECT_EQ(backup, original);
+  EXPECT_EQ(source, legacy);
+}
+
 TEST_F(BookSettings, CrossInkSourceReadsPrimaryWithoutChangingFiles) {
   const std::string original = R"({"sideButtonOrientationAware":0,"sideButtonUpShort":7,"other":"kept"})";
   put(crossinkimport::SOURCE_PATH, original);

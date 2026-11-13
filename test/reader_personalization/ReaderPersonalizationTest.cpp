@@ -1088,6 +1088,65 @@ TEST(CrossInkControlImport, ImportsEffectiveReaderTouchWithoutDisablingEdgeQuick
   EXPECT_FALSE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, true));
 }
 
+TEST(CrossInkControlImport, ImportsRc2TouchEnableWithoutTheRetiredTouchField) {
+  for (const bool replace : {false, true}) {
+    for (unsigned disabled = 0; disabled < 256; ++disabled) {
+      SCOPED_TRACE(disabled);
+      JsonDocument source, current;
+      source["disableReaderTouchscreen"] = disabled;
+      current["unrelated"] = 42;
+      std::string before;
+      serializeJson(source, before);
+      EXPECT_EQ(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, replace), disabled <= 1);
+      if (disabled <= 1) {
+        EXPECT_EQ(current["touchReaderControls"].as<unsigned>(), 1 - disabled);
+        EXPECT_FALSE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, replace));
+      } else {
+        EXPECT_TRUE(current["touchReaderControls"].isUnbound());
+      }
+      EXPECT_EQ(current["unrelated"].as<int>(), 42);
+      std::string after;
+      serializeJson(source, after);
+      EXPECT_EQ(before, after);
+    }
+  }
+  for (const char* saved : {"0", "null", "\"off\""}) {
+    JsonDocument source, current;
+    source["disableReaderTouchscreen"] = 0;
+    ASSERT_FALSE(deserializeJson(current, std::string("{\"touchReaderControls\":") + saved + "}"));
+    EXPECT_FALSE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, false));
+    EXPECT_TRUE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, true));
+    EXPECT_EQ(current["touchReaderControls"].as<int>(), 1);
+  }
+}
+
+TEST(CrossInkControlImport, Rc2TouchImportRetainsStrictValidationAndEveryEdgeQuickOwner) {
+  for (const char* invalid : {"null", "true", "1.0", "-1", "256", "\"0\"", "[]", "{}"}) {
+    JsonDocument source, current;
+    ASSERT_FALSE(deserializeJson(source, std::string("{\"disableReaderTouchscreen\":") + invalid + "}"));
+    current["touchReaderControls"] = 0;
+    EXPECT_FALSE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, true));
+    EXPECT_EQ(current["touchReaderControls"].as<int>(), 0);
+    source["disableReaderTouchscreen"] = 0;
+    JsonDocument value;
+    ASSERT_FALSE(deserializeJson(value, invalid));
+    source["touchReaderControls"] = value.as<JsonVariantConst>();
+    EXPECT_FALSE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, true));
+  }
+  for (const char* edge : {"readerLeftEdgeUp", "readerLeftEdgeDown", "readerRightEdgeUp", "readerRightEdgeDown"}) {
+    JsonDocument source, current;
+    current[edge] = static_cast<uint8_t>(readershortcuts::Action::QuickActions);
+    current["touchReaderControls"] = 0;
+    source["disableReaderTouchscreen"] = 0;
+    EXPECT_TRUE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, true));
+    EXPECT_EQ(current["touchReaderControls"].as<int>(), 1);
+    source["disableReaderTouchscreen"] = 1;
+    EXPECT_FALSE(crossinkimport::stageGestureControls(source.as<JsonVariantConst>(), current, true));
+    EXPECT_EQ(current["touchReaderControls"].as<int>(), 1);
+    EXPECT_EQ(current[edge].as<uint8_t>(), static_cast<uint8_t>(readershortcuts::Action::QuickActions));
+  }
+}
+
 TEST(CrossInkControlImport, ImportsPageTurnGesturesAndLegacyPreviousFallback) {
   JsonDocument source, current;
   ASSERT_FALSE(deserializeJson(source, R"({"pageTurnGesture":1,"previousPageGesture":3})"));

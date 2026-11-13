@@ -153,10 +153,10 @@ separately. Nested bar codecs and per-book formats retain their own checks.
 
 | Handling | Keys |
 | --- | ---: |
-| Compatible mappings | 72 |
+| Compatible mappings | 73 |
 | Conditional mappings or feature gates | 17 |
 | Partial mappings with explicit compatibility limits | 6 |
-| Open selected compatibility | 2 |
+| Open selected compatibility | 1 |
 | Selected for Later | 19 |
 | Inputs absent from the pinned X4 Pro profile | 21 |
 | Existing native configuration retained | 19 |
@@ -184,11 +184,22 @@ native SDK menu navigation rather than importing controls from another board.
 This does not assert that the two RC2 modes behave identically on other boards.
 See [the input audit](RC_SHORTCUT_AUDIT.md).
 
-`disableReaderTouchscreen` also needs a correction. Disabling already maps, but
-enabling currently requires the older `touchReaderControls` field, which RC2
-no longer saves. A normal RC2 enabled preference therefore cannot enable
-native reader touch during replacement. Fix this while preserving Quick
-Actions ownership protections.
+`disableReaderTouchscreen` now imports both states from a normal RC2 save,
+which omits the retired `touchReaderControls` field. Valid 0 enables native
+reader touch; 1 disables it unless an edge Quick Actions owner needs touch.
+Compatible older combined state still applies when present; malformed older
+state is not treated as absent. Missing-only staging preserves a present
+native value, including null. Confirmed replacement can enable touch. No
+reader position, task, retained buffer, or file format is added or changed.
+
+The 59 focused checks passed in 0.09 seconds, including all 256 flag bytes,
+malformed types, native ownership, all four edge owners, idempotence, and exact
+source/backup preservation through the production transaction. The 21 control
+and shortcut catalog tests passed AddressSanitizer and UndefinedBehaviorSanitizer.
+The default X4 Pro build passed in 68.85 seconds, with 113,148 static RAM bytes
+and 5,681,970 flash bytes. Logs are `/tmp/x4-rc2-touch-final-checks.log`,
+`/tmp/x4-rc2-touch-sanitizers.log`, and `/tmp/x4-rc2-touch-firmware.log`.
+Cumulative review and device validation remain.
 
 `forceParagraphIndents` remains open. RC2 keeps an embedded CSS indent when
 extra paragraph spacing is off, or when forcing is enabled; negative hanging
@@ -217,7 +228,7 @@ unchanged; this bounded mapping change did not require repeating the full host
 suite. No device installation or runtime validation is claimed.
 
 The following audit findings now have implementations. G3 stays open for the
-touch-enable and paragraph-indent compatibility described above:
+paragraph-indent compatibility described above:
 
 | RC2 field | Required follow-up |
 | --- | --- |

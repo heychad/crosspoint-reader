@@ -142,6 +142,7 @@ These are check durations, not coding speed or total development time.
 | November 13 custom-bar text sizes | Full run 2359/2360 in 108.89 s; progress-thickness assumption corrected in the new fixture, then 91 affected passed in 2.65 s. Expanded geometry and imports passed both sanitizers | 130.85 s; standard X4 Pro, RAM 113140, flash 5679894; final fixture-only matrix reused the firmware build |
 | November 13 XTC bar placements and render passes | 2364 full: 96.24 s. Overlays, 70 policy cases, legacy imports in both profiles, and padded render/sleep passes passed both sanitizers | 102.62 s; standard X4 Pro, RAM 113148, flash 5681958; initial 53.40 s attempt failed on a local-header include, then corrected |
 | November 13 settings inventory and source-drift audit | All 157 catalog/save keys classified once; RC2 matches all eight reviewed blobs; earlier RC correctly flags six changed files. Snapshot checks took about 0.4 s each | Not repeated: host-only script and documentation; firmware inputs unchanged |
+| November 13 RC2 reader-touch import | 59 affected: 0.09 s; 21 control/catalog cases passed both sanitizers. Production publication preserves exact source and native snapshot | 68.85 s; default X4 Pro, RAM 113148, flash 5681970 |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
@@ -153,3 +154,9 @@ For Home geometry changes, include `SavedItemsHomeInput` and
 methods; the navigation fixture also needs new sizing helpers even though its
 name does not contain Home. Fixing that fixture does not invalidate firmware
 or other passing host results.
+
+For the touch-import check, an initial extension of the general recovery fixture
+failed an earlier save assertion; its unchanged baseline passed. That extension
+was removed. New byte-preservation coverage uses the registered
+`BookReaderSettingsTest` transaction harness instead. The final focused run
+passes, and the fixture correction does not invalidate the unchanged firmware build.

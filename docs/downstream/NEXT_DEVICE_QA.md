@@ -191,6 +191,17 @@ reboot to check the imported action persists. Repeat with
 `"readerLeftEdgeUp": 0` present and confirm that the modern Default behavior value wins. The separate
 CrossInk settings file is not imported by this stage.
 
+## RC2 reader-touch import
+
+On a disposable test card after backing up settings, set native reader touch
+Off. Import CrossInk controls from an RC2 save with
+`"disableReaderTouchscreen": 0` and no `touchReaderControls` key. Reader touch
+should turn On, and the two page-turn gesture choices should import normally.
+Restart, reopen the same passage, and check that touch remains enabled.
+Verify that the source file and the pre-import settings snapshot are unchanged.
+With Quick Actions assigned to an edge, importing a disabled-touch preference
+must leave touch On and keep that action usable. Restore the original settings.
+
 ## Section time remaining
 
 With tracking on and a book that has recorded forward-page pace, assign

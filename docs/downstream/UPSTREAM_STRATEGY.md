@@ -85,7 +85,7 @@ Changed reviewed source files require a new semantic audit, including changes
 to defaults, enum values, nested codecs, or behavior with the same key names.
 Matching hashes mean the reviewed sources are unchanged, not that every
 preference migrates or that device validation is complete. The inventory keeps
-the remaining touch-enable and paragraph-indent compatibility gaps visible.
+the remaining paragraph-indent compatibility gap visible.
 Use the [development process](DEVELOPMENT_PROCESS.md) for verification depth.
 Keep the known device-tested revision available for rollback.
 
