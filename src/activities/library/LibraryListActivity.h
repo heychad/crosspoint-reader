@@ -192,7 +192,7 @@ class LibraryListActivity final : public UiTabListActivity {
   bool statisticsOpenFailed = false;
 
   // One start row per group. This checked array is bounded by the indexed
-  // books plus the ten recent entries and reused after its first allocation.
+  // books plus the resident history and reused after its first allocation.
   std::unique_ptr<uint16_t[]> groupStarts;
   uint16_t groupCapacity = 0;
   uint16_t groupCount = 0;
@@ -217,7 +217,7 @@ class LibraryListActivity final : public UiTabListActivity {
 
   // Pinned overlay state: per store entry its RecentAsc row (0xFFFF when the
   // book is not in the index), and the current-direction rows to skip, sorted
-  // ascending, so unpinned entries map to sort rows with a <=10-step walk.
+  // ascending, so unpinned entries map to sort rows with a bounded walk.
   uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint8_t pinnedStoreIndices[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};

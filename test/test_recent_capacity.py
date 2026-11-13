@@ -73,8 +73,12 @@ int main() {
     RecentBooksStore reopened;
     assert(reopened.fromJson(store.disk.as<JsonVariantConst>()));
     assert(reopened.getCount() == store.getCount());
-    for (int i = 0; i < reopened.getCount(); ++i)
+    for (int i = 0; i < reopened.getCount(); ++i) {
       assert(reopened.recentBooks[i].path == store.recentBooks[i].path);
+      assert(reopened.recentBooks[i].title == store.recentBooks[i].title);
+      assert(reopened.recentBooks[i].author == store.recentBooks[i].author);
+      assert(reopened.recentBooks[i].coverBmpPath == store.recentBooks[i].coverBmpPath);
+    }
   }
 }
 '''

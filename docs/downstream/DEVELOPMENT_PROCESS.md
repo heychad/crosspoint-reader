@@ -135,6 +135,7 @@ These are check durations, not coding speed or total development time.
 | November 12 Library view persistence and exact sort imports | 205 affected: 3.92 s; staging and view-change paths passed both sanitizers; older tab-lock fixture updated | 106.43 s; no experimental-only path changed |
 | November 12 first-name index order | 2353 full: 92.69 s; 37 native builder/sorter cases passed both sanitizers | 85.32 s; UI selection remains a separate step |
 | November 13 first-name view and sort picker | 211 affected: 3.59 s; import, view/picker, and filter/group paths passed both sanitizers; real-font layouts passed | 107.65 s; standard profile covers the changed paths |
+| November 13 history-only Library view | 2355 full: 112.04 s; filters/rows, controls, imports, and store capacity passed both sanitizers | 133.36 s; 18-entry history matches RC2 |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

@@ -73,6 +73,21 @@ metadata remain intact. No new task, per-book heap array, reading-state format,
 or derived-index version is introduced. Runtime heap peak and latency still
 need device measurements.
 
+The full 2355-check host suite passed in 112.04 seconds. History filtering and
+rows, picker/preferences, imports, and recent-store loading/rotation passed
+AddressSanitizer and UndefinedBehaviorSanitizer. Real-font layouts cover the
+Opened and First name labels in both orientations. The X4 Pro build passed in
+133.36 seconds, with 113140 static RAM bytes and 5677094 flash bytes.
+
+Compiled X4 Pro sizes are 96 bytes per RecentBook object, excluding string
+payloads and vector spare capacity, and 2368 bytes for LibraryListActivity,
+excluding owned buffers. The resolver's ABI stack frame is 272 bytes; its
+identity array accounts for 128 bytes. These are compiled sizes, not runtime
+watermarks or heap-peak measurements. Logs are `/tmp/x4-history-view-full-checks.log`,
+`/tmp/x4-history-view-firmware.log`, `/tmp/x4-history-view-size.log`, and the four
+`/tmp/x4-history-view-*-sanitizers.log` files. Cumulative handoff review and device
+validation remain.
+
 ## Filters and rows
 
 Show EPUB, XTC, TXT and Markdown independently. XTC includes `.xtc` and `.xtch`.
