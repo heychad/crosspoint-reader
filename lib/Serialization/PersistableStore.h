@@ -53,7 +53,8 @@ class PersistableStoreBase {
   // does not exist (expected on first boot); logs on read/parse failure.
   static bool readDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes = 0);
 
-  // Caller serializes access and validates any existing document before replacement.
+  // Caller validates the existing document. The writer locks storage and checks
+  // recovery chains before retiring files; ambiguous aliases remain untouched.
   static bool writeDocToFileAtomic(const char* path, const JsonDocument& doc, size_t maxBytes);
   // Checked move-reference update for state.json and recent.json only.
   static bool writeDocToFileForMove(const char* path, const JsonDocument& doc, bool finishPublishedOnly = false);

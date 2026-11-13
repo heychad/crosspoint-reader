@@ -8,6 +8,13 @@
 class HalStorage : public BaseHalStorage {
  public:
   std::string failWritePath;
+  HalFile openChecked(const char* path, int flags) {
+    if ((flags & O_CREAT) && path == failWritePath) {
+      failWritePath.clear();
+      return {};
+    }
+    return BaseHalStorage::openChecked(path, flags);
+  }
   bool openFileForWrite(const char* module, const std::string& path, HalFile& file) {
     if (path == failWritePath) {
       failWritePath.clear();

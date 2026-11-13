@@ -84,7 +84,7 @@ resolved by the passing pre-correction suite.
 
 | ID | Finding | Current status |
 | --- | --- | --- |
-| R1, P1 | Per-book JSON retries can delete a `.tmp`/`.bak` alias sharing the live primary's chain. | Open; needs checked transaction ownership and real FAT/exFAT alias regressions. |
+| R1, P1 | Per-book JSON retries can delete a `.tmp`/`.bak` alias sharing the live primary's chain. | Corrected under one storage lock with checked lookups, disjoint-chain checks, exclusive staging, sync/close/readback, and checked rename results. Real FAT/exFAT alias regressions fail before the fix and pass afterward. Awaiting targeted cumulative review. |
 | R2, P1 | Completion accepts deep existing book paths, but its later source-reference audit applies staged-publication's 16-component limit after moving files. | Open; separate source validation from publication policy and exercise the production guard through move/remount. |
 | R3, P2 | Routine application-state saves consume permanent history slots; exhaustion blocks later saves and causes increasing scan work. | Open; distinguish verified clean-save retirement from uncertain-artifact preservation. |
 | R4, P2 | Rotated Quick Lock activation and unlock resolve asymmetric side holds differently. | Corrected with the shared orientation mapping; regression failed before the fix and passes afterward across all four orientations. |
@@ -103,6 +103,33 @@ the twelve-flag build passes in 70.20 seconds (RAM 113100, flash 5803354).
 Logs use `/tmp/x4-review-input-*.log` and `/tmp/x4-review-completion-*.log`.
 These are scoped correction checks, not a second cumulative review or a
 post-correction full-suite pass.
+
+R1 keeps the existing per-book format and primary/backup/temp load priority.
+It checks all three files before any cleanup, including an unchanged save.
+Independent interrupted saves can recover or reuse staging; shared or unreadable
+chains remain untouched and the save fails. This is not filesystem repair or a
+proof against aliases outside these three paths. Preserve ambiguous files for
+inspection rather than deleting one to force a retry.
+
+The per-book production suite passes 97 checks, including failed lookup, read,
+lock, allocation, sync, close, short-write, and rename recovery. It also passes
+ASan/UBSan. The production writer and selected production HAL methods pass ASan
+on real FAT/exFAT images: eight failed-rename aliases, 76 interrupted writes,
+and 187 read-fault positions. A changed preference retry, later allocation,
+remount, and unchanged reading-position bytes are checked. A successful return
+requires the requested bytes after remount; a transient low-level read error
+may recover inside SdFat. The same alias regression fails on the prior writer.
+The default X4 Pro build passes in 105.64 seconds (RAM 113068, flash 5697014);
+the twelve-flag build passes in 106.14 seconds (RAM 113100, flash 5803854).
+Logs use `/tmp/x4-perbook-*.log`. These checks do not replace the final full suite
+or targeted cumulative review.
+
+Serialization still owns at most 4097 bytes for the 4096-byte per-book limit.
+The two existing path strings live only for the save. Existing HAL chain checks
+temporarily allocate at most two 64-cluster lists (512 bytes), plus their file
+handles and bounded path lookup buffers. No cache, task, or retained allocation
+is added. For device verification, change a disposable book's layout twice,
+close and reopen it, and confirm the layout and reading position survive sleep.
 
 The embedded review also triaged retained vendor reports. X4 Pro selects the
 bytewise little-endian helper path, so the Mac's alignment reports do not follow

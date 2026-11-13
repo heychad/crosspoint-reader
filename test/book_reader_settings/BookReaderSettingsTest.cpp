@@ -1308,6 +1308,79 @@ TEST_F(BookSettings, FailedPublishRestoresOriginalAndRemainsRetryable) {
   EXPECT_TRUE(store.save(sizeOverride()));
 }
 
+TEST_F(BookSettings, FailedRenameAliasesBlockChangedSavesWithoutRemovingEitherName) {
+  for (const bool publishing : {false, true}) {
+    Storage = HalStorage{};
+    put(PATH, R"({"version":1,"overrides":{"fontSize":16}})");
+    BookReaderPreferences store;
+    BookReaderSettings saved;
+    ASSERT_TRUE(store.load(CACHE, "/book.epub", saved));
+    Storage.failNextAliasRenameFrom(publishing ? std::string(PATH) + ".tmp" : PATH);
+    EXPECT_FALSE(store.save(sizeOverride()));
+    const std::string alias = std::string(PATH) + (publishing ? ".tmp" : ".bak");
+    ASSERT_TRUE(Storage.exists(PATH));
+    ASSERT_TRUE(Storage.exists(alias.c_str()));
+    const std::string before = Storage.readFile(PATH).c_str();
+    saved = sizeOverride();
+    saved.preferences.values[0] = 20;
+    EXPECT_FALSE(store.save(saved));
+    EXPECT_TRUE(Storage.exists(alias.c_str()));
+    EXPECT_EQ(std::string(Storage.readFile(PATH).c_str()), before);
+  }
+}
+
+TEST_F(BookSettings, FailedLookupAndChainChecksDoNotRetireRecoveryCopies) {
+  put(PATH, R"({"version":1,"overrides":{"fontSize":16}})");
+  put(std::string(PATH) + ".tmp", R"({"version":1,"overrides":{"fontSize":18}})");
+  JsonDocument document;
+  document["version"] = 1;
+  document["overrides"]["fontSize"] = 20;
+  Storage.failSettingsIdentity();
+  EXPECT_FALSE(PersistableStoreBase::writeDocToFileAtomic(PATH, document, 4096));
+  EXPECT_TRUE(Storage.exists((std::string(PATH) + ".tmp").c_str()));
+}
+
+TEST_F(BookSettings, AtomicWriteStopsOnReadLookupLockAndStagingFailures) {
+  const std::string original = R"({"version":1,"overrides":{"fontSize":16}})";
+  const std::string temporary = std::string(PATH) + ".tmp";
+  for (unsigned failure = 0; failure < 8; ++failure) {
+    Storage = HalStorage{};
+    put(PATH, original);
+    JsonDocument document;
+    document["version"] = 1;
+    document["overrides"]["fontSize"] = 18;
+    switch (failure) {
+      case 0:
+        Storage.failNextReadFor(PATH);
+        break;
+      case 1:
+        Storage.failReadsFor(temporary);
+        break;
+      case 2:
+        Storage.failNextStorageLock();
+        break;
+      case 3:
+        Storage.failSettingsEligibility();
+        break;
+      case 4:
+        Storage.failNextNewSyncFor(temporary);
+        break;
+      case 5:
+        Storage.failNextNewCloseFor(temporary);
+        break;
+      case 6:
+        Storage.failNextWriteFor(temporary, 10);
+        break;
+      case 7:
+        Storage.failCheckedOpenAfter(0);
+        break;
+    }
+    EXPECT_FALSE(PersistableStoreBase::writeDocToFileAtomic(PATH, document, 4096)) << failure;
+    EXPECT_EQ(std::string(Storage.readFile(PATH).c_str()), original) << failure;
+    EXPECT_FALSE(Storage.exists((std::string(PATH) + ".bak").c_str())) << failure;
+  }
+}
+
 TEST_F(BookSettings, InterruptedRenameLoadsBackupBeforeTemporaryFile) {
   put(std::string(PATH) + ".bak", R"({"version":1,"overrides":{"fontSize":16}})");
   put(std::string(PATH) + ".tmp", R"({"version":1,"overrides":{"fontSize":18}})");
