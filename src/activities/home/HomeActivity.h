@@ -11,6 +11,7 @@
 #include "components/CoverGridHomeUi.h"
 #include "components/OptionPopup.h"
 #include "components/themes/minimal/HomeDashboardData.h"
+#include "components/themes/minimal/HomeDashboardDetails.h"
 #include "util/ButtonNavigator.h"
 
 struct Rect;
@@ -42,13 +43,14 @@ class HomeActivity final : public Activity {
   bool hasLibrarySlot() const { return hasPlugins || hasOpdsServers; }
   bool hasContinueReading = false;
   HomeDashboardData dashboardData;
+  HomeDashboardDetails dashboardDetails;
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
   size_t coverBufferSize = 0;      // Bytes allocated to coverBuffer
-  // Logical rect last passed to drawRecentBookCover. The cover snapshot only
-  // needs to cover this region, not the entire framebuffer, so we cache the
-  // tile instead of all 48 KB. Set in render() before the call.
+  // Logical artwork region selected in render(). Compact themes cache only
+  // the cover, while other themes retain their cover tile. Live compact
+  // text and statistics are drawn after restoration.
   int coverRectX = 0;
   int coverRectY = 0;
   int coverRectW = 0;

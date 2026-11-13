@@ -22,8 +22,7 @@ browsers, Saved Items, transfer, settings, and the existing plugins/OPDS entry
 remain available. Reading statistics opens the previewed book's Book tab, with Device and
 All Devices still available. With no previewed book it opens the device view.
 The normal closed-book date, tracking, completion, backup, and recovery controls
-retain their existing build flags and availability guards. Richer
-Minimal/Dashboard presentation remains separate parity work.
+retain their existing build flags and availability guards. The richer presentation is now built; see [Home presentation](HOME_PRESENTATION.md).
 
 ## Reading state and resources
 
@@ -96,7 +95,6 @@ bytes. Physical behavior and peak heap still need device checks.
 Next device check: in each theme, try the four swipe directions, open one menu
 entry, tap the previewed cover, and confirm reading position. Repeat cover taps
 in all four orientations. Also open statistics for a previewed book, return to Home, and confirm that the
-preview and saved position are retained. Keep richer artwork, progress, and
-Dashboard statistics open in the parity tracker.
+preview and saved position are retained. Check the richer artwork, progress, and Dashboard fields described in [Home presentation](HOME_PRESENTATION.md).
 
 Source: CrossInk [v2.0.0-rc2 Home](https://github.com/uxjulia/CrossInk/blob/v2.0.0-rc2/src/activities/home/HomeActivity.cpp).

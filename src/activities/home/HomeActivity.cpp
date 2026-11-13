@@ -24,6 +24,7 @@
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "activities/RenderLock.h"
+#include "activities/reader/GlobalReadingStats.h"
 #include "activities/reader/ReadingStatsStore.h"
 #include "activities/reader/StatsSaveNotice.h"
 #include "activities/settings/ReadingStatsActivity.h"
@@ -36,6 +37,7 @@
 #include "activities/reader/ReadingStatsUtils.h"
 #endif
 #include "components/UITheme.h"
+#include "components/themes/minimal/CompactHomeLayout.h"
 #include "components/themes/minimal/DashboardHomeTheme.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
 #include "components/themes/lyra/CarouselLayout.h"
@@ -128,7 +130,7 @@ void HomeActivity::openCompactStatistics() {
     }
     selectorIndex = 0;
     recentsLoaded = false;
-    if (GUI.hasDashboardHome()) loadDashboardData();
+    if (usesCompactHome()) loadDashboardData();
     requestUpdate();
   });
 }
@@ -148,7 +150,7 @@ void HomeActivity::showNextCompactBook() {
       freeCoverBuffer();
       coverRendered = false;
       recentsLoaded = false;
-      if (GUI.hasDashboardHome()) loadDashboardData();
+      if (usesCompactHome()) loadDashboardData();
     }
     requestUpdate();
     return;
@@ -180,7 +182,8 @@ bool HomeActivity::handleCompactHome() {
   const Rect content = UITheme::getInstance().getContentArea(renderer);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect area{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()};
-  const Rect cover = GUI.hasDashboardHome() ? DashboardHomeTheme::coverRect(area) : MinimalHomeTheme::coverRect(area);
+  const Rect cover = GUI.hasDashboardHome() ? DashboardHomeTheme::coverRect(renderer, area)
+                                            : MinimalHomeTheme::coverRect(renderer, area);
   int touched = -1;
   const auto touch = mappedInput.colTouch(touched, cover.x, cover.width, recentBooks.empty() ? 0 : 1, cover.y,
                                           cover.y + cover.height, cover.width);
@@ -206,6 +209,7 @@ int HomeActivity::getMenuItemCount() const {
 
 int HomeActivity::homeCoverTileHeight() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
+  if (usesCompactHome()) return compacthomelayout::tileHeight(renderer.getScreenHeight(), metrics.homeTopPadding);
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
   if (SETTINGS.uiTheme == CrossPointSettings::LYRA_CAROUSEL)
     return carousellayout::coverHeight(metrics.homeCoverTileHeight, renderer.getScreenHeight(), metrics.homeTopPadding,
@@ -425,10 +429,15 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 
 void HomeActivity::loadDashboardData() {
   dashboardData = {};
+  dashboardDetails = {};
   if (recentBooks.empty()) return;
   const auto& path = recentBooks.front().path;
   // TXT/Markdown validation can delete stale caches even in read-only loads.
-  if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasXtcExtension(path))
+  if (FsHelpers::hasEpubExtension(path))
+    dashboardData.progress = GUI.hasDashboardHome()
+                                 ? loadBookProgress(path, dashboardDetails.chapter, sizeof(dashboardDetails.chapter))
+                                 : loadBookProgress(path);
+  else if (FsHelpers::hasXtcExtension(path))
     dashboardData.progress = loadBookProgress(path);
   if (!SETTINGS.trackReadingStats) return;
   std::string cache;
@@ -446,11 +455,56 @@ void HomeActivity::loadDashboardData() {
   bool enabled = false;
   bool found = false;
   *stats = readingstats::loadBook(cache, path, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
-  if (!enabled || !found || !stats->writable) return;
-  dashboardData.hasStats = true;
-  dashboardData.readingSeconds = stats->totalReadingSeconds;
-  if (dashboardData.progress >= 0 && !stats->isCompleted)
-    dashboardData.remainingSeconds = stats->remainingReadingSeconds(dashboardData.progress * 100);
+  if (enabled && found && stats->writable) {
+    dashboardData.hasStats = true;
+    dashboardData.readingSeconds = stats->totalReadingSeconds;
+    if (dashboardData.progress >= 0 && !stats->isCompleted)
+      dashboardData.remainingSeconds = stats->remainingReadingSeconds(dashboardData.progress * 100);
+    dashboardDetails.sessions = stats->sessionCount;
+    dashboardDetails.completed = stats->isCompleted;
+    dashboardDetails.startDate = stats->startDate;
+    if (stats->sessionCount) dashboardDetails.averageSessionSeconds = stats->totalReadingSeconds / stats->sessionCount;
+    if (stats->totalReadingSeconds > 60) {
+      const uint64_t tenths = static_cast<uint64_t>(stats->totalPagesTurned) * 600 / stats->totalReadingSeconds;
+      dashboardDetails.pagesPerMinuteTenths = static_cast<uint32_t>(std::min<uint64_t>(tenths, UINT32_MAX));
+      dashboardDetails.hasPace = true;
+    }
+  }
+  if (!GUI.hasDashboardHome()) return;
+  ReadingStatsDateTime now{};
+  dashboardDetails.hasClock = getCurrentLocalReadingStatsDateTime(now) && now.date.isValid();
+  if (dashboardData.hasStats) {
+    const auto end = stats->isCompleted && stats->finishedDate.isValid() ? stats->finishedDate
+                     : dashboardDetails.hasClock                         ? now.date
+                                                                         : ReadingStatsDate{};
+    if (stats->startDate.isValid() && end.isValid() && compareReadingStatsDate(end, stats->startDate) >= 0) {
+      dashboardDetails.daysReading = readingSpanDaysElapsed(stats->startDate, end);
+      dashboardDetails.hasDays = true;
+      dashboardDetails.dailyAverageSeconds =
+          stats->totalReadingSeconds / std::max<uint16_t>(1, dashboardDetails.daysReading);
+    }
+    dashboardDetails.finishDate = stats->isCompleted ? stats->finishedDate
+                                  : dashboardDetails.hasClock && dashboardData.progress >= 0
+                                      ? stats->projectedFinishDate(now, dashboardData.progress * 100)
+                                      : ReadingStatsDate{};
+  }
+  stats.reset();
+  if (Storage.lookupPath("/.crosspoint/global_stats.bin") != HalStorage::PathStatus::Present) return;
+  auto global = makeUniqueNoThrow<GlobalReadingStats>();
+  if (!global) return;
+  *global = GlobalReadingStats::loadReadOnly();
+  if (!global->writable) return;
+  dashboardDetails.hasGlobal = true;
+  dashboardDetails.globalSeconds = global->totalReadingSeconds;
+  dashboardDetails.completedBooks = global->completedBooks;
+  if (dashboardDetails.hasClock) dashboardDetails.currentStreak = global->currentReadingStreak(&now.date);
+  uint32_t peak = 0;
+  for (size_t i = 0; i < global->timeOfDaySeconds.size(); ++i) {
+    if (global->timeOfDaySeconds[i] <= peak) continue;
+    peak = global->timeOfDaySeconds[i];
+    dashboardDetails.readerType = static_cast<ReadingTimeBucket>(i);
+    dashboardDetails.hasReaderType = true;
+  }
 }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_CAROUSEL)
@@ -529,7 +583,7 @@ void HomeActivity::onEnter() {
   }
 #endif
   hasContinueReading = !recentBooks.empty();
-  if (GUI.hasDashboardHome()) loadDashboardData();
+  if (usesCompactHome()) loadDashboardData();
   if (coverGridUi) {
     fillCoverGridFromLibrary();
     resolveGridCoverPaths();
@@ -933,6 +987,16 @@ void HomeActivity::render(RenderLock&&) {
     }
     return;
   }
+  const Rect tile{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()};
+  const Rect snapshot = !usesCompactHome()       ? tile
+                        : GUI.hasDashboardHome() ? DashboardHomeTheme::coverRect(renderer, tile)
+                                                 : MinimalHomeTheme::coverRect(renderer, tile);
+  if (coverRectX != snapshot.x || coverRectY != snapshot.y || coverRectW != snapshot.width ||
+      coverRectH != snapshot.height) {
+    freeCoverBuffer();
+    coverRendered = false;
+    recentsLoaded = false;
+  }
   bool bufferRestored = coverRendered && coverBufferStored && restoreCoverBuffer();
 
   // Band spans topPadding..homeTopPadding: the cover tile starts at the fixed
@@ -943,13 +1007,11 @@ void HomeActivity::render(RenderLock&&) {
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
                  nullptr, false);
 
-  // Record the tile rect so storeCoverBuffer (called from the theme) knows
-  // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait
-  // instead of the 48 KB full framebuffer the previous bind captured.
-  coverRectX = content.x;
-  coverRectY = metrics.homeTopPadding;
-  coverRectW = content.width;
-  coverRectH = homeCoverTileHeight();
+  // Compact themes cache artwork only; their live text is drawn after restoration.
+  coverRectX = snapshot.x;
+  coverRectY = snapshot.y;
+  coverRectW = snapshot.width;
+  coverRectH = snapshot.height;
 
   GUI.drawRecentBookCover(renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()},
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
@@ -966,9 +1028,14 @@ void HomeActivity::render(RenderLock&&) {
   }
 #endif
   if (GUI.hasDashboardHome() && !recentBooks.empty()) {
-    DashboardHomeTheme::drawReadingInfo(
-        renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()}, dashboardData);
+    DashboardHomeTheme::drawReadingInfo(renderer,
+                                        Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()},
+                                        recentBooks.front(), dashboardData, dashboardDetails);
   }
+
+  if (SETTINGS.uiTheme == CrossPointSettings::MINIMAL_HOME && !recentBooks.empty())
+    MinimalHomeTheme::drawReadingInfo(
+        renderer, Rect{content.x, metrics.homeTopPadding, content.width, homeCoverTileHeight()}, dashboardData);
 
   if (!usesCompactHome()) {
     // Build menu items dynamically

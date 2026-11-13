@@ -30,6 +30,8 @@ code = r'''
 #include <string>
 #include <vector>
 #include "activities/ActivityResult.h"
+#include "components/themes/minimal/CompactHomeLayout.h"
+bool usesCompactHome(){return false;}
 struct ReferencePageMap { struct Target {}; };
 enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, SAVED_ITEMS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
 struct Metrics { int homeTopPadding,homeCoverTileHeight,homeMenuTopOffset,buttonHintsHeight,menuSpacing;bool homeContinueReadingInMenu; };

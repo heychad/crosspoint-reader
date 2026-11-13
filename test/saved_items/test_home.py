@@ -24,9 +24,12 @@ code=r'''
 #include <string>
 #include <vector>
 #include "components/themes/lyra/CarouselLayout.h"
+#include "components/themes/minimal/CompactHomeLayout.h"
 struct Rect {int x,y,width,height;};
-constexpr int SMALL_FONT_ID=0;
+constexpr int SMALL_FONT_ID=0,UI_10_FONT_ID=1;
+struct Scale{int bodyFontId=2;};Scale uiScaleSpec(){return {};}
 struct Renderer {int width=480,height=800;int getScreenHeight()const{return height;}int getLineHeight(int)const{return 16;}};
+using GfxRenderer=Renderer;
 struct Metrics {int homeTopPadding=56,homeCoverTileHeight=300,homeMenuTopOffset=16,buttonHintsHeight=40,menuSpacing=8;bool homeContinueReadingInMenu=false;int homeRecentBooksCount=1,contentSidePadding=12;};
 struct Theme {bool dashboard=false;bool hasDashboardHome()const{return dashboard;}int getMenuRowHeight(const Renderer&)const{return 64;}int getMenuTopInset()const{return 0;}} GUI;
 struct UITheme {static UITheme& getInstance(){static UITheme theme;return theme;}const Metrics& getMetrics()const{static Metrics m;return m;}static Rect getContentArea(const Renderer& r){return {0,0,r.width,r.height};}};
@@ -105,8 +108,8 @@ struct RenderLock {RenderLock(){assert(!renderLocked);renderLocked=true;}~Render
 struct Book {std::string path;bool missing=false;std::string title="Book title";bool operator==(const Book& other)const{return path==other.path;}};
 struct RecentBooksStore {static bool isMissing(const Book& b){return b.missing;}};
 struct {std::vector<Book> books;const auto& getBooks()const{return books;}} RECENT_BOOKS;
-struct MinimalHomeTheme {static Rect coverRect(Rect);};
-struct DashboardHomeTheme {static Rect coverRect(Rect);};
+struct MinimalHomeTheme {static Rect coverRect(const Renderer&,Rect);};
+struct DashboardHomeTheme {static Rect coverRect(const Renderer&,Rect);};
 namespace MinimalHomeMetrics {struct M {int homeCoverHeight=300;};constexpr M values;}
 
 struct HomeActivity {
@@ -148,7 +151,9 @@ struct HomeActivity {
 code+=method(header,'  static HomeMenuItem indexToMenuItem(')+'\n};\n'
 code+=method(source,'bool usesCompactHome(')+'\n'
 for file,signature in [('MinimalHomeTheme.cpp','Rect MinimalHomeTheme::coverRect('),('DashboardHomeTheme.cpp','Rect DashboardHomeTheme::coverRect(')]:
-    code+=method((ROOT/'src/components/themes/minimal'/file).read_text(),signature)+'\n'
+    theme_source=(ROOT/'src/components/themes/minimal'/file).read_text()
+    if file=='DashboardHomeTheme.cpp': code+=method(theme_source,'compacthomelayout::Layout layoutFor(')+'\n'
+    code+=method(theme_source,signature)+'\n'
 for signature in ['void HomeActivity::activateSelection(', 'void HomeActivity::showCompactMenu(', 'void HomeActivity::openCompactStatistics(', 'void HomeActivity::showNextCompactBook(', 'bool HomeActivity::handleCompactHome(', 'int HomeActivity::getMenuItemCount(', 'int HomeActivity::homeCoverTileHeight(', 'HomeActivity::MenuPage HomeActivity::menuPage(', 'void HomeActivity::loop(']:
     code+=method(source,signature)+'\n'
 code+=r'''
@@ -260,7 +265,7 @@ int main(){
   minimal.mappedInput.swipe=MappedInputManager::SwipeDir::Left;
   opened.clear();minimal.loop();assert(opened.empty()&&minimal.recentBooks.front().path=="/next.epub");
   assert(minimal.frees==1&&!minimal.coverRendered&&!minimal.recentsLoaded&&!renderLocked);
-  assert(minimal.dataLoads==(GUI.dashboard?1:0));
+  assert(minimal.dataLoads==1);
   if(GUI.dashboard)assert(minimal.dataPath=="/next.epub");
   minimal.loop();assert(minimal.recentBooks.front().path=="/book.epub"&&RECENT_BOOKS.books==original&&RECENT_BOOKS.books[1].missing);
   RECENT_BOOKS.books={{"/missing.epub",true}};
@@ -270,7 +275,7 @@ int main(){
   for(int width:{480,800}){
    minimal.renderer.width=width;minimal.renderer.height=width==480?800:480;
    const auto area=Rect{0,56,width,minimal.homeCoverTileHeight()};
-   const auto cover=GUI.dashboard?DashboardHomeTheme::coverRect(area):MinimalHomeTheme::coverRect(area);
+   const auto cover=GUI.dashboard?DashboardHomeTheme::coverRect(minimal.renderer,area):MinimalHomeTheme::coverRect(minimal.renderer,area);
    minimal.mappedInput.tapX=cover.x;minimal.mappedInput.tapY=cover.y;
    opened.clear();minimal.loop();assert(opened=="/book.epub");
    minimal.mappedInput.tapX=cover.x-1;opened.clear();minimal.loop();assert(opened.empty());
