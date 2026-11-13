@@ -10,6 +10,12 @@
 #include <string>
 #include <vector>
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+namespace filechecksum {
+class Job;
+}
+#endif
+
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
     CROSSPOINT_EXPERIMENTAL_INVENTORY
 namespace wirecheck {
@@ -101,6 +107,16 @@ class CrossPointWebServer {
   bool udpActive = false;
   std::function<bool()> uploadCancelCheck;
   bool dropUploadIfCancelled() const;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  std::unique_ptr<filechecksum::Job> fileChecksum;
+  char fileChecksumToken[33]{};
+  uint32_t fileChecksumLastRequest = 0;
+  void handleFileChecksumStart();
+  void handleFileChecksumStatus();
+  void handleFileChecksumCancel();
+  void sendFileChecksum();
+  void advanceFileChecksum();
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
     CROSSPOINT_EXPERIMENTAL_STAGE
   std::unique_ptr<StageWriter> syncStage;

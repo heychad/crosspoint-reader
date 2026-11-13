@@ -1,0 +1,7 @@
+if(APPLE)
+  add_executable(FileChecksumTest FileChecksumTest.cpp ${REPO_ROOT}/src/network/FileChecksum.cpp)
+  target_include_directories(FileChecksumTest PRIVATE ../sync_staging/stubs ${REPO_ROOT}/src ${REPO_ROOT}/lib/hal ${REPO_ROOT}/lib/FsHelpers)
+  target_compile_definitions(FileChecksumTest PRIVATE HEX=16)
+  target_link_libraries(FileChecksumTest PRIVATE crosspoint_test_common GTest::gtest_main)
+  gtest_discover_tests(FileChecksumTest)
+endif()

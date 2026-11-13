@@ -24,6 +24,11 @@
 #include <base64.h>
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+#include <esp_random.h>
+
+#include "FileChecksum.h"
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
     CROSSPOINT_EXPERIMENTAL_INVENTORY
 #include <errno.h>
@@ -1009,6 +1014,11 @@ void CrossPointWebServer::begin() {
   server->on("/api/sync/identity", HTTP_GET, [this] { handleInventoryIdentity(); });
 #endif
   server->on("/download", HTTP_GET, [this] { handleDownload(); });
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  server->on("/api/files/checksum", HTTP_POST, [this] { handleFileChecksumStart(); });
+  server->on("/api/files/checksum", HTTP_GET, [this] { handleFileChecksumStatus(); });
+  server->on("/api/files/checksum/cancel", HTTP_POST, [this] { handleFileChecksumCancel(); });
+#endif
 
   // Upload endpoint with special handling for multipart form data
   server->on("/upload", HTTP_POST, [this] { handleUploadPost(upload); }, [this] { handleUpload(upload); });
@@ -1154,6 +1164,10 @@ void CrossPointWebServer::abortWsUpload(const char* tag) {
 }
 
 void CrossPointWebServer::stop() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  fileChecksum.reset();
+  fileChecksumToken[0] = '\0';
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
     CROSSPOINT_EXPERIMENTAL_STAGE
   clearSyncStage();
@@ -1249,6 +1263,9 @@ void CrossPointWebServer::handleClient() {
   if (wsServer) {
     wsServer->loop();
   }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  advanceFileChecksum();
+#endif
 
   // Respond to discovery broadcasts
   if (udpActive) {
@@ -1338,6 +1355,9 @@ void CrossPointWebServer::handleStatus() const {
   const String ipAddr = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
 
   JsonDocument doc;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  doc["fileChecksumApiVersion"] = 1;
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
     CROSSPOINT_EXPERIMENTAL_STAGE
   doc["syncExperimentalStageVersion"] = 1;
@@ -1547,6 +1567,125 @@ void CrossPointWebServer::streamFileToClient(HalFile& file) const {
   }
   client.clear();
 }
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+void CrossPointWebServer::sendFileChecksum() {
+  const char* digest = fileChecksum->digest();
+  const auto state = fileChecksum->state();
+  int status = 503;
+  switch (state) {
+    case filechecksum::State::Pending:
+      status = 202;
+      break;
+    case filechecksum::State::Complete:
+    case filechecksum::State::Cancelled:
+      status = 200;
+      break;
+    case filechecksum::State::Changed:
+    case filechecksum::State::WrongSize:
+      status = 409;
+      break;
+    case filechecksum::State::NotFound:
+      status = 404;
+      break;
+    case filechecksum::State::Invalid:
+      status = 400;
+      break;
+    case filechecksum::State::IoError:
+    case filechecksum::State::NoMemory:
+    case filechecksum::State::Unavailable:
+    case filechecksum::State::HashError:
+      break;
+  }
+  JsonDocument doc;
+  doc["state"] = filechecksum::stateName(state);
+  doc["token"] = fileChecksumToken;
+  doc["path"] = fileChecksum->path();
+  doc["size"] = fileChecksum->size();
+  doc["processed"] = fileChecksum->processed();
+  if (state == filechecksum::State::Complete && digest) doc["sha256"] = digest;
+  String response;
+  serializeJson(doc, response);
+  server->sendHeader("Cache-Control", "no-store");
+  server->send(status, "application/json", response);
+}
+
+void CrossPointWebServer::advanceFileChecksum() {
+  if (!fileChecksum) return;
+  if (static_cast<uint32_t>(millis() - fileChecksumLastRequest) >= 60000U) {
+    fileChecksum.reset();
+    fileChecksumToken[0] = '\0';
+    return;
+  }
+  if (fileChecksum->state() != filechecksum::State::Pending) return;
+  if (uploadCancelCheck && uploadCancelCheck()) {
+    fileChecksum->cancel();
+    return;
+  }
+  resetTaskWatchdogIfSubscribed();
+  fileChecksum->advance();
+  resetTaskWatchdogIfSubscribed();
+  yield();
+}
+
+void CrossPointWebServer::handleFileChecksumStart() {
+  if (fileChecksum && static_cast<uint32_t>(millis() - fileChecksumLastRequest) >= 60000U) fileChecksum.reset();
+  if ((fileChecksum && fileChecksum->state() == filechecksum::State::Pending) || wsUploadInProgress || upload.file) {
+    server->send(409, "application/json", "{\"state\":\"busy\"}");
+    return;
+  }
+  const String raw = server->arg("path");
+  const String size = server->arg("size");
+  uint64_t expected = 0;
+  if (server->args() != 2 || !server->hasArg("path") || !server->hasArg("size") ||
+      !filechecksum::validPath({raw.c_str(), raw.length()}) ||
+      !filechecksum::parseSize({size.c_str(), size.length()}, expected)) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  const String path = normalizeWebPath(raw);
+  if (path != raw) {
+    server->send(400, "application/json", "{\"state\":\"invalid\"}");
+    return;
+  }
+  fileChecksum = makeUniqueNoThrow<filechecksum::Job>(Storage, std::string(path.c_str()), expected);
+  if (!fileChecksum) {
+    server->send(503, "application/json", "{\"state\":\"no_memory\"}");
+    return;
+  }
+  uint8_t token[16];
+  esp_fill_random(token, sizeof(token));
+  constexpr char HEX_DIGITS[] = "0123456789abcdef";
+  for (size_t i = 0; i < sizeof(token); ++i) {
+    fileChecksumToken[i * 2] = HEX_DIGITS[token[i] >> 4];
+    fileChecksumToken[i * 2 + 1] = HEX_DIGITS[token[i] & 15];
+  }
+  fileChecksumToken[32] = '\0';
+  fileChecksumLastRequest = millis();
+  sendFileChecksum();
+}
+
+void CrossPointWebServer::handleFileChecksumStatus() {
+  if (!fileChecksum || static_cast<uint32_t>(millis() - fileChecksumLastRequest) >= 60000U || server->args() != 1 ||
+      !server->hasArg("token") || server->arg("token").length() != 32 || server->arg("token") != fileChecksumToken) {
+    server->send(404, "application/json", "{\"state\":\"not_found\"}");
+    return;
+  }
+  fileChecksumLastRequest = millis();
+  sendFileChecksum();
+}
+
+void CrossPointWebServer::handleFileChecksumCancel() {
+  if (!fileChecksum || static_cast<uint32_t>(millis() - fileChecksumLastRequest) >= 60000U || server->args() != 1 ||
+      !server->hasArg("token") || server->arg("token").length() != 32 || server->arg("token") != fileChecksumToken) {
+    server->send(404, "application/json", "{\"state\":\"not_found\"}");
+    return;
+  }
+  fileChecksum->cancel();
+  fileChecksumLastRequest = millis();
+  sendFileChecksum();
+}
+#endif
 
 void CrossPointWebServer::handleDownload() const {
   if (!server->hasArg("path")) {

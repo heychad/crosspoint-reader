@@ -43,6 +43,11 @@ class HalFile {
   }
   bool isDirectory() const { return directory; }
   uint64_t fileSize64() const { return file->bytes.size(); }
+  bool seek64(uint64_t position) {
+    if (position > file->bytes.size()) return false;
+    offset = static_cast<size_t>(position);
+    return true;
+  }
   int read(void* output, size_t size) {
     if (fake::failRead) {
       error = true;

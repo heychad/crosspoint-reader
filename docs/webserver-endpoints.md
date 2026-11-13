@@ -117,6 +117,15 @@ Protected dotfiles, `System Volume Information`, `XTCache`, and the credential
 stores cannot be downloaded. EPUB files are served as `application/epub+zip`; other files use
 `application/octet-stream`.
 
+### File checksums (X4 Pro fork)
+
+On this X4 Pro fork, capability `fileChecksumApiVersion: 1` in `/api/status`
+advertises read-only verification of saved files through
+`POST /api/files/checksum`, `GET /api/files/checksum?token=...`, and
+`POST /api/files/checksum/cancel`. See the [checksum API contract](downstream/FILE_CHECKSUM_API.md)
+for progress, errors, cancellation, and compatibility. Existing uploads and
+downloads keep their current behavior.
+
 ### `POST /upload`
 
 Uploads a file with HTTP multipart form data.
