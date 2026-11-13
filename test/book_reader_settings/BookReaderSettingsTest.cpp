@@ -8,6 +8,7 @@
 #include "activities/reader/BookReaderPreferences.h"
 #include "activities/reader/ReadingStatsStore.h"
 #include "personalization/BookReaderSettings.h"
+#include "personalization/CrossInkBarImport.h"
 #include "personalization/CrossInkControlImport.h"
 #include "personalization/CrossInkImportGuard.h"
 #include "personalization/CrossInkImportSnapshot.h"
@@ -449,6 +450,44 @@ TEST_F(BookSettings, CrossInkBarsTransactionRefusesUnsupportedBeforeWriting) {
   std::string saved;
   ASSERT_TRUE(Storage.readFileToString("TEST", primary, 32768, saved));
   EXPECT_EQ(saved, original);
+}
+
+TEST_F(BookSettings, CrossInkFlatBarsTransactionPreservesSourceAndSnapshot) {
+  constexpr char primary[] = "/.crosspoint/settings.json";
+  const std::string original = R"({"pluginsEnabled":1,"unrelated":42})";
+  const std::string legacy = R"({"statusBarChapterPageCount":1,"statusBarBookProgressPercentage":1,
+    "statusBarTitle":0,"statusBarTimeLeft":2,"statusBarBattery":1,"hideClock":0,
+    "statusBarProgressBar":1,"statusBarProgressBarThickness":2,"statusBarBookPercentageFormat":2})";
+  put(primary, original);
+  put(crossinkimport::SOURCE_PATH, legacy);
+  JsonDocument proposed;
+  ASSERT_FALSE(deserializeJson(proposed, original));
+  char snapshot[crossinkimport::SNAPSHOT_PATH_SIZE]{};
+  ASSERT_EQ(crossinkimport::publishReaderBars(proposed, original.data(), original.size(), snapshot),
+            crossinkimport::ApplyResult::Published);
+  std::string saved;
+  ASSERT_TRUE(Storage.readFileToString("TEST", primary, 32768, saved));
+  JsonDocument persisted;
+  ASSERT_FALSE(deserializeJson(persisted, saved));
+  ReaderBar top, bottom;
+  ASSERT_TRUE(readReaderBar(persisted["readerBarsV1"]["top"], top));
+  ASSERT_TRUE(readReaderBar(persisted["readerBarsV1"]["bottom"], bottom));
+  EXPECT_EQ(top.slots[3], ReaderBarItem::Clock);
+  EXPECT_EQ(bottom.slots[0], ReaderBarItem::Battery);
+  EXPECT_EQ(bottom.slots[1], ReaderBarItem::TimeLeftBook);
+  EXPECT_EQ(bottom.slots[3], ReaderBarItem::BookTitle);
+  EXPECT_EQ(bottom.slots[4], ReaderBarItem::ChapterPages);
+  EXPECT_EQ(bottom.slots[5], ReaderBarItem::BookPercent);
+  EXPECT_EQ(bottom.progress, 1);
+  EXPECT_EQ(bottom.thickness, 2);
+  EXPECT_EQ(bottom.percentageDecimals, 2);
+  EXPECT_TRUE(persisted["readerBarsEnabled"].as<bool>());
+  EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
+  EXPECT_EQ(persisted["unrelated"].as<int>(), 42);
+  ASSERT_TRUE(Storage.readFileToString("TEST", snapshot, 32768, saved));
+  EXPECT_EQ(saved, original);
+  ASSERT_TRUE(Storage.readFileToString("TEST", crossinkimport::SOURCE_PATH, 32768, saved));
+  EXPECT_EQ(saved, legacy);
 }
 
 TEST_F(BookSettings, CrossInkControlsTransactionRefusesStalePrimaryAndKeepsSnapshotOnWriteFailure) {

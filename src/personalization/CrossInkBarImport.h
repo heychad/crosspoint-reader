@@ -47,18 +47,89 @@ inline bool equalBars(const ReaderBar& a, const ReaderBar& b) {
          a.percentageDecimals == b.percentageDecimals;
 }
 
+inline BarResult decodeFlatLegacyBars(JsonVariantConst source, ReaderBar& top, ReaderBar& bottom) {
+  bool present = false;
+  for (const char* key :
+       {"statusBar", "statusBarChapterPageCount", "stablePageNumbers", "statusBarBookProgressPercentage",
+        "statusBarTitle", "statusBarTimeLeft", "statusBarBattery", "statusBarBookPercentageFormat",
+        "statusBarProgressBar", "statusBarProgressBarThickness", "hideClock", "statusBarClock"})
+    present |= !source[key].isUnbound();
+  if (!present) return BarResult::Missing;
+  const auto choice = [&](const char* key, uint8_t maximum, uint8_t fallback, uint8_t& output) {
+    const auto value = source[key];
+    if (value.isUnbound()) {
+      output = fallback;
+      return true;
+    }
+    if (!value.is<uint8_t>() || value.as<uint8_t>() > maximum) return false;
+    output = value.as<uint8_t>();
+    return true;
+  };
+  struct Preset {
+    uint8_t pages, percentage, progress, title, battery;
+  };
+  // CrossInk's legacy presets; explicit fields override their defaults.
+  static constexpr Preset presets[] = {{0, 0, 2, 2, 0}, {0, 0, 2, 1, 1}, {1, 1, 2, 1, 1},
+                                       {1, 0, 0, 1, 1}, {1, 0, 0, 2, 0}, {0, 1, 1, 1, 1}};
+  uint8_t preset;
+  if (!choice("statusBar", 5, 2, preset)) return BarResult::Invalid;
+  const auto defaults = presets[preset];
+  uint8_t pages, stable, percentage, title, time, battery, decimals, progress, thickness, clock;
+  if (!choice("statusBarChapterPageCount", 1, defaults.pages, pages) || !choice("stablePageNumbers", 1, 0, stable) ||
+      !choice("statusBarBookProgressPercentage", 1, defaults.percentage, percentage) ||
+      !choice("statusBarTitle", 2, defaults.title, title) || !choice("statusBarTimeLeft", 2, 0, time) ||
+      !choice("statusBarBattery", 1, defaults.battery, battery) ||
+      !choice("statusBarBookPercentageFormat", 2, 0, decimals) ||
+      !choice("statusBarProgressBar", 2, defaults.progress, progress) ||
+      !choice("statusBarProgressBarThickness", 2, 1, thickness))
+    return BarResult::Invalid;
+  if (source["hideClock"].isUnbound()) {
+    if (!choice("statusBarClock", 2, 0, clock)) return BarResult::Invalid;
+    clock = clock == 0 ? 2 : 0;
+  } else if (!choice("hideClock", 2, 2, clock)) {
+    return BarResult::Invalid;
+  }
+  if (stable) return BarResult::Unsupported;
+#if !defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+  if (time == 1) return BarResult::Unsupported;
+#endif
+  ReaderBar parsedTop, parsedBottom;
+  if (clock == 0) parsedTop.slots[ReaderBar::CENTER] = ReaderBarItem::Clock;
+  // Slot placement follows CrossInk's migrateBottomStatusBar (MIT).
+  unsigned left = 0, right = ReaderBar::CENTER + 1;
+  if (battery) parsedBottom.slots[left++] = ReaderBarItem::Battery;
+#if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
+  if (time == 1) parsedBottom.slots[left++] = ReaderBarItem::TimeLeftChapter;
+#endif
+  if (time == 2) parsedBottom.slots[left++] = ReaderBarItem::TimeLeftBook;
+  if (title == 0) parsedBottom.slots[ReaderBar::CENTER] = ReaderBarItem::BookTitle;
+  if (title == 1) parsedBottom.slots[ReaderBar::CENTER] = ReaderBarItem::ChapterTitle;
+  if (pages) parsedBottom.slots[right++] = ReaderBarItem::ChapterPages;
+  if (percentage) parsedBottom.slots[right] = ReaderBarItem::BookPercent;
+  parsedBottom.percentageDecimals = decimals;
+  parsedBottom.progress = progress;
+  parsedBottom.thickness = thickness;
+  top = parsedTop;
+  bottom = parsedBottom;
+  return BarResult::Imported;
+}
+
 // The caller owns the staging document and discards it on Unavailable.
 inline BarResult stageBars(JsonVariantConst legacy, JsonDocument& proposed) {
   if (!legacy.is<JsonObjectConst>() || !proposed.is<JsonObject>()) return BarResult::Invalid;
   const auto source = legacy["readerStatusBars"];
-  if (source.isUnbound()) return BarResult::Missing;
-  if (!source.is<JsonObjectConst>() || !source["version"].is<uint8_t>() || source["version"].as<uint8_t>() != 1)
-    return BarResult::Invalid;
   ReaderBar top, bottom;
-  const auto topResult = decodeLegacyBar(source["top"], top);
-  if (topResult != BarResult::Imported) return topResult;
-  const auto bottomResult = decodeLegacyBar(source["bottom"], bottom);
-  if (bottomResult != BarResult::Imported) return bottomResult;
+  if (source.isUnbound()) {
+    const auto result = decodeFlatLegacyBars(legacy, top, bottom);
+    if (result != BarResult::Imported) return result;
+  } else {
+    if (!source.is<JsonObjectConst>() || !source["version"].is<uint8_t>() || source["version"].as<uint8_t>() != 1)
+      return BarResult::Invalid;
+    const auto topResult = decodeLegacyBar(source["top"], top);
+    if (topResult != BarResult::Imported) return topResult;
+    const auto bottomResult = decodeLegacyBar(source["bottom"], bottom);
+    if (bottomResult != BarResult::Imported) return bottomResult;
+  }
   ReaderBar oldTop, oldBottom;
   if (proposed["readerBarsEnabled"].is<bool>() && proposed["readerBarsEnabled"].as<bool>() &&
       readReaderBar(proposed["readerBarsV1"]["top"], oldTop) &&

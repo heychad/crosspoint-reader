@@ -97,6 +97,13 @@ The controls import also carries the Home-button enabled state. It never
 disables Home while that button owns the current Quick Actions shortcut.
 Existing native values remain unless the import explicitly replaces them.
 
+The explicit bars import also accepts older flat reader settings when the source
+has no custom layout. It preserves CrossInk slot placement, coarse presets,
+percentage precision, progress thickness, and clock visibility. Invalid custom
+layouts do not fall back to older fields. Stable-page or disabled chapter-time
+requests leave the current bars unchanged. Newer RC2 bar styling still needs
+integration; see the [migration audit](SETTINGS_MIGRATION.md).
+
 The firmware importer accepts tagged CrossInk 2.0 RC power actions 37–40:
 Home, Select Chapter, Rotate 180°, and Toggle Page Gestures. Both short and long
 power bindings use the same catalog. Side-only values 64–70 are rejected for
