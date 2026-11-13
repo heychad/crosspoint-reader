@@ -105,10 +105,12 @@ bool CrossPointState::saveSleepPreferencesLocked() const {
 }
 #endif
 
-bool CrossPointState::saveForCompletionLocked() const {
+bool CrossPointState::saveForCompletionLocked(bool finishPublishedOnly) const {
   const std::string path = getFilePath();
-  for (const char* suffix : {".tmp", ".bak"})
-    if (Storage.lookupPath((path + suffix).c_str()) != HalStorage::PathStatus::Missing) return false;
+  if (Storage.lookupPath((path + ".tmp").c_str()) != HalStorage::PathStatus::Missing) return false;
+  const auto backup = Storage.lookupPath((path + ".bak").c_str());
+  if (backup == HalStorage::PathStatus::Failed) return false;
+  if (finishPublishedOnly && backup == HalStorage::PathStatus::Missing) return true;
   const auto status = Storage.lookupPath(path.c_str());
   if (status == HalStorage::PathStatus::Failed) return false;
   if (status == HalStorage::PathStatus::Present) {
@@ -118,14 +120,15 @@ bool CrossPointState::saveForCompletionLocked() const {
   }
   JsonDocument document;
   toJson(document);
-  return PersistableStoreBase::writeDocToFileForMove(path.c_str(), document);
+  return PersistableStoreBase::writeDocToFileForMove(path.c_str(), document, finishPublishedOnly);
 }
 
 bool CrossPointState::updateOpenEpubPathPersisted(const std::string& oldPath, const std::string& newPath) {
   // Completion may already hold storage while another save holds storeMutex.
   std::unique_lock<std::mutex> lock(storeMutex, std::try_to_lock);
   if (!lock.owns_lock()) return false;
-  if (openEpubPath != oldPath || oldPath == newPath) return true;
+  if (oldPath == newPath) return true;
+  if (openEpubPath != oldPath) return saveForCompletionLocked(true);
   const std::string target = newPath;
   auto saved = std::move(openEpubPath);
   openEpubPath = target;

@@ -123,6 +123,7 @@ These are check durations, not coding speed or total development time.
 | November 12 legacy reader bars | 148 focused: 10.88 s, including 5,832 combinations per flag configuration; sanitizer coverage passed | 71.23 s; combined eight-feature profile: 164.05 s, first build of that profile |
 | November 12 RC2 bar controls | 2,290 full: 73.26 s; 12 bar checks including the added malformed-style case: 0.09 s; sanitizer render checks passed | 128.61 s; combined eight-feature profile: 109.84 s |
 | November 12 completion queue and Retry | 351 focused: 91.13 s serial; five final queue/lifecycle checks: 0.72 s with six workers; sanitizer checks passed | Automation-enabled profile: 182.26 s first setup; 75.56 s final |
+| November 12 published-reference recovery | 2,301 full: 72.08 s; 18 affected including native store integration: 3.59 s; integration sanitizer checks passed | 125.21 s; automatic-completion profile: 108.68 s |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

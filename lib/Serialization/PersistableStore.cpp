@@ -105,12 +105,12 @@ bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocu
   return true;
 }
 
-bool PersistableStoreBase::writeDocToFileForMove(const char* path, const JsonDocument& doc) {
+bool PersistableStoreBase::writeDocToFileForMove(const char* path, const JsonDocument& doc, bool finishPublishedOnly) {
   const size_t expected = measureJson(doc);
   if (doc.overflowed() || expected == 0 || expected > 65536) return false;
   auto json = makeUniqueNoThrow<char[]>(expected + 1);
   if (!json || serializeJson(doc, json.get(), expected + 1) != expected) return false;
-  return movereference::write(path, json.get(), expected);
+  return movereference::write(path, json.get(), expected, finishPublishedOnly);
 }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)

@@ -31,7 +31,7 @@ class CrossPointState {
  std::string openEpubPath;
  std::mutex storeMutex;
  bool success=true; int writes=0;
- bool saveForCompletionLocked(){++writes;return success;}
+ bool saveForCompletionLocked(bool finish=false){if(!finish)++writes;return success;}
  bool updateOpenEpubPathPersisted(const std::string&,const std::string&);
 };
 ''' + method + r'''

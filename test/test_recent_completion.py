@@ -34,9 +34,9 @@ class RecentBooksStore {
 public:
  std::vector<RecentBook> recentBooks;
  std::mutex storeMutex;
- bool success=true; int saves=0;
+ bool success=true; int saves=0, finishes=0;
  bool saveToFile(){++saves;return success;}
- bool saveForCompletionLocked(){return saveToFile();}
+ bool saveForCompletionLocked(bool finish=false){if(finish){++finishes;return success;}return saveToFile();}
  bool removeByPathPersisted(const std::string&);
  bool updatePathPersisted(const std::string&,const std::string&,const std::string&,const std::string&);
 };
@@ -54,7 +54,7 @@ int main(){
  assert(!store.updatePathPersisted("middle","new","","") && store.saves==0);
  assert(store.recentBooks.size()==3 && store.recentBooks[1].path=="middle");
  storageLock.unlock();other.join();
- assert(store.removeByPathPersisted("missing") && store.saves==0);
+ assert(store.removeByPathPersisted("missing") && store.saves==0 && store.finishes==1);
  store.success=false;
  assert(!store.removeByPathPersisted("middle") && store.saves==1);
  assert(store.recentBooks.size()==3 && store.recentBooks[0].path=="first");
@@ -73,6 +73,7 @@ int main(){
  assert(store.updatePathPersisted("first","/read/book.epub","/old-cache","/new-cache"));
  assert(store.recentBooks[0].path=="/read/book.epub" && store.recentBooks[0].coverBmpPath=="/new-cache/cover.bmp");
  assert(store.updatePathPersisted("first","/read/book.epub","/old-cache","/new-cache"));
+ store.success=false;assert(!store.updatePathPersisted("first","/read/book.epub","/old-cache","/new-cache"));
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

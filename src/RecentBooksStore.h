@@ -21,7 +21,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
  private:
   std::vector<RecentBook> recentBooks;
   // Caller owns storeMutex; completion paths use a nonblocking acquisition.
-  bool saveForCompletionLocked() const;
+  bool saveForCompletionLocked(bool finishPublishedOnly = false) const;
 
   RecentBooksStore() = default;
   ~RecentBooksStore() = default;

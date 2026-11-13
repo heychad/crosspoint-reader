@@ -54,6 +54,35 @@ The enabled build uses 113,068 static RAM bytes and 5,761,998 flash bytes.
 The final incremental build after adding Busy handling passed in 75.56 seconds
 with the same static RAM and flash sizes. Runtime memory, latency, and physical storage behavior remain pending.
 
+## Published-reference recovery
+
+A reference save can publish its new primary and then fail while archiving
+the old backup. That state previously blocked every Retry. The move writer now
+finishes the archive when the existing primary exactly matches the expected
+serialized document, no temporary file remains, and the primary and backup
+have eligible, independent chains. The backup stays in numbered move history;
+the primary is not rewritten. Sleep-preference writes keep their existing
+recovery policy.
+
+The state and Recents owners use this check even when their in-memory path has
+already changed or the removed entry is already absent. This covers a retry
+after rollback and an unchanged reload of the published primary. A changed
+in-memory snapshot, missing/conflicting primary, surviving temporary file, or
+unprovable chain identity remains for review. This adds no journal format or
+retained buffer; it reuses the existing bounded JSON serialization and archive.
+
+The native state/Recents classes, their JSON codecs, and the production move
+writer pass a host storage-model integration check, including path changes,
+Recents removal, unrelated metadata, exact backup preservation, unchanged
+reloads, and conflicting snapshots. It also passes sanitizers. The full
+2,301-test suite passed in 72.08 seconds; after registering that integration
+check, 18 affected checks passed in 3.59 seconds.
+
+Both X4 Pro builds passed: standard in 125.21 seconds (113,140 static RAM bytes;
+5,668,454 flash bytes), and automatic completion in 108.68 seconds (113,068
+static RAM bytes; 5,761,862 flash bytes). The older footprint above records
+the preceding queue stage. This remains host/build evidence, not a device result.
+
 ## Host evidence and limits
 
 The initial focused run passed 351 checks in 91.13 seconds. After the new queue

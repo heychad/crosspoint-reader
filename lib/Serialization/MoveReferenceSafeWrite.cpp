@@ -27,7 +27,27 @@ struct Context {
   const char* bytes;
   size_t size;
   bool sleepPreferences;
+  bool finishPublishedOnly = false;
 };
+
+bool archiveBackup(const std::string& primary, const std::string& backup, bool sleepPreferences) {
+  if (!Storage.settingsChainEligible(backup.c_str()) ||
+      !Storage.distinctSettingsChains(primary.c_str(), backup.c_str()))
+    return false;
+  char suffix[24];
+  for (unsigned index = 0; index < 10000; ++index) {
+    std::snprintf(suffix, sizeof(suffix), sleepPreferences ? ".sleep-history-%04u" : ".move-history-%04u", index);
+    const std::string archive = primary + suffix;
+    const auto status = Storage.lookupPath(archive.c_str());
+    if (status == HalStorage::PathStatus::Failed) return false;
+    if (status == HalStorage::PathStatus::Present) continue;
+    if (!Storage.rename(backup.c_str(), archive.c_str())) return false;
+    return Storage.lookupPath(backup.c_str()) == HalStorage::PathStatus::Missing &&
+           Storage.lookupPath(archive.c_str()) == HalStorage::PathStatus::Present &&
+           Storage.distinctSettingsChains(primary.c_str(), archive.c_str());
+  }
+  return false;
+}
 
 bool writeLocked(void* raw) {
   const auto& context = *static_cast<Context*>(raw);
@@ -42,14 +62,17 @@ bool writeLocked(void* raw) {
       return false;
   }
   const auto current = Storage.lookupPath(primary.c_str());
-  if (current == HalStorage::PathStatus::Failed ||
+  const auto backupStatus = Storage.lookupPath(backup.c_str());
+  if (current == HalStorage::PathStatus::Failed || backupStatus == HalStorage::PathStatus::Failed ||
       Storage.lookupPath(temporary.c_str()) != HalStorage::PathStatus::Missing ||
-      Storage.lookupPath(backup.c_str()) != HalStorage::PathStatus::Missing)
+      (context.sleepPreferences && backupStatus != HalStorage::PathStatus::Missing))
     return false;
   if (current == HalStorage::PathStatus::Present) {
     if (!Storage.settingsChainEligible(primary.c_str())) return false;
-    if (matches(primary.c_str(), context.bytes, context.size)) return true;
+    if (matches(primary.c_str(), context.bytes, context.size))
+      return backupStatus == HalStorage::PathStatus::Missing || archiveBackup(primary, backup, false);
   }
+  if (backupStatus != HalStorage::PathStatus::Missing || context.finishPublishedOnly) return false;
   HalFile staged = Storage.openChecked(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL);
   if (!staged) return false;
   const bool written = staged.write(context.bytes, context.size) == context.size;
@@ -72,29 +95,15 @@ bool writeLocked(void* raw) {
       !matches(primary.c_str(), context.bytes, context.size))
     return false;
   if (current != HalStorage::PathStatus::Present) return true;
-  if (!Storage.distinctSettingsChains(primary.c_str(), backup.c_str())) return false;
-  char suffix[24];
-  for (unsigned index = 0; index < 10000; ++index) {
-    std::snprintf(suffix, sizeof(suffix), context.sleepPreferences ? ".sleep-history-%04u" : ".move-history-%04u",
-                  index);
-    const std::string archive = primary + suffix;
-    const auto status = Storage.lookupPath(archive.c_str());
-    if (status == HalStorage::PathStatus::Failed) return false;
-    if (status == HalStorage::PathStatus::Present) continue;
-    if (!Storage.rename(backup.c_str(), archive.c_str())) return false;
-    return Storage.lookupPath(backup.c_str()) == HalStorage::PathStatus::Missing &&
-           Storage.lookupPath(archive.c_str()) == HalStorage::PathStatus::Present &&
-           Storage.distinctSettingsChains(primary.c_str(), archive.c_str());
-  }
-  return false;
+  return archiveBackup(primary, backup, context.sleepPreferences);
 }
 }  // namespace
 
-bool write(const char* path, const char* bytes, size_t size) {
+bool write(const char* path, const char* bytes, size_t size, bool finishPublishedOnly) {
   if (!path || !bytes || size == 0 || size > 65536 ||
       (std::strcmp(path, "/.crosspoint/state.json") != 0 && std::strcmp(path, "/.crosspoint/recent.json") != 0))
     return false;
-  Context context{path, bytes, size, false};
+  Context context{path, bytes, size, false, finishPublishedOnly};
   return Storage.withStorageLock(writeLocked, &context);
 }
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)

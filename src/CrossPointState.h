@@ -7,7 +7,7 @@
 
 class CrossPointState : public PersistableStore<CrossPointState> {
   CrossPointState() = default;
-  bool saveForCompletionLocked() const;
+  bool saveForCompletionLocked(bool finishPublishedOnly = false) const;
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   bool saveSleepPreferencesLocked() const;
 #endif

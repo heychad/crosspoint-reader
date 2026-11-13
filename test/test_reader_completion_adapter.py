@@ -37,7 +37,7 @@ class RecentBooksStore {
 public:
  std::vector<RecentBook> recentBooks; bool success=true; int saves=0;
  std::mutex storeMutex;
- bool saveForCompletionLocked(){++saves;return success;}
+ bool saveForCompletionLocked(bool finish=false){if(!finish)++saves;return success;}
  bool removeByPathPersisted(const std::string&);
 };
 RecentBooksStore store;

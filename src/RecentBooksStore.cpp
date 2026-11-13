@@ -5,10 +5,12 @@
 
 #include <algorithm>
 
-bool RecentBooksStore::saveForCompletionLocked() const {
+bool RecentBooksStore::saveForCompletionLocked(bool finishPublishedOnly) const {
   const std::string path = getFilePath();
-  for (const char* suffix : {".tmp", ".bak"})
-    if (Storage.lookupPath((path + suffix).c_str()) != HalStorage::PathStatus::Missing) return false;
+  if (Storage.lookupPath((path + ".tmp").c_str()) != HalStorage::PathStatus::Missing) return false;
+  const auto backup = Storage.lookupPath((path + ".bak").c_str());
+  if (backup == HalStorage::PathStatus::Failed) return false;
+  if (finishPublishedOnly && backup == HalStorage::PathStatus::Missing) return true;
   const auto status = Storage.lookupPath(path.c_str());
   if (status == HalStorage::PathStatus::Failed) return false;
   if (status == HalStorage::PathStatus::Present) {
@@ -18,7 +20,7 @@ bool RecentBooksStore::saveForCompletionLocked() const {
   }
   JsonDocument document;
   toJson(document);
-  return PersistableStoreBase::writeDocToFileForMove(path.c_str(), document);
+  return PersistableStoreBase::writeDocToFileForMove(path.c_str(), document, finishPublishedOnly);
 }
 
 void RecentBooksStore::toJson(JsonDocument& doc) const {
@@ -111,7 +113,7 @@ bool RecentBooksStore::removeByPathPersisted(const std::string& path) {
   if (!lock.owns_lock()) return false;
   auto it =
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
-  if (it == recentBooks.end()) return true;
+  if (it == recentBooks.end()) return saveForCompletionLocked(true);
   const auto position = static_cast<size_t>(it - recentBooks.begin());
   auto removed = std::move(*it);
   recentBooks.erase(it);
@@ -144,7 +146,7 @@ bool RecentBooksStore::updatePathPersisted(const std::string& oldPath, const std
   if (oldPath == newPath) return true;
   auto old = std::find_if(recentBooks.begin(), recentBooks.end(),
                           [&](const RecentBook& book) { return book.path == oldPath; });
-  if (old == recentBooks.end()) return true;
+  if (old == recentBooks.end()) return saveForCompletionLocked(true);
   const auto destination = std::find_if(recentBooks.begin(), recentBooks.end(),
                                         [&](const RecentBook& book) { return book.path == newPath; });
   if (destination != recentBooks.end()) return false;

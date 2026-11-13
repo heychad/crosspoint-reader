@@ -55,6 +55,43 @@ TEST_F(MoveReferenceSafeWrite, FailedPromotionPreservesBackupAndStage) {
   EXPECT_FALSE(Storage.exists(PRIMARY));
 }
 
+TEST_F(MoveReferenceSafeWrite, PublishedPrimaryFinishesBackupArchiveOnRetry) {
+  const auto original = content(PRIMARY);
+  Storage.failNextRenameFrom(BACKUP);
+  EXPECT_FALSE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1));
+  EXPECT_EQ(content(PRIMARY), NEXT);
+  EXPECT_EQ(content(BACKUP), original);
+  ASSERT_TRUE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1, true));
+  EXPECT_EQ(content(PRIMARY), NEXT);
+  EXPECT_EQ(content("/.crosspoint/state.json.move-history-0000"), original);
+  EXPECT_FALSE(Storage.exists(BACKUP));
+  EXPECT_FALSE(Storage.exists(TEMP));
+}
+
+TEST_F(MoveReferenceSafeWrite, FinishOnlyNeverPublishesOrReplacesAConflictingPrimary) {
+  const auto original = content(PRIMARY);
+  EXPECT_FALSE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1, true));
+  EXPECT_EQ(content(PRIMARY), original);
+  EXPECT_FALSE(Storage.exists(TEMP));
+  EXPECT_FALSE(Storage.exists(BACKUP));
+  Storage.failNextRenameFrom(TEMP);
+  EXPECT_FALSE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1));
+  EXPECT_FALSE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1, true));
+  EXPECT_FALSE(Storage.exists(PRIMARY));
+  EXPECT_EQ(content(BACKUP), original);
+  EXPECT_EQ(content(TEMP), NEXT);
+}
+
+TEST_F(MoveReferenceSafeWrite, PublishedRecoveryPreservesArtifactsIfIdentityCannotBeProved) {
+  Storage.failNextRenameFrom(BACKUP);
+  EXPECT_FALSE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1));
+  const auto original = content(BACKUP);
+  Storage.failSettingsIdentity();
+  EXPECT_FALSE(movereference::write(PRIMARY, NEXT, sizeof(NEXT) - 1, true));
+  EXPECT_EQ(content(PRIMARY), NEXT);
+  EXPECT_EQ(content(BACKUP), original);
+}
+
 TEST_F(MoveReferenceSafeWrite, PreservesExistingHistoryAndUsesNextSlot) {
   constexpr char history[] = "/.crosspoint/state.json.move-history-0000";
   HalFile file;
