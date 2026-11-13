@@ -59,8 +59,11 @@ class EpubReaderActivity final : public ReaderActivity {
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
   std::atomic<uint32_t> prefetchInputSequence{0};
   uint32_t prefetchArmedSequence = 0;
+  uint32_t prefetchStartedMs = 0;
   int prefetchArmedSpine = -1;
   int prefetchAttemptedSpine = -1;
+  static constexpr uint32_t PREFETCH_WORK_LIMIT_MS = 5000;
+  bool hasChapterPrefetchRoom(bool starting) const;
   void armChapterPrefetch();
   void prefetchNextChapter(uint16_t viewportWidth, uint16_t viewportHeight);
 #endif

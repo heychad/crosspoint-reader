@@ -1,5 +1,7 @@
 """Exercise production render-task dispatch without running a physical display."""
 from pathlib import Path
+import os
+import shlex
 import subprocess
 import tempfile
 
@@ -65,6 +67,8 @@ int main(){
 with tempfile.TemporaryDirectory() as temporary:
     path = Path(temporary)
     (path / 'test.cpp').write_text(code)
-    subprocess.run(['c++', '-std=c++20', str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+    subprocess.run([os.environ.get('CXX','c++'), '-std=c++20',
+                    *shlex.split(os.environ.get('CXXFLAGS','')),
+                    str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
 print('Background and normal render dispatch checks passed')

@@ -2738,6 +2738,15 @@ void EpubReaderActivity::renderBook() {
 }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
+bool EpubReaderActivity::hasChapterPrefetchRoom(const bool starting) const {
+  const auto heap = HalMemory::getDefaultHeap();
+  const auto internal = HalMemory::getInternalHeap();
+  // Admission leaves room for the inflater's ~43 KiB scratch without borrowing the display buffer.
+  return heap.freeBytes >= (starting ? 96U : 32U) * 1024 && heap.largestBlockBytes >= (starting ? 48U : 16U) * 1024 &&
+         internal.freeBytes >= (starting ? 32U : 16U) * 1024 &&
+         internal.largestBlockBytes >= (starting ? 16U : 8U) * 1024;
+}
+
 void EpubReaderActivity::armChapterPrefetch() {
   RenderLock lock(RenderLock::Mode::Try);
   if (!lock.ownsLock() || !epub || !section || section->isBuilding() || section->isPartial() ||
@@ -2745,8 +2754,7 @@ void EpubReaderActivity::armChapterPrefetch() {
       pendingManualTurn != 0 || buttonContactClosed() || anyButtonPressed() ||
       mappedInput.getTouchSnapshot().reportedCount != 0 || bleturner::holdsHeap() ||
       currentSpineIndex + 1 >= epub->getSpineItemsCount() || prefetchAttemptedSpine == currentSpineIndex ||
-      !lastRenderCompleteMs || millis() - lastRenderCompleteMs < 400 || ESP.getFreeHeap() < 48 * 1024 ||
-      ESP.getMaxAllocHeap() < 24 * 1024)
+      !lastRenderCompleteMs || millis() - lastRenderCompleteMs < 400 || !hasChapterPrefetchRoom(true))
     return;
   const uint32_t sequence = prefetchInputSequence.load(std::memory_order_relaxed);
   if (prefetchArmedSpine == currentSpineIndex && prefetchArmedSequence == sequence) return;
@@ -2763,7 +2771,7 @@ void EpubReaderActivity::prefetchNextChapter(const uint16_t viewportWidth, const
       section->currentPage + 2 < section->pageCount || overlay != Overlay::None || bleturner::holdsHeap() || !armed ||
       prefetchInputSequence.load(std::memory_order_relaxed) != sequence ||
       prefetchAttemptedSpine == currentSpineIndex || currentSpineIndex + 1 >= epub->getSpineItemsCount() ||
-      ESP.getFreeHeap() < 48 * 1024 || ESP.getMaxAllocHeap() < 24 * 1024)
+      !hasChapterPrefetchRoom(true))
     return;
   prefetchAttemptedSpine = currentSpineIndex;
   auto next = makeUniqueNoThrow<Section>(epub, currentSpineIndex + 1, renderer);
@@ -2771,14 +2779,18 @@ void EpubReaderActivity::prefetchNextChapter(const uint16_t viewportWidth, const
   const ReaderRenderSpec spec = effectiveRenderSpec(viewportWidth, viewportHeight, currentSpineIndex + 1);
   if (next->loadSectionFile(spec) && !next->isPartial()) return;
   if (prefetchInputSequence.load(std::memory_order_relaxed) != sequence) return;
+  prefetchStartedMs = millis();
   const auto cancelled = [](void* context) {
     const auto* reader = static_cast<EpubReaderActivity*>(context);
-    return reader->prefetchInputSequence.load(std::memory_order_relaxed) != reader->prefetchArmedSequence;
+    return reader->prefetchInputSequence.load(std::memory_order_relaxed) != reader->prefetchArmedSequence ||
+           static_cast<uint32_t>(millis() - reader->prefetchStartedMs) >= PREFETCH_WORK_LIMIT_MS ||
+           bleturner::holdsHeap() || !reader->hasChapterPrefetchRoom(false);
   };
   const uint32_t loansBefore = renderer.frameBufferLoanCount();
   if (next->startBuild(spec, nullptr, cancelled, this)) {
     while (!cancelled(this) && next->isBuilding()) {
       if (!next->buildSomeMore(1, nullptr, cancelled, this)) break;
+      if (next->isBuilding()) delay(1);
     }
   }
   // The destructor suspends any incomplete build before the next reader action.

@@ -146,6 +146,7 @@ These are check durations, not coding speed or total development time.
 | November 13 Book/Force paragraph indents | Full 2371: 80.23 s. Ten parser/scope sanitizer cases, three-profile preference imports, and 4367 decoder records pass both sanitizers. Initial five fixture failures corrected; fresh consistent sanitizer build replaces the mixed startup attempt | 116.41 s; default X4 Pro, RAM 113148, flash 5683630 |
 | November 13 backup sync and RC2 v4 restore | 231 focused: 6.01 s; 65 sanitizer cases; native FAT/exFAT faults preserve full RC2 source and prior snapshots. Two pre-fix sync regressions reproduced | 69.34 s; default X4 Pro, RAM 113148, flash 5683694; combined ten-flag profile: 166.38 s, RAM 113076, flash 5781286 |
 | November 13 library checksum client | 18 real-HTTP protocol tests: 0.51 s, including missing reader identity; 4 additional queue regressions. Full second-brain suite: 295 tests in 7.77 s; authoring validator: 68 concepts, no errors or warnings. Local client checkpoints `4f68baf` and `050334f`; publication and reader timing pending | Not repeated: client and documentation only; firmware inputs remain those built at `fc20040a` |
+| November 13 bounded chapter prefetch | Seven focused scheduler, render-dispatch, section cleanup/publication, and FAT/exFAT checks: 5.51 s. Scheduler, dispatch, and expanded destructor-suspension harnesses pass AddressSanitizer/UndefinedBehaviorSanitizer. Initial harness placeholder collision corrected before builds | Default: 72.88 s, RAM 113148, flash 5683694. Eleven-flag profile: 160.20 s, RAM 113092, flash 5783570; physical latency/headroom pending |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.
@@ -167,9 +168,10 @@ passes, and the fixture correction does not invalidate the unchanged firmware bu
 ## Combined statistics profile
 
 Personal overrides remain in ignored `platformio.local.ini`. This standalone
-block reproduces the current ten-flag configuration without the earlier local
-inheritance chain. It does not include the unfinished sync, prefetch, or online
-update features and is not an installation candidate.
+block reproduces the current eleven-flag configuration without the earlier
+local inheritance chain. It includes experimental chapter prefetch. Sync
+publication and online updates remain disabled. This is not an installation
+candidate.
 
 ```ini
 [env:x4pro-completion-automation-wip]
@@ -186,6 +188,7 @@ build_flags =
   -DCROSSPOINT_EXPERIMENTAL_CHAPTER_TIME=1
   -DCROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION=1
   -DCROSSPOINT_EXPERIMENTAL_STATS_BACKUP=1
+  -DCROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH=1
 ```
 
 Build with `pio run -e x4pro-completion-automation-wip`. The SDK pin and base
