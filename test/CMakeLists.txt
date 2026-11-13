@@ -150,6 +150,7 @@ add_test(NAME RemoteButtonInputIntegration COMMAND ${Python3_EXECUTABLE} ${CMAKE
 add_test(NAME ReaderActivityBoundary COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_activity_boundary.py)
 add_test(NAME HomeReaderNavigation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_reader_navigation.py)
 add_test(NAME CrossInkPreferencesImport COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_crossink_preferences.py)
+add_test(NAME CrossInkLibraryImport COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_crossink_library.py)
 add_test(NAME SleepStatePreservation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_state_preservation.py)
 add_test(NAME SleepImageCache COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_sleep_image_cache.py)
 add_test(NAME CoverOverlayMode COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cover_overlay_mode.py)

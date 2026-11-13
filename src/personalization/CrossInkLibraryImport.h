@@ -8,9 +8,10 @@ namespace crossinkimport {
 inline bool stageLibrary(JsonVariantConst legacy, JsonDocument& proposed, bool replaceExisting) {
   if (!legacy.is<JsonObjectConst>() || !proposed.is<JsonObject>()) return false;
   bool changed = false;
-  for (const char* key : {"libraryShowSeries", "libraryShowGenre", "libraryShowEpub", "libraryShowXtc",
-                          "libraryShowTxt", "libraryShowMarkdown", "libraryHideFinishedBooks", "hideFileExtension",
-                          "fileBrowserDisplay", "recentBooksView"}) {
+  for (const char* key : {"libraryUseMetadata", "showHiddenFiles", "removeReadBooksFromRecents",
+                          "moveFinishedToReadFolder", "libraryShowSeries", "libraryShowGenre", "libraryShowEpub",
+                          "libraryShowXtc", "libraryShowTxt", "libraryShowMarkdown", "libraryHideFinishedBooks",
+                          "hideFileExtension", "fileBrowserDisplay", "recentBooksView"}) {
     const auto source = legacy[key];
     const auto current = proposed[key];
     if (!source.is<uint8_t>() || source.as<uint8_t>() > 1 || (!replaceExisting && !current.isUnbound())) continue;

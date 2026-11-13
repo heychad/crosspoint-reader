@@ -227,7 +227,8 @@ TEST_F(BookSettings, CrossInkLibraryImportPreservesOtherSettingsAndBacksUpOrigin
   const std::string legacy =
       R"({"libraryShowSeries":0,"libraryShowGenre":1,"libraryShowEpub":0,"libraryShowXtc":0,"libraryShowTxt":1,
     "libraryShowMarkdown":0,"libraryHideFinishedBooks":1,"hideFileExtension":1,"fileBrowserDisplay":0,
-    "recentBooksView":1,"uiTheme":5,"swapLibraryFileBrowser":1,"pluginsEnabled":0})";
+    "recentBooksView":1,"uiTheme":5,"swapLibraryFileBrowser":1,"pluginsEnabled":0,
+    "libraryUseMetadata":0,"showHiddenFiles":1,"removeReadBooksFromRecents":1,"moveFinishedToReadFolder":1})";
   put(primary, original);
   put(crossinkimport::SOURCE_PATH, legacy);
   JsonDocument proposed;
@@ -251,6 +252,11 @@ TEST_F(BookSettings, CrossInkLibraryImportPreservesOtherSettingsAndBacksUpOrigin
   EXPECT_EQ(persisted["recentBooksView"].as<int>(), 1);
   EXPECT_EQ(persisted["uiTheme"].as<int>(), 5);
   EXPECT_EQ(persisted["libraryFirstOnHome"].as<int>(), 1);
+  EXPECT_TRUE(persisted["libraryUseMetadata"].is<uint8_t>());
+  EXPECT_EQ(persisted["libraryUseMetadata"].as<int>(), 0);
+  EXPECT_EQ(persisted["showHiddenFiles"].as<int>(), 1);
+  EXPECT_EQ(persisted["removeReadBooksFromRecents"].as<int>(), 1);
+  EXPECT_EQ(persisted["moveFinishedToReadFolder"].as<int>(), 1);
   EXPECT_EQ(persisted["pluginsEnabled"].as<int>(), 1);
   EXPECT_EQ(backup, original);
   EXPECT_EQ(source, legacy);

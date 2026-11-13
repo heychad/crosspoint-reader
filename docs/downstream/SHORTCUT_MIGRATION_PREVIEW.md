@@ -53,10 +53,15 @@ folder. These paths need independent review and X4 Pro validation before use.
 
 **Import CrossInk library settings** under Settings > Library separately imports
 compatible series, genre, format and finished filters, recent-book layout,
-filename extensions, file-browser row style, and supported home themes. Carousel
+metadata use, hidden-file visibility, finished-book Recents removal and folder
+organization, filename extensions, file-browser row style, and supported home themes. Carousel
 imports only when the experimental Carousel build is enabled. It uses the same backup and recovery process and
 does not change other preferences. Library-first order imports only when the
 source used CrossInk's Minimal or Dashboard home, where that preference applied.
+The import changes completion policy settings; it does not move books or remove
+them from Recents during import. Enabling hidden files also exposes hidden
+entries in the web file manager. A metadata-mode change uses the existing index
+check and rebuilds when Library or Saved Items next opens.
 
 **Import CrossInk preferences** under Settings > Reader imports UI scale,
 statistics tracking, the reading idle threshold, refresh frequency, night mode,
