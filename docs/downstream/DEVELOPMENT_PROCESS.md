@@ -145,6 +145,7 @@ These are check durations, not coding speed or total development time.
 | November 13 RC2 reader-touch import | 59 affected: 0.09 s; 21 control/catalog cases passed both sanitizers. Production publication preserves exact source and native snapshot | 68.85 s; default X4 Pro, RAM 113148, flash 5681970 |
 | November 13 Book/Force paragraph indents | Full 2371: 80.23 s. Ten parser/scope sanitizer cases, three-profile preference imports, and 4367 decoder records pass both sanitizers. Initial five fixture failures corrected; fresh consistent sanitizer build replaces the mixed startup attempt | 116.41 s; default X4 Pro, RAM 113148, flash 5683630 |
 | November 13 backup sync and RC2 v4 restore | 231 focused: 6.01 s; 65 sanitizer cases; native FAT/exFAT faults preserve full RC2 source and prior snapshots. Two pre-fix sync regressions reproduced | 69.34 s; default X4 Pro, RAM 113148, flash 5683694; combined ten-flag profile: 166.38 s, RAM 113076, flash 5781286 |
+| November 13 library checksum client | 17 real-HTTP protocol tests: 0.48 s; 4 additional queue regressions. Full second-brain suite: 294 tests in 7.79 s; authoring validator: 68 concepts, no errors or warnings. Local client checkpoint `4f68baf`; publication and reader timing pending | Not repeated: client and documentation only; firmware inputs remain those built at `fc20040a` |
 
 The import batch reused the existing transaction and validation paths. Its scope
 did not justify repeating the full suite or an experimental firmware build.

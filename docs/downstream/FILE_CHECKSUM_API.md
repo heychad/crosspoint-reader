@@ -74,22 +74,32 @@ leaves the uploaded file for review.
 
 ## Library client integration
 
-The current client is `apps/book-library/device_sync.py` in Chad's second-brain
-repository. Its `Reader.digest(path, size, progress)` can keep its interface:
+The client is `apps/book-library/device_sync.py` in Chad's second-brain
+repository, local checkpoint `4f68baf6cdca9eef6609bf5e0abb1450b00e52ac`.
+Its existing `Reader.digest(path, size, progress)` interface now selects the
+checksum API only when `Reader.status()` advertises integer version 1:
 
-1. Cache the capability returned by its existing `Reader.status()` call.
-2. On older firmware, retain the current bounded `/download` verification.
-3. On version 1, start a checksum job, validate the token and echoed path/size,
-   then poll. Feed monotonic `processed` values to the existing progress callback.
-4. Accept only `complete`, the expected path/size, `processed == size`, and a
-   64-character hexadecimal digest. Keep the existing comparison with the source
-   SHA-256 and the existing reader-identity check before writing a receipt.
-5. Cancel the token on a user stop or polling timeout. Use a bounded polling
-   deadline. Do not silently replace a checksum error with a verified receipt.
+1. Older firmware keeps `/download` verification; unknown capability versions
+   and non-integer values also use that path.
+2. Start and poll validate HTTP status, state, token, echoed path/size, and
+   monotonic processed bytes. Only a complete result with `processed == size`
+   and a lowercase 64-character digest reaches the source-hash comparison.
+3. Poll every 100 ms with a 180-second deadline. Requests use at most 20-second
+   socket timeouts within the remaining deadline. Failure or an interrupted
+   progress callback attempts token cancellation with a two-second socket timeout.
+   The queue's existing Stop action still finishes the current book.
+4. A checksum error stops the queue without a download fallback or verified
+   receipt. Files stay intact. A retry verifies the existing destination instead
+   of uploading it again. Reader identity is checked before recording success.
 
-The client has not been changed by this firmware stage. Its existing fallback
-continues to work with installed firmware. Client integration and measured
-end-to-end timing remain pending.
+Seventeen protocol tests use real local HTTP, including capability fallback,
+malformed results, mismatched jobs, HTTP errors, redirects, cancellation,
+deadlines, and receipt failure/retry. Four additional queue regressions cover
+reruns, a lost upload response, hash failures, and same-size conflicts. All 294
+second-brain host tests and its authoring validator pass. These tests use a host
+server, not reader hardware. Cumulative review, client publication, and measured
+end-to-end transfer timing remain pending. The installed clipfix2 firmware uses
+the existing download fallback until a reviewed candidate is installed.
 
 ## Execution and resource limits
 
