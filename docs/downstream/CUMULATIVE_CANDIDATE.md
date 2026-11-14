@@ -7,6 +7,10 @@ notification follow-ups are corrected and checked. Test59 is verified on the SD
 card after a scoped Wi-Fi state backup; runtime/device acceptance remains pending.
 The [handoff record](TEST59_HANDOFF.md) identifies the final image and checksums.
 
+The subsequent [test60 swipe patch](SWIPE_LINK_RETURN_FIX.md) corrects a reported
+input regression without changing persistence or the SDK. Its separate source,
+checks, review, and package are recorded there; physical confirmation is pending.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with

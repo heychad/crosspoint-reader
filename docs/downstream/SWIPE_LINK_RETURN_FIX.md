@@ -31,8 +31,23 @@ Existing page-gesture, Back-override, and reader-gesture routing checks pass.
 The intended patch version is `2.0.0-chad.3-test60-swipefix-x4pro`, built with
 the same `x4pro-chad-test` configuration as test59. All 2,452 cumulative host
 checks pass in 177.23 seconds. The X4 Pro build passes in 193.06 seconds, using
-113,100 bytes static RAM and 5,805,982 bytes flash. Independent handoff review,
-package verification, and device confirmation remain. Test59's package is unchanged.
+113,100 bytes static RAM and 5,805,982 bytes flash. A combined correctness,
+architecture, input, and resource review found no actionable findings in source
+`1325b565a078ac9ec71b228e1ecab927f77c2a8b`. Overlays own input before this branch,
+and header targets clear on activity transitions. The native harness models the
+renderer and extracts production handlers; device confirmation remains necessary.
+
+The verified local package is `.cache/device-test/test60-swipefix-1325b565/`.
+Its `SWIPE60.BIN` is 5,811,248 bytes, SHA-256
+`10ef1ab1098e178d377561cf9b03ac570d68c2e84d650b95dd57c4623bc4e38e`.
+The ESP32-S3 header, image checksum, validation hash, and reader version match.
+All six package checksums pass. Non-version flags, the SDK pin, and all three
+patched SDK source hashes match test59; all 22 library links resolve here.
+Fresh backup, transfer/readback under `/zDev/`, installation, and device checks
+remain pending. Test59's package is unchanged.
+
+The November 14 release-channel check still finds CrossPoint 2.0.0 stable and
+CrossInk v2.0.0-rc2. The patch keeps the existing release references and SDK pin.
 
 ## Short device check
 

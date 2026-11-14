@@ -31,6 +31,11 @@ in [the candidate record](CUMULATIVE_CANDIDATE.md). The verified package and
 remaining backup/device gates are in [the handoff](TEST59_HANDOFF.md).
 The historical inventory below records an earlier stage, not the current status.
 
+November 14 feedback identified a swipe/link-return conflict. The bounded
+[test60 swipe fix](SWIPE_LINK_RETURN_FIX.md) passes 2,452 host checks, the X4 Pro
+build, sanitizers, and focused review. It is packaged locally; transfer and
+physical confirmation remain pending.
+
 | Choice | Current state |
 | --- | --- |
 | A1 Custom top and bottom bars | Built, including full-width filled progress bars and book/section time-left. Test2 bars were checked on the reader; later changes need device checks. RC2 centering, separators, hidden-bar state, per-bar battery styles, and chapter percentage are now built, with native controls and compatible imports. Temporary edge-tap hiding/restoration is now implemented for EPUB and native XTC placements; Small/Medium/Large custom-bar text sizes and their imports are built; XTC now supports all four placements and legacy top-layout compatibility in both 1-bit and 2-bit rendering. See [RC2 bars](RC2_READER_BARS.md). |
