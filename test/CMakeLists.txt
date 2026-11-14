@@ -332,6 +332,7 @@ add_test(NAME ReaderBarTap COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_
 
 add_test(NAME ReaderGlobalShortcuts COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_global_shortcuts.py)
 add_test(NAME PageGestureToggle COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_page_gesture_toggle.py)
+add_test(NAME ReaderLinkBackSwipe COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_link_back_swipe.py)
 
 add_test(NAME ReaderTabbedMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_tabs.py)
 add_test(NAME ReaderInlineTextMenu COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reader_menu_tabs/test_inline_text.py)
