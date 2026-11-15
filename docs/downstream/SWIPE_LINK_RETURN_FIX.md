@@ -43,11 +43,39 @@ Its `SWIPE60.BIN` is 5,811,248 bytes, SHA-256
 The ESP32-S3 header, image checksum, validation hash, and reader version match.
 All six package checksums pass. Non-version flags, the SDK pin, and all three
 patched SDK source hashes match test59; all 22 library links resolve here.
-Fresh backup, transfer/readback under `/zDev/`, installation, and device checks
-remain pending. Test59's package is unchanged.
+The fresh backup and transfer/readback under `/zDev/` are complete. Installation
+and device confirmation remain pending. Test59's package is unchanged.
 
 The November 14 release-channel check still finds CrossPoint 2.0.0 stable and
 CrossInk v2.0.0-rc2. The patch keeps the existing release references and SDK pin.
+
+## Wi-Fi handoff and cleanup
+
+Completed November 14, 2026. The reader identified as the expected X4 Pro running
+test59. A fresh scoped backup preserves 266 accessible state files totaling
+551,855 bytes, each checked against a second download. The hidden-file setting
+was restored to off, settings values match their original values, and completed
+book moves remain off. The Wi-Fi coverage limits in [the earlier handoff](TEST59_HANDOFF.md)
+still apply; this is not a whole-card backup.
+
+`/zDev/SWIPE60.BIN` matches the packaged size and SHA-256 by download readback
+and the reader's checksum API. The existing official CrossPoint image and
+`TEST59.BIN` also match their expected hashes.
+
+At Chad's request, seven superseded files were archived privately on the Mac,
+verified against reader-side hashes, and removed from `/zDev/`: the CrossInk
+1.6.1 image, duplicate RESTORE image, CLIPFIX1, TEST58, CLIPFIX2, its checksum
+file, and the old crash report. The archive preserves all 27,710,400 bytes.
+The card now retains only these development files:
+
+- `SWIPE60.BIN`—the new candidate.
+- `TEST59.BIN`—the previously installed firmware.
+- `crosspoint-2.0.0-x4pro.bin`—the official rollback.
+
+After cleanup, all three retained image hashes were rechecked on the reader.
+All 266 backed-up state files were downloaded again and match their saved
+hashes. No firmware was installed by the agent. Private backup, archive, and
+transfer manifests remain outside Git.
 
 ## Short device check
 

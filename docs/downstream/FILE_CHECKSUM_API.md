@@ -7,6 +7,14 @@ experimental sync endpoints. Firmware and device validation are tracked below.
 
 ## Detect support
 
+On November 14, the running test59 X4 Pro returned matching SHA-256 values for
+the uploaded swipe-fix firmware, both retained rollback images, and archived
+development files under `/zDev/`. The existing library client's `Reader.digest`
+performed the strict start/poll validation. Firmware download readback and local
+archive hashes matched independently. This verifies basic on-reader checksum
+operation for those files; the complete selected-book Drive queue, Unicode
+paths, cancellation, and throughput still need their device checks.
+
 `GET /api/status` includes `"fileChecksumApiVersion":1`. This capability is
 available in the standard X4 Pro profile independently of experimental flags.
 Clients that do not see version 1 keep their existing download-and-hash path.
@@ -102,8 +110,9 @@ same-size conflicts. That checkpoint passed all 295
 second-brain host tests and its authoring validator; the queue checks below
 bring the current total to 303. These tests use a host
 server, not reader hardware. Cumulative review and measured end-to-end transfer
-timing remain pending; code publication is recorded below. The installed clipfix2 firmware uses
-the existing download fallback until a reviewed candidate is installed.
+timing remain pending; code publication is recorded below. At that checkpoint,
+clipfix2 used the existing download fallback. The live test59 checksum check
+is recorded above.
 
 ## Selected-book queue and create-only uploads
 

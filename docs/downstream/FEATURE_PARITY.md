@@ -33,8 +33,8 @@ The historical inventory below records an earlier stage, not the current status.
 
 November 14 feedback identified a swipe/link-return conflict. The bounded
 [test60 swipe fix](SWIPE_LINK_RETURN_FIX.md) passes 2,452 host checks, the X4 Pro
-build, sanitizers, and focused review. It is packaged locally; transfer and
-physical confirmation remain pending.
+build, sanitizers, and focused review. Its fresh scoped state backup and verified
+SD transfer are complete; installation and physical confirmation remain pending.
 
 | Choice | Current state |
 | --- | --- |
