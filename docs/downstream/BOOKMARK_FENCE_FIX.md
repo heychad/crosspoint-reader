@@ -3,8 +3,9 @@
 November 15, 2026, Eastern time. During test61 device checks, Chad confirmed
 reading-position resume, opening the disposable EPUB, and saving its bookmark
 and clipping. Back in File Transfer, checksum jobs returned HTTP 503 with
-`state: unavailable` before processing bytes. No move request was sent. The test
-book and its saved state remain at `/zDev/MoveCheck/Before/Move Check.epub`.
+`state: unavailable` before processing bytes. No move request was sent at that
+point. The test book and its saved state stayed at
+`/zDev/MoveCheck/Before/Move Check.epub` until the test62 checks below.
 
 ## Cause and correction
 
@@ -53,9 +54,9 @@ patches are unchanged. The combined profile uses 113,100 bytes of RAM and
 Test62 is transferred to `/zDev/MOVE62.BIN`, 5,823,216 bytes, SHA-256
 `ff248d11269723b25b3c607b62c2b6d0276f517906fc792ffede6434c3b57120`.
 The ESP32-S3 image checksum and validation hash pass. A download readback matches
-the packaged image. Test61's checksum API remains unavailable until restart.
-Device checksum verification after another bookmark save, and physical
-acceptance of the fix, remain pending.
+the packaged image. That transfer used download readback while test61's checksum
+API was unavailable. Test62 subsequently passes the checksum and device checks
+below.
 
 A fresh scoped Wi-Fi backup contains 326 accessible state files totaling
 451,057 bytes. Each file matches two pre-transfer downloads and a post-transfer
@@ -67,9 +68,19 @@ previous image hash by download readback. No old images were deleted.
 Package, backup, and transfer receipts remain private under
 `.cache/device-test/`.
 
-Install test62, reopen the same disposable book, turn one page, and add another
-bookmark. Return to File Transfer. Checksum verification and the on-card move
-should then proceed. Verify resume, bookmarks, clipping, and statistics after
-the move. Keep the nine held books untouched until those checks pass. Test61's
-test-book state and global statistics are backed up privately; no move journal
-has been created by this test.
+Chad confirms test62 is installed and a new bookmark saves normally. Wi-Fi status
+confirms `2.0.0-chad.3-test62-bookmoves-x4pro`. Checksum jobs succeed after that
+bookmark save. Both an on-card folder move and filename rename return HTTP 200
+and preserve the EPUB, progress, statistics, native bookmarks, and clipping
+bytes. Current-book, Recents, and cover-cache paths update; unrelated Recents,
+global statistics, daily statistics, and settings remain unchanged. No pending
+recovery is reported after either operation.
+
+The disposable book is now
+`/zDev/MoveCheck/After/Move Check Renamed.epub`. After restarting the reader,
+Chad confirms correct resume from Recents, bookmark navigation, and clipping
+text and passage navigation. The move/rename device smoke test passes. The
+nine held books remain untouched. Fresh per-operation backups and receipts
+are private under `.cache/device-test/move62-ondevice-qa/` and
+`.cache/device-test/rename62-ondevice-qa/`. See
+[the move record](STATEFUL_BOOK_MOVES.md#test62-device-move-and-rename).

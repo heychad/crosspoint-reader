@@ -95,9 +95,9 @@ while a transaction is pending are unsupported. WebDAV moves books individually
 and refuses destination overwrite; directory moves are rejected. HTTP status
 and recovery contracts are in `docs/webserver-endpoints.md`.
 
-The next hardware check must use a disposable copy first. A fresh state backup,
-validated image transfer into `/zDev/`, Chad's installation, and reader-side
-acceptance are still required. The nine held books have not been moved.
+The disposable-book move/rename check now passes on test62, including byte
+comparisons and Chad's restart/resume and saved-item checks. Backup, transfer,
+and device results are recorded below. The nine held books have not been moved.
 
 ## Review corrections
 
@@ -180,7 +180,32 @@ image hash, backup scope, transfer proof, and device check.
 
 `/zDev/MOVE62.BIN` is verified by download readback. All 326 freshly backed-up
 state files match after transfer; previous firmware images remain on the card.
-Chad's installation is pending. Reopen the disposable book, turn a page, and
-save another bookmark before retrying checksum and move verification. A reboot
-alone clears the old process-local fault and would not exercise the fix. The
-nine held books remain untouched.
+Chad confirms installation and a new bookmark save. Wi-Fi status confirms
+`2.0.0-chad.3-test62-bookmoves-x4pro`, and the test EPUB's checksum verifies after
+the new bookmark save. This exercises the fix; restarting alone would only clear
+the old process-local fault.
+
+## Test62 device move and rename
+
+Both `POST /move` and `POST /rename` return HTTP 200 for the disposable EPUB.
+The folder move changes `/zDev/MoveCheck/Before/Move Check.epub` to
+`/zDev/MoveCheck/After/Move Check.epub`; the filename rename then changes it to
+`/zDev/MoveCheck/After/Move Check Renamed.epub`. Both operations rename existing
+card entries. The EPUB's SHA-256 remains
+`6a98787bd86cef8d9befd598f3e4659f8dc276060e24e2d26258a447e68f2372`.
+
+Each operation has a fresh, twice-read backup of the scoped state before the
+request. All 31 state roles are checked. Existing progress, statistics,
+bookmarks, clipping, and retained cache files match byte for byte afterward.
+Only the intended generated chapter/CSS cache invalidation is allowed. Old
+state paths disappear; current-book, Recents, and cover-cache paths update.
+Unrelated Recents entries, global/daily statistics, and settings match their
+pre-operation contents. Both operations report no pending recovery. Receipts
+remain private under `.cache/device-test/move62-ondevice-qa/` and
+`.cache/device-test/rename62-ondevice-qa/`.
+
+After restarting the reader, Chad confirms that opening Move Check from Recents
+resumes correctly, a bookmark opens the expected passage, and the saved clipping
+has the correct text and opens the correct passage. This completes the
+disposable-book move/rename smoke test. Statistics preservation is verified by
+file comparison. The nine held books have not been moved.
