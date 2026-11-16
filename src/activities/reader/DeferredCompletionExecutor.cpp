@@ -1,3 +1,4 @@
+#include <HalStorage.h>
 #include <Memory.h>
 
 #include "CompletionMovePlan.h"
@@ -9,6 +10,8 @@
 
 namespace readingstats::deferredcompletion {
 ExecuteMoveResult executeAfterReaderClosed(const std::string& source, const ReadingStatsDate& today) {
+  if (Storage.lookupPath("/.book-moves/current") != HalStorage::PathStatus::Missing) return ExecuteMoveResult::Busy;
+
   if (!activityManager.isMainTask()) return ExecuteMoveResult::Unavailable;
   if (!completionmove::validPath(source) || isInReadFolder(source)) return ExecuteMoveResult::Blocked;
   const auto slash = source.find_last_of('/');
@@ -44,6 +47,8 @@ ExecuteMoveResult executeAfterReaderClosed(const std::string& source, const Read
 }
 
 ExecuteMoveResult executeOnePending(const ReadingStatsDate& today, BeforeDeferredMove beforeMove, void* context) {
+  if (Storage.lookupPath("/.book-moves/current") != HalStorage::PathStatus::Missing) return ExecuteMoveResult::Busy;
+
   if (!activityManager.isMainTask()) return ExecuteMoveResult::Unavailable;
   switch (completionmove::recoverDeferredCompletion()) {
     case completionmove::DeferredRecoveryResult::Recovered:

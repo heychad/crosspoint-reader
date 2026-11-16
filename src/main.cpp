@@ -692,10 +692,6 @@ void setup() {
   // UTC-offset setting on first boot after the update).
   timezones::applyToClock();
   RECENT_BOOKS.loadFromFile();
-  if (bookmove::pending()) {
-    const auto recovered = bookmove::recover();
-    LOG_INF("MAIN", "Book move recovery result: %u", static_cast<unsigned>(recovered));
-  }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
@@ -789,6 +785,11 @@ void setup() {
 
   setupDisplayAndFonts(resume != BootResume::Splash);
 
+  if (bookmove::pending()) {
+    const auto recovered = bookmove::recover();
+    LOG_INF("MAIN", "Book move recovery result: %u", static_cast<unsigned>(recovered));
+  }
+
   switch (resume) {
     case BootResume::Silent:
       // Splash skipped: the routing block below picks the target activity; the
@@ -824,6 +825,9 @@ void setup() {
     // Skip normal home/reader routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
         std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
+  } else if (bookmove::pending()) {
+    // Preserve the saved book path while recovery is incomplete.
+    activityManager.goToFileTransfer();
   } else if (rebootedFromPanic) {
     // If we rebooted from a panic, go to crash report screen to show the panic info
     activityManager.goToCrashReport();

@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "util/BookMove.h"
+
 namespace fui = freeink::ui;
 
 LibraryCoverGrid::LibraryCoverGrid(GfxRenderer& renderer) : coverCache(renderer) {
@@ -112,6 +114,7 @@ bool LibraryCoverGrid::matches(const int slot, const uint64_t identity) const {
 }
 
 bool LibraryCoverGrid::loadCover(const int slot, const std::string& path) {
+  if (bookmove::pending()) return false;
   auto& book = books[slot];
   book.attempted = true;
   std::string thumb;

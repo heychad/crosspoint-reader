@@ -125,6 +125,11 @@ struct Xtc {
   }
   std::string getThumbBmpPath(int) const { return "/.crosspoint/xtc/thumbnail.bmp"; }
 };
+namespace bookmove {
+inline bool blocked = false;
+bool pending() { return blocked; }
+}  // namespace bookmove
+
 // INSERT_GRID_HEADER
 // INSERT_GRID_SOURCE
 
@@ -172,6 +177,9 @@ int main() {
   assert(observedPage > 0 && "a repaint published a transient zero page size");
   for (int i = 0; i < 6; ++i) grid.setBook(i, i + 1, "Book");
   assert(grid.nextCover() == 0);
+  bookmove::blocked = true;
+  assert(!grid.loadCover(0, "/a.epub") && grid.nextCover() == 0);
+  bookmove::blocked = false;
   assert(grid.loadCover(0, "/a.epub"));
   assert(grid.nextCover() == 1);
   failGeneration = true;

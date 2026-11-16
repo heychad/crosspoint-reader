@@ -32,6 +32,7 @@ code = r'''
 #include <vector>
 #include "util/ReadFolder.h"
 #define LOG_ERR(...) ((void)0)
+struct HalStorage { enum class PathStatus { Missing, Present, Failed }; PathStatus lookupPath(const char*) { return PathStatus::Missing; } } Storage;
 struct RecentBook {std::string path, title;};
 class RecentBooksStore {
 public:

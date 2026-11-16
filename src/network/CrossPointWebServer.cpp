@@ -3865,6 +3865,10 @@ void CrossPointWebServer::wsEventCallback(uint8_t num, WStype_t type, uint8_t* p
 //   3. Server sends TEXT "PROGRESS:<received>:<total>" after each chunk
 //   4. Server sends TEXT "DONE" or "ERROR:<message>" when complete
 void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+  if ((type == WStype_TEXT || type == WStype_BIN) && bookmove::pending()) {
+    wsServer->sendTXT(num, "ERROR:Book move needs recovery; upload blocked");
+    return;
+  }
   switch (type) {
     case WStype_DISCONNECTED:
       LOG_DBG("WS", "Client %u disconnected", num);

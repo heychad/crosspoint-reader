@@ -28,6 +28,7 @@
 #include "activities/reader/ReadingStatsStore.h"
 #include "activities/reader/StatsSaveNotice.h"
 #include "activities/settings/ReadingStatsActivity.h"
+#include "util/BookMove.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_DEFERRED_AUTOMATION) && \
     (!defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) || !defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_MOVE))
 #error "Deferred automation requires completion and completion-move support"
@@ -323,6 +324,7 @@ void HomeActivity::resolveGridCoverPaths() {
 }
 
 void HomeActivity::loadGridCover(RecentBook& book, int height, bool& showingLoading, Rect& popupRect) {
+  if (bookmove::pending()) return;
   if (!book.coverBmpPath.empty() && Storage.exists(UITheme::getCoverThumbPath(book.coverBmpPath, height).c_str()))
     return;
   // Only one parser lives at a time; EPUB/XTC objects exceed the stack budget.
@@ -363,6 +365,7 @@ void HomeActivity::loadGridCover(RecentBook& book, int height, bool& showingLoad
 }
 
 void HomeActivity::loadRecentCovers(int coverHeight) {
+  if (bookmove::pending()) return;
   recentsLoading = true;
   bool showingLoading = false;
   Rect popupRect;

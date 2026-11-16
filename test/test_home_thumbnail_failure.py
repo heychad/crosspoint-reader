@@ -10,6 +10,7 @@ end = source.index("\nvoid HomeActivity::", start + 1)
 function = source[start:end]
 program = r'''
 #include <cassert>
+namespace bookmove { bool pending(){return false;} }
 #include <string>
 #include <vector>
 struct Rect {};

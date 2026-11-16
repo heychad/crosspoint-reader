@@ -119,6 +119,14 @@ std::string retainedBookmark(size_t index) { return std::string(CURRENT) + "/boo
 
 Result preflight(Work& work) {
   if (!directory(parent(work.to), false) || !destinationReferencesClear(work)) return Result::Conflict;
+  for (auto root : {Root::CrcBookmarks, Root::HashBookmarks}) {
+    for (const auto* book : {&work.from, &work.to}) {
+      const auto path = rootPath(*book, work.kind, root) + ".bookmark-edit.tmp";
+      const auto state = Storage.lookupPath(path.c_str());
+      if (state == HalStorage::PathStatus::Failed) return Result::Unavailable;
+      if (state != HalStorage::PathStatus::Missing) return Result::Conflict;
+    }
+  }
   std::string from, to, otherFrom, otherTo;
   for (size_t i = 0; i < ENTRY_COUNT; ++i) {
     if (!itemPaths(work.from, work.to, work.kind, i, from, to)) return Result::Invalid;

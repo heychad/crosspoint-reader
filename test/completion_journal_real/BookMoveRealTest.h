@@ -141,7 +141,7 @@ void normal(bool exfat) {
 }
 
 void conflicts(bool exfat) {
-  for (unsigned conflict = 0; conflict < 4; ++conflict) {
+  for (unsigned conflict = 0; conflict < 8; ++conflict) {
     Disk disk;
     FsVolume volume;
     seed(volume, exfat, disk);
@@ -155,6 +155,11 @@ void conflicts(bool exfat) {
       const auto path = bm::rootPath(from, bm::BookKind::Reflowable, bm::Root::CrcBookmarks) + ".bookmark-edit.guard";
       assert(Storage.remove(path.c_str()));
       write(path, {9, 8, 7});
+    }
+    if (conflict >= 4) {
+      const auto root = conflict < 6 ? bm::Root::CrcBookmarks : bm::Root::HashBookmarks;
+      const auto& book = conflict % 2 == 0 ? from : to;
+      write(bm::rootPath(book, bm::BookKind::Reflowable, root) + ".bookmark-edit.tmp", {1});
     }
     const auto before = disk.sectors;
     assert(bm::prepare(work) == bm::Result::Conflict);

@@ -94,6 +94,7 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
 }
 
 bool RecentBooksStore::removeByPath(const std::string& path) {
+  if (Storage.lookupPath("/.book-moves/current") != HalStorage::PathStatus::Missing) return false;
   auto it =
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
   if (it == recentBooks.end()) {
@@ -107,6 +108,7 @@ bool RecentBooksStore::removeByPath(const std::string& path) {
 }
 
 bool RecentBooksStore::removeByPathPersisted(const std::string& path) {
+  if (Storage.lookupPath("/.book-moves/current") != HalStorage::PathStatus::Missing) return false;
   // Completion can hold the storage lock while another store save holds this
   // mutex and waits for storage. Do not wait in the reverse lock order.
   std::unique_lock<std::mutex> lock(storeMutex, std::try_to_lock);

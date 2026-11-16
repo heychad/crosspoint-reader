@@ -73,7 +73,7 @@ no task or setting. Working memory is one checked `Work` allocation plus bounded
 cold-I/O path strings and existing reference-store JSON allocations. Runtime
 internal/PSRAM heap and timing measurements remain device checks.
 
-All 2,463 cumulative host checks pass. Normal moves, destination conflicts before
+All 2,464 cumulative host checks pass (the full run plus one corrected host-adapter rerun). Normal moves, destination conflicts before
 mutation, actual RAM/disk reference updates, both cover-cache roots, reader lease
 exclusion, recovery gates, all 31 state roles, opaque directory contents,
 progress backups, bookmark rewrites, protected sidecars and their temporary/
@@ -95,3 +95,27 @@ and recovery contracts are in `docs/webserver-endpoints.md`.
 The next hardware check must use a disposable copy first. A fresh state backup,
 validated image transfer into `/zDev/`, Chad's installation, and reader-side
 acceptance are still required. The nine held books have not been moved.
+
+## Review corrections
+
+The first independent correctness/storage review found startup recovery running
+before main-task ownership existed, normal resume clearing the saved book path
+while recovery was pending, cover generation/deletion reaching transaction-owned
+paths, WebSocket uploads bypassing the HTTP gate, and an unhandled CrossInk
+`.bookmark-edit.tmp` sibling. These are corrected as one batch. Boot initializes
+the activity manager before recovery and routes unresolved moves to File Transfer
+before clearing any current-book reference. Cover generators, Library deletion,
+Recents removal, deferred completion, and WebSocket writes stop while pending.
+Both source/destination staging siblings in both bookmark-key families block
+preflight before publication. Numbered retired bookmark snapshots are retained
+at their existing historical paths.
+
+Production boot-routing and WebSocket guards, Library deletion/index reopening,
+cover-grid admission, pending Recents removal, deferred-move exclusion, and
+staged-bookmark conflicts have focused regression coverage. Current 31-entry
+fault sweeps cover every write position in a successful transaction: 669 FAT
+cuts (114 resume, 555 preserve artifacts) and 777 exFAT cuts (104 resume, 673
+preserve artifacts). Those sweeps, real RAM/disk reference tests, and lifecycle
+checks pass ASan/UBSan. The host `Work` object is 3,568 bytes; device heap peaks
+and largest blocks remain unmeasured. Both X4 Pro builds pass. Targeted second
+review is required before transferring this candidate.

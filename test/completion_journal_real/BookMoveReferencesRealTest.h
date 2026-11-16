@@ -1,5 +1,6 @@
 #pragma once
 
+#include "activities/reader/DeferredCompletionMove.h"
 #include "activities/reader/StatsAccessGate.h"
 
 int bookMoveReferenceTests() {
@@ -55,8 +56,12 @@ int bookMoveReferenceTests() {
       back.to = from;
       assert(bm::prepare(back) == bm::Result::Moved);
       assert(!readingstats::normalStatsAllowed());
+      assert(readingstats::deferredcompletion::executeOnePending({}) ==
+             readingstats::deferredcompletion::ExecuteMoveResult::Busy);
       assert(!lease.acquire());
       assert(!RECENT_BOOKS.pruneMissing());
+      assert(!RECENT_BOOKS.removeByPath(to));
+      assert(!RECENT_BOOKS.removeByPathPersisted(to));
       assert(RECENT_BOOKS.getBooks()[0].path == to);
       assert(bm::recover() == bm::Result::Moved);
       assert(APP_STATE.openEpubPath == from && RECENT_BOOKS.getBooks()[0].path == from);

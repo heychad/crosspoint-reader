@@ -35,6 +35,7 @@
 #include "components/icons/search32.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
+#include "util/BookMove.h"
 #include "util/BookProgress.h"
 
 namespace fui = freeink::ui;
@@ -624,12 +625,13 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
   lock.unlock();
   startActivityForResult(std::move(confirmation), [this, path](const ActivityResult& result) {
     swallowHeldReleases();
+    const bool accepted = !result.isCancelled && !bookmove::pending();
     {
       // Same lock rationale as onEnter: the walk wants the card to itself, and
       // the render task must not read the index (or the filter) around the
       // rebuild.
       RenderLock lock(*this);
-      if (!result.isCancelled) {
+      if (accepted) {
         LOG_DBG("LIB", "deleting %s", path.c_str());
         if (!removeBookFile(path)) LOG_ERR("LIB", "cannot delete %s", path.c_str());
         if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
@@ -637,11 +639,11 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
         rebuildIndex();
       }
       if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot reopen library index");
-      if (!result.isCancelled) {
+      if (accepted) {
         resetAfterRebuild();
       }
     }
-    if (!result.isCancelled) {
+    if (accepted) {
       closeRouting();
       requestUpdate(true);
     }

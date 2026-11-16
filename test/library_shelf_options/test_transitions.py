@@ -18,6 +18,7 @@ def method(signature):
 
 code = r'''
 #include <cassert>
+namespace bookmove { inline bool blocked=false; bool pending(){return blocked;} }
 #include <functional>
 #include <memory>
 #include <string>
@@ -51,7 +52,7 @@ struct RecentStore {
 struct Gui {void drawPopup(int&,const char*){assert(locked);}} GUI;
 struct Nav {int selected=1;bool followOnBuild=false;};
 struct LibraryListActivity {
- Index index;int renderer=0,mappedInput=0,starts=0,releases=0,updates=0;Nav nav;
+ Index index;int renderer=0,mappedInput=0,starts=0,releases=0,updates=0,deletions=0;Nav nav;
  std::function<void(const ActivityResult&)> callback;
  void swallowHeldReleases(){++releases;}
  void startActivityForResult(std::unique_ptr<ConfirmationActivity> screen,std::function<void(const ActivityResult&)> cb){
@@ -59,7 +60,7 @@ struct LibraryListActivity {
  }
  void promptDeleteBookByPath(const std::string&,const std::string&);
  void promptRemoveRecentBook(const std::string&,const std::string&);
- bool removeBookFile(const std::string&){assert(locked);return true;}
+ bool removeBookFile(const std::string&){assert(locked);++deletions;return true;}
  void rebuildIndex(){assert(locked);}
  void resetAfterRebuild(){assert(locked);}
  void resolvePinned(){assert(locked);}
@@ -80,6 +81,10 @@ int main(){
  assert(c.starts==0 && c.index.opened && !locked);
  allocationOk=true;c.promptRemoveRecentBook("/c.epub","C");
  assert(c.starts==1 && !c.index.opened);c.callback({true});assert(c.index.opened && !locked);
+ LibraryListActivity d;d.promptDeleteBookByPath("/d.epub","D");bookmove::blocked=true;
+ d.callback({false});assert(d.deletions==0&&d.index.opened&&!locked);
+ bookmove::blocked=false;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});assert(d.deletions==1);
+
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:
