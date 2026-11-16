@@ -394,7 +394,9 @@ HalFile HalStorage::openChecked(const char* path, const oflag_t oflag) {
 
 bool HalStorage::mkdir(const char* path, const bool pFlag) {
   StorageLock lock;
-  if (path && SDCard.exists(path) && lookupPath(path) == PathStatus::Present) return false;
+  // Declining an existing path never mutates it, including trailing-slash
+  // spellings accepted by normal callers but rejected by recovery lookups.
+  if (path && SDCard.exists(path)) return false;
   mutationFence.mutationAttempt();
   const bool ok = SDCard.mkdir(path, pFlag);
   if (!ok) mutationFence.poison();

@@ -138,7 +138,9 @@ int main(int argc,char** argv){
   const uint8_t data[]={1,2};assert(writer.write(data,2)==2);writer.flush();assert(writer.truncate(1));
   auto moved=std::move(writer);assert(!s.beginMutationSnapshot(during));assert(moved.close());
   assert(s.beginMutationSnapshot(during));assert(s.mutationSnapshotUnchanged(during));
+  SDCard.pathExists=false;
   assert(s.mkdir("dir",true));assert(!s.mutationSnapshotUnchanged(during));
+  SDCard.pathExists=true;
   assert(s.beginMutationSnapshot(during));assert(s.rename("a","b"));assert(!s.mutationSnapshotUnchanged(during));
   assert(s.beginMutationSnapshot(during));assert(s.remove("file"));assert(!s.mutationSnapshotUnchanged(during));
   assert(s.beginMutationSnapshot(during));assert(s.replaceFile("a","b"));assert(!s.mutationSnapshotUnchanged(during));
