@@ -5,11 +5,11 @@ progress, statistics, clippings, native and imported CrossInk bookmarks, reader
 preferences, protected-book sidecars, and current/recent references. On-card
 moves must rename the EPUB rather than rewrite or transfer its contents.
 
-The library thread reports 1,408 reorganized books, 85 copied state files for
+The initial library job reported 1,408 reorganized books, 85 copied state files for
 24 books, nine current/recent books held at their original paths, and all 1,474
-catalog books present. Its local plans and receipts are input evidence, not
-authorization to move the nine or install firmware. Those actions require a
-fresh backup and Chad's device-update approval.
+catalog books present. After installing and testing test62, Chad authorized
+moving the remaining nine. Those moves and their final verification are now
+complete; results are recorded below.
 
 ## Implementation status
 
@@ -22,14 +22,15 @@ fresh backup and Chad's device-update approval.
 - [x] Complete firmware checks, independent review, and a reviewable device build.
 - [x] Fresh device backup and verified transfer into `/zDev/`.
 - [x] Chad installs test61 and confirms his current book resumes correctly.
-- [ ] Verify a disposable book before the held books move.
+- [x] Verify a disposable book through move, rename, restart, resume, bookmarks, and clippings on test62.
+- [x] Move the nine held books, verify their state, update sync receipts, and confirm all 1,474 catalog books remain present.
 
 The transaction owner is connected to Wi-Fi move/rename, device rename, and
 WebDAV book moves. Boot recovery runs after current/recent stores load and
 before reader entry. A pending transaction blocks HTTP mutations before upload
-streaming, reader entry, statistics edits, and Recents pruning. It has passed independent
-review and is transferred for human installation; the nine held books remain at
-their paths.
+streaming, reader entry, statistics edits, and Recents pruning. It has passed
+independent review and device testing on test62. All nine held books have moved
+to their planned library folders.
 
 ## Ownership and preservation
 
@@ -97,7 +98,8 @@ and recovery contracts are in `docs/webserver-endpoints.md`.
 
 The disposable-book move/rename check now passes on test62, including byte
 comparisons and Chad's restart/resume and saved-item checks. Backup, transfer,
-and device results are recorded below. The nine held books have not been moved.
+and device results are recorded below. The nine held books subsequently moved
+and passed the final state and catalog checks.
 
 ## Review corrections
 
@@ -208,4 +210,43 @@ After restarting the reader, Chad confirms that opening Move Check from Recents
 resumes correctly, a bookmark opens the expected passage, and the saved clipping
 has the correct text and opens the correct passage. This completes the
 disposable-book move/rename smoke test. Statistics preservation is verified by
-file comparison. The nine held books have not been moved.
+file comparison. At this point, the nine real books were still held; their
+subsequent authorized moves are recorded below.
+
+## Nine held books completed
+
+Chad authorized the remaining moves after the disposable-book checks. The
+saved library plan matches the current catalog and sync receipts. A fresh
+Wi-Fi backup contains 334 accessible persistent-state files totaling 459,416
+bytes, each verified by two downloads. Hidden-file visibility was restored.
+Preflight found all nine source EPUBs and no destination or state conflicts.
+
+All nine books moved through test62's state-preserving `POST /move` API:
+
+- *The End of Everything* moved to `/Fiction/Science Fiction/Science Fiction and Fantasy/`.
+- *Character*, *Dialogue*, *Story*, and *Action* moved to `/Non-fiction/Writing and Storytelling/`.
+- *If Anyone Builds It, Everyone Dies*, *Supremacy*, *Co-Existence*, and *The Shortest History of AI* moved to `/Non-fiction/Technology and AI/`.
+
+The existing EPUB entries were renamed on the card. Each of the nine EPUBs
+matches its catalog SHA-256 before and after its move. Per-book snapshots check
+all 31 state roles and compare every existing persistent file byte for byte.
+Retained derived images/HTML are checked by presence and size; generated chapter
+and CSS caches are invalidated as designed. Current/recent references and
+cover-cache paths update, while unrelated references, global/daily statistics,
+and settings remain unchanged during each operation.
+
+The final comparison verifies 331 backed-up files at their original or mapped
+paths. Current/recent JSON is checked separately against the baseline plus all
+nine intended path mappings; the library dirty marker is the expected index
+invalidation. Only the nine relevant sync receipts change, and all nine now
+record verified hashes at their new paths. A fresh inventory finds all 1,474
+catalog books at their recorded paths and sizes. No pending firmware recovery
+is reported, and the temporary library migration marker is removed.
+
+Operational scripts, scoped backups, per-book proofs, the final inventory, and
+the complete journal remain private under
+`.cache/device-test/held-books62-20261116T044058Z/`. A completion receipt is also
+saved beside the original library plans as
+`reader-held-moves-test62-complete.json`. The test62 restart/resume and saved-item
+smoke test used the disposable book; these nine real-book checks are automated
+checksum, state, reference, and inventory comparisons.

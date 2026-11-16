@@ -80,7 +80,10 @@ The disposable book is now
 `/zDev/MoveCheck/After/Move Check Renamed.epub`. After restarting the reader,
 Chad confirms correct resume from Recents, bookmark navigation, and clipping
 text and passage navigation. The move/rename device smoke test passes. The
-nine held books remain untouched. Fresh per-operation backups and receipts
+nine real books stayed held through this check; Chad then authorized their
+completed moves, recorded in
+[the held-book results](STATEFUL_BOOK_MOVES.md#nine-held-books-completed).
+Fresh per-operation backups and receipts
 are private under `.cache/device-test/move62-ondevice-qa/` and
 `.cache/device-test/rename62-ondevice-qa/`. See
 [the move record](STATEFUL_BOOK_MOVES.md#test62-device-move-and-rename).
