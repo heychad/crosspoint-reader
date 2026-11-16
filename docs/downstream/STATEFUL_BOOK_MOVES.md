@@ -18,15 +18,17 @@ fresh backup and Chad's device-update approval.
 - [x] Implement sealed journal publication, rename/rewrite execution, and recovery.
 - [x] Coordinate current/recent references in memory and on disk.
 - [x] Route file-management entry points through the shared owner.
-- [ ] Test real FAT/exFAT interruption, conflict, state, bookmark, sidecar, and reference behavior.
-- [ ] Complete firmware checks, independent review, and a reviewable device build.
-- [ ] Fresh device backup, approved installation, and disposable-book verification.
+- [x] Test real FAT/exFAT interruption, conflict, state, bookmark, sidecar, and reference behavior.
+- [x] Complete firmware checks, independent review, and a reviewable device build.
+- [x] Fresh device backup and verified transfer into `/zDev/`.
+- [ ] Chad installs and verifies a disposable book before the held books move.
 
 The transaction owner is connected to Wi-Fi move/rename, device rename, and
 WebDAV book moves. Boot recovery runs after current/recent stores load and
 before reader entry. A pending transaction blocks HTTP mutations before upload
-streaming, reader entry, statistics edits, and Recents pruning. It has not been
-reviewed or installed yet; the nine held books must remain at their paths.
+streaming, reader entry, statistics edits, and Recents pruning. It has passed independent
+review and is transferred for human installation; the nine held books remain at
+their paths.
 
 ## Ownership and preservation
 
@@ -118,4 +120,35 @@ cuts (114 resume, 555 preserve artifacts) and 777 exFAT cuts (104 resume, 673
 preserve artifacts). Those sweeps, real RAM/disk reference tests, and lifecycle
 checks pass ASan/UBSan. The host `Work` object is 3,568 bytes; device heap peaks
 and largest blocks remain unmeasured. Both X4 Pro builds pass. Targeted second
-review is required before transferring this candidate.
+correctness/storage review at `dcab13ba` found no remaining findings.
+
+## Test61 Wi-Fi handoff
+
+Completed November 15, 2026, Eastern time. The verified X4 Pro was running
+`2.0.0-chad.3-test60-swipefix-x4pro`. The new image is
+`/zDev/MOVE61.BIN`, expected version `2.0.0-chad.3-test61-bookmoves-x4pro`,
+5,823,216 bytes, SHA-256
+`24ca81fa3fdb54e3cada5633299a510456359c83f1b109fd01b5d89b772f4290`.
+ESP32-S3 chip/header, checksum, validation hash, package checksums, reader-side
+hash, and download readback all match. The source candidate is `dcab13ba`.
+The SDK pin, all three patched SDK source hashes, and non-version build flags
+match the preceding handoff. Both standard and combined X4 Pro profiles pass.
+
+A fresh scoped Wi-Fi backup preserves 322 accessible state files totaling
+449,861 bytes. Every file matches a second download before transfer and a fresh
+download after cleanup. The temporary hidden-file setting was restored, and
+original settings values match. Books, credentials, plugin configuration, and
+rebuildable caches remain on the card; inaccessible hidden transaction leaves
+are not covered. This is not a whole-card backup.
+
+Test59 was archived privately on the Mac, verified, and removed from `/zDev/`.
+The card retains `MOVE61.BIN`, installed test60's `SWIPE60.BIN`, and official
+`crosspoint-2.0.0-x4pro.bin`; all three hashes were rechecked after cleanup.
+No firmware was installed and no book was moved by the agent. Package and
+handoff receipts remain privately under `.cache/device-test/`.
+
+Chad installs from Settings → System → SD Card Firmware Update → zDev →
+MOVE61.BIN. First reopen a current book and confirm its position. The subsequent
+move check must use a disposable book with a clipping/bookmark and saved
+position; verify those and its statistics after a Wi-Fi move/rename and restart.
+The nine held books wait for that result.
