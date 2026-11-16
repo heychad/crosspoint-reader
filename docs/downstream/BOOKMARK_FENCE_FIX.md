@@ -42,10 +42,30 @@ All 2,465 cumulative checks pass across the full run and a corrected lifecycle
 adapter rerun. That adapter had reported both an existing SDK path and a missing
 checked path while asking mkdir to create a new directory; it now marks that
 test path missing before creation. The new real-filesystem regression does not
-use that adapter's presence stub. The standard X4 Pro build passes; the combined
-device build and independent review remain required before transfer.
+use that adapter's presence stub. Both `x4pro` and `x4pro-chad-test` builds pass.
+Independent correctness and storage/embedded reviews of `401ebb6f` against
+`68e13a89` found no remaining findings. The SDK pin and three existing source
+patches are unchanged. The combined profile uses 113,100 bytes of RAM and
+5,817,950 bytes of flash; these are linker sizes, not measured runtime peaks.
 
 ## Device check
+
+Test62 is transferred to `/zDev/MOVE62.BIN`, 5,823,216 bytes, SHA-256
+`ff248d11269723b25b3c607b62c2b6d0276f517906fc792ffede6434c3b57120`.
+The ESP32-S3 image checksum and validation hash pass. A download readback matches
+the packaged image. Test61's checksum API remains unavailable until restart.
+Device checksum verification after another bookmark save, and physical
+acceptance of the fix, remain pending.
+
+A fresh scoped Wi-Fi backup contains 326 accessible state files totaling
+451,057 bytes. Each file matches two pre-transfer downloads and a post-transfer
+download. Temporary hidden-file visibility is restored, and settings values
+match. The scope excludes books, credentials, plugin configuration, generated
+caches, and inaccessible hidden transaction leaves. `MOVE61.BIN`, `SWIPE60.BIN`,
+and the official `crosspoint-2.0.0-x4pro.bin` remain in `/zDev/`; each matches its
+previous image hash by download readback. No old images were deleted.
+Package, backup, and transfer receipts remain private under
+`.cache/device-test/`.
 
 Install test62, reopen the same disposable book, turn one page, and add another
 bookmark. Return to File Transfer. Checksum verification and the on-card move

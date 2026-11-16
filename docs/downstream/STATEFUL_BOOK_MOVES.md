@@ -162,6 +162,25 @@ and no pending recovery. Reading statistics are enabled. An original four-chapte
 test EPUB, `Move Check.epub`, is uploaded and hash/readback verified at
 `/zDev/MoveCheck/Before/Move Check.epub`; its destination folder is
 `/zDev/MoveCheck/After/`. It is disposable development material. The nine held
-books have not been moved. Opening the test book and saving its reading state
-remain the next human steps before testing a move. Fixture and transfer evidence
-are private under `.cache/device-test/move61-ondevice-qa/`.
+books have not been moved. Chad confirmed opening the test book and saving a
+bookmark and clipping. Its progress, statistics, bookmark, and clipping files
+are backed up. The first move preflight stopped before mutation because saving
+the bookmark had latched the storage observer through an existing-directory
+no-op. No move request was sent. Fixture and transfer evidence are private under
+`.cache/device-test/move61-ondevice-qa/`.
+
+## Test62 bookmark fix handoff
+
+The bounded HAL fix at `401ebb6f` passes 2,465 cumulative checks, eight real
+FAT/exFAT scenarios, ASan/UBSan, both X4 Pro builds, and independent correctness
+and storage/embedded reviews. It declines an already-existing SDK path without
+attempting a filesystem mutation. Real-fault and open-writer gates remain in
+place. See [the bookmark fix record](BOOKMARK_FENCE_FIX.md) for the mechanism,
+image hash, backup scope, transfer proof, and device check.
+
+`/zDev/MOVE62.BIN` is verified by download readback. All 326 freshly backed-up
+state files match after transfer; previous firmware images remain on the card.
+Chad's installation is pending. Reopen the disposable book, turn a page, and
+save another bookmark before retrying checksum and move verification. A reboot
+alone clears the old process-local fault and would not exercise the fix. The
+nine held books remain untouched.
