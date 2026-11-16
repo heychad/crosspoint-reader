@@ -2937,7 +2937,13 @@ void rolloverFaults(bool exfat, bool failStop) {
               failStop ? "fail-stop" : "transient", failures);
 }
 
+#if defined(SDFAT_BOOK_MOVES)
+#include "BookMoveRealTest.h"
+#endif
 int main() {
+#if defined(SDFAT_BOOK_MOVES)
+  return bookMoveTests();
+#endif
 #if defined(SDFAT_DEEP_SOURCE)
   for (bool exfat : {false, true})
     for (bool removeRecent : {false, true}) verifyMovedFilesOnRealFilesystem(exfat, removeRecent);

@@ -22,8 +22,10 @@ fresh backup and Chad's device-update approval.
 - [ ] Complete firmware checks, independent review, and a reviewable device build.
 - [ ] Fresh device backup, approved installation, and disposable-book verification.
 
-The new plan is not connected to production file operations yet. Current Wi-Fi
-move/rename still clears caches and is unsuitable for the nine held books.
+The transaction executor is implemented but not connected to production file
+operations yet. Current Wi-Fi move/rename still clears caches and is unsuitable
+for the nine held books. The next batch connects the owner and its recovery
+guards, then checks actual application references and endpoint behavior.
 
 ## Ownership and preservation
 
@@ -59,3 +61,23 @@ UndefinedBehaviorSanitizer. They cover truncation, single-byte corruption,
 invalid typed records with a recomputed checksum, maximum-length/Unicode paths,
 both bookmark keys, protected sidecars, and complete state/backup roots. These
 codec/path checks do not establish transaction recovery or device behavior.
+
+## Executor checkpoint
+
+The new owner writes an immutable plan and separate seal before moving state.
+It moves whole cache/statistics/backup roots, streams CrossInk bookmark path
+rewrites while retaining the originals, renames the book, invalidates only
+`sections` and CSS generated files, and updates references before archiving the
+journal. It adds no task or setting. An incomplete or conflicting journal blocks
+ordinary statistics writes. File managers and reader entry still need their
+integration guards before this can be offered on a device.
+
+Normal moves, destination conflicts before mutation, reference-save retries,
+all 27 state roles, opaque directory contents, progress backups, bookmark
+rewrites, protected sidecars, and retained original bookmark archives pass on
+real FAT/exFAT images. The initial failure sweep covers 600 fail-stop write cuts
+per filesystem: 107 FAT and 29 exFAT cuts resume automatically; other cuts remain
+for recovery. These are bounded injection samples, not a general filesystem
+repair guarantee. Source book data sectors remain byte-identical throughout.
+The X4 Pro build passes; unreferenced move functions are not yet linked into the
+running file-manager flow, so this is not release or device-readiness evidence.

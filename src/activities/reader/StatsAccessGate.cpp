@@ -6,6 +6,7 @@
 #include "CompletionJournalIO.h"
 
 bool readingstats::normalStatsAllowed() {
+  if (Storage.lookupPath("/.book-moves/current") != HalStorage::PathStatus::Missing) return false;
   const auto journal = Storage.lookupPath("/.completion-journal");
   if (journal == HalStorage::PathStatus::Missing) return true;
   if (journal != HalStorage::PathStatus::Present) return false;

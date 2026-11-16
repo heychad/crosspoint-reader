@@ -113,7 +113,41 @@ class HalStorage {
   bool rename(const char* from, const char* to) { return volume_->rename(from, to); }
   bool mkdir(const char* path, bool parents = true) { return volume_->mkdir(path, parents); }
   bool remove(const char* path) { return volume_->remove(path); }
-  bool removeDir(const char* path) { return volume_->rmdir(path); }
+  bool removeDir(const char* path) {
+#if defined(SDFAT_BOOK_MOVES)
+    auto dir = openBatchDirectory(path);
+    if (!dir) return false;
+    FsFile child;
+    while (child.openNext(&dir, O_RDONLY)) {
+      char name[256];
+      if (!child.getName(name, sizeof(name))) return false;
+      const bool directory = child.isDir();
+      if (!child.close()) return false;
+      const std::string entry = std::string(path) + "/" + name;
+      if (directory ? !removeDir(entry.c_str()) : !remove(entry.c_str())) return false;
+    }
+    return dir.close() && volume_->rmdir(path);
+#else
+    return volume_->rmdir(path);
+#endif
+  }
+#if defined(SDFAT_BOOK_MOVES)
+  enum class DirectoryMoveStatus { Missing, Ready, NotDirectory, Unavailable };
+  DirectoryMoveStatus identifyMoveDirectory(const char* path, uint32_t& firstCluster) {
+    const auto presence = lookupPath(path);
+    if (presence == PathStatus::Missing) return DirectoryMoveStatus::Missing;
+    if (presence != PathStatus::Present) return DirectoryMoveStatus::Unavailable;
+    FsFile dir = openBatchDirectory(path);
+    if (!dir) return DirectoryMoveStatus::Unavailable;
+    if (!dir.isDir()) return dir.close() ? DirectoryMoveStatus::NotDirectory : DirectoryMoveStatus::Unavailable;
+    const auto cluster = dir.firstCluster();
+    const bool error = dir.getError() != 0;
+    const bool closed = dir.close();
+    if (cluster < 2 || error || !closed) return DirectoryMoveStatus::Unavailable;
+    firstCluster = cluster;
+    return DirectoryMoveStatus::Ready;
+  }
+#endif
   bool distinctFirstClusters(const char* first, const char* second) {
     auto left = open(first, O_RDONLY), right = open(second, O_RDONLY);
     if (!left || !right) return false;
