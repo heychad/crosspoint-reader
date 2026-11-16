@@ -21,7 +21,8 @@ fresh backup and Chad's device-update approval.
 - [x] Test real FAT/exFAT interruption, conflict, state, bookmark, sidecar, and reference behavior.
 - [x] Complete firmware checks, independent review, and a reviewable device build.
 - [x] Fresh device backup and verified transfer into `/zDev/`.
-- [ ] Chad installs and verifies a disposable book before the held books move.
+- [x] Chad installs test61 and confirms his current book resumes correctly.
+- [ ] Verify a disposable book before the held books move.
 
 The transaction owner is connected to Wi-Fi move/rename, device rename, and
 WebDAV book moves. Boot recovery runs after current/recent stores load and
@@ -152,3 +153,15 @@ MOVE61.BIN. First reopen a current book and confirm its position. The subsequent
 move check must use a disposable book with a clipping/bookmark and saved
 position; verify those and its statistics after a Wi-Fi move/rename and restart.
 The nine held books wait for that result.
+
+## First device check
+
+Chad reports the update installed and his current book resumed correctly. Wi-Fi
+status confirms `2.0.0-chad.3-test61-bookmoves-x4pro`, book-move API version 1,
+and no pending recovery. Reading statistics are enabled. An original four-chapter
+test EPUB, `Move Check.epub`, is uploaded and hash/readback verified at
+`/zDev/MoveCheck/Before/Move Check.epub`; its destination folder is
+`/zDev/MoveCheck/After/`. It is disposable development material. The nine held
+books have not been moved. Opening the test book and saving its reading state
+remain the next human steps before testing a move. Fixture and transfer evidence
+are private under `.cache/device-test/move61-ondevice-qa/`.
