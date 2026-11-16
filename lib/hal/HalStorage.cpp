@@ -278,6 +278,23 @@ HalFile::~HalFile() = default;
 HalFile::HalFile(HalFile&&) = default;
 HalFile& HalFile::operator=(HalFile&&) = default;
 
+HalStorage::DirectoryMoveStatus HalStorage::identifyMoveDirectory(const char* path, uint32_t& firstCluster) {
+  StorageLock lock;
+  const auto presence = lookupPath(path);
+  if (presence == PathStatus::Missing) return DirectoryMoveStatus::Missing;
+  if (presence != PathStatus::Present || !observedSdmmcHealthy()) return DirectoryMoveStatus::Unavailable;
+  HalFile directory = openChecked(path);
+  if (!directory) return DirectoryMoveStatus::Unavailable;
+  if (!directory.isDirectory())
+    return directory.close() ? DirectoryMoveStatus::NotDirectory : DirectoryMoveStatus::Unavailable;
+  const uint32_t cluster = directory.impl->file.firstCluster();
+  const bool error = directory.hasError();
+  const bool closed = directory.close();
+  if (cluster < 2 || error || !closed || !observedSdmmcHealthy()) return DirectoryMoveStatus::Unavailable;
+  firstCluster = cluster;
+  return DirectoryMoveStatus::Ready;
+}
+
 HalStorage::SnapshotRead HalStorage::readDirectoryRecord(HalFile& directory, const MutationSnapshot& snapshot,
                                                          uint8_t* record) {
   StorageLock lock;

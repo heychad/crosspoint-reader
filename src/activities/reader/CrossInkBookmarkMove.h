@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "CompletionMoveFile.h"
+
 class HalFile;
 namespace readingstats::completionmove {
 struct BookmarkRewrite {
@@ -23,6 +25,10 @@ BookmarkRewriteResult compareBookmarkRewrite(HalFile& input, HalFile& candidate,
 // existing prefix is verified first. Caller owns sync, close and publication.
 BookmarkRewriteResult writeBookmarkRewrite(HalFile& input, HalFile& staging, std::string_view oldPath,
                                            std::string_view newPath);
+// The transaction owner must record expected before calling and coordinate
+// storage writers. Preserves the source and verifies/reuses matching staging.
+FileResult copyBookmarkChecked(const std::string& source, const std::string& target, std::string_view oldBook,
+                               std::string_view newBook, const FileIdentity& expected);
 // Writes or checks a format-preserving removal in caller-owned staging. This
 // does not publish, sync, or delete either file. The caller must establish
 // independent input/staging allocation chains before writing.

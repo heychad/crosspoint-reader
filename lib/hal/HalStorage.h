@@ -100,6 +100,10 @@ class HalStorage {
   bool exists(const char* path);
   // Missing alone does not authorize recovery writes on FAT or exFAT.
   PathStatus lookupPath(const char* path);
+  enum class DirectoryMoveStatus { Missing, Ready, NotDirectory, Unavailable };
+  // A directory's allocation token for an owned, journaled rename. This does
+  // not verify children or volume-wide ownership. Output changes only on Ready.
+  DirectoryMoveStatus identifyMoveDirectory(const char* path, uint32_t& firstCluster);
   // Check exactly 64 prefix+two-digit child names under one directory.
   // False leaves the output unchanged; a missing directory returns an empty mask.
   bool lookupNumberedChildren(const char* directory, const char* prefix, uint64_t& present);
