@@ -22,6 +22,7 @@
 #include "StatsSaveNotice.h"
 #include "XtcReaderActivity.h"
 #include "components/UITheme.h"
+#include "util/BookMove.h"
 #include "util/PluginEvents.h"
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -61,6 +62,11 @@ void ReaderActivity::notePageTurn(const bool forward, const bool succeeded) {
 
 void ReaderActivity::onEnter() {
   Activity::onEnter();
+  if (bookmove::pending()) {
+    LOG_ERR("READER", "Book move needs recovery; keeping reading state unchanged");
+    finish();
+    return;
+  }
 
   // Heap ledger for field crash reports: free vs largest block distinguishes a
   // leak (free falls) from fragmentation (free stable, largest collapses).

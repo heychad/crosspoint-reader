@@ -34,6 +34,7 @@
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsListActivity.h"
 #include "util/BmpViewerActivity.h"
+#include "util/BookMove.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
 
@@ -395,6 +396,10 @@ void ActivityManager::goToLibrary() {
 }
 
 void ActivityManager::goToSavedItems() {
+  if (bookmove::pending()) {
+    LOG_ERR("ACT", "Book move needs recovery before opening saved content");
+    return;
+  }
   auto activity = makeUniqueNoThrow<SavedItemsActivity>(renderer, mappedInput);
   if (!activity) {
     LOG_ERR("ACT", "OOM: Saved Items activity (%zu bytes)", sizeof(SavedItemsActivity));
@@ -404,6 +409,10 @@ void ActivityManager::goToSavedItems() {
 }
 
 void ActivityManager::goToSavedBook(std::string path, const SavedItemKind kind) {
+  if (bookmove::pending()) {
+    LOG_ERR("ACT", "Book move needs recovery before opening saved content");
+    return;
+  }
   if (!FsHelpers::hasReflowableBookExtension(path)) return;
   auto activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), false);
   if (!activity) {
@@ -429,6 +438,11 @@ void ActivityManager::goToPlugins(bool showOpds) {
 }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
+  if (bookmove::pending()) {
+    LOG_ERR("ACT", "Book move needs recovery before opening saved content");
+    goHome();
+    return;
+  }
   if (path.empty()) {
     goToFileBrowser("/");
     return;

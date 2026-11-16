@@ -113,7 +113,7 @@ TEST(BookMovePlan, RejectsStructurallyInvalidKindsEvenWithMatchingChecksum) {
 TEST(BookMovePaths, PreservesWholeCacheStatisticsAndBookBackupRoots) {
   const std::string from = "/Authors/Writer/Book.epub", to = "/Genres/Fiction/Book.epub";
   std::string source, target;
-  for (size_t i = 21; i < ENTRY_COUNT; ++i) {
+  for (size_t i = FIRST_DIRECTORY; i < DIRECTORY_END; ++i) {
     ASSERT_TRUE(itemPaths(from, to, BookKind::Reflowable, i, source, target));
     EXPECT_EQ(ENTRIES[i].kind, EntryKind::Directory);
     EXPECT_NE(source, target);

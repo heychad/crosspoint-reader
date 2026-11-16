@@ -9,11 +9,13 @@ namespace bookmove {
 inline bool testDestinationClear = true;
 inline bool testReferencesWritable = true;
 inline unsigned testReferenceWrites = 0;
+#if !defined(SDFAT_BOOK_MOVE_REFERENCES)
 bool destinationReferencesClear(const Work&) { return testDestinationClear; }
 bool updateReferences(const Work&) {
   ++testReferenceWrites;
   return testReferencesWritable;
 }
+#endif
 }  // namespace bookmove
 
 namespace bookmovetest {
@@ -117,6 +119,7 @@ void normal(bool exfat) {
   Disk disk;
   FsVolume volume;
   seed(volume, exfat, disk);
+  disk.writes = 0;
   bm::Work work;
   work.from = from;
   work.to = to;
@@ -132,6 +135,7 @@ void normal(bool exfat) {
   assert(bm::execute(recovered) == bm::Result::Moved);
   verify(recovered);
   assert(bm::testReferenceWrites == 2);
+  std::printf("Transaction/retry writes: %d; work bytes: %zu\n", disk.writes, sizeof(bm::Work));
   std::printf("%s book moves: complete state, bookmark rewrites, references retry, archive passed\n",
               exfat ? "exFAT" : "FAT");
 }
@@ -173,7 +177,8 @@ void faults(bool exfat) {
   for (const auto& [sector, bytes] : baseline.sectors)
     if (std::equal(bookBytes.begin(), bookBytes.end(), bytes.begin())) bookSectors.push_back(sector);
   assert(!bookSectors.empty());
-  for (int failAt = 0; failAt < 600; ++failAt) {
+  bool terminal = false;
+  for (int failAt = 0; failAt < 1200; ++failAt) {
     Disk disk = baseline;
     bm::Work work;
     work.from = from;
@@ -197,7 +202,10 @@ void faults(bool exfat) {
       }
     }
     for (auto sector : bookSectors) assert(disk.sectors.at(sector) == baseline.sectors.at(sector));
-    if (!reached) break;
+    if (!reached) {
+      terminal = true;
+      break;
+    }
     ++injected;
     disk.dead = false;
     disk.failAt = -1;
@@ -221,13 +229,19 @@ void faults(bool exfat) {
     }
     for (auto sector : bookSectors) assert(disk.sectors.at(sector) == baseline.sectors.at(sector));
   }
-  assert(injected && recovered && blocked);
+  assert(terminal && injected && recovered && blocked);
   std::printf("%s book moves: %u fail-stop write cuts, %u recovered, %u preserved for recovery\n",
               exfat ? "exFAT" : "FAT", injected, recovered, blocked);
 }
 }  // namespace bookmovetest
 
+#if defined(SDFAT_BOOK_MOVE_REFERENCES)
+#include "BookMoveReferencesRealTest.h"
+#endif
 int bookMoveTests() {
+#if defined(SDFAT_BOOK_MOVE_REFERENCES)
+  return bookMoveReferenceTests();
+#endif
   for (bool exfat : {false, true}) {
     bookmovetest::normal(exfat);
     bookmovetest::conflicts(exfat);

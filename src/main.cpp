@@ -44,6 +44,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/reader/StatsSaveNotice.h"
+#include "util/BookMove.h"
 #if defined(CROSSPOINT_EXPERIMENTAL_STATS_BACKUP)
 #include "activities/reader/DeviceStatsBackup.h"
 #include "activities/reader/ReadingStatsUtils.h"
@@ -691,6 +692,10 @@ void setup() {
   // UTC-offset setting on first boot after the update).
   timezones::applyToClock();
   RECENT_BOOKS.loadFromFile();
+  if (bookmove::pending()) {
+    const auto recovered = bookmove::recover();
+    LOG_INF("MAIN", "Book move recovery result: %u", static_cast<unsigned>(recovered));
+  }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();

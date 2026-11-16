@@ -167,6 +167,7 @@ bool RecentBooksStore::updatePathPersisted(const std::string& oldPath, const std
 bool RecentBooksStore::isMissing(const RecentBook& book) { return !Storage.exists(book.path.c_str()); }
 
 bool RecentBooksStore::pruneMissing() {
+  if (Storage.lookupPath("/.book-moves/current") != HalStorage::PathStatus::Missing) return false;
   const size_t before = recentBooks.size();
   recentBooks.erase(std::remove_if(recentBooks.begin(), recentBooks.end(), &isMissing), recentBooks.end());
   return recentBooks.size() != before;

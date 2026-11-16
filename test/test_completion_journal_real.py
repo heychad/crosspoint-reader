@@ -430,9 +430,13 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
                str(real_test_cpp), str(journal_cpp), str(ROOT / 'test/CompletionArchiveInventoryStub.cpp'), *probe_sources, str(ROOT / 'lib/Serialization/MoveReferenceSafeWrite.cpp'), str(ROOT / 'src/activities/reader/CompletionLibraryDirty.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionIntentIO.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionMoveRetirement.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveReferences.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveFile.cpp'), str(ROOT / 'src/activities/reader/CompletionMovePlanIO.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkCopy.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkMove.cpp'), str(ROOT / 'src/activities/reader/StatsSafeReplace.cpp'), str(ROOT / 'src/activities/reader/ReadingStatsUtils.cpp'), *lease_sources, str(production_lookup), *map(str, cpp_files),
                '-o', str(executable)]
     if os.environ.get('SDFAT_BOOK_MOVES') == '1':
-        command += ['-DSDFAT_BOOK_MOVES=1',
-                    str(ROOT / 'src/util/BookMoveStorage.cpp'),
-                    str(ROOT / 'src/util/BookmarkUtil.cpp')]
+        command += ['-DSDFAT_BOOK_MOVES=1', str(ROOT / 'src/util/BookMoveStorage.cpp')]
+        if not real_move_stores:
+            command.append(str(ROOT / 'src/util/BookmarkUtil.cpp'))
+        if os.environ.get('SDFAT_BOOK_MOVE_REFERENCES') == '1':
+            if not real_move_stores:
+                raise ValueError('Book move reference checks require the real stores')
+            command += ['-DSDFAT_BOOK_MOVE_REFERENCES=1', str(ROOT / 'src/util/BookMove.cpp')]
     command += store_sources
     if snapshot_experiment or transaction_experiment:
         command += [str(ROOT / 'src/personalization/CrossInkImportSnapshot.cpp'), '-I',

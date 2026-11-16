@@ -5,6 +5,7 @@
 #include <HiddenItems.h>
 #include <Logging.h>
 
+#include "BookMoveWeb.h"
 #include "ClippingStore.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
@@ -541,6 +542,30 @@ void WebDAVHandler::handleMove(WebServer& s) {
       s.send(409, "text/plain", "Destination parent does not exist");
       return;
     }
+  }
+
+  HalFile source = Storage.openChecked(srcPath.c_str());
+  if (!source) {
+    s.send(503, "text/plain", "Cannot inspect source");
+    return;
+  }
+  const bool directory = source.isDirectory();
+  if (!source.close()) {
+    s.send(503, "text/plain", "Cannot close source");
+    return;
+  }
+  if (directory) {
+    s.send(409, "text/plain", "Move books individually to preserve their reading state");
+    return;
+  }
+  if (bookmove::managedBook(srcPath.c_str()) || bookmove::managedBook(dstPath.c_str())) {
+    // A book's destination and state must never be removed for DAV Overwrite.
+    if (Storage.lookupPath(dstPath.c_str()) != HalStorage::PathStatus::Missing) {
+      s.send(overwrite ? 409 : 412, "text/plain", "Destination retained; book overwrite is not supported");
+      return;
+    }
+    bookmove::sendResult(s, bookmove::move(srcPath.c_str(), dstPath.c_str()), 201);
+    return;
   }
 
   bool dstExists = Storage.exists(dstPath.c_str());

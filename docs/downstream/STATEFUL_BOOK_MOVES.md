@@ -15,17 +15,18 @@ fresh backup and Chad's device-update approval.
 
 - [x] Inspect Wi-Fi, device rename, WebDAV, completion moves, state stores, and reader lifetime.
 - [x] Define and test a bounded, checksummed plan and path mapping.
-- [ ] Implement sealed journal publication, rename/rewrite execution, and recovery.
-- [ ] Coordinate current/recent references in memory and on disk.
-- [ ] Route file-management entry points through the shared owner.
+- [x] Implement sealed journal publication, rename/rewrite execution, and recovery.
+- [x] Coordinate current/recent references in memory and on disk.
+- [x] Route file-management entry points through the shared owner.
 - [ ] Test real FAT/exFAT interruption, conflict, state, bookmark, sidecar, and reference behavior.
 - [ ] Complete firmware checks, independent review, and a reviewable device build.
 - [ ] Fresh device backup, approved installation, and disposable-book verification.
 
-The transaction executor is implemented but not connected to production file
-operations yet. Current Wi-Fi move/rename still clears caches and is unsuitable
-for the nine held books. The next batch connects the owner and its recovery
-guards, then checks actual application references and endpoint behavior.
+The transaction owner is connected to Wi-Fi move/rename, device rename, and
+WebDAV book moves. Boot recovery runs after current/recent stores load and
+before reader entry. A pending transaction blocks HTTP mutations before upload
+streaming, reader entry, statistics edits, and Recents pruning. It has not been
+reviewed or installed yet; the nine held books must remain at their paths.
 
 ## Ownership and preservation
 
@@ -50,7 +51,7 @@ with those generated files. Existing completion move/file and reference-write
 primitives are the starting point; ordinary moves must not mark a book finished
 or change reading totals.
 
-The plan codec uses a maximum 1,023 bytes per book path and a 2,639-byte record,
+The plan codec uses a maximum 1,023 bytes per book path and a 2,723-byte record,
 allocated off the task stack by its eventual owner. It validates every entry's
 role, path lengths, canonical names, transaction ID, exact length, and checksum.
 It adds no setting, task, or persistent reader field. Runtime working-set and
@@ -62,22 +63,35 @@ invalid typed records with a recomputed checksum, maximum-length/Unicode paths,
 both bookmark keys, protected sidecars, and complete state/backup roots. These
 codec/path checks do not establish transaction recovery or device behavior.
 
-## Executor checkpoint
+## Verification checkpoint
 
-The new owner writes an immutable plan and separate seal before moving state.
-It moves whole cache/statistics/backup roots, streams CrossInk bookmark path
-rewrites while retaining the originals, renames the book, invalidates only
-`sections` and CSS generated files, and updates references before archiving the
-journal. It adds no task or setting. An incomplete or conflicting journal blocks
-ordinary statistics writes. File managers and reader entry still need their
-integration guards before this can be offered on a device.
+The owner writes an immutable plan and separate seal before moving state. It
+moves whole cache/statistics/backup roots, streams CrossInk bookmark path
+rewrites while retaining originals, renames the book, invalidates only generated
+section/CSS files, and updates references before archiving the journal. It adds
+no task or setting. Working memory is one checked `Work` allocation plus bounded
+cold-I/O path strings and existing reference-store JSON allocations. Runtime
+internal/PSRAM heap and timing measurements remain device checks.
 
-Normal moves, destination conflicts before mutation, reference-save retries,
-all 27 state roles, opaque directory contents, progress backups, bookmark
-rewrites, protected sidecars, and retained original bookmark archives pass on
-real FAT/exFAT images. The initial failure sweep covers 600 fail-stop write cuts
-per filesystem: 107 FAT and 29 exFAT cuts resume automatically; other cuts remain
-for recovery. These are bounded injection samples, not a general filesystem
-repair guarantee. Source book data sectors remain byte-identical throughout.
-The X4 Pro build passes; unreferenced move functions are not yet linked into the
-running file-manager flow, so this is not release or device-readiness evidence.
+All 2,463 cumulative host checks pass. Normal moves, destination conflicts before
+mutation, actual RAM/disk reference updates, both cover-cache roots, reader lease
+exclusion, recovery gates, all 31 state roles, opaque directory contents,
+progress backups, bookmark rewrites, protected sidecars and their temporary/
+backup files, and retained original bookmarks are checked on FAT/exFAT images.
+The 27-entry prototype's complete failure sweep covered 648 FAT and 765 exFAT
+fail-stop write cuts under ASan/UBSan with the driver's bytewise endian helper;
+the extended 31-entry cases pass in the cumulative suite. Initial sanitizer
+attempts used SdFat's ARM unaligned-access shortcut; the host verification uses
+`-U__ARM_FEATURE_UNALIGNED` to exercise the bytewise path also selected on Xtensa.
+The original book's data sectors remain unchanged through every cut/retry.
+
+Ambiguous, damaged, or unsealed journals stop further edits and retain artifacts.
+This is not a general filesystem repair guarantee. Directory allocation tokens
+identify observed roots, not volume-wide ownership. External card modifications
+while a transaction is pending are unsupported. WebDAV moves books individually
+and refuses destination overwrite; directory moves are rejected. HTTP status
+and recovery contracts are in `docs/webserver-endpoints.md`.
+
+The next hardware check must use a disposable copy first. A fresh state backup,
+validated image transfer into `/zDev/`, Chad's installation, and reader-side
+acceptance are still required. The nine held books have not been moved.

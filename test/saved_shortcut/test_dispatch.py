@@ -14,6 +14,7 @@ manager_end = manager.index("\nvoid ActivityManager::", manager_start + 10)
 manager_body = manager[manager_start:manager_end]
 code = r'''
 #include <cassert>
+namespace bookmove { inline bool blocked=false; bool pending(){return blocked;} }
 #include "personalization/ReaderShortcuts.h"
 using readershortcuts::Action;
 #include <memory>
@@ -42,6 +43,9 @@ int main(){
  canAllocate=false;activityManager.pending=false;
  assert(reader.dispatch(Action::SavedItems));
  assert(activityManager.calls==1 && !activityManager.pending && reader.updates==2);
+ canAllocate=true;bookmove::blocked=true;
+ assert(reader.dispatch(Action::SavedItems));
+ assert(activityManager.calls==1 && !activityManager.pending);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

@@ -24,6 +24,8 @@
 #include <base64.h>
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
+
+#include "BookMoveWeb.h"
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 #include <esp_random.h>
 
@@ -970,6 +972,14 @@ void CrossPointWebServer::begin() {
 
   // Setup routes
   LOG_DBG("WEB", "Setting up routes...");
+  auto recoveryGuard = makeUniqueNoThrow<bookmove::RecoveryGuard>();
+  if (!recoveryGuard) {
+    LOG_ERR("WEB", "Cannot allocate book-move recovery guard");
+    server.reset();
+    return;
+  }
+  server->addHandler(recoveryGuard.release());
+  server->on("/api/books/move/recover", HTTP_POST, [this] { bookmove::sendResult(*server, bookmove::recover()); });
   server->on("/", HTTP_GET, [this] { handleRoot(); });
   server->on("/files", HTTP_GET, [this] { handleFileList(); });
   server->on("/js/jszip.min.js", HTTP_GET, [this] { handleJszip(); });
@@ -1355,6 +1365,8 @@ void CrossPointWebServer::handleStatus() const {
   const String ipAddr = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
 
   JsonDocument doc;
+  doc["bookMoveApiVersion"] = 1;
+  doc["bookMoveRecoveryPending"] = bookmove::pending();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   doc["fileChecksumApiVersion"] = 1;
 #endif
@@ -2136,8 +2148,15 @@ void CrossPointWebServer::handleRename() const {
     return;
   }
 
-  clearBookCache(itemPath.c_str());
   file.close();
+  if (bookmove::managedBook(itemPath.c_str())) {
+    if (wsUploadInProgress || upload.file) {
+      bookmove::sendResult(*server, bookmove::Result::Busy);
+      return;
+    }
+    bookmove::sendResult(*server, bookmove::move(itemPath.c_str(), newPath.c_str()));
+    return;
+  }
   const bool success = ClippingStore::moveBook(itemPath.c_str(), newPath.c_str());
 
   if (success) {
@@ -2234,8 +2253,15 @@ void CrossPointWebServer::handleMove() const {
     return;
   }
 
-  clearBookCache(itemPath.c_str());
   file.close();
+  if (bookmove::managedBook(itemPath.c_str())) {
+    if (wsUploadInProgress || upload.file) {
+      bookmove::sendResult(*server, bookmove::Result::Busy);
+      return;
+    }
+    bookmove::sendResult(*server, bookmove::move(itemPath.c_str(), newPath.c_str()));
+    return;
+  }
   const bool success = ClippingStore::moveBook(itemPath.c_str(), newPath.c_str());
 
   if (success) {

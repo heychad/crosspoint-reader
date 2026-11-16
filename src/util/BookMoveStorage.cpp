@@ -156,7 +156,13 @@ Result moveEntry(const Work& work, size_t index) {
   std::string from, to;
   if (!itemPaths(work.from, work.to, work.kind, index, from, to)) return Result::RecoveryRequired;
   const auto& expected = work.identities[index];
-  if (from == to) return expected.kind == EntryKind::Missing ? Result::Moved : Result::Conflict;
+  if (from == to) {
+    EntryIdentity current;
+    const auto captured = capture(from, ENTRIES[index].kind, current);
+    return captured == Result::Moved && expected.kind == EntryKind::Missing && equal(current, expected)
+               ? Result::Moved
+               : Result::Conflict;
+  }
   if (!directory(parent(to), true)) return Result::RecoveryRequired;
   if (ENTRIES[index].kind == EntryKind::LegacyBookmark && expected.kind != EntryKind::Missing) {
     const auto retained = retainedBookmark(index);

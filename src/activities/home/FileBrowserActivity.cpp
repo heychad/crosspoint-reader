@@ -21,6 +21,7 @@
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
+#include "util/BookMove.h"
 #include "util/BookmarkUtil.h"
 
 namespace fui = freeink::ui;
@@ -35,35 +36,6 @@ bool savePreferredSleepFolder(const std::string& folder, bool clear) {
 }
 #endif
 
-std::string getBookCachePath(const std::string& path) {
-  const char* prefix = nullptr;
-  if (FsHelpers::hasReflowableBookExtension(path)) {
-    prefix = "epub_";
-  } else if (FsHelpers::hasXtcExtension(path)) {
-    prefix = "xtc_";
-  } else {
-    return "";
-  }
-  return std::string("/.crosspoint/") + prefix + std::to_string(std::hash<std::string>{}(path));
-}
-
-bool moveStatePath(const std::string& oldPath, const std::string& newPath, bool& moved) {
-  moved = false;
-  if (oldPath.empty() || !Storage.exists(oldPath.c_str())) return true;
-  if (Storage.exists(newPath.c_str())) {
-    LOG_ERR("FileBrowser", "Rename state target already exists: %s", newPath.c_str());
-    return false;
-  }
-  moved = Storage.rename(oldPath.c_str(), newPath.c_str());
-  if (!moved) LOG_ERR("FileBrowser", "Failed to move rename state: %s -> %s", oldPath.c_str(), newPath.c_str());
-  return moved;
-}
-
-void rollBackStatePath(const std::string& oldPath, const std::string& newPath, const bool moved) {
-  if (moved && !Storage.rename(newPath.c_str(), oldPath.c_str())) {
-    LOG_ERR("FileBrowser", "Failed to roll back rename state: %s -> %s", newPath.c_str(), oldPath.c_str());
-  }
-}
 }  // namespace
 
 std::string getFileExtension(const std::string& filename);
@@ -430,6 +402,10 @@ void FileBrowserActivity::showEntryActions() {
 }
 
 void FileBrowserActivity::deleteSelected() {
+  if (bookmove::pending()) {
+    LOG_ERR("FileBrowser", "Book move needs recovery before deletion");
+    return;
+  }
   if (files.empty() || nav.selected < 0 || nav.selected >= listCount()) return;
 
   std::string cleanBasePath = basepath;
@@ -512,29 +488,19 @@ void FileBrowserActivity::renameSelectedFile(const std::string& oldPath, const s
     return;
   }
 
-  const std::string oldCachePath = getBookCachePath(oldPath);
-  const std::string newCachePath = getBookCachePath(newPath);
-  const bool hasBookmarks = FsHelpers::hasReflowableBookExtension(oldPath);
-  const std::string oldBookmarkPath = hasBookmarks ? BookmarkUtil::getBookmarkPath(oldPath) : "";
-  const std::string newBookmarkPath = hasBookmarks ? BookmarkUtil::getBookmarkPath(newPath) : "";
-  bool cacheMoved = false;
-  bool bookmarksMoved = false;
-  if (!moveStatePath(oldCachePath, newCachePath, cacheMoved)) return;
-  if (!moveStatePath(oldBookmarkPath, newBookmarkPath, bookmarksMoved)) {
-    rollBackStatePath(oldCachePath, newCachePath, cacheMoved);
+  if (bookmove::pending()) {
+    LOG_ERR("FileBrowser", "Book move needs recovery before renaming");
     return;
   }
-  if (!ClippingStore::moveBook(oldPath, newPath)) {
-    LOG_ERR("FileBrowser", "Failed to rename file: %s -> %s", oldPath.c_str(), newPath.c_str());
-    rollBackStatePath(oldBookmarkPath, newBookmarkPath, bookmarksMoved);
-    rollBackStatePath(oldCachePath, newCachePath, cacheMoved);
+  if (bookmove::managedBook(oldPath)) {
+    const auto result = bookmove::move(oldPath, newPath);
+    if (result != bookmove::Result::Moved) {
+      LOG_ERR("FileBrowser", "Book rename failed (%u); files retained", static_cast<unsigned>(result));
+      return;
+    }
+  } else if (!ClippingStore::moveBook(oldPath, newPath)) {
+    LOG_ERR("FileBrowser", "File rename failed: %s", oldPath.c_str());
     return;
-  }
-
-  RECENT_BOOKS.updatePath(oldPath, newPath, oldCachePath, newCachePath);
-  if (APP_STATE.openEpubPath == oldPath) {
-    APP_STATE.openEpubPath = newPath;
-    if (!APP_STATE.saveToFile()) LOG_ERR("FileBrowser", "Failed to save renamed open-book path");
   }
 
   {

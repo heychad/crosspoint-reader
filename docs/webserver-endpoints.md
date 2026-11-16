@@ -193,8 +193,12 @@ Form parameters:
 | `path` | Yes | Existing file path |
 | `name` | Yes | New file name, not a path |
 
-Only files can be renamed through this endpoint. The old EPUB cache path is
-cleared before the rename.
+Only files can be renamed. EPUB, TXT, Markdown, and XTC/XTCH books use the
+journaled state-preserving move owner; the file extension must remain unchanged.
+The book is renamed on the card. Progress, statistics, clippings, bookmarks,
+reader preferences, protected-book sidecars, and current/recent references are
+preserved. Only generated section/CSS caches are invalidated. Destination or
+state conflicts return 409 and preserve the conflicting files.
 
 ### `POST /move`
 
@@ -211,8 +215,23 @@ Form parameters:
 | `path` | Yes | Existing file path |
 | `dest` | Yes | Existing destination folder |
 
-Only files can be moved through this endpoint. The old EPUB cache path is
-cleared before the move.
+Only files can be moved. Books use the same state-preserving owner as `/rename`.
+`/api/status` exposes `bookMoveApiVersion: 1` and `bookMoveRecoveryPending`.
+A pending transaction blocks further HTTP mutations, reader entry, and ordinary
+statistics edits. Read-only listings/downloads remain available.
+
+### `POST /api/books/move/recover`
+
+Retries the current sealed book move on the main task after live readers and
+open writers have closed. No parameters. Boot also attempts recovery before
+opening a book. Success returns 200. A busy or unresolved transaction returns
+423; storage/allocation failure returns 503. Unsealed, damaged, or ambiguous
+artifacts are retained for inspection and do not authorize more writes.
+
+WebDAV book `MOVE` uses the same owner. Existing destinations are preserved even
+with `Overwrite: T` (409; `Overwrite: F` returns 412). Directory moves return 409;
+move individual books so each one's reading state can be retained. This does not
+implement general FAT/exFAT repair after damaged rename metadata.
 
 ### `POST /delete`
 

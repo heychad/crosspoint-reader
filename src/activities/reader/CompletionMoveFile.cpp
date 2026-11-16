@@ -5,6 +5,12 @@
 #include <algorithm>
 #include <cstring>
 
+#if defined(ARDUINO)
+#include <Arduino.h>
+
+#include "util/TaskWatchdog.h"
+#endif
+
 namespace readingstats::completionmove {
 namespace {
 FileResult captureLocked(const std::string& path, FileIdentity& output) {
@@ -31,6 +37,12 @@ FileResult captureLocked(const std::string& path, FileIdentity& output) {
     }
     for (size_t i = 0; i < count; ++i) identity.checksum = (identity.checksum ^ buffer[i]) * 1099511628211ULL;
     offset += count;
+#if defined(ARDUINO)
+    if ((offset & 0xffffU) == 0) {
+      resetTaskWatchdogIfSubscribed();
+      yield();
+    }
+#endif
   }
   const bool closed = file.close();
   if (!ok || !closed) return FileResult::Unavailable;

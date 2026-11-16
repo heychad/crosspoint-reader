@@ -9,6 +9,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
 #include "activities/reader/CompletionJournalIO.h"
+#include "activities/reader/DeferredCompletionIntentIO.h"
 #include "activities/reader/StatsSessionLease.h"
 #include "network/sync/StoredReferenceGuard.h"
 
@@ -40,6 +41,18 @@ bool completionIdle() {
          readingstats::completionjournal::ScanResult::Empty;
 }
 
+bool deferredIdle(const std::string& from, const std::string& to) {
+  auto record = makeUniqueNoThrow<readingstats::deferredcompletion::Record>();
+  if (!record) return false;
+  size_t size = 0;
+  unsigned slot = 0;
+  for (const auto* path : {&from, &to})
+    if (readingstats::deferredcompletion::find(*path, *record, size, slot) !=
+        readingstats::deferredcompletion::FindResult::Missing)
+      return false;
+  return true;
+}
+
 struct Request {
   const std::string* from = nullptr;
   const std::string* to = nullptr;
@@ -49,6 +62,11 @@ struct Request {
 bool dispatch(void* raw) {
   auto& request = *static_cast<Request*>(raw);
   if (StatsSessionLease::anyActive() || !completionIdle()) {
+    request.result = Result::Busy;
+    return true;
+  }
+  HalStorage::MutationSnapshot snapshot;
+  if (!Storage.beginMutationSnapshot(snapshot)) {
     request.result = Result::Busy;
     return true;
   }
@@ -68,6 +86,10 @@ bool dispatch(void* raw) {
     }
     work->from = *request.from;
     work->to = *request.to;
+    if (!deferredIdle(work->from, work->to)) {
+      request.result = Result::Busy;
+      return true;
+    }
     request.result = prepare(*work);
     if (request.result != Result::Moved) return true;
   }

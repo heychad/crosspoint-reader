@@ -18,9 +18,10 @@ struct EntryIdentity {
   uint64_t checksum = 0;
 };
 
-constexpr size_t ENTRY_COUNT = 27;
+constexpr size_t ENTRY_COUNT = 31;
 constexpr size_t FIRST_LEGACY_BOOKMARK = 11;
 constexpr size_t FIRST_DIRECTORY = 21;
+constexpr size_t DIRECTORY_END = 27;
 constexpr size_t MAX_PATH_BYTES = readingstats::completionjournal::MAX_SOURCE_PATH;
 constexpr size_t HEADER_BYTES = 18;
 constexpr size_t ENTRY_BYTES = 21;
@@ -55,9 +56,9 @@ inline bool validIdentity(const EntryIdentity& identity) {
 }
 
 constexpr EntryKind expectedKind(size_t index) {
-  return index < FIRST_LEGACY_BOOKMARK ? EntryKind::File
-         : index < FIRST_DIRECTORY     ? EntryKind::LegacyBookmark
-                                       : EntryKind::Directory;
+  if (index >= FIRST_DIRECTORY && index < DIRECTORY_END) return EntryKind::Directory;
+  if (index >= FIRST_LEGACY_BOOKMARK && index < FIRST_DIRECTORY) return EntryKind::LegacyBookmark;
+  return EntryKind::File;
 }
 
 inline void put64(uint8_t* out, uint64_t value) {

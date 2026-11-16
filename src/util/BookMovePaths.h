@@ -58,6 +58,10 @@ inline constexpr std::array<EntrySpec, ENTRY_COUNT> ENTRIES{{
     {Root::LegacyStatistics, "", EntryKind::Directory},
     {Root::Backups, "", EntryKind::Directory},
     {Root::LegacyBackups, "", EntryKind::Directory},
+    {Root::Book, ".key.tmp", EntryKind::File},
+    {Root::Book, ".key.bak", EntryKind::File},
+    {Root::Book, ".rights.tmp", EntryKind::File},
+    {Root::Book, ".rights.bak", EntryKind::File},
 }};
 static_assert([] {
   for (size_t i = 0; i < ENTRIES.size(); ++i)
