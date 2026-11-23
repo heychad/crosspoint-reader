@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <utility>
 
 #include "Epub/converters/DirectPixelWriter.h"
 #include "Epub/converters/ImageDecoderFactory.h"
@@ -89,46 +90,59 @@ void rememberImageFailure(const std::string& path) {
   failedImageHashes[failedImageCount++] = imagePathHash(path);
 }
 
-// --- Per-page-render RAM slot for the pixel cache ----------------------------
-// The tiled grayscale flow re-renders an image page once for the BW
-// double-refresh and again for every band of both gray planes, and each pass
-// re-read the whole .pxc off SD (~100 ms for a full-page image, ~13 passes).
-// Portrait bands clip columns, so streaming still touches every row.
-// The first pass loads the payload into RAM and later passes
-// render from it. The X4 Pro uses PSRAM; without it the original heap-gated
-// chunks remain available. A failed cache fill falls back to streaming. The
-// reader releases the slot at the end of the page render.
-constexpr size_t PXC_CHUNK_SHIFT = 14;  // 16 KB chunks
+// Reuse packed pixels between the BW and grayscale passes of one page.
+// On the X4 Pro, several images can share the existing 96 KiB PSRAM budget.
+// If no PSRAM slot is populated, the heap can still cache one image in chunks.
+// Additional images stream from SD without evicting the cached images.
+constexpr size_t PXC_CHUNK_SHIFT = 14;  // 16 KiB chunks
 constexpr size_t PXC_CHUNK_SIZE = 1u << PXC_CHUNK_SHIFT;
-constexpr size_t PXC_MAX_CHUNKS = 6;  // 96 KB: a full-screen 2bpp image
+constexpr size_t PXC_MAX_CHUNKS = 6;
+constexpr size_t PXC_MAX_BYTES = PXC_CHUNK_SIZE * PXC_MAX_CHUNKS;
 constexpr size_t PXC_HEAP_RESERVE = 24 * 1024;
 constexpr size_t PXC_MAX_ALLOC_RESERVE = 8 * 1024;
-// Rows can straddle a chunk boundary; they are reassembled into a stack
-// buffer. (screenWidth + 3) / 4 caps at 200 B for an 800px panel.
+// Rows can straddle a heap chunk boundary. This buffer fits one packed row.
 constexpr int PXC_MAX_BYTES_PER_ROW = 208;
 
+struct PxcKey {
+  uint64_t hash = 0;
+  uint16_t width = 0;
+  uint16_t height = 0;
+
+  bool matches(uint64_t cacheHash, int expectedWidth, int expectedHeight) const {
+    return width != 0 && hash == cacheHash && abs(width - expectedWidth) <= 1 && abs(height - expectedHeight) <= 1;
+  }
+};
+
 std::unique_ptr<uint8_t[]> pxcChunks[PXC_MAX_CHUNKS];
+PxcKey pxcChunkKey;
+
 #if FREEINK_DEVICE_X4PRO
-HalMemory::PsramBuffer pxcPsram;
+struct PsramPxcSlot {
+  HalMemory::PsramBuffer pixels;
+  PxcKey key;
+};
+
+constexpr size_t PXC_MAX_PSRAM_SLOTS = 4;
+PsramPxcSlot pxcPsramSlots[PXC_MAX_PSRAM_SLOTS];
+size_t pxcPsramCount = 0;
+size_t pxcPsramBytes = 0;
 #endif
-uint64_t pxcSlotHash = 0;
-uint16_t pxcSlotWidth = 0;
-uint16_t pxcSlotHeight = 0;
+
+void releasePxcChunks() {
+  for (auto& chunk : pxcChunks) chunk.reset();
+  pxcChunkKey = {};
+}
 
 void releasePxcSlot() {
-  for (auto& chunk : pxcChunks) chunk.reset();
+  releasePxcChunks();
 #if FREEINK_DEVICE_X4PRO
-  pxcPsram.reset();
+  for (size_t i = 0; i < pxcPsramCount; i++) pxcPsramSlots[i] = {};
+  pxcPsramCount = 0;
+  pxcPsramBytes = 0;
 #endif
-  pxcSlotHash = 0;
-  pxcSlotWidth = 0;
-  pxcSlotHeight = 0;
 }
 
 const uint8_t* pxcRowPtr(size_t rowStart, int bytesPerRow, uint8_t* tempRow) {
-#if FREEINK_DEVICE_X4PRO
-  if (pxcPsram) return pxcPsram.get() + rowStart;
-#endif
   const size_t chunk = rowStart >> PXC_CHUNK_SHIFT;
   const size_t offset = rowStart & (PXC_CHUNK_SIZE - 1);
   if (offset + bytesPerRow <= PXC_CHUNK_SIZE) {
@@ -140,44 +154,22 @@ const uint8_t* pxcRowPtr(size_t rowStart, int bytesPerRow, uint8_t* tempRow) {
   return tempRow;
 }
 
-// cacheFile is positioned just past the header. True when the slot holds the
-// full pixel payload for this cache path afterward.
-bool loadPxcSlot(uint64_t cacheHash, HalFile& cacheFile, uint16_t cachedWidth, uint16_t cachedHeight, int bytesPerRow) {
-  releasePxcSlot();
-  if (bytesPerRow > PXC_MAX_BYTES_PER_ROW) {
-    return false;
-  }
-  size_t remaining = (size_t)bytesPerRow * cachedHeight;
-  const size_t chunkCount = (remaining + PXC_CHUNK_SIZE - 1) >> PXC_CHUNK_SHIFT;
-  if (chunkCount == 0 || chunkCount > PXC_MAX_CHUNKS) {
-    return false;
-  }
-#if FREEINK_DEVICE_X4PRO
-  pxcPsram = HalMemory::allocatePsram(remaining);
-#endif
-  for (size_t i = 0; i < chunkCount; i++) {
-    const size_t want = remaining < PXC_CHUNK_SIZE ? remaining : PXC_CHUNK_SIZE;
-    uint8_t* destination = nullptr;
-#if FREEINK_DEVICE_X4PRO
-    if (pxcPsram) destination = pxcPsram.get() + i * PXC_CHUNK_SIZE;
-#endif
-    if (!destination) {
-      if (ESP.getFreeHeap() < remaining + PXC_HEAP_RESERVE || ESP.getMaxAllocHeap() < want + PXC_MAX_ALLOC_RESERVE) {
-        releasePxcSlot();
-        return false;
-      }
-      pxcChunks[i] = makeUniqueNoThrow<uint8_t[]>(want);
-      destination = pxcChunks[i].get();
+// cacheFile is positioned just past the header. The caller checks the budget.
+bool loadPxcChunks(const PxcKey& key, HalFile& cacheFile, size_t remaining) {
+  for (size_t i = 0; remaining != 0; i++) {
+    const size_t want = std::min(remaining, PXC_CHUNK_SIZE);
+    if (ESP.getFreeHeap() < remaining + PXC_HEAP_RESERVE || ESP.getMaxAllocHeap() < want + PXC_MAX_ALLOC_RESERVE) {
+      releasePxcChunks();
+      return false;
     }
-    if (!destination || cacheFile.read(destination, want) != static_cast<int>(want)) {
-      releasePxcSlot();
+    pxcChunks[i] = makeUniqueNoThrow<uint8_t[]>(want);
+    if (!pxcChunks[i] || cacheFile.read(pxcChunks[i].get(), want) != static_cast<int>(want)) {
+      releasePxcChunks();
       return false;
     }
     remaining -= want;
   }
-  pxcSlotHash = cacheHash;
-  pxcSlotWidth = cachedWidth;
-  pxcSlotHeight = cachedHeight;
+  pxcChunkKey = key;
   return true;
 }
 
@@ -192,18 +184,57 @@ void renderPackedRow(DirectPixelWriter& writer, const uint8_t* pixels, int x, in
   }
 }
 
-void renderRowsFromPxcSlot(GfxRenderer& renderer, int x, int y) {
-  const int bytesPerRow = (pxcSlotWidth + 3) / 4;
-  uint8_t tempRow[PXC_MAX_BYTES_PER_ROW];
-
+template <typename ReadRow>
+void renderPxcRows(GfxRenderer& renderer, int x, int y, const PxcKey& key, const ReadRow& readRow) {
+  const int bytesPerRow = (key.width + 3) / 4;
   DirectPixelWriter pw;
   pw.init(renderer);
 
-  const auto [first, last] = pw.bandRowRange(y, pxcSlotHeight);
+  const auto [first, last] = pw.bandRowRange(y, key.height);
   for (int row = first; row < last; row++) {
-    const auto* pixels = pxcRowPtr(static_cast<size_t>(row) * bytesPerRow, bytesPerRow, tempRow);
-    renderPackedRow(pw, pixels, x, y + row, pxcSlotWidth);
+    const auto* pixels = readRow(static_cast<size_t>(row) * bytesPerRow, bytesPerRow);
+    renderPackedRow(pw, pixels, x, y + row, key.width);
   }
+}
+
+void renderPxcChunks(GfxRenderer& renderer, int x, int y) {
+  uint8_t tempRow[PXC_MAX_BYTES_PER_ROW];
+  renderPxcRows(renderer, x, y, pxcChunkKey,
+                [&](size_t offset, int bytesPerRow) { return pxcRowPtr(offset, bytesPerRow, tempRow); });
+}
+
+#if FREEINK_DEVICE_X4PRO
+void renderPxcPsram(GfxRenderer& renderer, int x, int y, const PsramPxcSlot& slot) {
+  renderPxcRows(renderer, x, y, slot.key, [&](size_t offset, int) { return slot.pixels.get() + offset; });
+}
+#endif
+
+bool loadAndRenderPxcRam(GfxRenderer& renderer, int x, int y, HalFile& cacheFile, const PxcKey& key, int bytesPerRow) {
+  const size_t bytes = static_cast<size_t>(bytesPerRow) * key.height;
+  if (pxcChunkKey.width || bytesPerRow > PXC_MAX_BYTES_PER_ROW || bytes > PXC_MAX_BYTES) return false;
+
+#if FREEINK_DEVICE_X4PRO
+  if (pxcPsramCount < PXC_MAX_PSRAM_SLOTS && bytes <= PXC_MAX_BYTES - pxcPsramBytes) {
+    if (auto pixels = HalMemory::allocatePsram(bytes)) {
+      for (size_t offset = 0; offset < bytes; offset += PXC_CHUNK_SIZE) {
+        const size_t want = std::min(bytes - offset, PXC_CHUNK_SIZE);
+        if (cacheFile.read(pixels.get() + offset, want) != static_cast<int>(want)) return false;
+      }
+      auto& slot = pxcPsramSlots[pxcPsramCount++];
+      slot = {std::move(pixels), key};
+      pxcPsramBytes += bytes;
+      renderPxcPsram(renderer, x, y, slot);
+      LOG_DBG("IMG", "Cache render complete (%u bytes in PSRAM)", static_cast<unsigned>(bytes));
+      return true;
+    }
+  }
+  if (pxcPsramCount != 0) return false;
+#endif
+
+  if (!loadPxcChunks(key, cacheFile, bytes)) return false;
+  renderPxcChunks(renderer, x, y);
+  LOG_DBG("IMG", "Cache render complete (payload now in RAM)");
+  return true;
 }
 
 bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x, int y, int expectedWidth,
@@ -211,8 +242,17 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
   // A later pass of the same page render: the payload is already in RAM, skip
   // the file entirely.
   const uint64_t cacheHash = imagePathHash(cachePath);
-  if (pxcSlotHash == cacheHash && pxcSlotWidth != 0) {
-    renderRowsFromPxcSlot(renderer, x, y);
+#if FREEINK_DEVICE_X4PRO
+  for (size_t i = 0; i < pxcPsramCount; i++) {
+    const auto& slot = pxcPsramSlots[i];
+    if (slot.key.matches(cacheHash, expectedWidth, expectedHeight)) {
+      renderPxcPsram(renderer, x, y, slot);
+      return true;
+    }
+  }
+#endif
+  if (pxcChunkKey.matches(cacheHash, expectedWidth, expectedHeight)) {
+    renderPxcChunks(renderer, x, y);
     return true;
   }
 
@@ -231,24 +271,7 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
 
   const int bytesPerRow = (cachedWidth + 3) / 4;  // 2 bits per pixel, 4 pixels per byte
 
-  // First pass of a page render: try to pull the payload into the RAM slot so
-  // the remaining ~12 passes skip SD entirely. Only an EMPTY slot is claimed:
-  // the slot lives until the page render completes, so a populated slot with a
-  // different hash means another image on this same page owns it. Evicting it
-  // here would make 2+ image pages reload each other from SD on every pass
-  // (all the SD traffic of streaming plus the slot alloc churn); instead later
-  // images take the streaming path below, unchanged from pre-cache behavior.
-  if (pxcSlotHash == 0 && loadPxcSlot(cacheHash, cacheFile, cachedWidth, cachedHeight, bytesPerRow)) {
-    renderRowsFromPxcSlot(renderer, x, y);
-#if FREEINK_DEVICE_X4PRO
-    if (pxcPsram) {
-      LOG_DBG("IMG", "Cache render complete (%u bytes in PSRAM)", static_cast<unsigned>(bytesPerRow * cachedHeight));
-      return true;
-    }
-#endif
-    LOG_DBG("IMG", "Cache render complete (payload now in RAM)");
-    return true;
-  }
+  if (loadAndRenderPxcRam(renderer, x, y, cacheFile, {cacheHash, cachedWidth, cachedHeight}, bytesPerRow)) return true;
 
   DirectPixelWriter pw;
   pw.init(renderer);

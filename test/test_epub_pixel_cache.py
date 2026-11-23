@@ -45,6 +45,7 @@ DEPENDENCIES = r"""
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #define LOG_ERR(...) ((void)0)
@@ -92,13 +93,13 @@ struct {
 """
 
 TEST = r"""
-void makePackedImage(int width, int height) {
+void makePackedImage(int width, int height, size_t seed = 0) {
   HalFile::contents.resize(4 + static_cast<size_t>((width + 3) / 4) * height);
   HalFile::contents[0] = width & 0xff;
   HalFile::contents[1] = width >> 8;
   HalFile::contents[2] = height & 0xff;
   HalFile::contents[3] = height >> 8;
-  for (size_t i = 4; i < HalFile::contents.size(); ++i) HalFile::contents[i] = (i ^ (i >> 5)) & 0xff;
+  for (size_t i = 4; i < HalFile::contents.size(); ++i) HalFile::contents[i] = ((i ^ (i >> 5)) + seed) & 0xff;
 }
 
 // Paint every source pixel and let the writer's ordinary clipping choose
@@ -138,13 +139,13 @@ int main() {
       HalMemory::present = true;
       HalFile::bytesRead = 0;
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
-      assert(HalFile::bytesRead == PAYLOAD + 4 && pxcPsram && !pxcChunks[0]);
+      assert(HalFile::bytesRead == PAYLOAD + 4 && pxcPsramCount == 1 && !pxcChunks[0]);
       assert(renderer.framebuffer == expected);
       renderer.framebuffer.fill(0x5a);
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
       assert(HalFile::bytesRead == PAYLOAD + 4 && renderer.framebuffer == expected);
       releasePxcSlot();
-      assert(!pxcPsram);
+      assert(pxcPsramCount == 0 && pxcPsramBytes == 0 && !pxcPsramSlots[0].pixels);
 
       HalMemory::present = false;
       renderer.framebuffer.fill(0x5a);
@@ -155,7 +156,7 @@ int main() {
       ESP.internal = 256000;
       renderer.framebuffer.fill(0x5a);
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
-      assert(pxcChunks[0] && !pxcPsram && renderer.framebuffer == expected);
+      assert(pxcChunks[0] && pxcPsramCount == 0 && renderer.framebuffer == expected);
       releasePxcSlot();
       ESP.internal = 8192;
 
@@ -163,12 +164,12 @@ int main() {
       HalFile::shortFill = true;
       renderer.framebuffer.fill(0x5a);
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
-      assert(!pxcPsram && !pxcChunks[0] && renderer.framebuffer == expected);
+      assert(pxcPsramCount == 0 && !pxcChunks[0] && renderer.framebuffer == expected);
       HalFile::shortFill = true;
       HalFile::failSeek = true;
       renderer.framebuffer.fill(0x5a);
       assert(!renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
-      assert(!pxcPsram && !pxcChunks[0]);
+      assert(pxcPsramCount == 0 && !pxcChunks[0]);
       assert(std::all_of(renderer.framebuffer.begin(), renderer.framebuffer.end(), [](auto byte) {return byte == 0x5a;}));
       HalFile::failSeek = false;
     }
@@ -202,6 +203,70 @@ int main() {
 
   makePackedImage(0, 1);
   assert(!renderFromCache(renderer, "/book/invalid.pxc", 17, 99, 1, 1));
+
+  // Each image has distinct pixels. All three passes should agree with the
+  // reference while reading each cache file just once.
+  HalMemory::present = true;
+  HalFile::bytesRead = 0;
+  renderer.orientation = GfxRenderer::Portrait;
+  renderer.origin = 0;
+  renderer.rows = 480;
+  GfxRenderer reference = renderer;
+  constexpr int WIDTH = 320;
+  constexpr int HEIGHT = 160;
+  constexpr size_t IMAGE_BYTES = (WIDTH / 4) * HEIGHT;
+  const char* paths[] = {"/book/first.pxc", "/book/second.pxc", "/book/third.pxc"};
+  for (const auto mode : {GfxRenderer::BW, GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+    renderer.mode = reference.mode = mode;
+    renderer.framebuffer.fill(0x5a);
+    reference.framebuffer.fill(0x5a);
+    for (int i = 0; i < 3; i++) {
+      makePackedImage(WIDTH, HEIGHT, i);
+      const int y = i * (HEIGHT + 10);
+      paintReference(reference, 20, y, WIDTH, HEIGHT);
+      assert(renderFromCache(renderer, paths[i], 20, y, WIDTH, HEIGHT));
+    }
+    assert(renderer.framebuffer == reference.framebuffer);
+    assert(pxcPsramCount == 3 && pxcPsramBytes == 3 * IMAGE_BYTES);
+    assert(HalFile::bytesRead == 3 * (IMAGE_BYTES + 4));
+  }
+
+  // A short fill falls back to streaming without dropping earlier images.
+  HalFile::shortFill = true;
+  makePackedImage(400, 200, 3);
+  assert(renderFromCache(renderer, "/book/fourth.pxc", 20, 530, 400, 200));
+  assert(!HalFile::shortFill && pxcPsramCount == 3 && !pxcPsramSlots[3].pixels);
+  assert(pxcPsramBytes == 3 * IMAGE_BYTES);
+  assert(renderFromCache(renderer, "/book/fourth.pxc", 20, 530, 400, 200));
+  assert(pxcPsramCount == 4 && pxcPsramBytes == 3 * IMAGE_BYTES + 20000);
+
+  // Images beyond the slot count still render and do not evict others.
+  makePackedImage(WIDTH, HEIGHT, 4);
+  const auto beforeOverflow = HalFile::bytesRead;
+  assert(renderFromCache(renderer, "/book/fifth.pxc", 20, 20, WIDTH, HEIGHT));
+  assert(HalFile::bytesRead == beforeOverflow + IMAGE_BYTES + 4);
+  assert(renderFromCache(renderer, paths[2], 20, 340, WIDTH, HEIGHT));
+  assert(HalFile::bytesRead == beforeOverflow + IMAGE_BYTES + 4);
+  assert(pxcPsramCount == 4 && pxcPsramBytes == 3 * IMAGE_BYTES + 20000);
+  releasePxcSlot();
+  assert(pxcPsramCount == 0 && pxcPsramBytes == 0);
+  for (const auto& slot : pxcPsramSlots) assert(!slot.pixels);
+
+  // The byte cap also applies before all slots are filled.
+  makePackedImage(432, 600);
+  assert(renderFromCache(renderer, paths[0], 0, 0, 432, 600));
+  assert(pxcPsramCount == 1 && pxcPsramBytes == 64800);
+  makePackedImage(360, 400);
+  const auto beforeBudgetCheck = HalFile::bytesRead;
+  ESP.internal = 256000;
+  for (int i = 0; i < 2; i++) assert(renderFromCache(renderer, paths[1], 0, 0, 360, 400));
+  assert(HalFile::bytesRead == beforeBudgetCheck + 2 * (36000 + 4));
+  assert(pxcPsramCount == 1 && pxcPsramBytes == 64800 && !pxcChunks[0]);
+
+  // A cached path is only used when its dimensions match the requested block.
+  makePackedImage(432, 600);
+  assert(!renderFromCache(renderer, paths[0], 0, 0, 410, 600));
+  releasePxcSlot();
 }
 """
 

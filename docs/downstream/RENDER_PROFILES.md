@@ -24,18 +24,20 @@ for reading. Report freezes, reboots, missing text, or layout errors.
 
 ## Cached images on the X4 Pro
 
-The first eligible image on a page uses up to 96 KiB of PSRAM for its
-packed pixels. Grayscale passes can reuse that copy without rereading it
-from the SD card. The reader releases it after drawing the page. If PSRAM
-allocation fails, the existing chunked heap cache or SD streaming handles
-the image. The EPUB and its on-card image cache keep their existing formats.
+Up to four images on an X4 Pro page can share 96 KiB of PSRAM. Grayscale
+passes reuse their packed pixels, and the reader releases them after drawing
+the page. Images beyond the slot or byte limit stream from SD. If PSRAM is
+unavailable, the existing heap cache can still hold one image. The EPUB and
+its on-card image cache keep their existing formats.
 
-The host fixture reads a full-screen 96,004-byte cache file once and
-replays it with zero additional reads. All four orientations produce
-the same framebuffer as SD streaming, including both grayscale planes.
-For a device comparison, go back and forward between cached illustrated
-pages with the same orientation, refresh settings, and book layout.
-Serial logs identify whether PSRAM was used and report render timing.
+In the host comparison, a page with three 320 × 160 images reads 38,412
+bytes across the black-and-white pass and both grayscale passes, down from
+89,628 bytes with one slot. Both versions produce the same pixels. A single
+full-screen image still reads its 96,004-byte cache file once, and all four
+orientations match SD streaming. Device timing is pending. For a device
+comparison, turn between cached illustrated pages with the same orientation,
+refresh settings, and book layout, and use EPUB render timing in Device
+Diagnostics.
 
 When landscape grayscale falls back to SD streaming, each strip reads
 only the image rows it draws. In the host fixture, an 80-row strip of an
