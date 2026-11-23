@@ -11,7 +11,6 @@ bool BookmarkFile::clearForBook(const std::string& bookPath) {
   } request{bookPath};
   const auto clear = [](void* raw) {
     const auto& book = static_cast<Request*>(raw)->path;
-    if (!CrossInkBookmarks::clearForBook(book)) return false;
     const auto path = BookmarkUtil::getBookmarkPath(book);
     const std::string targets[] = {BookmarkUtil::nativeRecoveryPath(path, false),
                                    BookmarkUtil::nativeRecoveryPath(path, true), path};
@@ -25,6 +24,7 @@ bool BookmarkFile::clearForBook(const std::string& bookPath) {
           return false;
       }
     }
+    if (!CrossInkBookmarks::clearForBook(book)) return false;
     for (unsigned i = 0; i < 3; ++i) {
       if (present[i] && !Storage.remove(targets[i].c_str())) return false;
     }

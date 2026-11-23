@@ -96,13 +96,15 @@ bool moveFilesHaveDisjointChains(File& left, File& right) {
 }
 
 template <typename File>
+bool isUnallocatedEmptyFile(const File& file) {
+  return file.isFile() && file.fileSize() == 0 && file.dataLength() == 0 && file.validLength() == 0 &&
+         file.firstCluster() == 0;
+}
+
+template <typename File>
 bool moveFilesHaveIndependentStorage(File& left, File& right) {
   // Empty files still need distinct entries even though they own no clusters.
-  const auto unallocatedEmpty = [](const File& file) {
-    return file.isFile() && file.fileSize() == 0 && file.dataLength() == 0 && file.validLength() == 0 &&
-           file.firstCluster() == 0;
-  };
-  const bool leftEmpty = unallocatedEmpty(left), rightEmpty = unallocatedEmpty(right);
+  const bool leftEmpty = isUnallocatedEmptyFile(left), rightEmpty = isUnallocatedEmptyFile(right);
   if (!leftEmpty && !rightEmpty) return moveFilesHaveDisjointChains(left, right);
   if (!left.moveDifferentEntry(right)) return false;
   if (leftEmpty && rightEmpty) return true;

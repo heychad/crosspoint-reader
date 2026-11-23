@@ -545,11 +545,12 @@ bool HalStorage::distinctSettingsChains(const char* first, const char* second) {
   return distinct && leftClosed && rightClosed;
 }
 
-bool HalStorage::moveChainEligible(const char* path) {
+bool HalStorage::moveChainEligible(const char* path, bool allowUnallocatedEmpty) {
   StorageLock lock;
   if (!path || lookupPath(path) != PathStatus::Present) return false;
   auto file = SDCard.open(path, O_RDONLY);
-  const bool eligible = file && moveFileHasCheckedChain(file);
+  const bool eligible =
+      file && ((allowUnallocatedEmpty && isUnallocatedEmptyFile(file)) || moveFileHasCheckedChain(file));
   const bool closed = !file || file.close();
   return eligible && closed;
 }

@@ -1408,6 +1408,11 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     movedstate::checkNativeBookmarks(source);
     movedstate::checkNativeBookmarkReadRecovery();
     movedstate::checkNativeBookmarkWriteRecovery();
+    movedstate::checkNativeBookmarkInterruptedStages([&] {
+      volume.end();
+      assert(volume.begin(&disk));
+      Storage.attach(volume);
+    });
     expectedClipping = movedstate::seedClippings(source);
     movedstate::checkClippings(source, expectedClipping);
     movedstate::checkSavedKinds(source);

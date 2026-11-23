@@ -550,7 +550,10 @@ bool EpubReaderActivity::loadBook() {
   }
 
   loadLinkStack();
-  loadCachedBookmarks();
+  {
+    RenderLock lock(*this);
+    loadCachedBookmarks();
+  }
   if (!CLIPPINGS.loadForBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), "epub")) {
     LOG_ERR("CLIP", "Failed to load clippings for %s", epub->getPath().c_str());
   }
@@ -929,7 +932,10 @@ void EpubReaderActivity::openSavedView(const SavedItemKind kind) {
   }
   if (pendingSavedView) rememberBook();
   startActivityForResult(std::move(list), [this, kind](const ActivityResult& result) {
-    if (kind != SavedItemKind::Clippings) loadCachedBookmarks();
+    if (kind != SavedItemKind::Clippings) {
+      RenderLock lock(*this);
+      loadCachedBookmarks();
+    }
     if (!result.isCancelled) {
       if (const auto* progress = std::get_if<ProgressChangeResult>(&result.data)) {
         applyProgressChange(*progress);
@@ -1655,7 +1661,10 @@ void EpubReaderActivity::confirmCacheReset() {
 
 void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
-    loadCachedBookmarks();
+    {
+      RenderLock lock(*this);
+      loadCachedBookmarks();
+    }
     if (result.isCancelled) {
       openReaderMenu();
     } else {
@@ -4337,6 +4346,7 @@ void EpubReaderActivity::loadCachedBookmarks() {
 }
 
 void EpubReaderActivity::addBookmark() {
+  RenderLock lock(*this);
   if (!section || !epub) return;
   if (!cachedBookmarksReadable) {
     loadCachedBookmarks();
@@ -4349,13 +4359,8 @@ void EpubReaderActivity::addBookmark() {
     }
   }
   LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
-  int currentPage;
-  int pageCount;
-  {
-    RenderLock lock;
-    pageCount = section->estimatedTotalPages();
-    currentPage = section->currentPage;
-  }
+  const int currentPage = section->currentPage;
+  const int pageCount = section->estimatedTotalPages();
 
   SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
   const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);

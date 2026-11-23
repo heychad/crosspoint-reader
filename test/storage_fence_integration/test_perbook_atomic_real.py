@@ -21,7 +21,7 @@ lookup_stub = 'PathStatus lookupPath(const char* path){auto file=SDCard.open(pat
 assert lookup_stub in code
 code = code.replace(lookup_stub, 'PathStatus lookupPath(const char*);bool withStorageLock(bool (*)(void*),void*);'
                     'bool settingsChainEligible(const char*);bool distinctSettingsChains(const char*,const char*);'
-                    'bool moveChainEligible(const char*);bool distinctMoveChains(const char*,const char*);'
+                    'bool moveChainEligible(const char*,bool);bool distinctMoveChains(const char*,const char*);'
                     'bool remove(const char*);bool rename(const char*,const char*);'
                     'bool exists(const char* p){return SDCard.exists(p);}'
                     'bool openFileForRead(const char*,const std::string& p,HalFile& out){out=openChecked(p.c_str(),O_RDONLY);return bool(out);}'

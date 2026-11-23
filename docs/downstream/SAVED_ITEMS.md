@@ -26,8 +26,11 @@ An unreadable native bookmark file leaves cached bookmarks available. A toggle
 retries the read and reports an error if the file still cannot be loaded.
 Reopening the bookmark list retries its read. Native saves check the staged
 JSON before replacing the current file. When the primary is missing, Saved
-Items and the reader look for the backup first, then a complete staged copy.
-An unreadable file or an uncertain lookup preserves the cached entries.
+Items and the reader use the backup. A staged file is consulted only when
+both older names are confirmed absent. After a first save stops early, a
+verified incomplete stage can be replaced on retry. An uncertain read or
+lookup preserves the cached entries and saved files. Native bookmark saves
+wait for unresolved book moves so new edits cannot interfere with recovery.
 The reader reports an incomplete save and reloads the available copy. Book
 moves and the confirmed Clear Bookmarks action preserve files when recovery
 names share disk clusters.
@@ -46,7 +49,8 @@ file before refreshing the list. Recovered backup rows are read-only. The
 firmware retains two copies of the original file per successful deletion in
 one of 64 history slots per source. A full history stops the edit before it
 writes. If archival is interrupted, the recovery files remain available and
-may require manual inspection before another edit.
+may require manual inspection before another edit. Numbered originals stay
+under the source bookmark name for the original book path when a book moves.
 
 The catalog follows the existing Library index, supported reflowable extensions,
 scan depth and book limit. It skips missing files. A dirty or absent index uses

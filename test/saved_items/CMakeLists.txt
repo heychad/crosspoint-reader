@@ -19,6 +19,7 @@ target_link_libraries(SavedItemsTest PRIVATE crosspoint_test_common GTest::gtest
 gtest_discover_tests(SavedItemsTest)
 add_test(NAME SavedItemsNavigation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_navigation.py)
 add_test(NAME SavedItemsStartup COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_startup.py)
+add_test(NAME SavedItemsNativeBookmarkRepair COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_native_bookmark_repair.py)
 add_test(NAME SavedItemsCatalog COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_catalog.py)
 add_test(NAME SavedItemsHomeInput COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home.py)
 add_test(NAME DeferredCompletionHomeInput COMMAND ${CMAKE_COMMAND} -E env TEST_DEFERRED_AUTOMATION=1 ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home.py)

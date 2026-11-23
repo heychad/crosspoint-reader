@@ -26,6 +26,7 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
   void rebuildBookmarkRowItems();
   void recoverAfterSaveFailure();
   bool confirmingDelete = false;
+  bool saveNoticePending = false;
   OptionPopup confirmPopup;
 
  public:

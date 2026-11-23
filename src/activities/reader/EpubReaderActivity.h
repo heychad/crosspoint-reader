@@ -278,6 +278,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
+  // Caller holds RenderLock because renderBook also reads cachedBookmarks.
   void loadCachedBookmarks();
   void addBookmark();
   void updateBookmarkFlag();

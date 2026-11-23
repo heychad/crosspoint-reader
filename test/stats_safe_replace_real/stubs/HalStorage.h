@@ -17,6 +17,7 @@ class HalFile {
   bool sync() { return file_->sync(); }
   bool close() { return file_->close(); }
   size_t fileSize() const { return file_->fileSize(); }
+  uint64_t fileSize64() const { return file_->fileSize(); }
   int read(void* out, size_t size) { return file_->read(out, size); }
   bool isDirectory() const { return file_ && file_->isDir(); }
 
@@ -59,6 +60,7 @@ class HalStorage {
     out = open(path, O_RDONLY);
     return static_cast<bool>(out);
   }
+  HalFile openChecked(const char* path, oflag_t flags) { return open(path, flags); }
   bool openFileForRead(const char* module, const std::string& path, HalFile& out) {
     return openFileForRead(module, path.c_str(), out);
   }
@@ -102,10 +104,10 @@ class HalStorage {
     const bool ac = a.close(), bc = b.close();
     return distinct && ac && bc;
   }
-  bool moveChainEligible(const char* path) {
+  bool moveChainEligible(const char* path, bool allowUnallocatedEmpty = false) {
     FsBaseFile file;
     if (!file.open(path, O_RDONLY)) return false;
-    const bool eligible = moveFileHasCheckedChain(file);
+    const bool eligible = (allowUnallocatedEmpty && isUnallocatedEmptyFile(file)) || moveFileHasCheckedChain(file);
     return file.close() && eligible;
   }
   bool distinctMoveChains(const char* first, const char* second) {

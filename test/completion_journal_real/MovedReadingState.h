@@ -138,6 +138,44 @@ inline void checkNativeBookmarkWriteRecovery() {
   assert(Storage.remove(primary.c_str()));
 }
 
+template <typename Remount>
+void checkNativeBookmarkInterruptedStages(Remount remount) {
+  const std::string book = "/zDev/Interrupted First Bookmark.epub";
+  const auto primary = BookmarkUtil::getBookmarkPath(book);
+  const auto stage = BookmarkUtil::nativeRecoveryPath(primary, false);
+  for (const auto* prefix : {"", R"({"bookmarks":[)"}) {
+    auto file = Storage.open(stage.c_str(), O_WRONLY | O_CREAT | O_EXCL);
+    const auto size = std::strlen(prefix);
+    assert(file && (size == 0 || file.write(prefix, size) == size) && file.sync() && file.close());
+    remount();
+    std::vector<BookmarkEntry> entries;
+    assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Missing && entries.empty());
+    assert(Storage.lookupPath(stage.c_str()) == HalStorage::PathStatus::Present);
+    assert(Storage.mkdir("/.book-moves/current", true));
+    assert(!BookmarkFile::save(book, {BookmarkEntry{}}));
+    assert(Storage.lookupPath(stage.c_str()) == HalStorage::PathStatus::Present);
+    assert(Storage.rmdir("/.book-moves/current"));
+    seedNativeBookmarks(book);
+    checkNativeBookmarks(book);
+    assert(Storage.lookupPath(stage.c_str()) == HalStorage::PathStatus::Missing);
+    assert(Storage.remove(primary.c_str()));
+  }
+
+  seedNativeBookmarks(book);
+  auto file = Storage.open(stage.c_str(), O_WRONLY | O_CREAT | O_EXCL);
+  assert(file && file.sync() && file.close());
+  remount();
+  std::vector<BookmarkEntry> entries;
+  assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Loaded && entries.size() == 2);
+  entries.front().name = "Saved after interruption";
+  assert(BookmarkFile::save(book, entries));
+  assert(Storage.lookupPath(stage.c_str()) == HalStorage::PathStatus::Missing);
+  entries.clear();
+  assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Loaded && entries.size() == 2);
+  assert(entries.front().name == "Saved after interruption");
+  assert(Storage.remove(primary.c_str()));
+}
+
 inline void checkSavedKinds(const std::string& book) {
   uint8_t kinds = 0;
   assert(saveditems::inspect(book, kinds));

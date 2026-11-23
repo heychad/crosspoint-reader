@@ -27,6 +27,7 @@ EpubReaderBookmarksActivity::EpubReaderBookmarksActivity(GfxRenderer& renderer, 
       epubPath(epubPath) {}
 
 void EpubReaderBookmarksActivity::onEnter() {
+  RenderLock lock(*this);
   UiListActivity::onEnter();
 
   if (!epub) {
@@ -114,6 +115,14 @@ void EpubReaderBookmarksActivity::onRowLongPress(const int index) {
 }
 
 bool EpubReaderBookmarksActivity::handleCustomInput() {
+  if (saveNoticePending) {
+    RenderLock lock(*this);
+    saveNoticePending = false;
+    const char* options[] = {tr(STR_OK_BUTTON)};
+    confirmPopup.showMessage(tr(STR_BOOKMARKS), tr(STR_BOOKMARK_SAVE_INCOMPLETE), options, 1, 0, [](int) {});
+    requestUpdate(true);
+    return true;
+  }
   // Bookmark action or delete confirmation popup.
   if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
   if (confirmingDelete) {
@@ -165,6 +174,7 @@ void EpubReaderBookmarksActivity::startRename() {
     if (result.isCancelled || renameIndex < 0 || renameIndex >= listCount()) {
       return;
     }
+    RenderLock lock(*this);
     std::string previousName = std::move(bookmarks[renameIndex].name);
     bookmarks[renameIndex].name = std::get<KeyboardResult>(result.data).text;
     rebuildBookmarkRowItems();
@@ -219,6 +229,7 @@ void EpubReaderBookmarksActivity::swipeDelete(const int index) {
 #endif
 
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
+  RenderLock lock(*this);
   if (!bookmarksReadable || nav.selected < 0 || nav.selected >= listCount()) return;
   const int index = nav.selected;
   auto removed = std::move(bookmarks[index]);
@@ -255,8 +266,8 @@ void EpubReaderBookmarksActivity::recoverAfterSaveFailure() {
   nav.selected = std::clamp(nav.selected.load(), 0, std::max(0, listCount() - 1));
   nav.follow(listCount());
   rebuildBookmarkRowItems();
-  const char* options[] = {tr(STR_OK_BUTTON)};
-  confirmPopup.showMessage(tr(STR_BOOKMARKS), tr(STR_BOOKMARK_SAVE_INCOMPLETE), options, 1, 0, [](int) {});
+  // The current popup callback still owns the input frame.
+  saveNoticePending = true;
   requestUpdate(true);
 }
 

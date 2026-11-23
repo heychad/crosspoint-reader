@@ -20,8 +20,8 @@ struct NativeScan {
 bool scanNativeBookmarks(void* raw) {
   auto& [path, present] = *static_cast<NativeScan*>(raw);
   const auto status = selectNativeBookmarkFile(path);
-  if (status == HalStorage::PathStatus::Missing) return true;
-  if (status != HalStorage::PathStatus::Present) return false;
+  if (status == NativeBookmarkSource::Missing) return true;
+  if (status == NativeBookmarkSource::Unavailable) return false;
   HalFile file = Storage.open(path.c_str());
   if (!file) return false;
   const std::string empty;

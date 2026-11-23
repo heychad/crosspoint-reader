@@ -22,20 +22,44 @@ bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& 
   return true;
 }
 
+namespace {
+using CheckedRead = PersistableStoreBase::CheckedRead;
+
+CheckedRead readBoundedDoc(const char* path, HalFile& file, JsonDocument& doc, size_t maxBytes) {
+  if (!file || file.isDirectory()) return CheckedRead::Unavailable;
+  const uint64_t size = file.fileSize64();
+  if (size > maxBytes || size > std::numeric_limits<int>::max()) return CheckedRead::Unavailable;
+  if (size == 0) return file.close() ? CheckedRead::Malformed : CheckedRead::Unavailable;
+  const size_t length = static_cast<size_t>(size);
+  auto buffer = makeUniqueNoThrow<char[]>(length);
+  if (!buffer) {
+    LOG_ERR("PERSIST", "Could not allocate %u bytes for %s", static_cast<unsigned>(length), path);
+    return CheckedRead::Unavailable;
+  }
+  const bool read = file.read(buffer.get(), length) == static_cast<int>(length);
+  const bool closed = file.close();
+  if (!read || !closed) return CheckedRead::Unavailable;
+  // Const input makes the document own its strings after this buffer is released.
+  const auto error = deserializeJson(doc, static_cast<const char*>(buffer.get()), length);
+  if (!error) return CheckedRead::Loaded;
+  if (error == DeserializationError::EmptyInput || error == DeserializationError::IncompleteInput ||
+      error == DeserializationError::InvalidInput)
+    return CheckedRead::Malformed;
+  return CheckedRead::Unavailable;
+}
+}  // namespace
+
+PersistableStoreBase::CheckedRead PersistableStoreBase::readCheckedDocFromFile(const char* path, JsonDocument& doc,
+                                                                               size_t maxBytes) {
+  HalFile file = Storage.openChecked(path, O_RDONLY);
+  return readBoundedDoc(path, file, doc, maxBytes);
+}
+
 bool PersistableStoreBase::readDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes) {
   if (maxBytes != 0) {
     HalFile file;
-    if (!Storage.openFileForRead("PERSIST", path, file)) return false;
-    const size_t length = file.fileSize();
-    if (length == 0 || length > maxBytes) return false;
-    auto buffer = makeUniqueNoThrow<char[]>(length + 1);
-    if (!buffer) {
-      LOG_ERR("PERSIST", "Could not allocate %u bytes for %s", static_cast<unsigned>(length + 1), path);
-      return false;
-    }
-    if (file.read(buffer.get(), length) != static_cast<int>(length) || !file.close()) return false;
-    // Const input makes the document own its strings after this buffer is released.
-    return !deserializeJson(doc, static_cast<const char*>(buffer.get()), length);
+    return Storage.openFileForRead("PERSIST", path, file) &&
+           readBoundedDoc(path, file, doc, maxBytes) == CheckedRead::Loaded;
   }
   if (!Storage.exists(path)) {
     return false;  // Expected on first boot — not an error.
@@ -81,8 +105,8 @@ struct AtomicWrite {
   size_t size;
   bool useMoveChains;
 
-  bool eligible(const char* path) const {
-    return useMoveChains ? Storage.moveChainEligible(path) : Storage.settingsChainEligible(path);
+  bool eligible(const char* path, bool allowUnallocatedEmpty = false) const {
+    return useMoveChains ? Storage.moveChainEligible(path, allowUnallocatedEmpty) : Storage.settingsChainEligible(path);
   }
 
   bool distinct(const char* first, const char* second) const {
@@ -102,7 +126,10 @@ bool writeAtomicLocked(void* raw) {
     const auto state = Storage.lookupPath(paths[i]);
     if (state == HalStorage::PathStatus::Failed) return false;
     present[i] = state == HalStorage::PathStatus::Present;
-    if (present[i] && !c.eligible(paths[i])) return false;
+  }
+  for (unsigned i = 0; i < 3; ++i) {
+    const bool discardableEmptyStage = i == 1 && (present[0] || present[2]);
+    if (present[i] && !c.eligible(paths[i], discardableEmptyStage)) return false;
     for (unsigned j = 0; j < i; ++j)
       if (present[i] && present[j] && !c.distinct(paths[i], paths[j])) return false;
   }

@@ -52,6 +52,8 @@ class PersistableStoreBase {
   // Reads path and parses it into doc. Returns false silently when the file
   // does not exist (expected on first boot); logs on read/parse failure.
   static bool readDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes = 0);
+  enum class CheckedRead { Loaded, Malformed, Unavailable };
+  static CheckedRead readCheckedDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes);
 
   // Caller validates the existing document. The writer locks storage and checks
   // recovery chains before retiring files; ambiguous aliases remain untouched.

@@ -112,6 +112,7 @@ class HalStorage {
   bool withStorageLock(bool (*operation)(void*), void* context) { return operation && operation(context); }
   bool rename(const char* from, const char* to) { return volume_->rename(from, to); }
   bool mkdir(const char* path, bool parents = true) { return volume_->mkdir(path, parents); }
+  bool rmdir(const char* path) { return volume_->rmdir(path); }
   bool remove(const char* path) { return volume_->remove(path); }
   bool removeDir(const char* path) {
 #if defined(SDFAT_BOOK_MOVES)
@@ -190,10 +191,10 @@ class HalStorage {
     const bool ac = a.close(), bc = b.close();
     return distinct && ac && bc;
   }
-  bool moveChainEligible(const char* path) {
+  bool moveChainEligible(const char* path, bool allowUnallocatedEmpty = false) {
     FsBaseFile file;
     if (!file.open(path, O_RDONLY)) return false;
-    const bool eligible = moveFileHasCheckedChain(file);
+    const bool eligible = (allowUnallocatedEmpty && isUnallocatedEmptyFile(file)) || moveFileHasCheckedChain(file);
     return file.close() && eligible;
   }
 
