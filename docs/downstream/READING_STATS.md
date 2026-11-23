@@ -43,6 +43,13 @@ existing statistics in the current cache and then CrossInk's FNV-based EPUB
 cache. It reads those sources without moving/deleting them, retains the current
 CrossPoint cache identity, and honors existing per-book disable markers.
 
+When no native global snapshot or recovery file exists, the normal loader
+imports the current reader's CrossInk RC2/RC3 global history. It supports raw
+payloads and checksummed v3/v4 slots, and saves the selected history in the
+native format. It leaves both CrossInk slots and their counter identity on the
+card. Foreign-device files and an existing native history or reset stay
+separate. An interrupted CrossInk recovery or an uncertain read blocks import.
+
 The legacy cache reader also accepts device-qualified CrossInk book
 statistics v4–v7 for the current reader's hardware ID. It reads complete raw
 payloads and verifies the sequence and CRC of two-slot saves. A recognized

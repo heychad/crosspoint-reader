@@ -1,6 +1,7 @@
 // Adapted from CrossInk v1.6.1; see docs/downstream/CROSSINK_NOTICE.md.
 #include "GlobalReadingStats.h"
 
+#include <CredentialIntegrity.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <esp_mac.h>
@@ -16,12 +17,16 @@
 #include "StatsSafeReplace.h"
 
 namespace {
-enum class StatsLoadResult : uint8_t { Ok, Invalid, NewerFormat, Unreadable };
+enum class StatsLoadResult : uint8_t { Ok, Missing, Invalid, NewerFormat, Unreadable };
 
 struct StatsLoadOutcome {
   StatsLoadResult result = StatsLoadResult::Invalid;
   uint8_t version = 0;
   size_t fileSize = 0;
+  bool checksummed = false;
+  uint32_t sequence = 0;
+
+  bool uncertain() const { return result == StatsLoadResult::NewerFormat || result == StatsLoadResult::Unreadable; }
 };
 
 // Binary layout v1 (13 bytes):
@@ -202,6 +207,35 @@ StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out, bool exte
   return decodeStats(data, decodedSize, out);
 }
 
+StatsLoadOutcome loadCrossInkSlot(HalFile& file, GlobalReadingStats& out) {
+  constexpr size_t trailerSize = 8;
+  uint8_t bytes[GlobalReadingStats::CROSSINK_V4_FILE_SIZE + trailerSize]{};
+  const size_t size = file.fileSize();
+  if (size == 0) return {};
+  if (size > sizeof(bytes)) return {StatsLoadResult::NewerFormat};
+  if (file.read(bytes, size) != static_cast<int>(size)) return {StatsLoadResult::Unreadable};
+
+  const bool checksummed =
+      size == GLOBAL_STATS_FILE_SIZE + trailerSize || size == GlobalReadingStats::CROSSINK_V4_FILE_SIZE + trailerSize;
+  const size_t payload = checksummed ? size - trailerSize : size;
+  uint32_t sequence = 0;
+  if (checksummed) {
+    const size_t covered = payload + sizeof(sequence);
+    if (credential_integrity::crc32({reinterpret_cast<const char*>(bytes), covered}) !=
+        readLe32(bytes, static_cast<int>(covered)))
+      return {};
+    sequence = readLe32(bytes, static_cast<int>(payload));
+  }
+  if (bytes[0] > 4) return {StatsLoadResult::NewerFormat};
+  const auto nativeSize = GlobalReadingStats::normalizeCrossInkSnapshot(bytes, payload);
+  auto result = decodeStats(bytes, nativeSize, out);
+  // A wrong size for a known version is a damaged slot, not a future format.
+  if (result.result == StatsLoadResult::NewerFormat) result.result = StatsLoadResult::Invalid;
+  result.checksummed = checksummed;
+  result.sequence = sequence;
+  return result;
+}
+
 bool saveToFile(const GlobalReadingStats& stats, const char* path, const char* backupPath) {
   if (!backupPath || std::string(backupPath) != std::string(path) + ".bak") return false;
   uint8_t data[GLOBAL_STATS_FILE_SIZE];
@@ -209,25 +243,18 @@ bool saveToFile(const GlobalReadingStats& stats, const char* path, const char* b
   return statsreplace::save("GSTATS", path, data, sizeof(data), true);
 }
 
-}  // namespace
-
-static StatsLoadOutcome loadFromFile(const char* path, GlobalReadingStats& out) {
-  StatsLoadOutcome outcome;
-  HalFile f;
+StatsLoadOutcome loadFromFile(const char* path, GlobalReadingStats& out, bool crossInkSlot = false) {
   const auto status = Storage.lookupPath(path);
-  if (status == HalStorage::PathStatus::Failed) {
-    outcome.result = StatsLoadResult::Unreadable;
-    return outcome;
-  }
-  if (status == HalStorage::PathStatus::Missing) return outcome;
-  if (!Storage.openFileForRead("GSTATS", path, f)) {
-    outcome.result = StatsLoadResult::Unreadable;
-    return outcome;
-  }
-  outcome = loadFromOpenFile(f, out);
-  if (!f.close()) outcome.result = StatsLoadResult::Unreadable;
+  if (status == HalStorage::PathStatus::Failed) return {StatsLoadResult::Unreadable};
+  if (status == HalStorage::PathStatus::Missing) return {StatsLoadResult::Missing};
+  HalFile file;
+  if (!Storage.openFileForRead("GSTATS", path, file)) return {StatsLoadResult::Unreadable};
+  StatsLoadOutcome outcome;
+  if (!file.isDirectory()) outcome = crossInkSlot ? loadCrossInkSlot(file, out) : loadFromOpenFile(file, out);
+  if (!file.close()) outcome.result = StatsLoadResult::Unreadable;
   return outcome;
 }
+}  // namespace
 
 bool GlobalReadingStats::decode(const uint8_t* data, size_t size, GlobalReadingStats& output) {
   GlobalReadingStats candidate;
@@ -266,6 +293,55 @@ GlobalReadingStats GlobalReadingStats::loadReadOnly() {
 }
 
 namespace {
+GlobalReadingStats importCrossInkDeviceStats() {
+  GlobalReadingStats stats;
+  uint8_t mac[6]{};
+  if (esp_efuse_mac_get_default(mac) != 0) {
+    stats.writable = false;
+    return stats;
+  }
+  char path[64];
+  const int length = snprintf(path, sizeof(path), "/.crosspoint/global_stats_crossink-%02x%02x%02x%02x%02x%02x.bin",
+                              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  if (length < 0 || static_cast<size_t>(length) + sizeof(".recovery") > sizeof(path)) {
+    stats.writable = false;
+    return stats;
+  }
+  auto* suffix = path + length;
+  strcpy(suffix, ".recovery");
+  if (Storage.lookupPath(path) != HalStorage::PathStatus::Missing) {
+    stats.writable = false;
+    return stats;
+  }
+
+  *suffix = '\0';
+  GlobalReadingStats backupStats;
+  const auto primary = loadFromFile(path, stats, /*crossInkSlot=*/true);
+  strcpy(suffix, ".bak");
+  const auto backup = loadFromFile(path, backupStats, /*crossInkSlot=*/true);
+  const bool primaryValid = primary.result == StatsLoadResult::Ok;
+  const bool backupValid = backup.result == StatsLoadResult::Ok;
+  const bool uncertain = primary.uncertain() || backup.uncertain();
+  if (primaryValid || backupValid) {
+    const uint32_t distance = backup.sequence - primary.sequence;
+    const bool backupNewer = backup.checksummed && (!primary.checksummed || (distance && distance < 0x80000000U));
+    if (backupValid && (!primaryValid || backupNewer)) stats = backupStats;
+    stats.writable = !uncertain && saveToFile(stats, GLOBAL_STATS_PATH, GLOBAL_STATS_BAK_PATH);
+    return stats;
+  }
+  if (uncertain) return {.writable = false};
+
+  strcpy(suffix, ".tmp");
+  const auto temp = loadFromFile(path, stats, /*crossInkSlot=*/true);
+  if (temp.result == StatsLoadResult::Ok) {
+    stats.writable = saveToFile(stats, GLOBAL_STATS_PATH, GLOBAL_STATS_BAK_PATH);
+    return stats;
+  }
+  stats.writable = primary.result == StatsLoadResult::Missing && backup.result == StatsLoadResult::Missing &&
+                   temp.result == StatsLoadResult::Missing;
+  return stats;
+}
+
 GlobalReadingStats loadGlobalUnlocked() {
   GlobalReadingStats stats;
   constexpr char tempPath[] = "/.crosspoint/global_stats.bin.tmp";
@@ -319,9 +395,11 @@ GlobalReadingStats loadGlobalUnlocked() {
     return stats;
   }
 
-  stats.writable = Storage.lookupPath(GLOBAL_STATS_PATH) == HalStorage::PathStatus::Missing &&
-                   Storage.lookupPath(GLOBAL_STATS_BAK_PATH) == HalStorage::PathStatus::Missing &&
-                   Storage.lookupPath(tempPath) == HalStorage::PathStatus::Missing;
+  if (primary.result == StatsLoadResult::Missing && temp.result == StatsLoadResult::Missing &&
+      backup.result == StatsLoadResult::Missing)
+    return importCrossInkDeviceStats();
+
+  stats.writable = false;
   LOG_DBG("GSTATS", "Global stats unavailable; existing unreadable files are preserved");
   return stats;
 }

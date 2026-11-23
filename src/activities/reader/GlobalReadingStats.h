@@ -25,8 +25,8 @@ struct GlobalReadingStats {
   static constexpr size_t MIN_SUPPORTED_FILE_SIZE = 13;
   static constexpr size_t CROSSINK_V4_FILE_SIZE = 175;
 
-  // Loads stats from /.crosspoint/global_stats.bin. Returns default-constructed
-  // stats if absent; incompatible or unreadable files disable writes.
+  // Loads native stats, or imports the current reader's CrossInk stats on first use.
+  // Incompatible or unreadable files disable writes.
   static GlobalReadingStats load();
   // Read only the primary snapshot; never promote a recovery file.
   static GlobalReadingStats loadReadOnly();

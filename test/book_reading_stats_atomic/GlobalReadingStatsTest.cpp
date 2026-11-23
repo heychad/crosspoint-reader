@@ -1,3 +1,4 @@
+#include <CredentialIntegrity.h>
 #include <GlobalReadingStats.h>
 #include <HalStorage.h>
 #include <esp_mac.h>
@@ -5,6 +6,8 @@
 
 namespace {
 constexpr char PATH[] = "/.crosspoint/global_stats.bin";
+constexpr char CROSSINK[] = "/.crosspoint/global_stats_crossink-001122334455.bin";
+constexpr char CROSSINK_BACKUP[] = "/.crosspoint/global_stats_crossink-001122334455.bin.bak";
 class GlobalReadingStatsTest : public testing::Test {
   void SetUp() override { Storage.reset(); }
 };
@@ -21,6 +24,15 @@ std::vector<uint8_t> crossInkSnapshot(const GlobalReadingStats& stats) {
   snapshot.resize(GlobalReadingStats::CROSSINK_V4_FILE_SIZE, 0xA5);
   snapshot[0] = 4;
   return snapshot;
+}
+
+std::vector<uint8_t> crossInkRecord(std::vector<uint8_t> payload, uint32_t sequence) {
+  const auto append = [&payload](uint32_t value) {
+    for (unsigned shift = 0; shift < 32; shift += 8) payload.push_back(static_cast<uint8_t>(value >> shift));
+  };
+  append(sequence);
+  append(credential_integrity::crc32({reinterpret_cast<const char*>(payload.data()), payload.size()}));
+  return payload;
 }
 }  // namespace
 
@@ -101,6 +113,102 @@ TEST_F(GlobalReadingStatsTest, ReadOnlyLoadRejectsFailedClose) {
   Storage.failNextCloseFor(PATH);
   EXPECT_FALSE(GlobalReadingStats::loadReadOnly().writable);
   EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 789U);
+}
+
+TEST_F(GlobalReadingStatsTest, ImportsNewestCrossInkSlotAndRetainsNativeReset) {
+  GlobalReadingStats newer;
+  newer.totalSessions = 7;
+  newer.totalReadingSeconds = 830;
+  newer.totalPagesTurned = 130;
+  newer.completedBooks = 2;
+  newer.timeOfDaySeconds[2] = 830;
+  newer.dayOfWeekSeconds[5] = 830;
+  newer.readingHistoryAnchorDay = 500;
+  newer.readingHistoryBits[0] = 3;
+  newer.longestReadingStreak = 2;
+  GlobalReadingStats older = newer;
+  older.totalReadingSeconds -= 300;
+  const auto primary = crossInkRecord(crossInkSnapshot(older), UINT32_MAX);
+  const auto backup = crossInkRecord(crossInkSnapshot(newer), 0);
+  writeBytes(CROSSINK, primary);
+  writeBytes(CROSSINK_BACKUP, backup);
+
+  EXPECT_FALSE(GlobalReadingStats::loadReadOnly().writable);
+  EXPECT_FALSE(Storage.exists(PATH));
+  const auto imported = GlobalReadingStats::load();
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> expected{}, actual{};
+  ASSERT_TRUE(newer.encode(expected));
+  ASSERT_TRUE(imported.encode(actual));
+  EXPECT_EQ(actual, expected);
+  ASSERT_TRUE(GlobalReadingStats::loadReadOnly().encode(actual));
+  EXPECT_EQ(actual, expected);
+
+  ASSERT_TRUE(GlobalReadingStats{}.save());
+  const auto reset = GlobalReadingStats::load();
+  EXPECT_TRUE(reset.writable);
+  EXPECT_EQ(reset.totalReadingSeconds, 0U);
+  for (const auto* path : {CROSSINK, CROSSINK_BACKUP}) {
+    const auto& source = path == CROSSINK ? primary : backup;
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForRead("TEST", path, file));
+    EXPECT_EQ(file.fileSize(), source.size());
+    std::vector<uint8_t> stored(source.size());
+    ASSERT_EQ(file.read(stored.data(), stored.size()), static_cast<int>(stored.size()));
+    ASSERT_TRUE(file.close());
+    EXPECT_EQ(stored, source);
+  }
+}
+
+TEST_F(GlobalReadingStatsTest, RecoversCrossInkFramedV3AfterV4SlotCrcFailure) {
+  GlobalReadingStats older;
+  older.totalReadingSeconds = 620;
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> v3{};
+  ASSERT_TRUE(older.encode(v3));
+  writeBytes(CROSSINK, crossInkRecord({v3.begin(), v3.end()}, 2));
+  GlobalReadingStats newer;
+  newer.totalReadingSeconds = 870;
+  auto damaged = crossInkRecord(crossInkSnapshot(newer), 3);
+  damaged.back() ^= 1;
+  writeBytes(CROSSINK_BACKUP, damaged);
+  EXPECT_EQ(GlobalReadingStats::load().totalReadingSeconds, 620U);
+  EXPECT_EQ(GlobalReadingStats::loadReadOnly().totalReadingSeconds, 620U);
+}
+
+TEST_F(GlobalReadingStatsTest, ImportsRawCrossInkOnRetryAfterUncertainReadOrWrite) {
+  GlobalReadingStats source;
+  source.totalReadingSeconds = 720;
+  writeBytes(CROSSINK, crossInkSnapshot(source));
+  writeBytes(CROSSINK_BACKUP, crossInkSnapshot(GlobalReadingStats{}));
+  Storage.failNextReadFor(CROSSINK_BACKUP);
+  const auto readUncertain = GlobalReadingStats::load();
+  EXPECT_FALSE(readUncertain.writable);
+  EXPECT_EQ(readUncertain.totalReadingSeconds, 720U);
+  EXPECT_FALSE(Storage.exists(PATH));
+
+  Storage.failNextRenameFrom("/.crosspoint/global_stats.bin.tmp");
+  const auto writeUncertain = GlobalReadingStats::load();
+  EXPECT_FALSE(writeUncertain.writable);
+  EXPECT_EQ(writeUncertain.totalReadingSeconds, 720U);
+  EXPECT_FALSE(Storage.exists(PATH));
+  EXPECT_EQ(GlobalReadingStats::load().totalReadingSeconds, 720U);
+  EXPECT_TRUE(GlobalReadingStats::loadReadOnly().writable);
+}
+
+TEST_F(GlobalReadingStatsTest, KeepsCrossInkRecoveryAndForeignSnapshotsSeparate) {
+  GlobalReadingStats source;
+  source.totalReadingSeconds = 500;
+  writeBytes("/.crosspoint/global_stats_crossink-aabbccddeeff.bin", crossInkSnapshot(source));
+  const auto absent = GlobalReadingStats::load();
+  EXPECT_TRUE(absent.writable);
+  EXPECT_EQ(absent.totalReadingSeconds, 0U);
+  EXPECT_FALSE(Storage.exists(PATH));
+
+  writeBytes(CROSSINK, crossInkSnapshot(source));
+  writeBytes("/.crosspoint/global_stats_crossink-001122334455.bin.recovery", {1});
+  const auto recovering = GlobalReadingStats::load();
+  EXPECT_FALSE(recovering.writable);
+  EXPECT_FALSE(recovering.save());
+  EXPECT_FALSE(Storage.exists(PATH));
 }
 
 TEST_F(GlobalReadingStatsTest, RejectsFutureAndTruncatedFiles) {
