@@ -257,12 +257,7 @@ statsbackup::BackupIntegrity statsbackup::inspectDeviceBackup(const std::string&
     if (Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Present ||
         !Storage.openFileForRead("STATS", path, file))
       return false;
-    // RC2 appends a 16-byte counter identity to the unchanged v3 statistics.
-    // Translate only explicit backup imports; native stores keep their format.
-    static_assert(GlobalReadingStats::CURRENT_FILE_VERSION == 3 && GlobalReadingStats::CURRENT_FILE_SIZE == 159,
-                  "Review RC2 backup translation when the native statistics format changes");
-    constexpr size_t CROSSINK_V4_SIZE = 175;
-    std::array<uint8_t, CROSSINK_V4_SIZE> bytes{};
+    std::array<uint8_t, GlobalReadingStats::CROSSINK_V4_FILE_SIZE> bytes{};
     const size_t size = file.fileSize();
     const bool readOk = size >= GlobalReadingStats::MIN_SUPPORTED_FILE_SIZE && size <= bytes.size() &&
                         (!input.checked || size == GlobalReadingStats::CURRENT_FILE_SIZE) &&
@@ -270,10 +265,8 @@ statsbackup::BackupIntegrity statsbackup::inspectDeviceBackup(const std::string&
     const bool closed = file.close();
     if (!readOk || !closed || (input.checked && hashBytes(bytes, size) != input.expectedHash)) return false;
     GlobalReadingStats decoded;
-    const bool crossInkV4 = !input.checked && size == CROSSINK_V4_SIZE && bytes[0] == 4;
-    if (crossInkV4) bytes[0] = GlobalReadingStats::CURRENT_FILE_VERSION;
-    if (!GlobalReadingStats::decode(bytes.data(), crossInkV4 ? GlobalReadingStats::CURRENT_FILE_SIZE : size, decoded))
-      return false;
+    const size_t decodedSize = input.checked ? size : GlobalReadingStats::normalizeCrossInkSnapshot(bytes.data(), size);
+    if (!GlobalReadingStats::decode(bytes.data(), decodedSize, decoded)) return false;
     input.output = decoded;
     input.result = input.checked ? BackupIntegrity::Checked : BackupIntegrity::LegacyUnverified;
     return true;

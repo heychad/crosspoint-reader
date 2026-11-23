@@ -23,6 +23,7 @@ struct GlobalReadingStats {
   static constexpr uint8_t CURRENT_FILE_VERSION = 3;
   static constexpr size_t CURRENT_FILE_SIZE = 159;
   static constexpr size_t MIN_SUPPORTED_FILE_SIZE = 13;
+  static constexpr size_t CROSSINK_V4_FILE_SIZE = 175;
 
   // Loads stats from /.crosspoint/global_stats.bin. Returns default-constructed
   // stats if absent; incompatible or unreadable files disable writes.
@@ -34,6 +35,15 @@ struct GlobalReadingStats {
 
   // Decode a supported complete payload. Failure leaves output unchanged.
   static bool decode(const uint8_t* data, size_t size, GlobalReadingStats& output);
+
+  // Translate an external snapshot in a caller-owned buffer before decode().
+  // The RC2/RC3 counter identity is outside the native totals and history.
+  static size_t normalizeCrossInkSnapshot(uint8_t* data, size_t size) {
+    static_assert(CURRENT_FILE_VERSION == 3 && CURRENT_FILE_SIZE == 159);
+    if (size != CROSSINK_V4_FILE_SIZE || data[0] != 4) return size;
+    data[0] = CURRENT_FILE_VERSION;
+    return CURRENT_FILE_SIZE;
+  }
 
   // Encode the current supported format without writing to storage.
   bool encode(std::array<uint8_t, CURRENT_FILE_SIZE>& output) const;

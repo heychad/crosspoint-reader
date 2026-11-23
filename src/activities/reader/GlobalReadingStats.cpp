@@ -186,10 +186,11 @@ StatsLoadOutcome decodeStats(const uint8_t* data, size_t size, GlobalReadingStat
   return outcome;
 }
 
-StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out) {
+StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out, bool externalSnapshot = false) {
   const size_t size = f.fileSize();
-  uint8_t data[GLOBAL_STATS_FILE_SIZE] = {};
-  const size_t bytesToRead = std::min(size, static_cast<size_t>(GLOBAL_STATS_FILE_SIZE));
+  uint8_t data[GlobalReadingStats::CROSSINK_V4_FILE_SIZE] = {};
+  const size_t limit = externalSnapshot ? sizeof(data) : GlobalReadingStats::CURRENT_FILE_SIZE;
+  const size_t bytesToRead = std::min(size, limit);
   const int n = f.read(data, bytesToRead);
   if (n < 0 || static_cast<size_t>(n) != bytesToRead) {
     StatsLoadOutcome outcome;
@@ -197,7 +198,8 @@ StatsLoadOutcome loadFromOpenFile(HalFile& f, GlobalReadingStats& out) {
     outcome.result = StatsLoadResult::Unreadable;
     return outcome;
   }
-  return decodeStats(data, size, out);
+  const size_t decodedSize = externalSnapshot ? GlobalReadingStats::normalizeCrossInkSnapshot(data, size) : size;
+  return decodeStats(data, decodedSize, out);
 }
 
 bool saveToFile(const GlobalReadingStats& stats, const char* path, const char* backupPath) {
@@ -367,7 +369,7 @@ GlobalStatsAggregate GlobalReadingStats::loadAggregated(const GlobalReadingStats
       continue;
     }
     GlobalReadingStats peer;
-    const auto outcome = loadFromOpenFile(file, peer);
+    const auto outcome = loadFromOpenFile(file, peer, /*externalSnapshot=*/true);
     const bool closed = file.close();
     if (closed && outcome.result == StatsLoadResult::Ok) {
       addStats(result.stats, peer);

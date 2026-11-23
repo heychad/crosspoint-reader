@@ -14,6 +14,14 @@ void writeBytes(const char* path, const std::vector<uint8_t>& bytes) {
   ASSERT_EQ(f.write(bytes.data(), bytes.size()), bytes.size());
   ASSERT_TRUE(f.close());
 }
+std::vector<uint8_t> crossInkSnapshot(const GlobalReadingStats& stats) {
+  std::array<uint8_t, GlobalReadingStats::CURRENT_FILE_SIZE> native{};
+  EXPECT_TRUE(stats.encode(native));
+  std::vector<uint8_t> snapshot(native.begin(), native.end());
+  snapshot.resize(GlobalReadingStats::CROSSINK_V4_FILE_SIZE, 0xA5);
+  snapshot[0] = 4;
+  return snapshot;
+}
 }  // namespace
 
 TEST_F(GlobalReadingStatsTest, DecodeChecksVersionAndSizeWithoutChangingOutputOnFailure) {
@@ -174,6 +182,67 @@ TEST_F(GlobalReadingStatsTest, AggregationCountsPeersAndPreservesLocalRecovery) 
 TEST_F(GlobalReadingStatsTest, AggregationReportsUnreadablePeer) {
   ASSERT_TRUE(Storage.mkdir("/.crosspoint/synced_stats"));
   writeBytes("/.crosspoint/synced_stats/device_aabbccddeeff.bin", {255});
+  const auto total = GlobalReadingStats::loadAggregated(GlobalReadingStats{});
+  EXPECT_FALSE(total.complete);
+  EXPECT_EQ(total.sources, 1U);
+  EXPECT_EQ(total.skipped, 1U);
+}
+
+TEST_F(GlobalReadingStatsTest, AggregationReadsCrossInkV4PeersAndSkipsTheLocalSnapshot) {
+  ASSERT_TRUE(Storage.mkdir("/.crosspoint/synced_stats"));
+  constexpr char peerPath[] = "/.crosspoint/synced_stats/device_aabbccddeeff.bin";
+  GlobalReadingStats peer;
+  peer.totalSessions = 4;
+  peer.totalReadingSeconds = 600;
+  peer.timeOfDaySeconds[1] = 600;
+  peer.dayOfWeekSeconds[3] = 600;
+  peer.readingHistoryAnchorDay = 1234;
+  peer.readingHistoryBits[0] = 1;
+  const auto snapshot = crossInkSnapshot(peer);
+  writeBytes(peerPath, snapshot);
+  writeBytes("/.crosspoint/synced_stats/device_001122334455.bin", snapshot);
+  GlobalReadingStats local;
+  local.totalSessions = 2;
+  local.totalReadingSeconds = 30;
+
+  const auto total = GlobalReadingStats::loadAggregated(local);
+  EXPECT_TRUE(total.complete);
+  EXPECT_EQ(total.sources, 2U);
+  EXPECT_EQ(total.skipped, 0U);
+  EXPECT_EQ(total.stats.totalSessions, 6U);
+  EXPECT_EQ(total.stats.totalReadingSeconds, 630U);
+  EXPECT_EQ(total.stats.timeOfDaySeconds[1], 600U);
+  EXPECT_EQ(total.stats.dayOfWeekSeconds[3], 600U);
+  EXPECT_EQ(total.stats.readingHistoryAnchorDay, peer.readingHistoryAnchorDay);
+  EXPECT_EQ(total.stats.readingHistoryBits, peer.readingHistoryBits);
+
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", peerPath, file));
+  std::vector<uint8_t> stored(snapshot.size());
+  ASSERT_EQ(file.read(stored.data(), stored.size()), static_cast<int>(stored.size()));
+  ASSERT_TRUE(file.close());
+  EXPECT_EQ(stored, snapshot);
+  EXPECT_FALSE(Storage.exists(PATH));
+
+  writeBytes(PATH, snapshot);
+  EXPECT_FALSE(GlobalReadingStats::load().writable);
+}
+
+TEST_F(GlobalReadingStatsTest, AggregationRequiresTheCompleteCrossInkV4Snapshot) {
+  ASSERT_TRUE(Storage.mkdir("/.crosspoint/synced_stats"));
+  constexpr char peerPath[] = "/.crosspoint/synced_stats/device_aabbccddeeff.bin";
+  const auto valid = crossInkSnapshot(GlobalReadingStats{});
+  for (const int sizeDelta : {-1, 1}) {
+    auto malformed = valid;
+    malformed.resize(valid.size() + sizeDelta);
+    writeBytes(peerPath, malformed);
+    const auto total = GlobalReadingStats::loadAggregated(GlobalReadingStats{});
+    EXPECT_FALSE(total.complete);
+    EXPECT_EQ(total.sources, 1U);
+    EXPECT_EQ(total.skipped, 1U);
+  }
+  writeBytes(peerPath, valid);
+  Storage.failNextReadFor(peerPath);
   const auto total = GlobalReadingStats::loadAggregated(GlobalReadingStats{});
   EXPECT_FALSE(total.complete);
   EXPECT_EQ(total.sources, 1U);

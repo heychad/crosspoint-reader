@@ -7,8 +7,12 @@ Time left uses current progress and saved reading time. Imported estimates are
 preserved in the data file but are not shown because they may be stale.
 
 All devices combines local statistics with compatible files already stored in
-`.crosspoint/synced_stats`. It reports incomplete totals if a source cannot be
-read. It does not transfer data between readers.
+`/.crosspoint/synced_stats`. It reads native snapshots and the 175-byte
+CrossInk RC2/RC3 version-4 exports under `device_<12 hex digits>.bin`.
+It skips this reader's own peer copy. The totals, time buckets, and history
+are combined in memory. The original exports keep all their bytes, including
+their counter identities. An unreadable or unsupported source marks the view
+incomplete.
 
 Opening statistics saves a snapshot without ending the current reading session.
 While the reader remains active, it retains pending time and retries a failed

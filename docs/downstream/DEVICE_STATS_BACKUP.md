@@ -102,10 +102,10 @@ The pinned CrossInk RC2 `959e3d1575cf` exports version 4 as 175 bytes: the
 version-3 totals/history layout followed by a 16-byte counter identity.
 Explicit restore now accepts that exact legacy-named payload, maps its totals
 and history into native version 3, and preserves the complete source file.
-It does not adopt the foreign counter identity or change native primary/synced
-statistics formats. The confirmation retains the integrity warning and states
-that reader identity stays unchanged. This is explicit backup translation,
-not automatic cross-firmware identity reconciliation or aggregation.
+The confirmation retains the integrity warning. Reader identity remains
+native. All Devices uses the same translation when reading CrossInk RC2/RC3
+peer exports. Native primary and checked backup files still require their
+existing formats.
 
 The read buffer grows from 159 to 175 bytes; there is no new task, heap buffer,
 or persistent format. Unknown versions, truncations, suffix bytes, and a
