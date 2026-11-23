@@ -38,7 +38,8 @@ add_executable(OtaPipelineTest OtaPipelineTest.cpp
 target_include_directories(OtaPipelineTest PRIVATE stubs ${REPO_ROOT}/src/network ${REPO_ROOT}/lib/hal
   ${REPO_ROOT}/lib/Memory ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include)
-target_compile_definitions(OtaPipelineTest PRIVATE FREEINK_DEVICE_X4PRO=1 CROSSPOINT_VERSION="2.0.0-chad.3-test58-x4pro")
+target_compile_definitions(OtaPipelineTest PRIVATE FREEINK_DEVICE_X4PRO=1
+  CROSSPOINT_VERSION="2.0.0-chad.3-test65-rc3-fixes-x4pro")
 target_link_libraries(OtaPipelineTest PRIVATE crosspoint_test_common GTest::gtest_main)
 if(NOT APPLE)
   target_link_libraries(OtaPipelineTest PRIVATE OpenSSL::Crypto)

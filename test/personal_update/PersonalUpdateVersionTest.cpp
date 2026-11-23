@@ -22,6 +22,19 @@ TEST(PersonalUpdateVersion, OnlyNewerPersonalReleaseIsOffered) {
   EXPECT_FALSE(isNewer("1.9.9-chad.100", "2.0.0-chad.3-x4pro"));
 }
 
+TEST(PersonalUpdateVersion, RecognizesLabeledX4ProTestsButOnlyOffersStableReleases) {
+  using personalupdate::isNewer;
+  constexpr auto installed = "2.0.0-chad.3-test65-rc3-fixes-x4pro";
+  EXPECT_TRUE(isNewer("2.0.0-chad.4", installed));
+  EXPECT_FALSE(isNewer("2.0.0-chad.3", installed));
+  EXPECT_FALSE(isNewer("2.0.0-chad.4-test1-rc3-fixes-x4pro", installed));
+  for (const auto* malformed :
+       {"2.0.0-chad.3-test65-rc3-fixes", "2.0.0-chad.3-test65-rc3-fixes-x4c", "2.0.0-chad.3-test65-RC3-x4pro",
+        "2.0.0-chad.3-test65-rc3--fixes-x4pro", "2.0.0-chad.3-test65-rc3;-x4pro", "2.0.0-chad.3-test65--x4pro"}) {
+    EXPECT_FALSE(isNewer("2.0.0-chad.4", malformed)) << malformed;
+  }
+}
+
 TEST(PersonalUpdateVersion, RejectsUpstreamMalformedAndOtherBoardTags) {
   using personalupdate::isNewer;
   for (const auto* tag : {"2.1.0", "v2.1.0-chad.5", "2.1.0-chad.5-rc", "2.1.0-chad.5-x4pro", "2.1.0-chad.",

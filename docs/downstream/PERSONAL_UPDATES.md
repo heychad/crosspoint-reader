@@ -7,7 +7,10 @@ use `X.Y.Z-chad.N`, and only a strictly newer personal release may be offered.
 The existing release workflow builds only the X4 Pro asset.
 For example, `2.0.0-chad.4` supplies
 `crosspoint-2.0.0-chad.4-x4pro.bin`. The numbered release must increase even when
-the installed firmware is a test build.
+the installed firmware is a test build. The comparison accepts installed
+versions with descriptive test labels such as `2.0.0-chad.3-test65-rc3-fixes-x4pro`.
+The offered version must use the stable release format. The local OTA pipeline
+test covers this exact installed version.
 
 Online checking and installation remain disabled in the standard build.
 `CROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES=1` enables the update-only HTTPS

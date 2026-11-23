@@ -1,5 +1,6 @@
 #include "PersonalUpdateVersion.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -30,6 +31,12 @@ bool consume(std::string_view& input, std::string_view prefix) {
   return true;
 }
 
+bool validTestLabel(std::string_view label) {
+  return !label.empty() && label.front() != '-' && label.back() != '-' && label.find("--") == std::string_view::npos &&
+         std::all_of(label.begin(), label.end(),
+                     [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'; });
+}
+
 bool parse(std::string_view input, bool current, Version& version) {
   if (!current && input.size() > 26) return false;
   const size_t digits = current ? 10 : 9;
@@ -38,12 +45,15 @@ bool parse(std::string_view input, bool current, Version& version) {
       !number(input, version.parts[3], digits))
     return false;
   if (!current) return input.empty();
-  if (input.starts_with("-test")) {
-    input.remove_prefix(5);
-    uint32_t testNumber = 0;
-    if (!number(input, testNumber)) return false;
-  }
-  return input.empty() || (consume(input, "-x4pro") && input.empty());
+
+  constexpr std::string_view boardSuffix = "-x4pro";
+  const bool x4pro = input.ends_with(boardSuffix);
+  if (x4pro) input.remove_suffix(boardSuffix.size());
+  if (input.empty()) return true;
+
+  uint32_t testNumber = 0;
+  if (!consume(input, "-test") || !number(input, testNumber)) return false;
+  return input.empty() || (x4pro && consume(input, "-") && validTestLabel(input));
 }
 }  // namespace
 

@@ -2,6 +2,14 @@ name: Compile Release Candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      test_version:
+        description: 'Test version without the device suffix, e.g. 2.0.0-chad.3-test66'
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   build-release-candidate:
@@ -10,12 +18,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - pio_env: x4pro-gh_release_rc
+          - pio_env: x4pro-chad-test
             asset: firmware-x4pro.bin
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+          persist-credentials: false
+
+      - name: Validate test version
+        env:
+          TEST_VERSION: ${{ inputs.test_version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TEST_VERSION" =~ ^([0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}-chad\.[0-9]{1,9})-test[0-9]{1,9}(-[a-z0-9]+)*$ ]] ||
+             [[ "$TEST_VERSION" == *-x4pro ]] || (( ${#TEST_VERSION} > 58 )); then
+            echo 'Enter a numbered personal test version without the -x4pro suffix.' >&2
+            exit 1
+          fi
+          release_base="${BASH_REMATCH[1]}"
+          configured_version="$(sed -n 's/^version = //p' platformio.ini | head -n1)"
+          if [[ "$configured_version" != "$release_base" && "$configured_version" != "$release_base"-test* ]]; then
+            echo 'Test version must use the release number in platformio.ini.' >&2
+            exit 1
+          fi
+          printf 'CROSSPOINT_X4PRO_TEST_VERSION=%s\n' "$TEST_VERSION" >> "$GITHUB_ENV"
+          printf 'SHORT_SHA=%s\n' "${GITHUB_SHA::12}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v6
         with:
@@ -55,30 +83,58 @@ jobs:
           uv pip install --python ~/.platformio/penv/bin/python "pioarduino==6.1.19"
           ~/.platformio/penv/bin/pio --version
 
-      - name: Extract env
-        run: |
-          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-          echo "BRANCH_SUFFIX=${GITHUB_REF_NAME#release/}" >> $GITHUB_ENV
-
       - name: Build CrossPoint Release Candidate
-        env:
-          CROSSPOINT_RC_HASH: ${{ env.SHORT_SHA }}
         run: pio run -e ${{ matrix.pio_env }} -j1
 
-      - name: Name release asset
+      - name: Verify and name candidate asset
+        env:
+          PIO_ENV: ${{ matrix.pio_env }}
+          ASSET: ${{ matrix.asset }}
         run: |
-          if [ "${{ matrix.asset }}" != "firmware.bin" ]; then
-            cp ".pio/build/${{ matrix.pio_env }}/firmware.bin" \
-              ".pio/build/${{ matrix.pio_env }}/${{ matrix.asset }}"
-          fi
+          set -euo pipefail
+          export SDK_REVISION="$(git rev-parse HEAD:freeink-sdk)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C freeink-sdk rev-parse HEAD)" = "$SDK_REVISION"
+          python3 - <<'PY'
+          import csv
+          import hashlib
+          import os
+          from pathlib import Path
+          import re
+
+          profile = os.environ['PIO_ENV']
+          build = Path('.pio/build') / profile
+          asset = os.environ['ASSET']
+          version = os.environ['CROSSPOINT_X4PRO_TEST_VERSION'] + '-x4pro'
+          image = (build / 'firmware.bin').read_bytes()
+          with Path('partitions.csv').open(newline='') as table:
+              slots = {row[2].strip(): int(row[4], 0) for row in csv.reader(table)
+                       if len(row) >= 5 and row[1].strip() == 'app' and row[2].strip() in ('ota_0', 'ota_1')}
+          if len(slots) != 2:
+              raise SystemExit('Expected both X4 Pro OTA partitions')
+          if not (24 <= len(image) <= min(slots.values()) and image[0] == 0xe9 and image[12:14] == b'\x09\x00'):
+              raise SystemExit('Expected an ESP32-S3 app image that fits the X4 Pro OTA slot')
+          boards = re.findall(rb'CROSSPOINT-BOARD-V1:([!-:<-~]{1,23});', image)
+          if boards != [b'x4pro'] or version.encode() + b'\x00' not in image:
+              raise SystemExit('Firmware board tag or embedded version does not match this candidate')
+          (build / asset).write_bytes(image)
+          (build / 'SHA256SUMS').write_text(f'{hashlib.sha256(image).hexdigest()}  {asset}\n')
+          (build / 'SOURCE.txt').write_text(
+              f'Commit: {os.environ["GITHUB_SHA"]}\nFreeInk SDK: {os.environ["SDK_REVISION"]}\n'
+              f'Profile: {profile}\nVersion: {version}\n'
+          )
+          PY
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: CrossPoint-RC-${{ env.BRANCH_SUFFIX }}-${{ matrix.pio_env }}
+          name: CrossPoint-${{ inputs.test_version }}-${{ env.SHORT_SHA }}-x4pro
+          if-no-files-found: error
           path: |
             .pio/build/${{ matrix.pio_env }}/bootloader.bin
             .pio/build/${{ matrix.pio_env }}/${{ matrix.asset }}
             .pio/build/${{ matrix.pio_env }}/firmware.elf
             .pio/build/${{ matrix.pio_env }}/firmware.map
             .pio/build/${{ matrix.pio_env }}/partitions.bin
+            .pio/build/${{ matrix.pio_env }}/SHA256SUMS
+            .pio/build/${{ matrix.pio_env }}/SOURCE.txt
