@@ -29,6 +29,8 @@ assert 'case 3:' in menu and 'case 4:' in menu and menu.count('openBookStatistic
 assert menu.index('case 1:') < menu.index('promptRemoveRecentBook(path, title)') < menu.index('case 2:')
 loop = source[source.index('void LibraryListActivity::loop()'):]
 assert loop.index('UiTabListActivity::loop();') < loop.index('if (statisticsOpenFailed)') < loop.index('optionPopup.showMessage')
+error_popup = loop[loop.index('if (statisticsOpenFailed)'):loop.index('if (!gridEnabled()')]
+assert error_popup.index('RenderLock lock(*this);') < error_popup.index('optionPopup.showMessage')
 code = r'''
 #include <algorithm>
 #include <cassert>
@@ -103,9 +105,9 @@ struct OptionPopup {
  bool active=false;std::vector<StrId> options;std::string message;std::function<void(int)> select;
  bool isActive() const{return active;}
  void show(StrId,const StrId* items,int count,int,std::function<void(int)> callback){
-  options.assign(items,items+count);select=std::move(callback);active=true;
+  assert(locked);options.assign(items,items+count);select=std::move(callback);active=true;
  }
- void showMessage(const char*,const char* body,const char* const*,int,int,std::function<void(int)>){message=body;active=true;}
+ void showMessage(const char*,const char* body,const char* const*,int,int,std::function<void(int)>){assert(locked);message=body;active=true;}
  bool handleInput(MappedInputManager&,const std::function<void()>&){return active;}
  void choose(int index){assert(active&&index<int(options.size()));active=false;select(index);}
 };

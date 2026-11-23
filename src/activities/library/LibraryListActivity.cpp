@@ -1184,6 +1184,7 @@ bool LibraryListActivity::handleGridSwipe() {
 void LibraryListActivity::loop() {
   UiTabListActivity::loop();
   if (statisticsOpenFailed) {
+    RenderLock lock(*this);
     statisticsOpenFailed = false;
     const char* options[] = {tr(STR_OK_BUTTON)};
     optionPopup.showMessage(tr(STR_READING_STATISTICS), tr(STR_LIBRARY_STATS_OPEN_ERROR), options, 1, 0, [](int) {});

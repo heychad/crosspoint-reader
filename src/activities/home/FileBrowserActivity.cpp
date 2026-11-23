@@ -357,6 +357,7 @@ void FileBrowserActivity::activateSelected() {
 }
 
 void FileBrowserActivity::showEntryActions() {
+  RenderLock lock(*this);
   if (mode != Mode::Books || files.empty() || optionPopup.isActive() || nav.selected < 0 ||
       nav.selected >= listCount()) {
     return;
@@ -551,6 +552,7 @@ void FileBrowserActivity::renameSelectedFile(const std::string& oldPath, const s
 
 bool FileBrowserActivity::handleCustomInput() {
   if (statisticsOpenFailed) {
+    RenderLock lock(*this);
     statisticsOpenFailed = false;
     const char* options[] = {tr(STR_OK_BUTTON)};
     optionPopup.showMessage(tr(STR_READING_STATISTICS), tr(STR_LIBRARY_STATS_OPEN_ERROR), options, 1, 0, [](int) {});
