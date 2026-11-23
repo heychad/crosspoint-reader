@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
 #include <new>
 #include <string>
 #include <vector>
@@ -318,4 +319,48 @@ TEST_F(OtaPipeline, MissingReleaseClearsAnEarlierOfferWithoutStartingFlash) {
   EXPECT_EQ(updater.installUpdate(nullptr, nullptr), OtaUpdater::UPDATE_OLDER_ERROR);
   EXPECT_EQ(env.begins, 0);
   expectNoBoot();
+}
+
+// Run on request with an actual 2.0.0-chad.4 stable-profile app image.
+TEST_F(OtaPipeline, DISABLED_CompiledStableImageUpgrade) {
+  constexpr size_t x4ProSlotBytes = 0x640000;
+  const char* path = std::getenv("CROSSPOINT_STABLE_TEST_IMAGE");
+  ASSERT_NE(path, nullptr);
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  ASSERT_TRUE(input.is_open());
+  const auto length = input.tellg();
+  ASSERT_GE(length, std::streampos{24});
+  ASSERT_LE(length, std::streampos{x4ProSlotBytes});
+  std::vector<uint8_t> firmware(static_cast<size_t>(length));
+  input.seekg(0);
+  ASSERT_TRUE(input.read(reinterpret_cast<char*>(firmware.data()), static_cast<std::streamsize>(firmware.size())));
+
+  for (bool corrupt : {false, true}) {
+    seed();
+    env.partition.size = x4ProSlotBytes;
+    env.width = 2048;
+    env.image = firmware;
+    env.metadata = metadata();
+    if (corrupt) env.image.back() ^= 1;
+
+    OtaUpdater updater;
+    ASSERT_EQ(updater.checkForUpdate(), OtaUpdater::OK);
+    ASSERT_TRUE(updater.isUpdateNewer()) << CROSSPOINT_VERSION;
+    EXPECT_EQ(updater.getLatestVersion(), "2.0.0-chad.4");
+    EXPECT_EQ(updater.getOtaSize(), firmware.size());
+    EXPECT_EQ(env.begins, 0);
+    if (corrupt) {
+      EXPECT_EQ(updater.installUpdate(), OtaUpdater::INTEGRITY_ERROR);
+      EXPECT_EQ(env.aborts, 1);
+      EXPECT_EQ(env.ends, 0);
+      expectNoBoot();
+    } else {
+      ASSERT_EQ(updater.installUpdate(), OtaUpdater::OK);
+      EXPECT_EQ(env.written, firmware);
+      EXPECT_EQ(env.beginSize, firmware.size());
+      EXPECT_EQ(env.ends, 1);
+      EXPECT_EQ(env.boots, 1);
+      EXPECT_TRUE(env.selected);
+    }
+  }
 }

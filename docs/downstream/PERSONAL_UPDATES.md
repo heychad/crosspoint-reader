@@ -193,12 +193,33 @@ dependencies. These are build footprints, not runtime memory measurements.
   after device validation. Both personal build workflows share the OTA slot,
   X4 Pro board tag, and embedded version checks before they package an image.
 
-A local stable-version preview built `x4pro-gh_release` with `2.0.0-chad.4` in
-a temporary PlatformIO configuration. The release packaging step produced the
-expected asset name and passed the image checks. The host updater, configured
-with test66's installed version, accepted the compiled image and rejected a
-one-byte change before selecting the boot slot. This used simulated transport
-and flash. Online installation still needs a reader test.
+### Compiled stable image check
+
+The local preview for test67's source, `2f216f60`, built
+`x4pro-gh_release` with `2.0.0-chad.4` in a temporary PlatformIO
+configuration. The release packaging step rejected a mismatched source SHA
+and produced `crosspoint-2.0.0-chad.4-x4pro.bin` from the matching checkout.
+The compiled image passed the board, version, partition size, checksum, and
+validation hash checks.
+
+The host updater started from test67's version. It accepted all 5,793,872
+bytes of the compiled image and selected the simulated boot slot. Flipping
+one byte with the original digest in the release metadata stopped the
+update before finalization or boot selection. The harness uses real SHA-256
+with simulated transport and flash. Live TLS and installation still need a
+reader test.
+
+Run the compiled-image check after building the stable profile with
+`2.0.0-chad.4`. Use the app image from that build.
+
+```sh
+python3 scripts/check_x4pro_firmware.py .pio/build/x4pro-gh_release/firmware.bin 2.0.0-chad.4
+cmake --build build/recovery-host-tests --target OtaPipelineTest
+CROSSPOINT_STABLE_TEST_IMAGE=.pio/build/x4pro-gh_release/firmware.bin \
+  build/recovery-host-tests/personal_update/OtaPipelineTest \
+  --gtest_also_run_disabled_tests \
+  --gtest_filter=OtaPipeline.DISABLED_CompiledStableImageUpgrade
+```
 
 ## Verification boundary
 
