@@ -8,6 +8,18 @@ identify the slowest steps and test improvements against the same books. Check
 page-turn latency, chapter transitions, image rendering, and memory use on the
 physical reader. Keep reading positions and protected-book support intact.
 
+## Saving a clipping and turning the page
+
+A successful clipping save now returns to the reader with the selected text
+highlighted. It skips the success popup and the redraw when that popup expires.
+Saving and exporting still finish before the reader returns. Limits, failed
+saves, and failed exports still show a message. On the X4 Pro, save a clip and
+try turning the page as soon as the highlight appears.
+
+To check for the slight text shift after a page turn, compare the same text-only
+pages with Text Anti-Aliasing on and off. With it on, the reader applies a
+grayscale pass that can make the text appear to settle after the first refresh.
+
 ## Saved Items feedback, November 12
 
 - First open took more than 30 seconds. Saved Items now scans the bookmark and

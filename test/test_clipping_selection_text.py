@@ -35,6 +35,7 @@ word_font = method("int clippingWordFont", "Rect clippingWordRect", reader_sourc
 word_rect = method("Rect clippingWordRect", "int clampPercent", reader_source)
 saved_hit = method("int EpubReaderActivity::clippingAtPoint", "void EpubReaderActivity::drawClippingHighlights", reader_source)
 saved_draw = method("void EpubReaderActivity::drawClippingHighlights", "void EpubReaderActivity::renderStatusBar", reader_source)
+save_feedback = method("bool exported = false;", "  });", reader_source)
 
 # Compile production extraction, export, and redraws with bounded UI/rendering stubs.
 harness = r"""
@@ -166,7 +167,7 @@ struct Input { bool hasTouch() const { return false; } };
 using GfxRenderer = Renderer;
 using TextBlock = Block;
 struct BoardConfig { static bool isEegoA4() { return false; } };
-unsigned long millis() { return 0; }
+unsigned long millis() { return 100; }
 struct Settings {
   int screenMargin = 0;
   int getReaderFontId() const { return 0; }
@@ -244,6 +245,34 @@ struct EpubReaderActivity {
   void drawClippingHighlights(const Page&, int, int, int) const;
 };
 """ + word_font + word_rect + saved_hit + saved_draw + r"""
+enum class StrId { STR_CLIPPING_LIMIT_REACHED, STR_CLIPPING_SAVED, STR_CLIPPING_EXPORT_FAILED, STR_CLIPPING_FAILED };
+struct ClippingsManager {
+  static inline bool exportSucceeds = false;
+  static inline int exports = 0;
+  static bool saveClipping(const std::string&, const std::string&, const std::string&, int, const std::string&) {
+    ++exports;
+    return exportSucceeds;
+  }
+};
+void checkSaveFeedback(ClippingStore::AddResult addResult, bool exportSucceeds, bool expectPopup, StrId expectMessage) {
+  // Start with an old error so success must also clear it.
+  bool showClippingMessage = true;
+  StrId clippingMessage = StrId::STR_CLIPPING_FAILED;
+  unsigned long clippingMessageTime = 40;
+  int updates = 0;
+  const auto requestUpdate = [&] { ++updates; };
+  const std::string bookTitle = "Book", author = "Author", chapterTitle = "Chapter";
+  const int startPage = 4;
+  const struct { std::string text; } clipping{"Passage"};
+  ClippingsManager::exportSucceeds = exportSucceeds;
+  ClippingsManager::exports = 0;
+""" + save_feedback + r"""
+  assert(updates == 1);
+  assert(showClippingMessage == expectPopup);
+  assert(clippingMessage == expectMessage);
+  assert(clippingMessageTime == (expectPopup ? millis() : 40));
+  assert(ClippingsManager::exports == (addResult == ClippingStore::AddResult::Added ? 1 : 0));
+}
 int loadLine(ClipSelectionActivity& activity, const std::vector<std::string>& logical,
              bool rtl, int first = 0, uint32_t offset = 0, uint16_t row = 0) {
   std::vector<uint16_t> visual;
@@ -280,6 +309,12 @@ void expect(const ClipSelectionActivity& activity, int first, int last, const ch
   assert(text == expected);
 }
 int main() {
+  using AddResult = ClippingStore::AddResult;
+  checkSaveFeedback(AddResult::Added, true, false, StrId::STR_CLIPPING_FAILED);
+  checkSaveFeedback(AddResult::Added, false, true, StrId::STR_CLIPPING_EXPORT_FAILED);
+  checkSaveFeedback(AddResult::LimitReached, false, true, StrId::STR_CLIPPING_LIMIT_REACHED);
+  checkSaveFeedback(AddResult::SaveFailed, false, true, StrId::STR_CLIPPING_FAILED);
+
   // Generated markers stay selectable and share a paragraph with their book text.
   for (const auto mode : {ClipSelectionActivity::Mode::Clip, ClipSelectionActivity::Mode::DefinitionLookup}) {
     ClipSelectionActivity generated;

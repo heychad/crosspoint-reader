@@ -868,12 +868,14 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     if (addResult == ClippingStore::AddResult::Added) {
       exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text);
     }
-    clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED
-                      : exported                                          ? StrId::STR_CLIPPING_SAVED
-                      : addResult == ClippingStore::AddResult::Added      ? StrId::STR_CLIPPING_EXPORT_FAILED
-                                                                          : StrId::STR_CLIPPING_FAILED;
-    showClippingMessage = true;
-    clippingMessageTime = millis();
+    // The saved highlight confirms success on the normal reader refresh.
+    showClippingMessage = !exported;
+    if (showClippingMessage) {
+      clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED
+                        : addResult == ClippingStore::AddResult::Added      ? StrId::STR_CLIPPING_EXPORT_FAILED
+                                                                            : StrId::STR_CLIPPING_FAILED;
+      clippingMessageTime = millis();
+    }
     requestUpdate();
   });
 }
