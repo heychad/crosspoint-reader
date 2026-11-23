@@ -362,7 +362,8 @@ inline unsigned long millis() { static unsigned long now = 0; return ++now; }
                         method(epub_reader, 'bool EpubReaderActivity::pageTurn(')]
             (stub_directory / 'PromptCompletionMethods.h').write_text('\n'.join(methods))
         reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
-        progress_start = reader.index('  HalFile f;\n  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {')
+        progress_start = reader.index('  bool progressLoaded = false;\n  HalFile f;',
+                                      reader.index('bool EpubReaderActivity::loadBook()'))
         brace_start = reader.index('{', progress_start)
         depth = 1
         progress_end = brace_start + 1

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def method(path, signature):
     source = (ROOT / path).read_text()
     start = source.index(signature)
-    end = source.index('\nvoid ', start + len(signature))
+    end = source.index('\n}\n', start + len(signature)) + 2
     return source[start:end]
 
 

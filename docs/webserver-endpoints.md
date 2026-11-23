@@ -541,6 +541,11 @@ OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, MOVE, COPY, LOCK, UNLOCK
 Notes:
 
 - `PUT` writes to a temporary `.davtmp` file first, then renames it into place.
+- `COPY` checks the source byte count and closes a synced staging file before
+  changing the destination. Replacing an existing destination keeps a backup
+  until the reader verifies the rename. An interrupted or uncertain
+  publication can leave hidden `.dav-copy-*.part` and `.dav-copy-*.bak` files
+  beside the destination for manual recovery.
 - Protected paths are rejected.
 - `LOCK` and `UNLOCK` are accepted for client compatibility only. The server
   does not implement full WebDAV Class 2 locking semantics such as persistent

@@ -359,5 +359,6 @@ add_test(NAME DailyReadingStatsCodec COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRE
 add_subdirectory(daily_reading_stats)
 
 add_test(NAME BookMoveHttpRoutes COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/book_move/test_routes.py)
+add_test(NAME DavCopyFaults COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_dav_copy_faults.py)
 
 add_test(NAME BookMoveRecoveryLifecycle COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/book_move/test_recovery_lifecycle.py)

@@ -4,6 +4,9 @@
 #include <HalStorage.h>
 #include <HiddenItems.h>
 #include <Logging.h>
+#include <esp_random.h>
+
+#include <algorithm>
 
 #include "BookMoveWeb.h"
 #include "ClippingStore.h"
@@ -605,6 +608,89 @@ void WebDAVHandler::handleMove(WebServer& s) {
 
 // ── COPY ─────────────────────────────────────────────────────────────────────
 
+namespace {
+bool stageDavCopy(HalFile& source, const char* temporary) {
+  auto copy = Storage.openChecked(temporary, O_WRONLY | O_CREAT | O_EXCL);
+  if (!copy) return false;
+
+  uint8_t buffer[4096];
+  uint64_t remaining = source.fileSize64();
+  bool complete = !source.hasError();
+  while (complete && remaining) {
+    resetTaskWatchdogIfSubscribed();
+    const size_t count = std::min<uint64_t>(remaining, sizeof(buffer));
+    complete = source.read(buffer, count) == static_cast<int>(count) && !source.hasError() &&
+               copy.write(buffer, count) == count;
+    remaining -= count;
+  }
+  const bool sourceClosed = source.close();
+  const bool synced = complete && sourceClosed && copy.sync() && !copy.hasError();
+  const bool copyClosed = copy.close();
+  if (synced && copyClosed) return true;
+
+  Storage.remove(temporary);
+  return false;
+}
+
+struct DavCopyPublication {
+  const char* destination;
+  const char* temporary;
+  const char* backup;
+  bool overwrite;
+  int status = 500;
+  bool discardTemporary = true;
+};
+
+bool publishDavCopy(void* context) {
+  auto& copy = *static_cast<DavCopyPublication*>(context);
+  using Status = HalStorage::PathStatus;
+  const auto destination = Storage.lookupPath(copy.destination);
+  if (destination == Status::Failed) return false;
+  const bool exists = destination == Status::Present;
+  if (exists && !copy.overwrite) {
+    copy.status = 412;
+    return false;
+  }
+  if (exists) {
+    auto current = Storage.openChecked(copy.destination);
+    if (!current) return false;
+    const bool directory = current.isDirectory();
+    if (!current.close()) return false;
+    if (directory) {
+      copy.status = 403;
+      return false;
+    }
+    if (Storage.lookupPath(copy.backup) != Status::Missing) return false;
+    copy.discardTemporary = false;
+    if (!Storage.rename(copy.destination, copy.backup)) {
+      LOG_ERR("DAV", "COPY could not park %s at %s", copy.destination, copy.backup);
+      return false;
+    }
+  }
+
+  // Preserve both candidates if publishing or restoring the old file is uncertain.
+  copy.discardTemporary = false;
+  if (!Storage.rename(copy.temporary, copy.destination)) {
+    if (exists && Storage.lookupPath(copy.destination) == Status::Missing &&
+        Storage.rename(copy.backup, copy.destination)) {
+      copy.discardTemporary = true;
+    } else {
+      LOG_ERR("DAV", "COPY publication failed for %s, staged at %s, backup name %s", copy.destination, copy.temporary,
+              copy.backup);
+    }
+    return false;
+  }
+  if (Storage.lookupPath(copy.destination) != Status::Present ||
+      Storage.lookupPath(copy.temporary) != Status::Missing) {
+    LOG_ERR("DAV", "COPY could not verify publication for %s", copy.destination);
+    return false;
+  }
+  if (exists && !Storage.remove(copy.backup)) LOG_ERR("DAV", "COPY backup remains at %s", copy.backup);
+  copy.status = exists ? 204 : 201;
+  return true;
+}
+}  // namespace
+
 void WebDAVHandler::handleCopy(WebServer& s) {
   String srcPath = getRequestPath(s);
   String dstPath = getDestinationPath(s);
@@ -612,7 +698,7 @@ void WebDAVHandler::handleCopy(WebServer& s) {
 
   LOG_DBG("DAV", "COPY %s -> %s (overwrite=%d)", srcPath.c_str(), dstPath.c_str(), overwrite);
 
-  if (isProtectedPath(srcPath) || isProtectedPath(dstPath) ||
+  if (isProtectedPath(srcPath) || protectedpaths::isSensitivePath(srcPath.c_str()) || isProtectedPath(dstPath) ||
       protectedpaths::isSensitivePath(dstPath.c_str(), protectedpaths::PathAccess::Write)) {
     s.send(403, "text/plain", "Forbidden");
     return;
@@ -633,7 +719,7 @@ void WebDAVHandler::handleCopy(WebServer& s) {
     return;
   }
 
-  HalFile srcFile = Storage.open(srcPath.c_str());
+  HalFile srcFile = Storage.openChecked(srcPath.c_str());
   if (!srcFile) {
     s.send(500, "text/plain", "Failed to open source");
     return;
@@ -645,57 +731,36 @@ void WebDAVHandler::handleCopy(WebServer& s) {
     return;
   }
 
-  // Check destination parent exists
-  int lastSlash = dstPath.lastIndexOf('/');
-  if (lastSlash > 0) {
-    String parentPath = dstPath.substring(0, lastSlash);
-    if (!parentPath.isEmpty() && !Storage.exists(parentPath.c_str())) {
-      srcFile.close();
-      s.send(409, "text/plain", "Destination parent does not exist");
-      return;
-    }
+  const size_t parentLength = std::max(1, dstPath.lastIndexOf('/'));
+  const String parent = dstPath.substring(0, parentLength);
+  if (parent.length() != parentLength || !Storage.exists(parent.c_str())) {
+    s.send(409, "text/plain", "Destination parent unavailable");
+    return;
   }
-
-  bool dstExists = Storage.exists(dstPath.c_str());
-  if (dstExists && !overwrite) {
-    srcFile.close();
+  if (!overwrite && Storage.exists(dstPath.c_str())) {
     s.send(412, "text/plain", "Destination exists and Overwrite is F");
     return;
   }
 
-  if (dstExists) {
-    Storage.remove(dstPath.c_str());
-  }
-
-  HalFile dstFile;
-  if (!Storage.openFileForWrite("DAV", dstPath, dstFile)) {
-    srcFile.close();
-    s.send(500, "text/plain", "Failed to create destination");
+  char token[28];
+  snprintf(token, sizeof(token), ".dav-copy-%08lx%08lx", static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()));
+  const String prefix = parent == "/" ? parent : parent + "/";
+  const String temporary = prefix + token + ".part";
+  const String backup = prefix + token + ".bak";
+  const size_t prefixLength = parentLength == 1 ? 1 : parentLength + 1;
+  if (temporary.length() != prefixLength + strlen(token) + 5 || backup.length() != prefixLength + strlen(token) + 4 ||
+      !stageDavCopy(srcFile, temporary.c_str())) {
+    s.send(500, "text/plain", "Could not stage complete copy");
     return;
   }
 
-  // Streaming copy with 4KB buffer on stack
-  uint8_t buf[4096];
-  bool copyOk = true;
-  while (srcFile.available()) {
-    resetTaskWatchdogIfSubscribed();
-    int bytesRead = srcFile.read(buf, sizeof(buf));
-    if (bytesRead <= 0) break;
-    size_t written = dstFile.write(buf, bytesRead);
-    if (written != (size_t)bytesRead) {
-      copyOk = false;
-      break;
-    }
-  }
-
-  srcFile.close();
-  dstFile.close();
-
-  if (copyOk) {
-    s.send(dstExists ? 204 : 201);
+  DavCopyPublication copy{dstPath.c_str(), temporary.c_str(), backup.c_str(), overwrite};
+  if (Storage.withStorageLock(publishDavCopy, &copy)) {
+    s.send(copy.status);
   } else {
-    Storage.remove(dstPath.c_str());
-    s.send(500, "text/plain", "Copy failed - disk full?");
+    if (copy.discardTemporary) Storage.remove(temporary.c_str());
+    s.send(copy.status, "text/plain", "Could not publish copy");
   }
 }
 
