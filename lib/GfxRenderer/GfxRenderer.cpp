@@ -466,24 +466,12 @@ enum class TextRotation { None, Rotated90CW };
 //
 // drawText() scales the advance width by the same factor so layout reserves exactly
 // the right horizontal space for the scaled glyph.
-static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMode renderMode,
-                             const EpdFontFamily& fontFamily, const uint32_t cp, int cursorX, int cursorY,
-                             const bool pixelState, const EpdFontFamily::Style style, const int scaleNum,
-                             const int scaleDen) {
-  if (renderer.grayPlanesAreAbsolute()) renderMode = GfxRenderer::BW;
+void GfxRenderer::renderCharScaled(const EpdFontFamily& fontFamily, const uint32_t cp, const int cursorX,
+                                   const int cursorY, const bool pixelState, const EpdFontFamily::Style style,
+                                   const int scaleNum, const int scaleDen) const {
   EpdGlyph solidFallback;
   const EpdGlyph* glyph = fontFamily.getGlyphMetrics(cp, solidFallback, style);
   if (!glyph) return;
-
-  const EpdFontData* fontData = fontFamily.getData(style);
-  if (glyph == &solidFallback) {
-    renderer.fillRect(cursorX + glyph->left * scaleNum / scaleDen, cursorY - glyph->top * scaleNum / scaleDen,
-                      (glyph->width * scaleNum + scaleDen - 1) / scaleDen,
-                      (glyph->height * scaleNum + scaleDen - 1) / scaleDen, pixelState);
-    return;
-  }
-  const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
-  if (!bitmap) return;
 
   const int srcW = glyph->width;
   const int srcH = glyph->height;
@@ -493,6 +481,21 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
   // pixel offset from the (already-shifted) cursor position.
   const int baseX = cursorX + glyph->left * scaleNum / scaleDen;
   const int baseY = cursorY - glyph->top * scaleNum / scaleDen;
+  if (glyph == &solidFallback) {
+    fillRect(baseX, baseY, dstW, dstH, pixelState);
+    return;
+  }
+
+  const glyphBitmap::Frame frame{baseX, baseY, 1, 0, 0, 1};
+  glyphBitmap::Clip clip{0, 0, dstW, dstH};
+  glyphBitmap::clipToRect(frame, clipLeft_, clipTop_, clipRight_, clipBottom_, clip);
+  const auto target = glyphTarget(frame);
+  glyphBitmap::clipToTarget(target, clip);
+  if (clip.empty()) return;
+
+  const EpdFontData* fontData = fontFamily.getData(style);
+  const uint8_t* bitmap = getGlyphBitmap(fontData, glyph);
+  if (!bitmap) return;
   const bool halving = scaleNum * 2 == scaleDen;
   const bool is2Bit = fontData->is2Bit;
 
@@ -502,10 +505,13 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
     return ((bitmap[pos >> 3] >> (7 - (pos & 7))) & 1) ? 3 : 0;
   };
 
-  for (int dstY = 0; dstY < dstH; dstY++) {
+  const auto [firstBit, stepX, stepY] = glyphBitmap::bitWalk(target, clip);
+  int rowBit = firstBit;
+  for (int dstY = clip.top; dstY < clip.bottom; ++dstY, rowBit += stepY) {
     const int srcY0 = dstY * scaleDen / scaleNum;
     const int srcY1 = std::min(srcH, std::max(srcY0 + 1, ((dstY + 1) * scaleDen + scaleNum - 1) / scaleNum));
-    for (int dstX = 0; dstX < dstW; dstX++) {
+    int destination = rowBit;
+    for (int dstX = clip.left; dstX < clip.right; ++dstX, destination += stepX) {
       const int srcX0 = dstX * scaleDen / scaleNum;
       const int srcX1 = std::min(srcW, std::max(srcX0 + 1, ((dstX + 1) * scaleDen + scaleNum - 1) / scaleNum));
       int coverage = 0;
@@ -521,7 +527,7 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
       }
       const bool ink = halving ? (is2Bit ? (maxRaw >= 2 || coverage >= 2) : maxRaw != 0)
                                : samples > 0 && coverage * 2 >= samples * 3;
-      if (ink) renderer.drawPixel(baseX + dstX, baseY + dstY, pixelState);
+      if (ink) glyphBitmap::writeInk(target.buffer, destination, pixelState);
     }
   }
 }
@@ -585,17 +591,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   renderer.drawGlyphBitmap(bitmap, width, height, frame, is2Bit, renderMode, pixelState);
 }
 
-// Draw an unscaled glyph placed by a logical frame. Equivalent to calling
-// drawPixel() for each ink pixel, but the clip test, orientation rotation,
-// strip-band check and address math are resolved once per glyph rather than
-// once per pixel.
-void GfxRenderer::drawGlyphBitmap(const uint8_t* bitmap, const int width, const int height,
-                                  const glyphBitmap::Frame& frame, const bool twoBit, const RenderMode mode,
-                                  const bool state) const {
-  // Apply the logical clip rectangle before rotating, in glyph-local pixels.
-  glyphBitmap::Clip clip{0, 0, width, height};
-  glyphBitmap::clipToRect(frame, clipLeft_, clipTop_, clipRight_, clipBottom_, clip);
-
+__attribute__((always_inline)) inline glyphBitmap::Target GfxRenderer::glyphTarget(
+    const glyphBitmap::Frame& frame) const {
   // Writes go to the framebuffer, or to the strip scratch in tiled grayscale
   // mode; getWriteOriginY()/getWriteRows() bound the rows that exist there.
   glyphBitmap::Target target{getWriteTarget(), panelWidth, panelWidthBytes, getWriteOriginY(), getWriteRows(), {}};
@@ -611,11 +608,19 @@ void GfxRenderer::drawGlyphBitmap(const uint8_t* bitmap, const int width, const 
   rotateCoordinates(orientation, frame.x + frame.dyX, frame.y + frame.dyY, &nextX, &nextY, panelWidth, panelHeight);
   physical.dyX = nextX - physical.x;
   physical.dyY = nextY - physical.y;
+  return target;
+}
+
+void GfxRenderer::drawGlyphBitmap(const uint8_t* bitmap, const int width, const int height,
+                                  const glyphBitmap::Frame& frame, const bool twoBit, const RenderMode mode,
+                                  const bool state) const {
+  glyphBitmap::Clip clip{0, 0, width, height};
+  glyphBitmap::clipToRect(frame, clipLeft_, clipTop_, clipRight_, clipBottom_, clip);
 
   const glyphBitmap::Plane plane = mode == BW              ? glyphBitmap::Plane::BW
                                    : mode == GRAYSCALE_MSB ? glyphBitmap::Plane::GrayMSB
                                                            : glyphBitmap::Plane::GrayLSB;
-  glyphBitmap::draw(bitmap, width, height, twoBit, plane, state, target, clip);
+  glyphBitmap::draw(bitmap, width, height, twoBit, plane, state, glyphTarget(frame), clip);
 }
 
 // IMPORTANT: This function is in critical rendering path and is called for every pixel. Please keep it as simple and
@@ -799,10 +804,9 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
 
     if (isSupSub) {
       // yPos already carries the vertical offset applied by TextBlock::render().
-      renderCharScaled(*this, renderMode, font, cp, lastBaseX, yPos, black, style, 1, 2);
+      renderCharScaled(font, cp, lastBaseX, yPos, black, style, 1, 2);
     } else if (isSmallCap) {
-      renderCharScaled(*this, renderMode, font, cp, lastBaseX, yPos, black, style, SMALL_CAPS_SCALE_NUM,
-                       SMALL_CAPS_SCALE_DEN);
+      renderCharScaled(font, cp, lastBaseX, yPos, black, style, SMALL_CAPS_SCALE_NUM, SMALL_CAPS_SCALE_DEN);
     } else {
       renderCharImpl<TextRotation::None>(*this, renderMode, font, cp, lastBaseX, yPos, black, style);
     }
@@ -2296,12 +2300,21 @@ int GfxRenderer::drawScaledCodepoint(const int fontId, const uint32_t cp, const 
   const EpdGlyph* glyph = font.getGlyph(cp, style);
   if (!glyph) return 0;
   const int advance = fp4::toPixel(static_cast<int32_t>(glyph->advanceX) * scale256 / 256);
+  const int srcW = glyph->width;
+  const int srcH = glyph->height;
+  const int dstW = (srcW * scale256 + 255) / 256;
+  const int dstH = (srcH * scale256 + 255) / 256;
+  const glyphBitmap::Frame frame{x + glyph->left * scale256 / 256, baselineY - glyph->top * scale256 / 256, 1, 0, 0, 1};
+  glyphBitmap::Clip clip{0, 0, dstW, dstH};
+  glyphBitmap::clipToRect(frame, clipLeft_, clipTop_, clipRight_, clipBottom_, clip);
+  const auto target = glyphTarget(frame);
+  glyphBitmap::clipToTarget(target, clip);
+  if (clip.empty()) return advance;
+
   const EpdFontData* fontData = font.getData(style);
   const uint8_t* bitmap = getGlyphBitmap(fontData, glyph);
   if (!bitmap) return advance;
 
-  const int srcW = glyph->width;
-  const int srcH = glyph->height;
   const bool is2Bit = fontData->is2Bit;
   // Raw coverage: 1-bit fonts read 0 or 3, 2-bit fonts 0 (white) .. 3 (black); 0 outside the bitmap.
   const auto sample = [&](const int sx, const int sy) -> int {
@@ -2311,25 +2324,26 @@ int GfxRenderer::drawScaledCodepoint(const int fontId, const uint32_t cp, const 
     return ((bitmap[pos >> 3] >> (7 - (pos & 7))) & 1) ? 3 : 0;
   };
 
-  const int dstW = (srcW * scale256 + 255) / 256;
-  const int dstH = (srcH * scale256 + 255) / 256;
-  const int left = x + glyph->left * scale256 / 256;
-  const int top = baselineY - glyph->top * scale256 / 256;
   // Source position of each destination pixel centre, 16.16 fixed point.
   const int32_t step = (256 << 16) / scale256;
   const int32_t origin = step / 2 - (1 << 15);
-  for (int dy = 0; dy < dstH; ++dy) {
+  const auto [firstBit, stepX, stepY] = glyphBitmap::bitWalk(target, clip);
+  int rowBit = firstBit;
+  for (int dy = clip.top; dy < clip.bottom; ++dy, rowBit += stepY) {
     const int32_t sy = origin + dy * step;
     const int y0 = sy >> 16;
     const int fy = (sy >> 8) & 0xFF;
-    for (int dx = 0; dx < dstW; ++dx) {
+    int destination = rowBit;
+    for (int dx = clip.left; dx < clip.right; ++dx, destination += stepX) {
       const int32_t sx = origin + dx * step;
       const int x0 = sx >> 16;
       const int fx = (sx >> 8) & 0xFF;
       const int upper = sample(x0, y0) * (256 - fx) + sample(x0 + 1, y0) * fx;
       const int lower = sample(x0, y0 + 1) * (256 - fx) + sample(x0 + 1, y0 + 1) * fx;
       // Ink where interpolated coverage reaches half of full black (3).
-      if ((upper * (256 - fy) + lower * fy) * 2 >= 3 * 256 * 256) drawPixel(left + dx, top + dy, true);
+      if ((upper * (256 - fy) + lower * fy) * 2 >= 3 * 256 * 256) {
+        glyphBitmap::writeInk(target.buffer, destination, true);
+      }
     }
   }
   return advance;

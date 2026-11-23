@@ -26,7 +26,8 @@ class TtfEpdFont;
 
 namespace glyphBitmap {
 struct Frame;
-}
+struct Target;
+}  // namespace glyphBitmap
 
 // Color representation: uint8_t mapped to 4x4 Bayer matrix dithering levels
 // 0 = transparent, 1-16 = gray levels (white to black)
@@ -127,6 +128,9 @@ class GfxRenderer {
 
   void renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* x, int* y, bool pixelState,
                   EpdFontFamily::Style style) const;
+  inline glyphBitmap::Target glyphTarget(const glyphBitmap::Frame& frame) const;
+  void renderCharScaled(const EpdFontFamily& fontFamily, uint32_t cp, int cursorX, int cursorY, bool pixelState,
+                        EpdFontFamily::Style style, int scaleNum, int scaleDen) const;
   void freeBwBufferChunks();
   template <Color color>
   void drawPixelDither(int x, int y) const;

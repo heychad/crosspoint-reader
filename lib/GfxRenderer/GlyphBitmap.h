@@ -39,6 +39,8 @@ struct Clip {
   int top;
   int right;
   int bottom;
+
+  bool empty() const { return left >= right || top >= bottom; }
 };
 
 // Narrow [start, end) on one glyph axis so that base + i * step stays within
@@ -69,15 +71,37 @@ __attribute__((always_inline)) inline void clipToRect(const Frame& frame, int le
   }
 }
 
-// Keep pixel writes inline when decoding a group of four pixels.
-__attribute__((always_inline)) inline void paint(uint8_t* buffer, int destination, uint8_t ink, uint8_t levels,
-                                                 bool clearBits) {
-  if ((levels & (1u << ink)) == 0) return;
+__attribute__((always_inline)) inline void clipToTarget(const Target& target, Clip& clip) {
+  clipToRect(target.frame, 0, target.originY, target.width, target.originY + target.rows, clip);
+}
+
+// Physical framebuffer bit indices for a clipped rectangle in glyph coordinates.
+struct BitWalk {
+  int first;
+  int stepX;
+  int stepY;
+};
+
+__attribute__((always_inline)) inline BitWalk bitWalk(const Target& target, const Clip& clip) {
+  const Frame& frame = target.frame;
+  const int strideBits = target.stride * 8;
+  const int stepX = frame.dxY * strideBits + frame.dxX;
+  const int stepY = frame.dyY * strideBits + frame.dyX;
+  return {(frame.y - target.originY) * strideBits + frame.x + clip.left * stepX + clip.top * stepY, stepX, stepY};
+}
+
+__attribute__((always_inline)) inline void writeInk(uint8_t* buffer, int destination, bool clearBits) {
   const uint8_t mask = 0x80u >> (destination & 7);
   if (clearBits)
     buffer[destination >> 3] &= static_cast<uint8_t>(~mask);
   else
     buffer[destination >> 3] |= mask;
+}
+
+// Keep pixel writes inline when decoding a group of four pixels.
+__attribute__((always_inline)) inline void paint(uint8_t* buffer, int destination, uint8_t ink, uint8_t levels,
+                                                 bool clearBits) {
+  if ((levels & (1u << ink)) != 0) writeInk(buffer, destination, clearBits);
 }
 
 // Paint a packed glyph into target.
@@ -107,17 +131,14 @@ inline void draw(const uint8_t* bitmap, int width, int height, bool twoBit, Plan
   clip.top = std::max(clip.top, 0);
   clip.right = std::min(clip.right, width);
   clip.bottom = std::min(clip.bottom, height);
-  clipToRect(target.frame, 0, target.originY, target.width, target.originY + target.rows, clip);
-  if (clip.left >= clip.right || clip.top >= clip.bottom) return;
+  clipToTarget(target, clip);
+  if (clip.empty()) return;
 
   // Walk the framebuffer as a flat bit index. One glyph column advances
   // stepX bits and one glyph row advances stepY bits; each is +/-1 for the
   // axis that maps to physical x, or +/-strideBits for physical y.
-  const Frame& frame = target.frame;
-  const int strideBits = target.stride * 8;
-  const int stepX = frame.dxY * strideBits + frame.dxX;
-  const int stepY = frame.dyY * strideBits + frame.dyX;
-  int rowBit = (frame.y - target.originY) * strideBits + frame.x + clip.left * stepX + clip.top * stepY;
+  const auto [firstBit, stepX, stepY] = bitWalk(target, clip);
+  int rowBit = firstBit;
   for (int y = clip.top; y < clip.bottom; ++y, rowBit += stepY) {
     int source = y * width + clip.left;
     int destination = rowBit;

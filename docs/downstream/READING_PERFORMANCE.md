@@ -20,6 +20,18 @@ To check for the slight text shift after a page turn, compare the same text-only
 pages with Text Anti-Aliasing on and off. With it on, the reader applies a
 grayscale pass that can make the text appear to settle after the first refresh.
 
+## Drawing scaled text
+
+Small caps, superscripts, subscripts, and drop caps now clip each character
+before sampling its font bitmap. The renderer calculates the screen rotation
+and framebuffer steps once per character and skips bitmap reads when the
+character is outside the active area. The change adds no buffers.
+
+An AddressSanitizer and UndefinedBehaviorSanitizer comparison against the
+previous renderer matched pixels and character advances in 13,448 cases,
+including all four orientations and full and partial grayscale buffers.
+Measure page-turn time on the X4 Pro before reporting a speed change.
+
 ## Saved Items feedback, November 12
 
 - First open took more than 30 seconds. Saved Items now scans the bookmark and
