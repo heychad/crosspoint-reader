@@ -32,12 +32,21 @@ The reader reports an incomplete save and reloads the available copy. Book
 moves and the confirmed Clear Bookmarks action preserve files when recovery
 names share disk clusters.
 
-CrossInk EPUB bookmark files in versions 2–5 appear as a separate kind. Their
-view preserves the binary files and supports opening saved locations. Paragraph
+CrossInk EPUB bookmark files in versions 2–5 appear as a separate kind. Opening
+a saved location leaves the binary file intact. Paragraph
 anchors take priority when available, with chapter fraction as fallback after
 pagination. The reader may need to finish indexing that chapter. Both CRC and
 legacy hash filenames are read. Entries from both files remain visible, including
-duplicates. Editing and consolidating these older files remains migration work.
+duplicates.
+
+Long-press an imported bookmark, hold the mapped Confirm button, or swipe left
+and tap Delete to open a confirmation. The reader checks that the exact source
+file is still the one selected, removes that record, and checks the rewritten
+file before refreshing the list. Recovered backup rows are read-only. The
+firmware retains two copies of the original file per successful deletion in
+one of 64 history slots per source. A full history stops the edit before it
+writes. If archival is interrupted, the recovery files remain available and
+may require manual inspection before another edit.
 
 The catalog follows the existing Library index, supported reflowable extensions,
 scan depth and book limit. It skips missing files. A dirty or absent index uses
@@ -103,8 +112,9 @@ successful retry, and confirmed absence.
    bookmarks, clippings, older CrossInk bookmarks, and a mixture in one book.
 2. Open, rename and delete a current bookmark. View and delete a clipping, then
    follow an anchored passage. Reopen Saved Items and verify the changes.
-3. Open an older bookmark, change font and orientation, then reopen it. Verify
-   paragraph or approximate chapter position and compare the original file hash.
+3. Open an imported bookmark, change font and orientation, then reopen it.
+   Verify its paragraph or approximate chapter position. On a test book, cancel
+   a deletion, then confirm one. The remaining rows should still open correctly.
 4. Exercise Home and list navigation in portrait, inverted and both landscapes,
    using remapped buttons and touch. Check the optional Plugins/OPDS Home slot.
 5. Repeatedly enter, cancel and open books. Measure internal and PSRAM free heap,

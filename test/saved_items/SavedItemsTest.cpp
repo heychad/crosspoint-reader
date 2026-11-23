@@ -227,6 +227,38 @@ TEST(SavedItems, BothLegacyFilesRemainVisibleAndReadable) {
   EXPECT_EQ(entry.spine, 1);
 }
 
+TEST(SavedItems, LegacyRemovalTargetIdentifiesTheSelectedSourceAndLocalRow) {
+  fake::reset();
+  const auto crcPath = legacyPath();
+  const auto hashPath = legacyPath(false);
+  const auto original = legacyData(5);
+  fake::add(crcPath, original);
+  fake::add(hashPath, original);
+  CrossInkBookmarks list;
+  ASSERT_TRUE(list.open(BOOK));
+  CrossInkBookmarks::Entry entry;
+  crossinkbookmarks::RemovalTarget target;
+  ASSERT_TRUE(list.selectForRemoval(2, entry, target));
+  EXPECT_EQ(target.path, hashPath);
+  EXPECT_EQ(target.index, 0);
+  EXPECT_EQ(entry.spine, 1);
+  EXPECT_EQ(target.original.size, original.size());
+  ASSERT_TRUE(list.selectForRemoval(1, entry, target));
+  EXPECT_EQ(target.path, crcPath);
+  EXPECT_EQ(target.index, 1);
+  EXPECT_EQ(entry.spine, 2);
+  EXPECT_FALSE(list.selectForRemoval(4, entry, target));
+  EXPECT_TRUE(list.close());
+
+  fake::reset();
+  fake::add(crcPath + ".bookmark-edit.bak", original);
+  ASSERT_TRUE(list.open(BOOK));
+  EXPECT_FALSE(list.canRemove(0));
+  EXPECT_FALSE(list.selectForRemoval(0, entry, target));
+  ASSERT_TRUE(list.read(0, entry));
+  EXPECT_TRUE(entry.recovered);
+}
+
 TEST(SavedItems, DamagedPrimaryDoesNotHideReadableLegacySource) {
   fake::reset();
   fake::add(legacyPath(), "bad");
@@ -355,7 +387,7 @@ TEST(SavedItems, ClearBookBookmarksRemovesBothFormatsAndPreservesReadingState) {
     for (const bool crc : {true, false}) {
       const auto path = legacyPath(crc);
       fake::add(path, legacyData(version));
-      for (const auto* suffix : {".tmp", ".bak", ".bookmark-edit.bak", ".bookmark-edit.guard"})
+      for (const auto* suffix : {".tmp", ".bak", ".bookmark-edit.tmp", ".bookmark-edit.bak", ".bookmark-edit.guard"})
         fake::add(path + suffix, "old recovery bytes");
     }
     for (const auto* path : {"/.crosspoint/epub_123/progress.bin", "/.crosspoint/epub_123/stats_v5.bin",
@@ -366,7 +398,8 @@ TEST(SavedItems, ClearBookBookmarksRemovesBothFormatsAndPreservesReadingState) {
     EXPECT_FALSE(Storage.exists(native.c_str()));
     for (const bool crc : {true, false}) {
       const auto path = legacyPath(crc);
-      for (const auto* suffix : {"", ".tmp", ".bak", ".bookmark-edit.bak", ".bookmark-edit.guard"})
+      for (const auto* suffix :
+           {"", ".tmp", ".bak", ".bookmark-edit.tmp", ".bookmark-edit.bak", ".bookmark-edit.guard"})
         EXPECT_FALSE(Storage.exists((path + suffix).c_str()));
     }
     EXPECT_TRUE(Storage.exists("/.crosspoint/epub_123/progress.bin"));
@@ -378,6 +411,26 @@ TEST(SavedItems, ClearBookBookmarksRemovesBothFormatsAndPreservesReadingState) {
     EXPECT_TRUE(saveditems::inspect(BOOK, kinds));
     EXPECT_EQ(kinds, 0U);
     EXPECT_TRUE(BookmarkFile::clearForBook(BOOK));
+  }
+}
+
+TEST(SavedItems, ClearBookBookmarksPreservesAliasedAndOrphanedEditFiles) {
+  for (const bool alias : {false, true}) {
+    fake::reset();
+    const auto primary = legacyPath();
+    const auto staged = primary + ".bookmark-edit.tmp";
+    const auto native = BookmarkUtil::getBookmarkPath(BOOK);
+    fake::add(native, "{\"bookmarks\":[{}]}");
+    if (alias) {
+      fake::add(primary, legacyData(5));
+      fake::files[staged] = fake::files.at(primary);
+    } else {
+      fake::add(staged, legacyData(5));
+    }
+    EXPECT_FALSE(BookmarkFile::clearForBook(BOOK));
+    EXPECT_EQ(Storage.exists(primary.c_str()), alias);
+    EXPECT_TRUE(Storage.exists(staged.c_str()));
+    EXPECT_TRUE(Storage.exists(native.c_str()));
   }
 }
 

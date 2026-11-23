@@ -15,6 +15,14 @@ class CrossInkBookmarksActivity final : public UiListActivity {
   void buildScreen(UiScreen& screen) override;
   freeink::ui::ListProps listProps;
   void activateIndex(int index) override;
+  void onRowLongPress(int index) override;
+  bool handleButtons() override;
+#if FREEINK_CAP_TOUCH
+  bool canSwipeDelete(int index) const override;
+  void swipeDelete(int index) override;
+#endif
+  void deleteBookmark(int index, const crossinkbookmarks::RemovalTarget& target);
+  void showNotice(const char* message);
   static void provideRow(void* context, uint16_t index, freeink::ui::ListItem& row);
   std::string bookPath;
   CrossInkBookmarks bookmarks;

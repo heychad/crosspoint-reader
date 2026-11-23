@@ -3,8 +3,15 @@
 #include <cstdint>
 #include <string>
 
+namespace crossinkbookmarks {
+struct RemovalTarget;
+}
+
 namespace legacybookmarkedit {
 enum class Result { Ready, Published, Archived, Restored, Conflict, Invalid, Unavailable, Uncertain };
+// Checks the exact file selected before confirmation. Published means the
+// removal was verified and the recovery files still need archival.
+Result removeSelected(const std::string& bookPath, const crossinkbookmarks::RemovalTarget& target);
 // Staging, backup, and a separately verified original are retained.
 // Existing artifacts block a new edit.
 // These operations do not establish full-volume allocation ownership.

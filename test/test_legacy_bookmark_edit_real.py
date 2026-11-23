@@ -74,13 +74,20 @@ int main(int argc,char** argv) {
   assert(file && file.write(p,sizeof(p))==sizeof(p) && file.sync() && file.close());}
  SDCard.volume=nullptr;volume.end();assert(volume.begin(&disk));SDCard.volume=&volume;
  using legacybookmarkedit::Result;
+ const bool selected=phase.starts_with("selected");
  const bool archive=phase.starts_with("archive"), publish=phase.starts_with("publish") || archive;
  const bool readFault=phase.ends_with("-read"), torn=phase.ends_with("-torn");
+ crossinkbookmarks::RemovalTarget target{"/bookmarks.bin",{},0};
+ if(selected){
+  HalFile file=Storage.openChecked(target.path.c_str(),O_RDONLY);
+  assert(crossinkbookmarks::captureFingerprint(file,target.original) && file.close());
+ }
  if(publish)assert(legacybookmarkedit::stage("/bookmarks.bin",book,0,1)==Result::Ready);
  if(archive)assert(legacybookmarkedit::publish("/bookmarks.bin",book,0,1)==Result::Published);
  SDCard.volume=nullptr;volume.end();assert(volume.begin(&disk));SDCard.volume=&volume;
  if(fault>=0){if(readFault)disk.failReadAt=disk.reads+fault;else {disk.failStop=true;disk.failAt=disk.writes+fault;if(torn)disk.tornAfter=256;}}
- const auto result=archive?legacybookmarkedit::archivePublished("/bookmarks.bin",book,0,1)
+ const auto result=selected?legacybookmarkedit::removeSelected(book,target)
+                   :archive?legacybookmarkedit::archivePublished("/bookmarks.bin",book,0,1)
                    :!publish?legacybookmarkedit::stage("/bookmarks.bin",book,0,1)
                             :legacybookmarkedit::publish("/bookmarks.bin",book,0,1);
  const bool injected=disk.injected || disk.injectedRead;
@@ -106,15 +113,15 @@ int main(int argc,char** argv) {
   assert(!moveFilesHaveIndependentStorage(a,a));
   assert(a.close() && b.close());
  }
- const auto success=archive?Result::Archived:!publish?Result::Ready:Result::Published;
+ const auto success=(archive||selected)?Result::Archived:!publish?Result::Ready:Result::Published;
  if(!injected && result!=success) {
   std::fprintf(stderr,"unexpected result: %s %s %d result=%d primary=%zu backup=%zu guard=%zu stage=%zu\n",
                argv[1],argv[2],fault,static_cast<int>(result),primary.size(),backup.size(),guard.size(),
                readFile(volume,"/bookmarks.bin.bookmark-edit.tmp").size());return 7;
  }
  if(!injected && publish && !archive)assert(primary==expected && backup==original && guard==original && readFile(volume,"/bookmarks.bin.bookmark-edit.tmp").empty());
- if(!injected && archive)assert(primary==expected && archivedBackup==original && archivedGuard==original && backup.empty() && guard.empty());
- if(!injected && !publish)assert(primary==original && readFile(volume,"/bookmarks.bin.bookmark-edit.tmp")==expected);
+ if(!injected && (archive||selected))assert(primary==expected && archivedBackup==original && archivedGuard==original && backup.empty() && guard.empty());
+ if(!injected && !publish && !selected)assert(primary==original && readFile(volume,"/bookmarks.bin.bookmark-edit.tmp")==expected);
  if(injected && result==success) {
   std::fprintf(stderr,"success after injected fault: %s %s %d\n",argv[1],argv[2],fault);return 5;
  }
@@ -159,7 +166,7 @@ def main():
         subprocess.run(command, check=True)
         for filesystem in ('fat', 'exfat'):
             for phase in ('stage', 'publish', 'stage-read', 'publish-read', 'stage-torn', 'publish-torn',
-                          'archive', 'archive-read', 'archive-torn'):
+                          'archive', 'archive-read', 'archive-torn', 'selected', 'selected-read'):
                 for fault in range(-1, 30):
                     subprocess.run([str(tmp / 'test'), filesystem, phase, str(fault)], check=True)
     print('Legacy bookmark publication and original preservation passed sampled FAT/exFAT faults')

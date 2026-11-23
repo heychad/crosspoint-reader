@@ -313,7 +313,8 @@ TEST_P(CompletionMoveBookmarkArtifacts, UnreadableRecoveryLookupCannotAuthorizeM
 
 INSTANTIATE_TEST_SUITE_P(SourceAndDestination, CompletionMoveBookmarkArtifacts,
                          testing::Combine(testing::Bool(), testing::Bool(),
-                                          testing::Values(".bookmark-edit.bak", ".bookmark-edit.guard")));
+                                          testing::Values(".bookmark-edit.bak", ".bookmark-edit.guard",
+                                                          ".bookmark-edit.tmp")));
 
 TEST_F(CompletionMovePlanIO, MigratesLegacyBookmarksAndResumesPartialRewrite) {
   std::string oldPath, newPath, secondOld, secondNew;

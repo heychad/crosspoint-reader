@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "util/CrossInkBookmarkSnapshot.h"
+
 namespace cm = readingstats::completionmove;
 namespace {
 void put32(std::vector<uint8_t>& data, uint32_t value) {
@@ -241,6 +243,64 @@ TEST(CrossInkBookmarkMove, EditPublishesOnlyVerifiedStageAndRetainsOriginal) {
   EXPECT_EQ(retained, original);
   EXPECT_TRUE(backup.close());
   EXPECT_EQ(legacybookmarkedit::stage("/bookmarks", book, 0, 1), legacybookmarkedit::Result::Conflict);
+}
+
+TEST(CrossInkBookmarkMove, SelectedRemovalRefusesAStaleFileAndArchivesTheExactOriginal) {
+  const std::string book = "/Authors/Writer/Book.epub";
+  Storage.reset();
+  auto original = fixture(5);
+  original[1] = 2;
+  original.insert(original.end() - 1, 124, 0x43);
+  store(original);
+  crossinkbookmarks::RemovalTarget target{"/bookmarks", {}, 1};
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", target.path, file));
+  ASSERT_TRUE(crossinkbookmarks::captureFingerprint(file, target.original));
+  ASSERT_TRUE(file.close());
+
+  auto changed = original;
+  changed.back() ^= 1;
+  store(changed);
+  EXPECT_EQ(legacybookmarkedit::removeSelected(book, target), legacybookmarkedit::Result::Conflict);
+  EXPECT_FALSE(Storage.exists("/bookmarks.bookmark-edit.tmp"));
+  store(original);
+
+  ASSERT_EQ(legacybookmarkedit::removeSelected(book, target), legacybookmarkedit::Result::Archived);
+  auto expected = fixture(5);
+  ASSERT_TRUE(Storage.openFileForRead("TEST", target.path, file));
+  std::vector<uint8_t> current(file.fileSize());
+  ASSERT_EQ(file.read(current.data(), current.size()), static_cast<int>(current.size()));
+  EXPECT_EQ(current, expected);
+  ASSERT_TRUE(file.close());
+  for (const auto* suffix : {".bookmark-edit.bak-0", ".bookmark-edit.guard-0"}) {
+    ASSERT_TRUE(Storage.openFileForRead("TEST", target.path + suffix, file));
+    std::vector<uint8_t> archived(file.fileSize());
+    ASSERT_EQ(file.read(archived.data(), archived.size()), static_cast<int>(archived.size()));
+    EXPECT_EQ(archived, original);
+    ASSERT_TRUE(file.close());
+  }
+}
+
+TEST(CrossInkBookmarkMove, FullHistoryRefusesDeletionBeforeStaging) {
+  const std::string book = "/Authors/Writer/Book.epub";
+  Storage.reset();
+  store(fixture(4));
+  HalFile file;
+  crossinkbookmarks::RemovalTarget target{"/bookmarks", {}, 0};
+  ASSERT_TRUE(Storage.openFileForRead("TEST", target.path, file));
+  ASSERT_TRUE(crossinkbookmarks::captureFingerprint(file, target.original));
+  ASSERT_TRUE(file.close());
+  for (unsigned i = 0; i < 64; ++i) {
+    const auto slot = target.path + ".bookmark-edit.bak-" + std::to_string(i);
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", slot, file));
+    ASSERT_TRUE(file.close());
+  }
+  EXPECT_EQ(legacybookmarkedit::removeSelected(book, target), legacybookmarkedit::Result::Conflict);
+  EXPECT_FALSE(Storage.exists("/bookmarks.bookmark-edit.tmp"));
+  ASSERT_TRUE(Storage.openFileForRead("TEST", target.path, file));
+  crossinkbookmarks::Fingerprint current;
+  ASSERT_TRUE(crossinkbookmarks::captureFingerprint(file, current));
+  EXPECT_EQ(current, target.original);
 }
 
 TEST(CrossInkBookmarkMove, InterruptedEditPreservesRecoveryArtifacts) {

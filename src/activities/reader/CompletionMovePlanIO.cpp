@@ -167,7 +167,7 @@ bool handleLocked(void* raw) {
     const auto hash = std::hash<std::string>{}(source);
     for (const auto key : {static_cast<size_t>(crc), hash}) {
       const auto base = "/.crosspoint/bookmarks/epub_" + std::to_string(key) + ".bin";
-      for (const char* suffix : {".tmp", ".bak", ".bookmark-edit.bak", ".bookmark-edit.guard"}) {
+      for (const char* suffix : {".tmp", ".bak", ".bookmark-edit.tmp", ".bookmark-edit.bak", ".bookmark-edit.guard"}) {
         const auto presence = Storage.lookupPath((base + suffix).c_str());
         if (presence == HalStorage::PathStatus::Failed) return true;
         if (presence == HalStorage::PathStatus::Present) {
@@ -180,7 +180,8 @@ bool handleLocked(void* raw) {
     const auto newHash = std::hash<std::string>{}(destination);
     for (const auto key : {static_cast<size_t>(newCrc), newHash}) {
       const auto base = "/.crosspoint/bookmarks/epub_" + std::to_string(key) + ".bin";
-      for (const char* suffix : {".tmp", ".bak", ".completion-copy", ".bookmark-edit.bak", ".bookmark-edit.guard"}) {
+      for (const char* suffix :
+           {".tmp", ".bak", ".completion-copy", ".bookmark-edit.tmp", ".bookmark-edit.bak", ".bookmark-edit.guard"}) {
         const auto presence = Storage.lookupPath((base + suffix).c_str());
         if (presence == HalStorage::PathStatus::Failed) return true;
         if (presence == HalStorage::PathStatus::Present) {

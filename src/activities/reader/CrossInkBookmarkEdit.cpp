@@ -6,10 +6,12 @@
 #include <cstring>
 
 #include "CrossInkBookmarkMove.h"
+#include "util/CrossInkBookmarkSnapshot.h"
 
 namespace legacybookmarkedit {
 namespace {
 namespace codec = readingstats::completionmove;
+constexpr unsigned HISTORY_SLOTS = 64;
 struct Context {
   const std::string& source;
   const std::string& bookPath;
@@ -91,6 +93,22 @@ bool verifyPublished(const Context& c, const std::string& backup, const std::str
   return verified && currentClosed && originalClosed && copyClosed;
 }
 
+Result findArchiveSlot(const std::string& backup, const std::string& guard, std::string& nextBackup,
+                       std::string& nextGuard) {
+  for (unsigned slot = 0; slot < HISTORY_SLOTS; ++slot) {
+    const auto suffix = "-" + std::to_string(slot);
+    nextBackup = backup + suffix;
+    nextGuard = guard + suffix;
+    const auto backupStatus = Storage.lookupPath(nextBackup.c_str());
+    const auto guardStatus = Storage.lookupPath(nextGuard.c_str());
+    if (backupStatus == HalStorage::PathStatus::Failed || guardStatus == HalStorage::PathStatus::Failed)
+      return Result::Unavailable;
+    if (backupStatus == HalStorage::PathStatus::Missing && guardStatus == HalStorage::PathStatus::Missing)
+      return Result::Ready;
+  }
+  return Result::Conflict;
+}
+
 bool archive(void* raw) {
   auto& c = *static_cast<Context*>(raw);
   const std::string staged = c.source + ".bookmark-edit.tmp";
@@ -105,7 +123,7 @@ bool archive(void* raw) {
   if (backupStatus == HalStorage::PathStatus::Failed || guardStatus == HalStorage::PathStatus::Failed) return true;
   if (backupStatus == HalStorage::PathStatus::Missing && guardStatus == HalStorage::PathStatus::Present) {
     std::string pendingBackup, pendingGuard;
-    for (unsigned slot = 0; slot < 64; ++slot) {
+    for (unsigned slot = 0; slot < HISTORY_SLOTS; ++slot) {
       const std::string oldBackup = backup + "-" + std::to_string(slot);
       const std::string oldGuard = guard + "-" + std::to_string(slot);
       const auto oldBackupStatus = Storage.lookupPath(oldBackup.c_str());
@@ -140,29 +158,22 @@ bool archive(void* raw) {
     c.result = Result::Conflict;
     return true;
   }
-  for (unsigned slot = 0; slot < 64; ++slot) {
-    const std::string archivedBackup = backup + "-" + std::to_string(slot);
-    const std::string archivedGuard = guard + "-" + std::to_string(slot);
-    const auto backupStatus = Storage.lookupPath(archivedBackup.c_str());
-    const auto guardStatus = Storage.lookupPath(archivedGuard.c_str());
-    if (backupStatus == HalStorage::PathStatus::Failed || guardStatus == HalStorage::PathStatus::Failed) return true;
-    if (backupStatus != HalStorage::PathStatus::Missing || guardStatus != HalStorage::PathStatus::Missing) continue;
-    if (!Storage.rename(backup.c_str(), archivedBackup.c_str()) ||
-        Storage.lookupPath(backup.c_str()) != HalStorage::PathStatus::Missing ||
-        !verifyPublished(c, archivedBackup, guard) ||
-        Storage.lookupPath(archivedGuard.c_str()) != HalStorage::PathStatus::Missing ||
-        !Storage.rename(guard.c_str(), archivedGuard.c_str())) {
-      c.result = Result::Uncertain;
-      return true;
-    }
-    c.result = Storage.lookupPath(guard.c_str()) == HalStorage::PathStatus::Missing &&
-                       Storage.lookupPath(staged.c_str()) == HalStorage::PathStatus::Missing &&
-                       verifyPublished(c, archivedBackup, archivedGuard)
-                   ? Result::Archived
-                   : Result::Uncertain;
+  std::string archivedBackup, archivedGuard;
+  c.result = findArchiveSlot(backup, guard, archivedBackup, archivedGuard);
+  if (c.result != Result::Ready) return true;
+  if (!Storage.rename(backup.c_str(), archivedBackup.c_str()) ||
+      Storage.lookupPath(backup.c_str()) != HalStorage::PathStatus::Missing ||
+      !verifyPublished(c, archivedBackup, guard) ||
+      Storage.lookupPath(archivedGuard.c_str()) != HalStorage::PathStatus::Missing ||
+      !Storage.rename(guard.c_str(), archivedGuard.c_str())) {
+    c.result = Result::Uncertain;
     return true;
   }
-  c.result = Result::Conflict;
+  c.result = Storage.lookupPath(guard.c_str()) == HalStorage::PathStatus::Missing &&
+                     Storage.lookupPath(staged.c_str()) == HalStorage::PathStatus::Missing &&
+                     verifyPublished(c, archivedBackup, archivedGuard)
+                 ? Result::Archived
+                 : Result::Uncertain;
   return true;
 }
 
@@ -330,5 +341,39 @@ Result archivePublished(const std::string& source, const std::string& bookPath, 
 Result restoreOriginal(const std::string& source, const std::string& bookPath) {
   RestoreContext context{source, bookPath};
   return Storage.withStorageLock(restore, &context) ? context.result : Result::Unavailable;
+}
+
+Result removeSelected(const std::string& bookPath, const crossinkbookmarks::RemovalTarget& target) {
+  struct Removal {
+    const std::string& book;
+    const crossinkbookmarks::RemovalTarget& target;
+    Result result = Result::Unavailable;
+  } request{bookPath, target};
+  const auto remove = [](void* raw) {
+    auto& removal = *static_cast<Removal*>(raw);
+    const auto& selected = removal.target;
+    const auto& path = selected.path;
+    HalFile file = Storage.openChecked(path.c_str(), O_RDONLY);
+    if (!file) return true;
+    crossinkbookmarks::Fingerprint current;
+    const bool captured = crossinkbookmarks::captureFingerprint(file, current);
+    const bool closed = file.close();
+    if (!captured || !closed) return true;
+    if (current != selected.original) {
+      removal.result = Result::Conflict;
+      return true;
+    }
+    std::string nextBackup, nextGuard;
+    removal.result = findArchiveSlot(path + ".bookmark-edit.bak", path + ".bookmark-edit.guard", nextBackup, nextGuard);
+    if (removal.result != Result::Ready) return true;
+    removal.result = stage(path, removal.book, selected.index, 1);
+    if (removal.result != Result::Ready) return true;
+    removal.result = publish(path, removal.book, selected.index, 1);
+    if (removal.result == Result::Published &&
+        archivePublished(path, removal.book, selected.index, 1) == Result::Archived)
+      removal.result = Result::Archived;
+    return true;
+  };
+  return Storage.withStorageLock(remove, &request) ? request.result : Result::Unavailable;
 }
 }  // namespace legacybookmarkedit

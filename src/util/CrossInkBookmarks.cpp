@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <utility>
 
 namespace {
 constexpr uint16_t MAX_BOOKMARKS = 1024;
@@ -87,6 +88,7 @@ bool CrossInkBookmarks::open(const std::string& bookPath) {
       }
       source.file = Storage.openChecked(path);
       if (source.file && !source.file.isDirectory() && readHeader(source, bookPath)) {
+        source.key = keys[i];
         source.recovered = recovered;
         entryCount += source.count;
         found = true;
@@ -116,28 +118,69 @@ bool CrossInkBookmarks::clearForBook(const std::string& bookPath) {
   }
   if (!closed) return false;
   const size_t keys[] = {credential_integrity::crc32(bookPath), std::hash<std::string>{}(bookPath)};
+  constexpr const char* suffixes[] = {
+      ".bookmark-edit.tmp", ".bookmark-edit.bak", ".bookmark-edit.guard", ".tmp", ".bak", ""};
+  std::array<std::string, 2 * std::size(suffixes)> targets;
+  size_t count = 0;
   for (size_t index = 0; index < present.size(); ++index) {
-    if (!present[index]) continue;
+    if (index != 0 && keys[0] == keys[1]) continue;
     const std::string path = "/.crosspoint/bookmarks/epub_" + std::to_string(keys[index]) + ".bin";
-    // Remove recovery siblings first so a cleared source cannot reappear on reopen.
-    for (const auto* suffix : {".bookmark-edit.bak", ".bookmark-edit.guard", ".tmp", ".bak", ""}) {
-      const auto target = path + suffix;
+    for (const auto* suffix : suffixes) {
+      auto target = path + suffix;
       const auto status = Storage.lookupPath(target.c_str());
-      if (status == HalStorage::PathStatus::Failed ||
-          (status == HalStorage::PathStatus::Present && !Storage.remove(target.c_str())))
-        return false;
+      if (status == HalStorage::PathStatus::Missing) continue;
+      if (status != HalStorage::PathStatus::Present || !present[index]) return false;
+      // Failed renames can leave two directory entries for one allocation.
+      for (size_t previous = 0; previous < count; ++previous)
+        if (!Storage.distinctMoveChains(target.c_str(), targets[previous].c_str())) return false;
+      targets[count++] = std::move(target);
     }
   }
+  for (size_t i = 0; i < count; ++i)
+    if (!Storage.remove(targets[i].c_str())) return false;
   return true;
 }
 
-void CrossInkBookmarks::close() {
+bool CrossInkBookmarks::close() {
+  bool closed = true;
   for (auto& source : sources) {
-    if (source.file) source.file.close();
+    if (source.file) closed = source.file.close() && closed;
     source.count = 0;
     source.recovered = false;
   }
   entryCount = 0;
+  return closed;
+}
+
+bool CrossInkBookmarks::canRemove(const uint16_t index) const {
+  if (index >= entryCount) return false;
+  const auto& source = index < sources[0].count ? sources[0] : sources[1];
+  return !source.recovered;
+}
+
+bool CrossInkBookmarks::selectForRemoval(const uint16_t index, Entry& entry, crossinkbookmarks::RemovalTarget& target) {
+  if (!canRemove(index)) return false;
+  auto& source = index < sources[0].count ? sources[0] : sources[1];
+  crossinkbookmarks::Fingerprint fingerprint;
+  struct ReadSelection {
+    CrossInkBookmarks& list;
+    HalFile& file;
+    uint16_t index;
+    Entry& entry;
+    crossinkbookmarks::Fingerprint& fingerprint;
+  } request{*this, source.file, index, entry, fingerprint};
+  const auto capture = [](void* raw) {
+    const auto& selection = *static_cast<ReadSelection*>(raw);
+    return crossinkbookmarks::captureFingerprint(selection.file, selection.fingerprint) &&
+           selection.list.read(selection.index, selection.entry);
+  };
+  if (!Storage.withStorageLock(capture, &request)) return false;
+  char path[64];
+  const auto length = snprintf(path, sizeof(path), "/.crosspoint/bookmarks/epub_%zu.bin", source.key);
+  if (length < 0 || static_cast<size_t>(length) >= sizeof(path)) return false;
+  const uint16_t localIndex = &source == &sources[0] ? index : index - sources[0].count;
+  target = {path, fingerprint, localIndex};
+  return true;
 }
 
 bool CrossInkBookmarks::read(uint16_t index, Entry& entry) {

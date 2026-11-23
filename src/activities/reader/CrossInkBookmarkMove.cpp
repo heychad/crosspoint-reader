@@ -5,9 +5,11 @@
 #include <algorithm>
 #include <cstring>
 
+#include "util/CrossInkBookmarkSnapshot.h"
+
 namespace readingstats::completionmove {
 namespace {
-constexpr uint64_t MAX_FILE_BYTES = 256 * 1024;
+using crossinkbookmarks::MAX_FILE_BYTES;
 constexpr uint32_t MAX_STRING_BYTES = 4096;
 constexpr uint16_t MAX_BOOKMARKS = 1024;
 bool readExact(HalFile& file, uint8_t* bytes, size_t size) { return file.read(bytes, size) == static_cast<int>(size); }
