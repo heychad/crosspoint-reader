@@ -1,6 +1,7 @@
 #include <Memory.h>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
 #include <utility>
 #include <vector>
@@ -217,6 +218,66 @@ TEST(LibraryIndexFile, RejectsTruncatedAndOverflowingPathHashes) {
 
   record.nameOff = UINT32_MAX;
   EXPECT_FALSE(index.readPathHash(record, hash));
+}
+
+TEST(LibraryIndexFile, ReconcilesRichMetadataWithOneReadPerSector) {
+  using namespace library;
+  ClixHeader header{};
+  std::memcpy(header.magic, CLIX_MAGIC, sizeof(header.magic));
+  header.formatVersion = CLIX_FORMAT_VERSION;
+  header.foldVersion = CLIX_FOLD_VERSION;
+  header.bookCount = 1;
+  ClixRecord record{};
+  record.nameLen = 1;
+  constexpr uint32_t position = 0xC1000000;
+  std::array<char, LibraryIndexFile::RECONCILIATION_BUFFER_BYTES> scratch{};
+  for (const bool crossesSector : {false, true}) {
+    record.nameOff = crossesSector ? CLIX_ALIGN - 12 : 0;
+    auto blob = makeBlob(1, {'x', 3, 'V', 'o', 't'});
+    const std::string title(crossesSector ? 255 : 12, 'T');
+    const std::string author = "Source author";
+    const std::string series(crossesSector ? 128 : 4, 'S');
+    const std::string genre(crossesSector ? 128 : 5, 'G');
+    for (const auto* field : {&title, &author, &series, &genre}) {
+      blob.push_back(static_cast<uint8_t>(field->size()));
+      blob.insert(blob.end(), field->begin(), field->end());
+    }
+    const size_t beforePosition = blob.size();
+    blob.resize(beforePosition + sizeof(position));
+    std::memcpy(blob.data() + beforePosition, &position, sizeof(position));
+
+    for (const bool truncate : {false, true}) {
+      const size_t blobSize = blob.size() - truncate;
+      layoutSections(header, 0, record.nameOff + blobSize);
+      std::vector<uint8_t> bytes(header.selfSize, 0);
+      std::memcpy(bytes.data(), &header, sizeof(header));
+      std::memcpy(bytes.data() + header.nameStart + record.nameOff, blob.data(), blobSize);
+      Storage.setFile("/library.clx", std::move(bytes));
+      LibraryIndexFile index;
+      ASSERT_TRUE(index.openForReconciliation("/library.clx"));
+      ReconciliationMetadata metadata;
+      if (truncate) {
+        EXPECT_FALSE(index.readReconciliationMetadata(record, metadata, scratch));
+        continue;
+      }
+
+      HalFile::resetReadCount();
+      ASSERT_TRUE(index.readTitle(record, metadata.title));
+      ASSERT_TRUE(index.readSourceAuthor(record, metadata.author));
+      ASSERT_TRUE(index.readSeries(record, metadata.series));
+      ASSERT_TRUE(index.readGenre(record, metadata.genre));
+      ASSERT_TRUE(index.readSeriesPosition(record, metadata.seriesPosition));
+      EXPECT_EQ(HalFile::readCount(), 24u);
+      HalFile::resetReadCount();
+      ASSERT_TRUE(index.readReconciliationMetadata(record, metadata, scratch));
+      EXPECT_EQ(HalFile::readCount(), crossesSector ? 3u : 1u);
+      EXPECT_EQ(metadata.title, title);
+      EXPECT_EQ(metadata.author, author);
+      EXPECT_EQ(metadata.series, series);
+      EXPECT_EQ(metadata.genre, genre);
+      EXPECT_EQ(metadata.seriesPosition, position);
+    }
+  }
 }
 
 TEST(LibraryIndexFile, RejectsFolderRecordBeyondFolderBlob) {

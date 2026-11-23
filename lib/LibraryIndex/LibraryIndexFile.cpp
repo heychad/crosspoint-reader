@@ -297,6 +297,48 @@ bool LibraryIndexFile::readSeriesPosition(const ClixRecord& record, uint32_t& ou
   return readAt(head.nameStart + offset + length, &out, sizeof(out));
 }
 
+bool LibraryIndexFile::readReconciliationMetadata(const ClixRecord& record, ReconciliationMetadata& metadata,
+                                                  std::span<char, RECONCILIATION_BUFFER_BYTES> scratch) {
+  const uint32_t prefix = sizeof(uint64_t) + record.nameLen;
+  if (!opened || head.formatVersion < CLIX_METADATA_FORMAT_VERSION || record.nameLen == 0 ||
+      record.nameOff > head.nameLen || prefix > head.nameLen - record.nameOff)
+    return false;
+
+  uint32_t offset = record.nameOff + prefix;
+  uint32_t window = head.nameLen;
+  const auto read = [&](void* dst, size_t remaining) {
+    if (remaining > head.nameLen - offset) return false;
+    auto* out = static_cast<char*>(dst);
+    while (remaining > 0) {
+      const uint32_t start = offset - offset % scratch.size();
+      if (start != window) {
+        const size_t size = std::min<size_t>(scratch.size(), head.nameLen - start);
+        if (!readAt(head.nameStart + start, scratch.data(), size)) return false;
+        window = start;
+      }
+      const size_t inWindow = offset - window;
+      const size_t chunk = std::min(remaining, scratch.size() - inWindow);
+      memcpy(out, scratch.data() + inWindow, chunk);
+      remaining -= chunk;
+      offset += chunk;
+      out += chunk;
+    }
+    return true;
+  };
+
+  // The first field is the library-wide canonical author. Reconciliation
+  // keeps the individual author's spelling for the next spelling vote.
+  uint8_t length = 0;
+  if (!read(&length, sizeof(length)) || length > head.nameLen - offset) return false;
+  offset += length;
+  for (auto* field : {&metadata.title, &metadata.author, &metadata.series, &metadata.genre}) {
+    if (!read(&length, sizeof(length)) || length > head.nameLen - offset) return false;
+    field->resize(length);
+    if (!read(field->data(), length)) return false;
+  }
+  return read(&metadata.seriesPosition, sizeof(metadata.seriesPosition));
+}
+
 bool LibraryIndexFile::readPath(const ClixRecord& record, std::string& out) {
   return readPathFrom(record, out, 0, head.folderStart);
 }

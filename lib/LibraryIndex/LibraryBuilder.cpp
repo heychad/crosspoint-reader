@@ -289,11 +289,6 @@ struct WalkState {
   uint32_t serviceUnits = 0;
 };
 
-// Bound to shownTitle when a book told us nothing. A `std::string()` temporary
-// in that ternary would copy the title on every book that DID tell us something,
-// because the two branches have different value categories.
-const std::string kNoTitle;
-
 int findPrior(WalkState& st, const uint64_t pathHash) {
   serviceBuilder(st.serviceUnits);
   if (st.priorCount == 0) return -1;
@@ -319,12 +314,8 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
   // The filename is a fallback for the title and nothing else: no parsing, and
   // never an author. Per review on #2885 -- no other reader parses filenames,
   // and a name pulled out of one by pattern is a guess wearing a fact's clothes.
-  std::string title = stemOf(name);
-  std::string author;
-  std::string series;
-  std::string genre;
-  bool titleFromBook = false;
-  bool authorFromBook = false;
+  ReconciliationMetadata metadata;
+  auto& [title, author, series, genre, packedSeriesPosition] = metadata;
 
   entry.pathHash = clixPathHash(fullPath.data(), fullPath.size());
   const int priorIndex = findPrior(st, entry.pathHash);
@@ -355,24 +346,15 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
   }
 
   if (reuseMetadata) {
-    if (!st.previous->readSourceAuthor(priorRecord, author) || !st.previous->readSeries(priorRecord, series) ||
-        !st.previous->readGenre(priorRecord, genre) ||
-        !st.previous->readSeriesPosition(priorRecord, entry.seriesPosition)) {
+    static_assert(NAME_BUF_SIZE == LibraryIndexFile::RECONCILIATION_BUFFER_BYTES);
+    // walk() has already copied the filename out of the shared scratch.
+    if (!st.previous->readReconciliationMetadata(priorRecord, metadata,
+                                                 std::span<char, NAME_BUF_SIZE>(st.nameBuf, NAME_BUF_SIZE))) {
       st.failed = true;
       return false;
     }
-    const bool hasBookTitle = st.previous->readTitle(priorRecord, title);
-    if (!hasBookTitle && st.previous->ioFailed()) {
-      st.failed = true;
-      return false;
-    }
+    entry.seriesPosition = packedSeriesPosition;
     entry.record = priorRecord;
-    authorFromBook = !author.empty();
-    if (hasBookTitle) {
-      titleFromBook = true;
-    } else {
-      title = stemOf(name);
-    }
     st.stats->metadataReused++;
   }
 
@@ -400,30 +382,23 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
     }
     if (loaded) {
       entry.record.metadataStatus = CLIX_METADATA_EXTRACTED;
-      if (!bookTitle.empty()) {
-        title = std::move(bookTitle);
-        titleFromBook = true;
-      }
-      authorFromBook = !author.empty();
+      title = std::move(bookTitle);
     } else {
       entry.record.metadataStatus = CLIX_METADATA_FAILED;
     }
-    if (!titleFromBook && !authorFromBook) LOG_DBG("LIBIDX", "no metadata for %s", fullPath.c_str());
+    if (title.empty() && author.empty()) LOG_DBG("LIBIDX", "no metadata for %s", fullPath.c_str());
   }
   // Exporters write "Unknown" into dc:creator often enough that treating it as
   // a person would put a fictional author at the top of the shelf. fold() already
   // lowercases and trims, so recognising it is the one comparison @Uri-Tauber
   // asked it to cost.
-  if (!author.empty() && fold(author) == "unknown") {
-    author.clear();
-    authorFromBook = false;
-  }
+  if (!author.empty() && fold(author) == "unknown") author.clear();
 
-  if (titleFromBook || authorFromBook) st.enriched++;
+  if (!title.empty() || !author.empty()) st.enriched++;
 
   // An absent author is a fact, not a gap to fill: the row joins the Unknown
   // group rather than borrowing a name from its surroundings.
-  const std::string folded = reuseMetadata ? std::string() : fold(title);
+  const std::string folded = reuseMetadata ? std::string() : (title.empty() ? fold(stemOf(name)) : fold(title));
   const std::string key = reuseMetadata ? std::string() : authorKey(author);
 
   entry.record.fileSize = fileSize;
@@ -448,9 +423,8 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
   entry.record.nameLen = static_cast<uint8_t>(name.size());
   // Only stored when the book actually told us something; otherwise the row falls
   // back to the filename and nothing is duplicated.
-  const std::string& shownTitle = titleFromBook ? title : kNoTitle;
-  entry.titleLen = static_cast<uint8_t>(std::min<size_t>(shownTitle.size(), STAGE_NAME_BYTES));
-  if (entry.titleLen > 0) memcpy(entry.title, shownTitle.data(), entry.titleLen);
+  entry.titleLen = static_cast<uint8_t>(std::min<size_t>(title.size(), STAGE_NAME_BYTES));
+  if (entry.titleLen > 0) memcpy(entry.title, title.data(), entry.titleLen);
   if (!reuseMetadata) {
     const size_t foldBytes = std::min(folded.size(), CLIX_FOLD_BYTES);
     entry.record.foldLen = static_cast<uint8_t>(utf8SafeTruncateBuffer(folded.data(), static_cast<int>(foldBytes)));

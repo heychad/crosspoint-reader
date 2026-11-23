@@ -27,3 +27,16 @@ physical reader. Keep reading positions and protected-book support intact.
 
 These are follow-ups in the performance/polish queue after the selected feature
 work. The long-press/save crash is fixed in the tested clipfix2 baseline.
+
+## Library rebuild after card changes
+
+Reconciliation reads the previous index's title, source author, series, and
+genre together in 512-byte sectors. The builder reuses its filename scratch
+after copying the current filename. It accepts rich metadata from index
+versions 3–5, and a failed read stops the rebuild before publication.
+
+On a host fixture with 1,474 EPUBs across 211 author folders, the unchanged
+rebuild went from 41,273 read calls to 7,554 and from 41,484 seeks to 7,765.
+The index bytes matched across both builds. Measure elapsed time on the X4 Pro
+after a card change. A fresh index or newly added EPUB still needs metadata
+extraction.

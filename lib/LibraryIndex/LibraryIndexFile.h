@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 
 #include "LibraryFormat.h"
@@ -43,6 +44,14 @@ enum class SortOrder : uint8_t {
 struct BookIdentity {
   uint64_t pathHash;
   uint32_t fileSize;
+};
+
+struct ReconciliationMetadata {
+  std::string title;
+  std::string author;
+  std::string series;
+  std::string genre;
+  uint32_t seriesPosition = CLIX_UNKNOWN_SERIES_POSITION;
 };
 
 class LibraryIndexFile {
@@ -116,6 +125,10 @@ class LibraryIndexFile {
   bool readSeries(const ClixRecord& record, std::string& out);
   bool readGenre(const ClixRecord& record, std::string& out);
   bool readSeriesPosition(const ClixRecord& record, uint32_t& out);
+  // Read the book's own metadata together, reusing the builder's filename scratch.
+  static constexpr size_t RECONCILIATION_BUFFER_BYTES = CLIX_ALIGN;
+  bool readReconciliationMetadata(const ClixRecord& record, ReconciliationMetadata& metadata,
+                                  std::span<char, RECONCILIATION_BUFFER_BYTES> scratch);
 
   // Absolute path of the book, rebuilt from its folder record.
   bool readPath(const ClixRecord& record, std::string& out);
