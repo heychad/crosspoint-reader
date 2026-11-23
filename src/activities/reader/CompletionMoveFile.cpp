@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "util/FileFingerprint.h"
+
 #if defined(ARDUINO)
 #include <Arduino.h>
 
@@ -25,7 +27,7 @@ FileResult captureLocked(const std::string& path, FileIdentity& output) {
   if (file.isDirectory()) {
     return file.close() ? FileResult::Conflict : FileResult::Unavailable;
   }
-  FileIdentity identity{true, file.fileSize(), 14695981039346656037ULL};
+  FileIdentity identity{true, file.fileSize(), filefingerprint::OFFSET};
   uint8_t buffer[256];
   uint64_t offset = 0;
   bool ok = true;
@@ -35,7 +37,7 @@ FileResult captureLocked(const std::string& path, FileIdentity& output) {
       ok = false;
       break;
     }
-    for (size_t i = 0; i < count; ++i) identity.checksum = (identity.checksum ^ buffer[i]) * 1099511628211ULL;
+    identity.checksum = filefingerprint::append(identity.checksum, buffer, count);
     offset += count;
 #if defined(ARDUINO)
     if ((offset & 0xffffU) == 0) {

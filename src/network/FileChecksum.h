@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -43,6 +44,8 @@ class Job {
   uint64_t size() const { return size_; }
   uint64_t processed() const { return processed_; }
   const char* digest();
+  // Available only for a completed held EPUB in the same storage snapshot.
+  std::optional<uint64_t> deletionFingerprint(std::string_view held);
 
  private:
   struct Work;
@@ -57,6 +60,7 @@ class Job {
   HalStorage::MutationSnapshot snapshot_{};
   State state_ = State::Invalid;
   char digest_[65]{};
+  std::optional<uint64_t> deletionFingerprint_;
   std::unique_ptr<Work> work_;
 };
 }  // namespace filechecksum

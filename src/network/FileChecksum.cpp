@@ -10,6 +10,8 @@
 #include <cstring>
 
 #include "ProtectedPaths.h"
+#include "util/BookDeletionPath.h"
+#include "util/FileFingerprint.h"
 
 namespace filechecksum {
 bool validPath(std::string_view path) {
@@ -77,6 +79,8 @@ struct Job::Work {
 Job::Job(HalStorage& storage, std::string path, uint64_t size)
     : storage_(storage), path_(std::move(path)), size_(size) {
   if (!validPath(path_) || size > MAX_FILE_BYTES) return;
+  bookmove::DeletionPath deletion;
+  if (bookmove::parseDeletionPath(path_, deletion)) deletionFingerprint_ = filefingerprint::OFFSET;
   work_ = makeUniqueNoThrow<Work>();
   if (!work_) {
     state_ = State::NoMemory;
@@ -129,6 +133,9 @@ bool Job::advanceLocked(void* raw) {
       self.state_ = State::HashError;
       break;
     }
+    if (self.deletionFingerprint_) {
+      *self.deletionFingerprint_ = filefingerprint::append(*self.deletionFingerprint_, self.work_->buffer, count);
+    }
     self.processed_ += count;
     budget -= count;
   }
@@ -170,4 +177,9 @@ State Job::state() {
   return state_;
 }
 const char* Job::digest() { return state() == State::Complete ? digest_ : nullptr; }
+
+std::optional<uint64_t> Job::deletionFingerprint(std::string_view held) {
+  if (held != path_ || state() != State::Complete) return std::nullopt;
+  return deletionFingerprint_;
+}
 }  // namespace filechecksum

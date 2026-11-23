@@ -626,23 +626,22 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
   startActivityForResult(std::move(confirmation), [this, path](const ActivityResult& result) {
     swallowHeldReleases();
     const bool accepted = !result.isCancelled && !bookmove::pending();
+    // The journal owner acquires the render lock before taking the storage lock.
+    const bool removed = accepted && removeBookFileWithReceipt(path);
     {
       // Same lock rationale as onEnter: the walk wants the card to itself, and
       // the render task must not read the index (or the filter) around the
       // rebuild.
       RenderLock lock(*this);
-      if (accepted) {
-        LOG_DBG("LIB", "deleting %s", path.c_str());
-        if (removeBookFileWithReceipt(path)) {
-          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
-        } else {
-          LOG_ERR("LIB", "cannot delete %s", path.c_str());
-        }
+      if (removed) {
+        if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
         GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
         rebuildIndex();
+      } else if (accepted) {
+        LOG_ERR("LIB", "cannot delete %s", path.c_str());
       }
       if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot reopen library index");
-      if (accepted) {
+      if (removed) {
         resetAfterRebuild();
       }
     }

@@ -15,6 +15,7 @@ namespace protectedpaths {
 
 inline constexpr std::string_view DEVELOPMENT_ROOT = "/zDev";
 inline constexpr std::string_view BOOK_DELETION_QUEUE = "/zDev/Library deletions";
+inline constexpr std::string_view BOOK_MOVE_JOURNALS = "/.book-moves";
 enum class PathAccess { Read, Write, Remove };
 
 inline constexpr const char* SENSITIVE_FILES[] = {"/.crosspoint/wifi.json", "/.crosspoint/opds.json",
@@ -83,12 +84,18 @@ inline bool isCanonicalBookDeletionPath(std::string_view path, PathAccess access
 #endif
 }
 
+inline bool isBookMoveJournalPath(std::string_view path) {
+  return path.size() >= BOOK_MOVE_JOURNALS.size() &&
+         strncasecmp(path.data(), BOOK_MOVE_JOURNALS.data(), BOOK_MOVE_JOURNALS.size()) == 0 &&
+         (path.size() == BOOK_MOVE_JOURNALS.size() || path[BOOK_MOVE_JOURNALS.size()] == '/');
+}
+
 inline bool isBookDeletionPath(const char* path, PathAccess access = PathAccess::Write) {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   bool shortAlias = false;
   const auto canon = canonicalStoragePath(path, shortAlias);
   // Callers that expose alias spellings also apply the general protection check.
-  return isCanonicalBookDeletionPath(canon, access);
+  return isCanonicalBookDeletionPath(canon, access) || (access != PathAccess::Read && isBookMoveJournalPath(canon));
 #else
   (void)path;
   (void)access;
@@ -99,7 +106,10 @@ inline bool isBookDeletionPath(const char* path, PathAccess access = PathAccess:
 inline bool isSensitivePath(const char* path, PathAccess access = PathAccess::Read) {
   bool shortAlias = false;
   const auto canon = canonicalStoragePath(path, shortAlias);
-  if (shortAlias || isCanonicalBookDeletionPath(canon, access)) return true;
+  if (shortAlias || isCanonicalBookDeletionPath(canon, access) ||
+      (access != PathAccess::Read && isBookMoveJournalPath(canon))) {
+    return true;
+  }
   for (const char* file : SENSITIVE_FILES) {
     // FAT names are case-insensitive.
     if (strncasecmp(canon.c_str(), file, strlen(file)) == 0) return true;

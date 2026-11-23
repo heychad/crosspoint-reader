@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "activities/reader/CompletionMoveFile.h"
 #include "util/BookMoveStorage.h"
 
 namespace bm = bookmove;
@@ -238,6 +239,88 @@ void faults(bool exfat) {
   std::printf("%s book moves: %u fail-stop write cuts, %u recovered, %u preserved for recovery\n",
               exfat ? "exFAT" : "FAT", injected, recovered, blocked);
 }
+
+#if defined(SDFAT_BOOK_DELETIONS)
+void deletionFaults(bool exfat) {
+  const std::string held = "/zDev/Library deletions/0123456789abcdefaaaaaaaaaaaaaaaa" + from + ".held";
+  Disk baseline;
+  {
+    FsVolume volume;
+    seed(volume, exfat, baseline);
+    assert(Storage.mkdir(held.substr(0, held.find_last_of('/')).c_str(), true));
+  }
+  unsigned recovered = 0;
+  unsigned refused = 0;
+  const auto bookBytes = contents(0);
+  const auto verifyContents = [&] {
+    namespace cm = readingstats::completionmove;
+    cm::FileIdentity identity;
+    return cm::captureFile(held, identity) == cm::FileResult::Ready &&
+           bm::verifyCommittedDeletion(held, from, identity.checksum);
+  };
+  std::vector<Sector_t> bookSectors;
+  for (const auto& [sector, bytes] : baseline.sectors)
+    if (std::equal(bookBytes.begin(), bookBytes.end(), bytes.begin())) bookSectors.push_back(sector);
+  assert(!bookSectors.empty());
+  for (int cut = 0; cut < 1200; ++cut) {
+    Disk disk = baseline;
+    bm::Work work;
+    work.from = from;
+    work.to = held;
+    {
+      FsVolume volume;
+      assert(volume.begin(&disk));
+      Storage.attach(volume);
+      disk.writes = 0;
+      disk.failAt = cut;
+      disk.failStop = true;
+      const auto prepared = bm::prepare(work);
+      if (prepared == bm::Result::Moved) {
+        if (!disk.injected) assert(!bm::verifyCommittedDeletion(held, from));
+        const auto result = bm::execute(work);
+        if (!disk.injected) assert(result == bm::Result::Moved);
+      }
+    }
+    if (!disk.injected) {
+      disk.failAt = -1;
+      disk.failStop = false;
+      FsVolume volume;
+      assert(volume.begin(&disk));
+      Storage.attach(volume);
+      assert(verifyContents());
+      assert(read(held) == contents(0));
+      assert(!bm::verifyCommittedDeletion(held, "/Incoming/wrong.epub"));
+      assert(Storage.remove(held.c_str()));
+      write(held, contents(1));
+      assert(!verifyContents());
+      assert(recovered > 0 && refused > 0);
+      std::printf("%s deletion staging: %d fail-stop cuts, %u recoverable, %u refused\n", exfat ? "exFAT" : "FAT", cut,
+                  recovered, refused);
+      return;
+    }
+    disk.dead = false;
+    disk.failAt = -1;
+    disk.failStop = false;
+    FsVolume volume;
+    assert(volume.begin(&disk));
+    Storage.attach(volume);
+    bm::Work retry;
+    if (bm::inspect(retry) == bm::Result::Moved) (void)bm::execute(retry);
+    if (verifyContents()) {
+      assert(!bm::pending());
+      assert(Storage.lookupPath(from.c_str()) == HalStorage::PathStatus::Missing);
+      assert(read(held) == contents(0));
+      ++recovered;
+    } else {
+      assert(!bm::verifyCommittedDeletion(held, from));
+      if (!bm::pending()) assert(read(from) == bookBytes);
+      ++refused;
+    }
+    for (auto sector : bookSectors) assert(disk.sectors.at(sector) == baseline.sectors.at(sector));
+  }
+  assert(false && "deletion write sweep must reach a complete transaction");
+}
+#endif
 }  // namespace bookmovetest
 
 #if defined(SDFAT_BOOK_MOVE_REFERENCES)
@@ -246,6 +329,10 @@ void faults(bool exfat) {
 int bookMoveTests() {
 #if defined(SDFAT_BOOK_MOVE_REFERENCES)
   return bookMoveReferenceTests();
+#endif
+#if defined(SDFAT_BOOK_DELETIONS)
+  for (bool exfat : {false, true}) bookmovetest::deletionFaults(exfat);
+  return 0;
 #endif
   for (bool exfat : {false, true}) {
     bookmovetest::normal(exfat);

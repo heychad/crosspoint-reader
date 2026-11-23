@@ -62,7 +62,7 @@ struct LibraryListActivity {
  }
  void promptDeleteBookByPath(const std::string&,const std::string&);
  void promptRemoveRecentBook(const std::string&,const std::string&);
- bool removeBookFileWithReceipt(const std::string&){assert(locked);++deletions;return deleteOk;}
+ bool removeBookFileWithReceipt(const std::string&){assert(!locked&&!index.opened);++deletions;return deleteOk;}
  void rebuildIndex(){assert(locked);}
  void resetAfterRebuild(){assert(locked);}
  void resolvePinned(){assert(locked);}

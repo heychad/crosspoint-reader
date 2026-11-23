@@ -431,6 +431,8 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
                '-o', str(executable)]
     if os.environ.get('SDFAT_BOOK_MOVES') == '1':
         command += ['-DSDFAT_BOOK_MOVES=1', str(ROOT / 'src/util/BookMoveStorage.cpp')]
+        if os.environ.get('SDFAT_BOOK_DELETIONS') == '1':
+            command += ['-DSDFAT_BOOK_DELETIONS=1', '-DFREEINK_DEVICE_X4PRO=1']
         if not real_move_stores:
             command.append(str(ROOT / 'src/util/BookmarkUtil.cpp'))
         if os.environ.get('SDFAT_BOOK_MOVE_REFERENCES') == '1':

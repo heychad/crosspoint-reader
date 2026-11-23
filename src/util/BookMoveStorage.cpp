@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <string_view>
 
+#include "BookDeletionPath.h"
 #include "activities/reader/CompletionLibraryDirty.h"
 #include "activities/reader/CompletionMoveFile.h"
 #include "activities/reader/CrossInkBookmarkMove.h"
@@ -113,6 +114,50 @@ std::string archivePath(uint64_t id) {
   char name[64];
   snprintf(name, sizeof(name), "%s/done_%016llx", JOURNAL_ROOT, static_cast<unsigned long long>(id));
   return name;
+}
+
+bool classify(Work& work, uint64_t& deletionId) {
+  if (!validMovePath(work.from) || !validMovePath(work.to) || work.from == work.to) return false;
+  work.operation = Operation::Move;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  DeletionPath deletion;
+  if (parseDeletionPath(work.to, deletion)) {
+    if (deletion.original != work.from || extension(work.from) != ".epub" ||
+        protectedpaths::isBookDeletionPath(work.from.c_str())) {
+      return false;
+    }
+    work.kind = BookKind::Reflowable;
+    work.operation = Operation::Delete;
+    deletionId = deletion.transactionId;
+    return true;
+  }
+#endif
+  deletionId = 0;
+  if (protectedpaths::isBookDeletionPath(work.from.c_str()) || protectedpaths::isBookDeletionPath(work.to.c_str()))
+    return false;
+  return bookKind(work.from, work.to, work.kind);
+}
+
+Result readSealedPlan(Work& work, const char* planPath, const char* sealPath) {
+  auto file = Storage.openChecked(planPath);
+  if (!file) return Result::RecoveryRequired;
+  const size_t size = file.fileSize();
+  const bool read =
+      !file.isDirectory() && size <= work.bytes.size() && file.read(work.bytes.data(), size) == static_cast<int>(size);
+  const bool closed = file.close();
+  std::string_view from, to;
+  if (!read || !closed || !decodePlan(work.bytes.data(), size, from, to, work.id, &work.identities))
+    return Result::RecoveryRequired;
+  work.size = size;
+  work.from = from;
+  work.to = to;
+  work.archive = archivePath(work.id);
+  uint64_t deletionId = 0;
+  if (!classify(work, deletionId) || (work.operation == Operation::Delete && work.id != deletionId))
+    return Result::RecoveryRequired;
+  uint8_t proof[16];
+  seal(work, proof);
+  return exact(sealPath, proof, sizeof(proof)) ? Result::Moved : Result::RecoveryRequired;
 }
 
 std::string retainedBookmark(size_t index) { return std::string(CURRENT) + "/bookmark_" + std::to_string(index); }
@@ -245,21 +290,31 @@ bool bookKind(const std::string& from, const std::string& to, BookKind& kind) {
 bool pending() { return Storage.lookupPath(CURRENT) != HalStorage::PathStatus::Missing; }
 
 Result prepare(Work& work) {
-  if (!validMovePath(work.from) || !validMovePath(work.to) || work.from == work.to ||
-      !bookKind(work.from, work.to, work.kind))
-    return Result::Invalid;
+  uint64_t deletionId = 0;
+  if (!classify(work, deletionId)) return Result::Invalid;
   if (pending()) return Result::RecoveryRequired;
-  const auto ready = preflight(work);
-  if (ready != Result::Moved) return ready;
-  work.id =
-      readingstats::completionjournal::checksum(reinterpret_cast<const uint8_t*>(work.from.data()), work.from.size());
   bool available = false;
-  for (unsigned attempt = 0; attempt < 128; ++attempt) {
-    if (++work.id == 0) ++work.id;
+  if (work.operation == Operation::Delete) {
+    if (!directory(parent(work.to), false) || Storage.lookupPath(work.to.c_str()) != HalStorage::PathStatus::Missing)
+      return Result::Conflict;
+    const auto captured = capture(work.from, EntryKind::File, work.identities[0]);
+    if (captured != Result::Moved) return captured;
+    if (work.identities[0].kind != EntryKind::File || work.identities[0].size == 0) return Result::Conflict;
+    work.id = deletionId;
     work.archive = archivePath(work.id);
-    if (Storage.lookupPath(work.archive.c_str()) == HalStorage::PathStatus::Missing) {
-      available = true;
-      break;
+    available = Storage.lookupPath(work.archive.c_str()) == HalStorage::PathStatus::Missing;
+  } else {
+    const auto ready = preflight(work);
+    if (ready != Result::Moved) return ready;
+    work.id =
+        readingstats::completionjournal::checksum(reinterpret_cast<const uint8_t*>(work.from.data()), work.from.size());
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+      if (++work.id == 0) ++work.id;
+      work.archive = archivePath(work.id);
+      if (Storage.lookupPath(work.archive.c_str()) == HalStorage::PathStatus::Missing) {
+        available = true;
+        break;
+      }
     }
   }
   if (!available || !encodePlan(work.from, work.to, work.id, work.identities, work.bytes, work.size))
@@ -273,23 +328,7 @@ Result prepare(Work& work) {
 
 Result inspect(Work& work) {
   if (!pending()) return Result::NothingPending;
-  auto file = Storage.openChecked(PLAN);
-  if (!file) return Result::RecoveryRequired;
-  const size_t size = file.fileSize();
-  const bool read =
-      !file.isDirectory() && size <= work.bytes.size() && file.read(work.bytes.data(), size) == static_cast<int>(size);
-  const bool closed = file.close();
-  std::string_view from, to;
-  if (!read || !closed || !decodePlan(work.bytes.data(), size, from, to, work.id, &work.identities))
-    return Result::RecoveryRequired;
-  work.size = size;
-  work.from = from;
-  work.to = to;
-  work.archive = archivePath(work.id);
-  if (!bookKind(work.from, work.to, work.kind)) return Result::RecoveryRequired;
-  uint8_t proof[16];
-  seal(work, proof);
-  return exact(SEAL, proof, sizeof(proof)) ? Result::Moved : Result::RecoveryRequired;
+  return readSealedPlan(work, PLAN, SEAL);
 }
 
 Result execute(Work& work) {
@@ -300,18 +339,44 @@ Result execute(Work& work) {
       Storage.lookupPath(work.archive.c_str()) != HalStorage::PathStatus::Missing)
     return Result::RecoveryRequired;
   if (!readingstats::completionmove::markLibraryDirtyForMove()) return Result::RecoveryRequired;
-  // Preserve book bytes through rename; move all state before publishing its new path.
-  for (size_t i = 1; i < ENTRY_COUNT; ++i) {
-    const auto result = moveEntry(work, i);
-    if (result != Result::Moved) return result;
+  if (work.operation == Operation::Move) {
+    // Move all related state before publishing the book's new path.
+    for (size_t i = 1; i < ENTRY_COUNT; ++i) {
+      const auto result = moveEntry(work, i);
+      if (result != Result::Moved) return result;
+    }
   }
   const auto moved = moveEntry(work, 0);
   if (moved != Result::Moved) return moved;
-  if (!invalidateGenerated(work) || !updateReferences(work)) return Result::RecoveryRequired;
+  if (work.operation == Operation::Move && (!invalidateGenerated(work) || !updateReferences(work)))
+    return Result::RecoveryRequired;
   // Keep the plan, seal, and original legacy bookmarks in a unique archive.
   if (!Storage.rename(CURRENT, work.archive.c_str())) return Result::RecoveryRequired;
   return Storage.lookupPath(CURRENT) == HalStorage::PathStatus::Missing && directory(work.archive, false)
              ? Result::Moved
              : Result::RecoveryRequired;
+}
+
+bool verifyCommittedDeletion(const std::string& held, const std::string& original,
+                             std::optional<uint64_t> fingerprint) {
+  DeletionPath deletion;
+  if (!parseDeletionPath(held, deletion) || deletion.original != original || pending() ||
+      Storage.lookupPath(original.c_str()) != HalStorage::PathStatus::Missing) {
+    return false;
+  }
+  auto work = makeUniqueNoThrow<Work>();
+  if (!work) return false;
+  const auto archive = archivePath(deletion.transactionId);
+  if (readSealedPlan(*work, (archive + "/plan.bin").c_str(), (archive + "/seal.bin").c_str()) != Result::Moved ||
+      work->operation != Operation::Delete || work->id != deletion.transactionId || work->to != held ||
+      work->from != original || work->identities[0].size == 0) {
+    return false;
+  }
+  const auto& expected = work->identities[0];
+  if (fingerprint && *fingerprint != expected.checksum) return false;
+  auto file = Storage.openChecked(held.c_str());
+  if (!file) return false;
+  const bool sameSize = !file.isDirectory() && file.fileSize64() == expected.size;
+  return file.close() && sameSize;
 }
 }  // namespace bookmove

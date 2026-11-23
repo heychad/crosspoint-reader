@@ -1048,12 +1048,12 @@ void CrossPointWebServer::begin() {
     const String previous = server->arg("previous");
     const bool ready = held == normalizeWebPath(held) &&
                        (previous.isEmpty() || previous == normalizeWebPath(previous)) &&
-                       bookDeletionReceiptReady(held.c_str(), previous.c_str());
+                       bookDeletionReceiptReady(held.c_str(), previous.c_str(), fileChecksum.get());
     server->send(200, "application/json", ready ? "{\"ready\":true}" : "{\"ready\":false}");
   });
   server->on("/api/book-deletions/acknowledge", HTTP_POST, [this] {
     const String held = server->arg("path");
-    const bool removed = held == normalizeWebPath(held) && acknowledgeBookDeletion(held.c_str());
+    const bool removed = held == normalizeWebPath(held) && acknowledgeBookDeletion(held.c_str(), fileChecksum.get());
     server->send(removed ? 200 : 409, "application/json", removed ? "{\"removed\":true}" : "{\"removed\":false}");
   });
 #endif

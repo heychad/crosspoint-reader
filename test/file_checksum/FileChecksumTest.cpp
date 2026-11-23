@@ -109,6 +109,18 @@ TEST_F(FileChecksumTest, InvalidatesACompletedResultAfterAnotherMutation) {
   EXPECT_EQ(job.digest(), nullptr);
 }
 
+TEST_F(FileChecksumTest, DeletionFingerprintRequiresMatchingCompletedJobAndCurrentCard) {
+  constexpr auto held = "/zDev/Library deletions/123456789abcdef0fedcba9876543210/Authors/Book.epub.held";
+  fake::files[held] = fake::files[PATH];
+  Job job(storage, held, 3);
+  EXPECT_FALSE(job.deletionFingerprint(held));
+  job.advance();
+  EXPECT_EQ(job.deletionFingerprint(held), 0xe71fa2190541574bULL);
+  EXPECT_FALSE(job.deletionFingerprint(PATH));
+  ++fake::epoch;
+  EXPECT_FALSE(job.deletionFingerprint(held));
+}
+
 TEST_F(FileChecksumTest, ReportsReadAndCloseFailuresWithoutADigest) {
   {
     Job job(storage, PATH, 3);
