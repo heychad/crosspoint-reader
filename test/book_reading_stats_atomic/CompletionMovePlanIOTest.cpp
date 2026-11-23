@@ -412,6 +412,81 @@ TEST_F(CompletionMovePlanIO, CopiesLegacyCacheAndRestoresLegacyOnlyProgress) {
   EXPECT_TRUE(file.close());
 }
 
+TEST_F(CompletionMovePlanIO, CopiesBothPerBookDictionaryChoicesAndRetriesInterruptedCopy) {
+  constexpr std::string_view currentChoice = "/dictionaries/French/fr";
+  constexpr std::string_view legacyChoice = "/.dictionaries/English/en";
+  std::string currentSource, currentTarget, legacySource, legacyTarget;
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::NATIVE_DICTIONARY_INDEX, currentSource, currentTarget));
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::LEGACY_DICTIONARY_INDEX, legacySource, legacyTarget));
+  if (currentSource == legacySource) GTEST_SKIP() << "legacy and native cache keys coincide";
+  ASSERT_NE(currentTarget, legacyTarget);
+  for (auto [path, choice] : {std::pair{currentSource, currentChoice}, std::pair{legacySource, legacyChoice}}) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+    ASSERT_EQ(file.write(reinterpret_cast<const uint8_t*>(choice.data()), choice.size()), choice.size());
+    ASSERT_TRUE(file.close());
+  }
+
+  ASSERT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Ready);
+  Storage.failNextWriteFor(currentTarget + ".completion-copy", 4);
+  EXPECT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::RecoveryRequired);
+  EXPECT_TRUE(Storage.exists(BOOK));
+  EXPECT_FALSE(Storage.exists(DEST));
+  Storage.allowWritesFor(currentTarget + ".completion-copy");
+  ASSERT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::Moved);
+  ASSERT_EQ(cm::verifyPreparedFiles(), cm::VerifyFilesResult::ContentMatches);
+  for (const auto& [path, choice] : {std::pair{currentSource, currentChoice}, std::pair{legacySource, legacyChoice},
+                                     std::pair{currentTarget, currentChoice}, std::pair{legacyTarget, legacyChoice}}) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForRead("TEST", path, file));
+    std::string bytes(choice.size(), '\0');
+    ASSERT_EQ(file.fileSize(), choice.size());
+    ASSERT_EQ(file.read(bytes.data(), bytes.size()), static_cast<int>(bytes.size()));
+    EXPECT_EQ(bytes, choice);
+    ASSERT_TRUE(file.close());
+  }
+}
+
+TEST_F(CompletionMovePlanIO, ResumesSealedVersion2PlanWithItsOriginalFileList) {
+  std::string dictionarySource, dictionaryTarget;
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::NATIVE_DICTIONARY_INDEX, dictionarySource, dictionaryTarget));
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", dictionarySource, file));
+  ASSERT_EQ(file.write(static_cast<uint8_t>('d')), 1u);
+  ASSERT_TRUE(file.close());
+  ASSERT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Ready);
+
+  auto plan = std::make_unique<cm::Plan>();
+  size_t size = 0;
+  std::string_view from, to;
+  ASSERT_EQ(cm::inspectPlan(*plan, size, from, to), cm::PlanResult::Ready);
+  // Recreate the v2 wire layout and its seal from the matching earlier fields.
+  constexpr size_t OLD_HEADER_END = 18 + 51 * 17;
+  constexpr size_t ADDED_BYTES = 2 * 17;
+  std::memmove(plan->data() + OLD_HEADER_END, plan->data() + OLD_HEADER_END + ADDED_BYTES,
+               size - OLD_HEADER_END - ADDED_BYTES);
+  size -= ADDED_BYTES;
+  (*plan)[4] = 2;
+  const auto checksum = cj::checksum(plan->data(), size - 8);
+  std::array<uint8_t, 16> seal{'C', 'P', 'M', 'S', 1, 0, static_cast<uint8_t>(size), static_cast<uint8_t>(size >> 8)};
+  for (size_t i = 0; i < 8; ++i) (*plan)[size - 8 + i] = static_cast<uint8_t>(checksum >> (8 * i));
+  const auto sealHash = cj::checksum(plan->data(), size);
+  for (size_t i = 0; i < 8; ++i) seal[8 + i] = static_cast<uint8_t>(sealHash >> (8 * i));
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", PLAN, file));
+  ASSERT_EQ(file.write(plan->data(), size), size);
+  ASSERT_TRUE(file.close());
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", SEAL, file));
+  ASSERT_EQ(file.write(seal.data(), seal.size()), seal.size());
+  ASSERT_TRUE(file.close());
+
+  ASSERT_EQ(cm::inspectPlan(*plan, size, from, to), cm::PlanResult::Ready);
+  EXPECT_EQ((*plan)[4], 2);
+  EXPECT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::Moved);
+  EXPECT_EQ(cm::verifyPreparedFiles(), cm::VerifyFilesResult::ContentMatches);
+  EXPECT_TRUE(Storage.exists(dictionarySource.c_str()));
+  EXPECT_FALSE(Storage.exists(dictionaryTarget.c_str()));
+}
+
 TEST_F(CompletionMovePlanIO, NativeProgressTakesPrecedenceOverLegacyProgress) {
   std::string legacySource, legacyTarget, nativeSource, nativeTarget;
   ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::LEGACY_BOOKMARK_END, legacySource, legacyTarget));

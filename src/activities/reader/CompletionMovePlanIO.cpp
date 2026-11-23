@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <span>
 #include <string>
 
 #include "CompletionJournalIO.h"
@@ -201,7 +202,7 @@ bool handleLocked(void* raw) {
       return true;
     }
     for (size_t i = 0; i < FILE_COUNT; ++i) {
-      if (i >= LEGACY_BOOKMARK_END && sourceKeysMatch) continue;
+      if (legacyStateIndex(i) && sourceKeysMatch) continue;
       std::string oldPath, newPath;
       if (!itemPaths(context.requestedFrom, context.requestedTo, i, oldPath, newPath) || oldPath == newPath) {
         context.result = PlanResult::Conflict;
@@ -404,10 +405,13 @@ bool itemPaths(std::string_view from, std::string_view to, size_t index, std::st
     static constexpr const char* statsFiles[] = {
         "stats_v5.bin",      "stats_v5.bin.tmp",  "stats_v5.bin.bak",      "stats_v4.bin",         "stats.bin",
         "reading_stats_off", "reader_prefs.json", "reader_prefs.json.tmp", "reader_prefs.json.bak"};
-    const bool isLegacy = index >= LEGACY_BOOKMARK_END;
+    const bool isLegacy = legacyStateIndex(index);
+    const bool isDictionary = index >= NATIVE_DICTIONARY_INDEX;
     const size_t stateIndex = isLegacy ? index - LEGACY_BOOKMARK_END : index - MOVED_FILE_COUNT;
-    const bool isCache = stateIndex < std::size(cacheFiles);
-    const char* filename = isCache ? cacheFiles[stateIndex] : statsFiles[stateIndex - std::size(cacheFiles)];
+    const bool isCache = isDictionary || stateIndex < std::size(cacheFiles);
+    const char* filename = isDictionary ? "dictionary.bin"
+                           : isCache    ? cacheFiles[stateIndex]
+                                        : statsFiles[stateIndex - std::size(cacheFiles)];
     const auto path = [isCache, isLegacy, filename](std::string_view book) {
       const uint64_t hash = isLegacy ? cj::checksum(reinterpret_cast<const uint8_t*>(book.data()), book.size())
                                      : static_cast<uint64_t>(std::hash<std::string>{}(std::string(book)));
@@ -479,11 +483,12 @@ bool moveFilesLocked(void* raw) {
   }
   // Keep the original stats available to the completion journal until the
   // transaction is finalized; copy state before moving the EPUB.
-  for (size_t i = MOVED_FILE_COUNT; i < FILE_COUNT; ++i) {
+  const bool sameSourceKeys = cj::checksum(reinterpret_cast<const uint8_t*>(from.data()), from.size()) ==
+                              static_cast<uint64_t>(std::hash<std::string>{}(std::string(from)));
+  const size_t fileCount = fileCountForVersion((*plan)[4]);
+  for (size_t i = MOVED_FILE_COUNT; i < fileCount; ++i) {
     if (i >= STATE_FILE_END && i < LEGACY_BOOKMARK_END) continue;
-    if (i >= LEGACY_BOOKMARK_END && cj::checksum(reinterpret_cast<const uint8_t*>(from.data()), from.size()) ==
-                                        static_cast<uint64_t>(std::hash<std::string>{}(std::string(from))))
-      continue;
+    if (legacyStateIndex(i) && sameSourceKeys) continue;
     // The legacy progress fallback below owns the native destination when the
     // source has no native progress. Avoid treating that copy as a conflict.
     if (i == MOVED_FILE_COUNT && !(*identities)[i].present && (*identities)[LEGACY_BOOKMARK_END].present) continue;
@@ -561,14 +566,14 @@ bool moveFilesLocked(void* raw) {
 }
 // Compare existing files only; this function must never create or repair data.
 VerifyFilesResult verifyFilesForPlan(std::string_view from, std::string_view to,
-                                     const std::array<FileIdentity, FILE_COUNT>& identities) {
+                                     std::span<const FileIdentity> identities) {
   const auto matches = [](const FileIdentity& a, const FileIdentity& b) {
     return a.present == b.present && (!a.present || (a.size == b.size && a.checksum == b.checksum));
   };
   const bool sameSourceKeys = cj::checksum(reinterpret_cast<const uint8_t*>(from.data()), from.size()) ==
                               static_cast<uint64_t>(std::hash<std::string>{}(std::string(from)));
-  for (size_t i = 0; i < FILE_COUNT; ++i) {
-    if (i >= LEGACY_BOOKMARK_END && sameSourceKeys) continue;
+  for (size_t i = 0; i < identities.size(); ++i) {
+    if (legacyStateIndex(i) && sameSourceKeys) continue;
     std::string oldPath, newPath;
     if (!itemPaths(from, to, i, oldPath, newPath)) {
       return VerifyFilesResult::NotReady;
@@ -662,7 +667,7 @@ bool verifyFilesLocked(void* raw) {
     result = VerifyFilesResult::NotReady;
     return true;
   }
-  result = verifyFilesForPlan(from, to, *identities);
+  result = verifyFilesForPlan(from, to, std::span(*identities).first(fileCountForVersion((*plan)[4])));
   return true;
 }
 
@@ -697,7 +702,7 @@ bool verifyRetiredFilesLocked(void* raw) {
     context.result = VerifyFilesResult::NotReady;
     return true;
   }
-  context.result = verifyFilesForPlan(from, to, *identities);
+  context.result = verifyFilesForPlan(from, to, std::span(*identities).first(fileCountForVersion((*plan)[4])));
   return true;
 }
 }  // namespace

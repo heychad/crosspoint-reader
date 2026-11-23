@@ -25,6 +25,13 @@ Closed-book controls use the existing immediate transaction path. Open EPUBs
 queue their move until the reader is destroyed. Marking a queued book unfinished
 lets the checked cancellation path retire its request without moving its files.
 
+The journaled move copies `dictionary.bin` from both native and legacy FNV
+caches before moving the EPUB. It verifies the copies and leaves the originals
+in place. Version 3 adds two file identities to the move plan. Existing
+version-2 plans still recover with their recorded file list, so dictionaries
+outside those plans stay at the source. Finish or recover any pending version-3
+move before downgrading to firmware that only understands version 2.
+
 ## Home queue and Retry
 
 Home makes one entry attempt. A move, cancellation, temporary busy state, or

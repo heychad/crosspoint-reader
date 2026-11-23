@@ -1381,6 +1381,9 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
   constexpr char source[] = "/books/verify.epub";
 #endif
   constexpr char target[] = "/read/verify.epub";
+  constexpr char dictionary[] = "/dictionaries/English/en";
+  std::string originalDictionary, movedDictionary;
+  assert(cm::itemPaths(source, target, cm::LEGACY_DICTIONARY_INDEX, originalDictionary, movedDictionary));
   decltype(disk.sectors) beforeRetirement;
   decltype(disk.sectors) retiredBaseline;
   decltype(disk.sectors) beforeMove;
@@ -1417,6 +1420,9 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     movedstate::checkClippings(source, expectedClipping);
     movedstate::checkSavedKinds(source);
 #endif
+    const auto dictionaryDirectory = originalDictionary.substr(0, originalDictionary.find_last_of('/'));
+    assert(volume.exists(dictionaryDirectory.c_str()) || volume.mkdir(dictionaryDirectory.c_str(), true));
+    write(originalDictionary, reinterpret_cast<const uint8_t*>(dictionary), sizeof(dictionary) - 1);
     cj::Baseline previous{};
     previous.book[0] = 5;
     previous.global[0] = 3;
@@ -1582,6 +1588,13 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     Storage.attach(volume);
     assert(cj::retiredDeferredMoveProof(source, 0x12345678, moveHash) == cj::DeferredRetirementProof::Retired);
     assert(cm::verifyRetiredFiles(source, target, 0x12345678, moveHash) == cm::VerifyFilesResult::ContentMatches);
+    for (const auto& path : {originalDictionary, movedDictionary}) {
+      auto file = Storage.open(path.c_str(), O_RDONLY);
+      char actual[sizeof(dictionary)]{};
+      assert(file && file.fileSize() == sizeof(dictionary) - 1 &&
+             file.read(actual, sizeof(actual) - 1) == sizeof(actual) - 1 && file.close());
+      assert(std::memcmp(actual, dictionary, sizeof(dictionary)) == 0);
+    }
 #if defined(SDFAT_REAL_MOVE_STORES)
     movedstate::checkBookmarks(target, removeRecent ? 4 : 2);
     movedstate::checkProgress(target, progressFormat);

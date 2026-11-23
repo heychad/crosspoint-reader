@@ -32,10 +32,11 @@ native preferences take precedence. An unchanged import remains read-only; an
 edit or reset saves native preferences, while preserving the original binary.
 Unreadable records and recovery artifacts block writes. A named SD
 font can import with its point size when the book owns both fields. Without a
-compatible owned font name, the size stays in the original record. Finished-book
-moves are blocked while a legacy settings file remains at the old path. Other
-unsupported values remain in the source under the explicit Later/compatibility
-boundaries in [the selected migration inventory](RC2_SETTINGS_INVENTORY.json).
+compatible owned font name, the size stays in the original record. Journaled
+Move to Read copies the original settings and dictionary selection. The older
+automatic move stops when it cannot preserve legacy settings. Unsupported
+values remain in the original settings file. See
+[the selected migration inventory](RC2_SETTINGS_INVENTORY.json).
 
 `scripts/preview_crossink_book_settings.py` inspects a local copy of a CrossInk
 record without writing settings. It reports directly comparable values as
