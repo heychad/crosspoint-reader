@@ -8,9 +8,9 @@
 // derivation (BookmarkUtil) and directory creation are hidden inside.
 namespace BookmarkFile {
 
-// Loads the bookmarks for bookPath. The vector is cleared first; a missing or
-// empty bookmark file yields an empty list and returns false.
-bool load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks);
+enum class LoadResult { Loaded, Missing, Unavailable };
+// A confirmed missing file clears the vector. An unreadable file leaves it intact.
+LoadResult load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks);
 
 // Saves the bookmarks for bookPath, creating the bookmarks directory as needed.
 bool save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks);

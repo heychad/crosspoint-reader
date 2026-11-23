@@ -1406,6 +1406,7 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     movedstate::seedSidecars(source);
     movedstate::seedNativeBookmarks(source);
     movedstate::checkNativeBookmarks(source);
+    movedstate::checkNativeBookmarkReadRecovery();
     expectedClipping = movedstate::seedClippings(source);
     movedstate::checkClippings(source, expectedClipping);
     movedstate::checkSavedKinds(source);

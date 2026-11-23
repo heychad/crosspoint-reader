@@ -2697,7 +2697,8 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showBookmarkMessage) {
-    GUI.drawPopup(renderer, bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED));
+    const char* message = bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED);
+    GUI.drawPopup(renderer, bookmarkReadFailed ? tr(STR_SAVED_ITEMS_ERROR) : message);
   }
 
   if (showDictionaryMessage) {
@@ -4323,18 +4324,31 @@ void EpubReaderActivity::restoreSavedPosition() {
 }
 
 void EpubReaderActivity::loadCachedBookmarks() {
-  cachedBookmarks.clear();
   if (!epub) {
+    cachedBookmarks.clear();
+    cachedBookmarksReadable = false;
     currentPageBookmarked = false;
     return;
   }
 
-  BookmarkFile::load(epub->getPath(), cachedBookmarks);
+  cachedBookmarksReadable =
+      BookmarkFile::load(epub->getPath(), cachedBookmarks) != BookmarkFile::LoadResult::Unavailable;
   updateBookmarkFlag();
 }
 
 void EpubReaderActivity::addBookmark() {
   if (!section || !epub) return;
+  bookmarkReadFailed = false;
+  if (!cachedBookmarksReadable) {
+    loadCachedBookmarks();
+    if (!cachedBookmarksReadable) {
+      bookmarkReadFailed = true;
+      showBookmarkMessage = true;
+      bookmarkMessageTime = millis();
+      requestUpdate();
+      return;
+    }
+  }
   LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
   int currentPage;
   int pageCount;

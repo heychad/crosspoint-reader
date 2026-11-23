@@ -16,6 +16,7 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
   std::shared_ptr<Epub> epub;
   std::string epubPath;
   std::vector<BookmarkEntry> bookmarks;
+  bool bookmarksReadable = false;
   // Row buffers derived from `bookmarks`, rebuilt only when it changes
   // (onEnter() load, post-delete) instead of on every repaint — buildScreen()
   // used to re-compose a percentage/chapter/TOC-title subtitle string per
@@ -38,7 +39,7 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
 #if FREEINK_CAP_TOUCH
-  bool canSwipeDelete(int index) const override { return index >= 0 && index < listCount(); }
+  bool canSwipeDelete(int index) const override { return bookmarksReadable && index >= 0 && index < listCount(); }
   void swipeDelete(int index) override;
 #endif
   // Popup handling runs before everything else each pass.

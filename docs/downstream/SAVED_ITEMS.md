@@ -22,6 +22,11 @@ The current bookmark controls support rename and delete. Current clipping
 controls support viewing text, deleting, and opening passages with source
 anchors. Source-less older clippings remain readable through those controls.
 
+An unreadable native bookmark file leaves cached bookmarks available. A toggle
+retries the read and reports an error if the file still cannot be loaded.
+Reopening the bookmark list retries its read. Only a confirmed missing file
+starts a new empty list. Recovery from an interrupted save remains pending.
+
 CrossInk EPUB bookmark files in versions 2–5 appear as a separate kind. Their
 view preserves the binary files and supports opening saved locations. Paragraph
 anchors take priority when available, with chapter fraction as fallback after
@@ -63,8 +68,8 @@ the remaining entries are checked only when displayed. The catalog array and fil
 reader starts loading book data. During the transition, the new reader object
 can coexist with the outgoing catalog until the manager replaces it.
 
-The reader stores a one-shot request for the selected saved-content screen. It
-opens that screen after the first page has rendered. Standard reading events,
+The reader stores a one-shot request for the selected saved-content screen and
+opens it before rendering the first page. Standard reading events,
 recent-book updates and reading statistics therefore apply when a saved book is
 opened. The older bookmark position adds transient chapter/paragraph fields to
 the in-memory activity result. Existing saved files keep their formats.
@@ -74,9 +79,11 @@ different cancel behavior.
 
 ## Verification status
 
-Implementation and host verification are in progress. Independent reviews,
-final build coverage, behavior and maintenance acceptance, and physical checks
-remain pending.
+Clipping text and passage navigation passed on the reader with clipfix2.
+Test67 adds the reviewed direct opening of saved lists. The follow-up
+hardware check covers first-open time and the return to the reader. The native
+bookmark read guard has a FAT and exFAT regression for damaged metadata,
+successful retry, and confirmed absence.
 
 ## Device checks
 

@@ -7,6 +7,7 @@
 #include <Serialization.h>
 #include <clippings/ClippingPreview.h>
 #include <util/BookmarkFile.h>
+#include <util/BookmarkUtil.h>
 #include <util/CrossInkBookmarks.h>
 #include <util/SavedItems.h>
 
@@ -68,7 +69,7 @@ inline void seedNativeBookmarks(const std::string& book) {
 
 inline void checkNativeBookmarks(const std::string& book) {
   std::vector<BookmarkEntry> entries;
-  assert(BookmarkFile::load(book, entries) && entries.size() == 2);
+  assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Loaded && entries.size() == 2);
   for (const auto& entry : entries) {
     assert(entry.xpath == "/body/DocFragment[3]/body/div/p[17]" && entry.percentage == 0.375f);
     assert(entry.summary == "A useful passage");
@@ -76,6 +77,31 @@ inline void checkNativeBookmarks(const std::string& book) {
   }
   assert(entries[0].name == "Café note" && entries[0].hasVisibleTextOffset && entries[0].visibleTextOffset == 12345);
   assert(entries[1].name == "Earlier bookmark" && !entries[1].hasVisibleTextOffset);
+}
+
+inline void checkNativeBookmarkReadRecovery() {
+  const std::string book = "/zDev/Native Bookmark Recovery.epub";
+  const auto path = BookmarkUtil::getBookmarkPath(book);
+  seedNativeBookmarks(book);
+  std::vector<BookmarkEntry> entries;
+  assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Loaded && entries.size() == 2);
+
+  for (const char* malformed : {R"({"bookmarks":[)", R"({"bookmarks":{}})", R"({"bookmarks":[7]})"}) {
+    auto file = Storage.open(path.c_str(), O_TRUNC | O_WRONLY);
+    const auto size = std::strlen(malformed);
+    assert(file && file.write(malformed, size) == size && file.sync() && file.close());
+    assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Unavailable);
+    assert(entries.size() == 2 && entries[0].name == "Café note" && entries[0].visibleTextOffset == 12345);
+    assert(entries[1].name == "Earlier bookmark");
+  }
+
+  auto updated = entries;
+  updated[0].name = "Reloaded bookmark";
+  assert(BookmarkFile::save(book, updated));
+  assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Loaded && entries.size() == 2);
+  assert(entries[0].name == "Reloaded bookmark");
+  assert(Storage.remove(path.c_str()));
+  assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Missing && entries.empty());
 }
 
 inline void checkSavedKinds(const std::string& book) {
@@ -130,11 +156,11 @@ inline void checkClippings(const std::string& book, const ClippingSnapshot& expe
 
 inline void editMovedItems(const std::string& book, const ClippingSnapshot& expected) {
   std::vector<BookmarkEntry> bookmarks;
-  assert(BookmarkFile::load(book, bookmarks));
+  assert(BookmarkFile::load(book, bookmarks) == BookmarkFile::LoadResult::Loaded && !bookmarks.empty());
   bookmarks[0].name = "Renamed after move";
   assert(BookmarkFile::save(book, bookmarks));
   bookmarks.clear();
-  assert(BookmarkFile::load(book, bookmarks) && bookmarks.size() == 2);
+  assert(BookmarkFile::load(book, bookmarks) == BookmarkFile::LoadResult::Loaded && bookmarks.size() == 2);
   assert(bookmarks[0].name == "Renamed after move" && bookmarks[0].hasVisibleTextOffset &&
          bookmarks[0].visibleTextOffset == 12345 && bookmarks[1].name == "Earlier bookmark");
   ClippingStore store;

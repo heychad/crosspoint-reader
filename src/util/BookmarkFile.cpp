@@ -7,20 +7,37 @@
 
 #include "BookmarkUtil.h"
 
-bool BookmarkFile::load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks) {
-  bookmarks.clear();
+namespace {
+// Preserve the SD card reader's existing size limit while checking for short reads.
+constexpr size_t MAX_READ_BYTES = 50000;
 
-  // Read/write go through PersistableStoreBase so the JSON parser and
-  // serializer stay instantiated once, in PersistableStore.cpp.
-  const std::string path = BookmarkUtil::getBookmarkPath(bookPath);
+struct BookmarkLoad {
+  const std::string& path;
+  std::vector<BookmarkEntry>& entries;
+  BookmarkFile::LoadResult result = BookmarkFile::LoadResult::Unavailable;
+};
+
+bool readBookmarks(void* raw) {
+  auto& load = *static_cast<BookmarkLoad*>(raw);
+  const auto status = Storage.lookupPath(load.path.c_str());
+  if (status == HalStorage::PathStatus::Missing) {
+    load.entries.clear();
+    load.result = BookmarkFile::LoadResult::Missing;
+    return true;
+  }
+  if (status != HalStorage::PathStatus::Present) return false;
   JsonDocument doc;
-  if (!PersistableStoreBase::readDocFromFile(path.c_str(), doc)) {
-    return false;
+  if (!PersistableStoreBase::readDocFromFile(load.path.c_str(), doc, MAX_READ_BYTES)) return false;
+  const auto arr = doc["bookmarks"].as<JsonArrayConst>();
+  if (arr.isNull()) return false;
+  for (const auto entry : arr) {
+    if (!entry.is<JsonObjectConst>()) return false;
   }
 
-  JsonArray arr = doc["bookmarks"].as<JsonArray>();
+  auto& bookmarks = load.entries;
+  bookmarks.clear();
   bookmarks.reserve(arr.size());
-  for (JsonObject obj : arr) {
+  for (const auto obj : arr) {
     bookmarks.emplace_back();
     auto& bookmark = bookmarks.back();
     bookmark.xpath = obj["xpath"] | "";
@@ -39,8 +56,16 @@ bool BookmarkFile::load(const std::string& bookPath, std::vector<BookmarkEntry>&
     }
   }
 
+  load.result = BookmarkFile::LoadResult::Loaded;
   LOG_DBG("BKM", "Loaded %zu bookmarks from file", bookmarks.size());
   return true;
+}
+}  // namespace
+
+BookmarkFile::LoadResult BookmarkFile::load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks) {
+  const std::string path = BookmarkUtil::getBookmarkPath(bookPath);
+  BookmarkLoad job{path, bookmarks};
+  return Storage.withStorageLock(readBookmarks, &job) ? job.result : LoadResult::Unavailable;
 }
 
 bool BookmarkFile::save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks) {

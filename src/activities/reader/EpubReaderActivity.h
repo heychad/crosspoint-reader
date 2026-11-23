@@ -121,6 +121,8 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
   bool bookmarkRemoved = false;
+  bool bookmarkReadFailed = false;
+  bool cachedBookmarksReadable = false;
   std::vector<BookmarkEntry> cachedBookmarks;
   bool recentsEntryRemoved = false;
   unsigned long bookmarkMessageTime = 0UL;

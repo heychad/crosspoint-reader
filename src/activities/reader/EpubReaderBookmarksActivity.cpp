@@ -33,7 +33,7 @@ void EpubReaderBookmarksActivity::onEnter() {
     return;
   }
 
-  BookmarkFile::load(epubPath, bookmarks);  // clears `bookmarks` first; a missing file leaves it empty
+  bookmarksReadable = BookmarkFile::load(epubPath, bookmarks) != BookmarkFile::LoadResult::Unavailable;
   LOG_DBG("EPB", "Loaded %d bookmarks for book: %s", static_cast<int>(bookmarks.size()), epubPath.c_str());
   rebuildBookmarkRowItems();
 }
@@ -148,7 +148,7 @@ bool EpubReaderBookmarksActivity::handleButtons() {
 }
 
 void EpubReaderBookmarksActivity::startRename() {
-  if (bookmarks.empty() || nav.selected < 0 || nav.selected >= listCount()) {
+  if (!bookmarksReadable || nav.selected < 0 || nav.selected >= listCount()) {
     return;
   }
 
@@ -178,7 +178,7 @@ void EpubReaderBookmarksActivity::startRename() {
 }
 
 void EpubReaderBookmarksActivity::showBookmarkActions() {
-  if (bookmarks.empty() || confirmPopup.isActive()) {
+  if (!bookmarksReadable || bookmarks.empty() || confirmPopup.isActive()) {
     return;
   }
   const StrId options[] = {StrId::STR_OPEN, StrId::STR_RENAME, StrId::STR_DELETE};
@@ -195,7 +195,7 @@ void EpubReaderBookmarksActivity::showBookmarkActions() {
 }
 
 void EpubReaderBookmarksActivity::showDeleteConfirmation() {
-  if (bookmarks.empty() || confirmPopup.isActive()) {
+  if (!bookmarksReadable || bookmarks.empty() || confirmPopup.isActive()) {
     return;
   }
   confirmingDelete = true;
@@ -218,6 +218,7 @@ void EpubReaderBookmarksActivity::swipeDelete(const int index) {
 #endif
 
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
+  if (!bookmarksReadable || nav.selected < 0 || nav.selected >= listCount()) return;
   bookmarks.erase(bookmarks.begin() + nav.selected);
   // Deleting shifts every later bookmark's index, so the cached subtitles and
   // actionValues must be re-derived, not just trimmed — and before the SD
@@ -255,7 +256,7 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (bookmarks.empty()) {
-    screen.centeredText(tr(STR_NO_BOOKMARKS), screen.theme().bodyText);
+    screen.centeredText(bookmarksReadable ? tr(STR_NO_BOOKMARKS) : tr(STR_SAVED_ITEMS_ERROR), screen.theme().bodyText);
     return;
   }
 
