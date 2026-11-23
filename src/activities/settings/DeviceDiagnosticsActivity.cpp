@@ -4,8 +4,12 @@
 #include <I18n.h>
 
 #include <cstdio>
+#include <iterator>
 #include <utility>
 
+#if FREEINK_DEVICE_X4PRO
+#include "activities/reader/EpubRenderTiming.h"
+#endif
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
@@ -16,14 +20,20 @@ DeviceDiagnosticsActivity::DeviceDiagnosticsActivity(GfxRenderer& renderer, Mapp
 const char* DeviceDiagnosticsActivity::headerTitle() const { return tr(STR_DEVICE_DIAGNOSTICS); }
 
 void DeviceDiagnosticsActivity::onEnter() {
-  static constexpr StrId labels[] = {StrId::STR_DIAG_INTERNAL_FREE, StrId::STR_DIAG_INTERNAL_LARGEST,
-                                     StrId::STR_DIAG_INTERNAL_MIN,  StrId::STR_DIAG_PSRAM_FREE,
-                                     StrId::STR_DIAG_PSRAM_LARGEST, StrId::STR_DIAG_PSRAM_MIN,
-                                     StrId::STR_DIAG_REFRESH};
+  static constexpr StrId labels[] = {
+      StrId::STR_DIAG_INTERNAL_FREE,  StrId::STR_DIAG_INTERNAL_LARGEST, StrId::STR_DIAG_INTERNAL_MIN,
+      StrId::STR_DIAG_PSRAM_FREE,     StrId::STR_DIAG_PSRAM_LARGEST,    StrId::STR_DIAG_PSRAM_MIN,
+      StrId::STR_DIAG_REFRESH,
+#if FREEINK_DEVICE_X4PRO
+      StrId::STR_DIAG_EPUB_RECORDING, StrId::STR_DIAG_EPUB_TEXT,        StrId::STR_DIAG_EPUB_IMAGES,
+      StrId::STR_DIAG_EPUB_INDEXING,
+#endif
+  };
+  static_assert(std::size(labels) == ITEM_COUNT);
   RenderLock lock(*this);
   for (int i = 0; i < ITEM_COUNT; ++i) {
     rows[i].label = I18N.get(labels[i]);
-    rows[i].value = i < VALUE_COUNT ? values[i] : nullptr;
+    rows[i].value = i < MEMORY_COUNT ? values[i] : nullptr;
     rows[i].actionValue = static_cast<int16_t>(i);
   }
   sample();
@@ -41,13 +51,38 @@ void DeviceDiagnosticsActivity::sample() {
   const auto psram = HalMemory::getPsramHeap();
   const size_t samples[] = {internal.freeBytes, internal.largestBlockBytes, internal.minFreeBytes,
                             psram.freeBytes,    psram.largestBlockBytes,    psram.minFreeBytes};
-  for (int i = 0; i < VALUE_COUNT; ++i)
+  for (int i = 0; i < MEMORY_COUNT; ++i)
     snprintf(values[i], sizeof(values[i]), "%lu B", static_cast<unsigned long>(samples[i]));
+#if FREEINK_DEVICE_X4PRO
+  using epubtiming::PageKind;
+  static constexpr PageKind kinds[] = {PageKind::Text, PageKind::Illustrated, PageKind::Indexing};
+  static_assert(std::size(kinds) == TIMING_COUNT);
+  rows[RECORDING_ROW].value = epubtiming::recorder.isRecording() ? tr(STR_ENABLED) : tr(STR_DISABLED);
+  for (int i = 0; i < TIMING_COUNT; ++i) {
+    const auto summary = epubtiming::recorder.summarize(kinds[i]);
+    rows[TIMING_FIRST_ROW + i].value = timingValues[i];
+    if (summary.count == 0) {
+      snprintf(timingValues[i], sizeof(timingValues[i]), "-");
+    } else {
+      snprintf(timingValues[i], sizeof(timingValues[i]), "%lu / %lu ms (%u)",
+               static_cast<unsigned long>(summary.medianMs), static_cast<unsigned long>(summary.maxMs),
+               static_cast<unsigned>(summary.count));
+    }
+  }
+#endif
 }
 
 void DeviceDiagnosticsActivity::activateIndex(int index) {
-  if (index != VALUE_COUNT) return;
+  if (index != REFRESH_ROW
+#if FREEINK_DEVICE_X4PRO
+      && index != RECORDING_ROW
+#endif
+  )
+    return;
   RenderLock lock(*this);
+#if FREEINK_DEVICE_X4PRO
+  if (index == RECORDING_ROW) epubtiming::recorder.toggleRecording();
+#endif
   app.clearTapFlash();
   sample();
   requestUpdate();

@@ -2,4 +2,27 @@
 
 On the X4 Pro, **Settings → System → Device diagnostics** shows free bytes, the largest free block, and the sum of each memory region's lowest free-byte mark since boot for internal RAM and PSRAM. Select **Refresh measurements** for a new sample. Region lows can occur at different times, so their sum is not necessarily a minimum total that the device actually reached.
 
-The first sample is taken on entry; refreshed samples are taken while the screen is open. They include the diagnostics activity and do not measure page-turn speed, reader memory, or battery usage. Region low-water marks reset on reboot. The screen reads HAL counters; it does not write a log or change device settings. Physical display fit and readings on the X4 Pro need verification.
+The first memory sample is taken on entry. Refreshed samples include the
+diagnostics activity's memory. Region low-water marks reset on reboot.
+
+## EPUB render timings
+
+Select **Record EPUB timings**, read ten pages, then return to Device
+Diagnostics. Text, illustrated pages, and pages that needed chapter indexing each
+show the median and longest time among the latest 16 samples. The number in
+parentheses is the sample count. Pages that build an index go in the indexing
+group, including pages with illustrations. Selecting **Record EPUB timings**
+again stops recording and keeps the results. Starting another recording clears
+them.
+
+The timer starts when the EPUB render begins and ends after layout, page load,
+and the renderer's refresh calls. It includes initial and repeated page renders.
+Touch and button detection, time waiting for the render task, progress saves,
+and background prefetch are outside this measurement. A rebuild can also redraw
+the same page. Compare the same book, display orientation, refresh setting,
+and pages before and after a change. Use the indexing row for a chapter that
+actually needed a build.
+
+Recording starts off after boot. The recorder uses at most 208 bytes of RAM
+and writes no SD files. Display fit and timing on the physical X4 Pro remain
+unverified.

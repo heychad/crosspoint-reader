@@ -43,6 +43,7 @@
 #include "EpubReaderFootnoteSelectActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
+#include "EpubRenderTiming.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
@@ -2340,6 +2341,11 @@ bool EpubReaderActivity::skipLoopDelay() {
 void EpubReaderActivity::renderBook() {
   currentPageLinks.clear();
   if (!epub) return;
+#if FREEINK_DEVICE_X4PRO
+  const bool timingEnabled = epubtiming::recorder.isRecording();
+  const unsigned long frameStart = timingEnabled ? millis() : 0;
+  bool didIndex = false;
+#endif
   // A radio start in flight takes ~50 KB while the stack comes up: the page waits for it rather than
   // take the heap beside it (X3: abort() in a page restore at free 22,676 B). About 20 ms, once a visit.
   bleturner::settleStart();
@@ -2426,6 +2432,9 @@ void EpubReaderActivity::renderBook() {
           return;
         }
         GfxRenderer::FrameBufferLoan loan(renderer);
+#if FREEINK_DEVICE_X4PRO
+        didIndex = true;
+#endif
         if (!section->createSectionFile(renderSpec, popupFn)) {
           LOG_ERR("ERS", "Failed to persist page data to SD");
           loan.end();
@@ -2484,6 +2493,9 @@ void EpubReaderActivity::renderBook() {
           bool started;
           {
             GfxRenderer::FrameBufferLoan loan(renderer);
+#if FREEINK_DEVICE_X4PRO
+            didIndex = true;
+#endif
             started = section->startBuild(renderSpec, [this] { showBuildPopup(renderer, pagesUntilFullRefresh); });
           }
           if (!started) {
@@ -2574,6 +2586,9 @@ void EpubReaderActivity::renderBook() {
   }
   while (section->isPartial() &&
          (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount))) {
+#if FREEINK_DEVICE_X4PRO
+    didIndex = true;
+#endif
     if (!section->isBuilding() && !section->startBuild(renderSpec)) {
       LOG_ERR("ERS", "Failed to start partial extension build");
       if (tryRenderRecovery()) return;
@@ -2595,6 +2610,9 @@ void EpubReaderActivity::renderBook() {
   if (section->isBuilding()) {
     while (!section->isBuildComplete() &&
            (fullSectionIndexing || section->currentPage >= static_cast<int>(section->pageCount))) {
+#if FREEINK_DEVICE_X4PRO
+      didIndex = true;
+#endif
       if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
         LOG_ERR("ERS", "Failed during incremental section build");
         if (tryRenderRecovery()) return;
@@ -2673,6 +2691,9 @@ void EpubReaderActivity::renderBook() {
     // needs that slot, then snapshot the newly rendered page below.
     discardOverlayPage();
 
+#if FREEINK_DEVICE_X4PRO
+    const bool illustrated = timingEnabled && !didIndex && p->hasImages();
+#endif
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
@@ -2680,6 +2701,13 @@ void EpubReaderActivity::renderBook() {
 #endif
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
+#if FREEINK_DEVICE_X4PRO
+    if (timingEnabled) {
+      using epubtiming::PageKind;
+      const auto kind = didIndex ? PageKind::Indexing : illustrated ? PageKind::Illustrated : PageKind::Text;
+      epubtiming::recorder.record(kind, static_cast<uint32_t>(lastRenderCompleteMs - frameStart));
+    }
+#endif
     markPageRendered();
     if (renderRecovery.pageRendered(currentSpineIndex)) {
       showRenderRecoveryMessage = true;

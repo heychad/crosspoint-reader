@@ -64,13 +64,17 @@ struct UITheme {struct Metrics {int topPadding=1,headerHeight=1,buttonHintsHeigh
 #include <cassert>
 #include <string>
 #include <HalMemory.h>
+#include "activities/reader/EpubRenderTiming.h"
 #define private public
 #include "activities/settings/DeviceDiagnosticsActivity.h"
 #undef private
 int main(){
+ using epubtiming::PageKind;
+ auto& timing=epubtiming::recorder;
  GfxRenderer renderer;MappedInputManager input;DeviceDiagnosticsActivity screen(renderer,input);
  {RenderLock lock(screen);screen.render(std::move(lock));}assert(screen.renders==0);
- screen.onEnter();assert(HalMemory::calls==1 && screen.listCount()==7);
+ timing.record(PageKind::Text,5);
+ screen.onEnter();assert(HalMemory::calls==1 && screen.listCount()==11);
  {RenderLock lock(screen);screen.render(std::move(lock));}assert(screen.renders==1);
  assert(std::string(screen.rows[0].label)=="STR_DIAG_INTERNAL_FREE");
  assert(std::string(screen.rows[0].value)=="101 B");
@@ -80,14 +84,32 @@ int main(){
  assert(std::string(screen.rows[4].value)=="300 B");
  assert(std::string(screen.rows[5].value)=="200 B");
  assert(screen.rows[6].value==nullptr);
+ assert(std::string(screen.rows[7].value)=="STR_DISABLED");
+ assert(std::string(screen.rows[8].value)=="-");
  screen.activateIndex(1);assert(HalMemory::calls==1 && !screen.updated);
  screen.activateIndex(6);assert(HalMemory::calls==2 && screen.updated && locks==0);
  assert(screen.app.clears==1 && std::string(screen.rows[0].value)=="102 B");
- UiScreen ui;screen.buildScreen(ui);assert(ui.seen==7);
+ screen.activateIndex(7);assert(timing.isRecording());
+ assert(std::string(screen.rows[7].value)=="STR_ENABLED");
+ timing.record(PageKind::Text,900);
+ for(unsigned i=1;i<=16;i++)timing.record(PageKind::Text,i*10);
+ timing.record(PageKind::Illustrated,300);
+ timing.record(PageKind::Indexing,0);
+ screen.activateIndex(6);
+ assert(std::string(screen.rows[8].value)=="85 / 160 ms (16)");
+ assert(std::string(screen.rows[9].value)=="300 / 300 ms (1)");
+ assert(std::string(screen.rows[10].value)=="0 / 0 ms (1)");
+ screen.activateIndex(7);assert(!timing.isRecording());
+ timing.record(PageKind::Illustrated,600);
+ screen.activateIndex(6);
+ assert(std::string(screen.rows[9].value)=="300 / 300 ms (1)");
+ screen.activateIndex(7);assert(timing.isRecording());
+ assert(std::string(screen.rows[8].value)=="-" && std::string(screen.rows[9].value)=="-");
+ UiScreen ui;screen.buildScreen(ui);assert(ui.seen==11);
 }
 '''
     (path / "test.cpp").write_text(harness)
-    subprocess.run(["c++", "-std=c++20", "-I", str(path), "-I", str(root / "src"),
+    subprocess.run(["c++", "-std=c++20", "-DFREEINK_DEVICE_X4PRO=1", "-I", str(path), "-I", str(root / "src"),
                     str(source), str(path / "test.cpp"), "-o", str(path / "test")], check=True)
     subprocess.run([str(path / "test")], check=True)
-print("Diagnostics samples internal and PSRAM values and refreshes on request")
+print("Diagnostics refreshes memory and records bounded EPUB timing samples on request")
