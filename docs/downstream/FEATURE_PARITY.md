@@ -24,11 +24,13 @@ using CrossPoint 2.0.0 and its existing SDK pin.
 The table records local implementation and feature-specific evidence. Chad
 confirmed clipping and Saved Items on clipfix2, and progress, bookmarks, and
 clippings across a move on [test62](STATEFUL_BOOK_MOVES.md). On November 23 the
-reader still reported test62. The reviewed test64 deletion-sync candidate
-at `20361b80` passed both X4 Pro builds and 2,469 host checks. Its card copy
-at `zDev/DEL64.BIN` was verified by SHA-256. Installation and the disposable
-EPUB delete-and-restore test remain pending. The cumulative reviews before
-these builds are recorded in [the test59 candidate record](CUMULATIVE_CANDIDATE.md).
+reader still reported test62. Test65 at `2b42d6dd` combines the reviewed
+test64 deletion flow with the CrossInk RC3 navigation and WebDAV fixes.
+Both X4 Pro builds, all 2,471 host checks, and the targeted reviews passed.
+The card copy at `zDev/RC365.BIN`, the navigation test EPUB, and the test62
+rollback were verified by SHA-256. Installation and the disposable EPUB
+delete-and-restore test remain pending. Earlier cumulative reviews are in
+[the test59 candidate record](CUMULATIVE_CANDIDATE.md).
 
 | Choice | Current state |
 | --- | --- |

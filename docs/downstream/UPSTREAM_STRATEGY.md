@@ -34,10 +34,11 @@ The November 23 release and Git tag check confirmed CrossPoint 2.0.0 remains
 the stable base. [CrossInk RC3](https://github.com/uxjulia/CrossInk/releases/tag/v2.0.0-rc3)
 adds 65 commits after RC2, with 51 paths also changed in the fork. The two EPUB
 navigation fixes from [`8e809653`](https://github.com/uxjulia/CrossInk/commit/8e80965331011d871f72856259e1dc850846fe51)
-are adapted to the fork's current reader. The WebDAV copy fix stages the
-complete file before publishing it and preserves the old destination when
-staging fails. Host fault tests cover it. Storage review and device checks
-remain before release. The source check flagged five changed settings files.
+are adapted to the fork's current reader and use the current chapter for
+relative links. The WebDAV copy fix rejects active writers during staging
+and checks the completed file before retiring the old destination. The
+targeted reviews and FAT/exFAT fault checks passed for test65. Device checks
+remain. The source check flagged five changed settings files.
 RC3 adds the catalog keys `ruledLines`, `textDarkness`, and
 `twoToneTextAA`. Ruled lines and text darkness can be considered with the
 deferred reading modes and font work. Two-tone antialiasing belongs to RC3's
