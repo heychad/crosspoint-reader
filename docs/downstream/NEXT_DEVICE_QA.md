@@ -4,10 +4,10 @@ Install test65 from `zDev/RC365.BIN` for the next device check. Confirm the
 current book resumes, then test the Drive delete-and-restore path with one
 disposable synced EPUB.
 
-The follow-up is the reviewed test69 packet, `POLISH69.BIN`. Its local README
-has a five-minute check for saved passages, exact spacing, grayscale images,
-and Saved Items. Stage and verify that packet after test65 passes. The longer
-checklist below is for later regression sessions.
+The follow-up is the reviewed test70 packet, `READER70.BIN`. Its local README
+has a five-minute check for saved passages, grayscale images, exact spacing,
+File Browser statistics, and Saved Items. Stage and verify that packet after
+test65 passes. The longer checklist below is for later regression sessions.
 
 ## Before installing
 

@@ -41,8 +41,19 @@ settings, render timing, and lower SD read volume for illustrated pages and
 EPUB metadata. The two X4 Pro builds, all 2,531 enabled host checks, four
 review axes, and firmware and fixture checksums passed. The local
 `POLISH69.BIN` packet has two disposable EPUBs and test65 rollback.
-Test65 still comes first for the Drive delete-and-restore check. Test69 is
-the follow-up install. Both physical checks remain pending.
+
+Test70 at `8959351d` adds per-book dictionary preservation on completion moves,
+read-only Library completion filtering, File Browser statistics, EPUB drop-cap
+fixes, and batched image writes. Both X4 Pro profiles and all 2,542 enabled host
+checks passed. Four review axes cleared the candidate after correcting a dialog
+render race. The local `READER70.BIN` packet includes test65 rollback, two
+disposable EPUBs, and a five-minute device check. Version-3 completion moves
+must finish or recover before rollback. Test65 comes first for Drive deletion
+and restore, followed by test70. Device checks remain pending.
+
+The test70 release check verified the pins against GitHub Releases and Git tags.
+See [CrossPoint 2.0.0](https://github.com/crosspoint-reader/crosspoint-reader/releases/tag/2.0.0)
+and [CrossInk RC3](https://github.com/uxjulia/CrossInk/releases/tag/v2.0.0-rc3).
 
 | Choice | Current state |
 | --- | --- |
