@@ -4,11 +4,12 @@ Recorded November 22, 2026, from the xteink chat. Firmware work belongs in the
 crosspoint-fork chat. The xteink chat owns reader/library operations, EPUB
 repairs, transfers, and library organization.
 
-**Wait for Chad before device changes or a release.** Test63 is a built,
-packaged candidate. Physical installation and the disposable-book acceptance
-test are pending. The handoff reports the reader was still running test62 on
-November 22 and `/zDev/DEL63.BIN` had been copied and checksum-verified. This
-recording task did not contact or change the reader.
+**Keep test62 installed.** The November 23 pre-install review found defects
+in test63's deletion records and interruption handling. The X4 Pro at
+`192.168.86.176` reported test62. Both `/zDev/DEL63.BIN` and `/zDev/MOVE62.BIN`
+matched their packaged SHA-256 hashes. A read-only backup verified 483 accessible
+state files totaling 128,520 bytes. Its receipt is private under
+`.cache/device-test/test63-precheck-20261123T160419Z/`.
 
 ## Behavior
 
@@ -46,10 +47,30 @@ submodule. The SDK pin also matches the package record. Tests were not rerun
 for this documentation handoff. The candidate worktree and its SDK changes
 remain untouched.
 
+## Pre-install review
+
+Independent correctness and storage reviews covered the packaged patch against
+`8a1b6d84`. They found the following blockers in the deletion workflow:
+
+- Ordinary file operations can change queued deletion records and held EPUBs.
+  Reserve mutation of this queue for the deletion workflow and verify the
+  receipt against the exact book and source path before releasing its bytes.
+- An interrupted rename can leave an incomplete deletion without enough durable
+  information for recovery. Reuse the checked move recovery path or provide an
+  equivalent transaction that can reconcile the card safely after restart.
+- Cleanup can report a committed deletion as failed and can disable checksum
+  and move operations until restart. Keep the deletion result separate from
+  cleanup, and validate directory removal before attempting it.
+
+The current host test checks the Library callback with a stub. The next
+candidate needs production-path FAT/exFAT coverage for queue ownership,
+staging, interrupted writes, and cleanup. It also needs to retain test62's
+move and checksum behavior. Device installation and release remain pending.
+
 ## Pending acceptance
 
-- [ ] Chad authorizes proceeding with the device candidate.
-- [ ] Physical installation confirms the expected test63 version.
+- [ ] Fix and verify queue ownership, recovery, and cleanup in a replacement candidate.
+- [ ] Verify the replacement with Chad on the X4 Pro.
 - [ ] Delete a disposable synced EPUB, run Check reader, and confirm Recently deleted shows a 60-day expiry.
 - [ ] Restore, sync, and open that disposable EPUB again.
 - [ ] Move a different book with saved progress; confirm resume and that the move does not appear in Recently deleted.
@@ -57,6 +78,7 @@ remain untouched.
 - [x] Firmware candidate built and packaged; checks recorded in its README.
 - [x] Local package hashes and packaged-source/worktree match rechecked.
 - [x] Candidate copied to `/zDev/DEL63.BIN` and checksum-verified, per the November 22 handoff.
+- [x] November 23 pre-install review, card checksum recheck, and scoped state backup.
 
 Keep release readiness separate from compilation, package verification, and
 copying the candidate to the card. Follow the repository's firmware-handoff
