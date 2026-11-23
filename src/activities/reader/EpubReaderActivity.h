@@ -200,8 +200,11 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr size_t BACKGROUND_BUILD_MIN_MAX_ALLOC = 16 * 1024;
   // Requires the render lock; heap admission is checked separately by the build tick.
   bool backgroundBuildWanted() const;
+  // Both background paths hold the render lock while checking the heap.
+  bool reclaimBackgroundCachesIfNeeded(bool hasRoom);
   bool buildTickHeapGate();
   bool buildHeapPaused = false;
+  bool backgroundCacheReclaimAttempted = false;
   // One bounded build step on the loop task, in a frame whose input did nothing. Lays out about
   // BACKGROUND_BUILD_PAGES_PER_TICK pages (one 1 KB parse step may add more) and hands the loop
   // back as soon as a button is down, so a short press is seen before more pages are built.

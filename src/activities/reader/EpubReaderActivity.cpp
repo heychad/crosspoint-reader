@@ -661,11 +661,29 @@ bool EpubReaderActivity::makeRoomForChapterBuild() {
   return false;
 }
 
+bool EpubReaderActivity::reclaimBackgroundCachesIfNeeded(const bool hasRoom) {
+  if (hasRoom) {
+    backgroundCacheReclaimAttempted = false;
+    return false;
+  }
+  if (backgroundCacheReclaimAttempted) return false;
+  backgroundCacheReclaimAttempted = true;
+  ImageBlock::releaseRenderCache();
+  if (auto* cache = renderer.getFontCacheManager()) {
+    cache->releaseInactiveSdFontCaches(SETTINGS.getReaderFontId());
+  }
+  return true;
+}
+
 bool EpubReaderActivity::buildTickHeapGate() {
-  const size_t freeHeap = ESP.getFreeHeap();
-  const size_t maxBlock = ESP.getMaxAllocHeap();
-  buildHeapPaused = freeHeap < BACKGROUND_BUILD_MIN_FREE_HEAP || maxBlock < BACKGROUND_BUILD_MIN_MAX_ALLOC;
-  return !buildHeapPaused;
+  const auto hasRoom = [] {
+    return ESP.getFreeHeap() >= BACKGROUND_BUILD_MIN_FREE_HEAP &&
+           ESP.getMaxAllocHeap() >= BACKGROUND_BUILD_MIN_MAX_ALLOC;
+  };
+  bool ready = hasRoom();
+  if (reclaimBackgroundCachesIfNeeded(ready)) ready = hasRoom();
+  buildHeapPaused = !ready;
+  return ready;
 }
 
 void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFullRefresh) {
@@ -2800,8 +2818,11 @@ void EpubReaderActivity::armChapterPrefetch() {
       pendingManualTurn != 0 || buttonContactClosed() || anyButtonPressed() ||
       mappedInput.getTouchSnapshot().reportedCount != 0 || bleturner::holdsHeap() ||
       currentSpineIndex + 1 >= epub->getSpineItemsCount() || prefetchAttemptedSpine == currentSpineIndex ||
-      !lastRenderCompleteMs || millis() - lastRenderCompleteMs < 400 || !hasChapterPrefetchRoom(true))
+      !lastRenderCompleteMs || millis() - lastRenderCompleteMs < 400)
     return;
+  bool ready = hasChapterPrefetchRoom(true);
+  if (reclaimBackgroundCachesIfNeeded(ready)) ready = hasChapterPrefetchRoom(true);
+  if (!ready) return;
   const uint32_t sequence = prefetchInputSequence.load(std::memory_order_relaxed);
   if (prefetchArmedSpine == currentSpineIndex && prefetchArmedSequence == sequence) return;
   prefetchArmedSpine = currentSpineIndex;

@@ -18,7 +18,8 @@ def extract(name, return_type='void'):
             return source[start:index + 1]
     raise RuntimeError(name + ' not found')
 
-method = (extract('hasChapterPrefetchRoom','bool') + '\n' + extract('armChapterPrefetch')
+method = (extract('reclaimBackgroundCachesIfNeeded','bool') + '\n' + extract('buildTickHeapGate','bool') + '\n'
+          + extract('hasChapterPrefetchRoom','bool') + '\n' + extract('armChapterPrefetch')
           + '\n' + extract('prefetchNextChapter'))
 header = (root / 'src/activities/reader/EpubReaderActivity.h').read_text()
 work_limit = re.search(r'static constexpr uint32_t PREFETCH_WORK_LIMIT_MS = \d+;',header).group()
@@ -29,14 +30,31 @@ code = r'''
 #include <memory>
 #include <utility>
 struct ReaderRenderSpec {};
-struct Settings { ReaderRenderSpec readerRenderSpec(int,int){return {};} } SETTINGS;
+struct Settings { ReaderRenderSpec readerRenderSpec(int,int){return {};} int getReaderFontId(){return 17;} } SETTINGS;
 struct HalMemory {
  struct HeapStats {uint32_t freeBytes,largestBlockBytes;};
  static inline HeapStats normal{256*1024,64*1024},internal{64*1024,32*1024};
  static HeapStats getDefaultHeap(){return normal;} static HeapStats getInternalHeap(){return internal;}
 };
 namespace bleturner { bool active=false; bool holdsHeap(){return active;} }
-struct Gfx { uint32_t loans=0; uint32_t frameBufferLoanCount()const{return loans;} };
+struct Esp {
+ size_t getFreeHeap(){return HalMemory::normal.freeBytes;}
+ size_t getMaxAllocHeap(){return HalMemory::normal.largestBlockBytes;}
+} ESP;
+struct ImageBlock { static inline int reclaimed=0; static void releaseRenderCache(){++reclaimed;} };
+struct FontCache {
+ bool recover=false; int reclaimed=0;
+ void releaseInactiveSdFontCaches(int id){
+  assert(id==17);
+  ++reclaimed;
+  if(recover){HalMemory::normal={256*1024,64*1024};HalMemory::internal={64*1024,32*1024};}
+ }
+};
+struct Gfx {
+ uint32_t loans=0; FontCache fonts;
+ uint32_t frameBufferLoanCount()const{return loans;}
+ FontCache* getFontCacheManager(){return &fonts;}
+};
 struct RenderLock { enum class Mode{Try}; RenderLock(Mode){} bool ownsLock()const{return true;} };
 struct Manager {int requests=0; void requestBackgroundRender(){++requests;}} activityManager;
 unsigned long nowMs=1000; unsigned long millis(){return nowMs;}
@@ -67,13 +85,43 @@ struct EpubReaderActivity {
  int prefetchArmedSpine=0,prefetchAttemptedSpine=-1,currentSpineIndex=0; Overlay overlay=Overlay::None;
  Input mappedInput; int pendingManualTurn=0; unsigned long lastRenderCompleteMs=1; bool anyButtonPressed(){return false;}
  bool pageBufferStale=false; int updates=0; void requestUpdate(){++updates;}
+ bool backgroundCacheReclaimAttempted=false,buildHeapPaused=false;
+ static constexpr size_t BACKGROUND_BUILD_MIN_FREE_HEAP=32*1024, BACKGROUND_BUILD_MIN_MAX_ALLOC=16*1024;
  ReaderRenderSpec effectiveRenderSpec(int w,int h,int){return SETTINGS.readerRenderSpec(w,h);}
  void armChapterPrefetch();
+ bool reclaimBackgroundCachesIfNeeded(bool);
+ bool buildTickHeapGate();
  bool hasChapterPrefetchRoom(bool)const;
  void prefetchNextChapter(uint16_t,uint16_t);
 };
 ''' + method + r'''
 int main(){
+ {
+  EpubReaderActivity low;
+  low.prefetchArmedSpine=-1;
+  HalMemory::normal={16*1024,8*1024};
+  const auto images=ImageBlock::reclaimed;
+  const auto requests=activityManager.requests;
+  rawPressed=true;
+  low.armChapterPrefetch();
+  rawPressed=false;
+  assert(ImageBlock::reclaimed==images);
+  low.armChapterPrefetch();
+  low.armChapterPrefetch();
+  assert(ImageBlock::reclaimed==images+1 && low.renderer.fonts.reclaimed==1);
+  assert(activityManager.requests==requests);
+  HalMemory::normal={256*1024,64*1024};
+  assert(low.buildTickHeapGate());
+  HalMemory::normal={16*1024,8*1024};
+  low.renderer.fonts.recover=true;
+  assert(low.buildTickHeapGate() && !low.buildHeapPaused);
+  assert(low.renderer.fonts.reclaimed==2);
+  assert(low.buildTickHeapGate());  // A later healthy observation re-arms the gate.
+  HalMemory::internal={16*1024,8*1024};
+  low.armChapterPrefetch();
+  assert(low.renderer.fonts.reclaimed==3 && activityManager.requests==requests+1);
+  activityManager.requests=requests;
+ }
  EpubReaderActivity a;
  a.section->currentPage=2; a.prefetchNextChapter(400,600); assert(Section::starts==0);
  a.prefetchArmedSpine=0; a.section->currentPage=8; bleturner::active=true; a.prefetchNextChapter(400,600); assert(Section::starts==0);

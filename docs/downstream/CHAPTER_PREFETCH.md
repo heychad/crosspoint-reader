@@ -49,6 +49,14 @@ scratch allocation. Internal checks prevent abundant PSRAM from masking low
 internal RAM. These are conservative admission policies, not measured peak
 headroom or a guarantee against allocation failure inside a parser step.
 
+The current-section background builder and the next-section admission check
+can reclaim caches once under memory pressure. Under the render lock, they
+release decoded-image scratch, built-in font decompression buffers, and
+inactive SD-font caches, then recheck the same memory limits. The active
+SD font and all its registered aliases retain their caches. A later healthy
+observation re-arms reclamation. An active prefetch still uses its existing
+memory-cancellation check. This adapts the [CrossInk RC3 reclaim policy](https://github.com/uxjulia/CrossInk/commit/22adfc7ae01e6995e2aa1d68d3ed17d0161500c7).
+
 No task, second framebuffer, or retained parser is added. The enabled reader
 adds one four-byte start timestamp to its existing prefetch state. The temporary
 section coexists with the current section only during the background call and

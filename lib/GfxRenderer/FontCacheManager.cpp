@@ -40,6 +40,15 @@ void FontCacheManager::releaseSdFontCaches() {
 #endif
 }
 
+void FontCacheManager::releaseInactiveSdFontCaches(const int activeFontId) {
+  if (fontDecompressor_) fontDecompressor_->clearCache();
+  const auto active = sdCardFonts_.find(activeFontId);
+  const auto* activeFont = active != sdCardFonts_.end() ? active->second : nullptr;
+  for (const auto& [id, font] : sdCardFonts_) {
+    if (font && font != activeFont) font->releaseResidentCaches();
+  }
+}
+
 void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t styleMask, bool accumulate) {
   // TTF (vector) font prewarm path. This is the single dispatch every draw path
   // funnels through (reader endScanAndPrewarm, the settings preview, UI text),
