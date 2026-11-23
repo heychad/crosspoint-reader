@@ -131,7 +131,6 @@ class HalStorage {
     return volume_->rmdir(path);
 #endif
   }
-#if defined(SDFAT_BOOK_MOVES)
   enum class DirectoryMoveStatus { Missing, Ready, NotDirectory, Unavailable };
   DirectoryMoveStatus identifyMoveDirectory(const char* path, uint32_t& firstCluster) {
     const auto presence = lookupPath(path);
@@ -147,7 +146,6 @@ class HalStorage {
     firstCluster = cluster;
     return DirectoryMoveStatus::Ready;
   }
-#endif
   bool distinctFirstClusters(const char* first, const char* second) {
     auto left = open(first, O_RDONLY), right = open(second, O_RDONLY);
     if (!left || !right) return false;

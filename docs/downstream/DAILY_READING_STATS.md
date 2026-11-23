@@ -49,6 +49,14 @@ Seconds and uploaded acknowledgments cannot decrease. Repeating the same value
 after an uncertain sync or close does not add it again. The alternate slot is
 closed and decoded again before a save reports success.
 
+The RC2/RC3 loader checks the current reader's
+`/.crosspoint/daily_reading_crossink-<reader-id>` directory when a month lacks a
+valid native slot. It uses the same checksummed format, merges overlapping
+absolute legacy counters by maximum, and seeds the complete month in the
+native directory on the first write. Native monthly slots take priority on
+later reads. Writes check that the directories have different allocation
+identities and leave the CrossInk source files in place.
+
 The store checks independent bounded file chains before overwriting an existing
 slot, including its relationship to preserved legacy files. Empty interrupted
 targets are supported. I/O failures and unknown newer formats block writes. A
@@ -58,8 +66,9 @@ Bootstrap recovery follows the tagged RC writer's protocol: b is established
 before a, and the writer never deletes a. A missing a plus a corrupt b therefore
 identifies an unfinished first bootstrap under the supported failure model of
 interrupted file writes. A new absolute write can reconstruct b from preserved
-legacy counters, verify it, and then publish a. Read-only inspection still
-reports that state unavailable. Foreign formats, I/O failures, aliasing with
+legacy counters, verify it, and then publish a. Read-only inspection reports
+an unavailable month unless it can read a checked CrossInk baseline for the
+requested day. Foreign formats, I/O failures, aliasing with
 legacy data, and a lone corrupt a block recovery. This does not repair external
 file deletion, general filesystem damage, or lost uncheckpointed RAM data.
 

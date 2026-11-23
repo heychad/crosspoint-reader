@@ -184,6 +184,14 @@ class HalStorage {
     if (failReadPaths_.contains(path)) return PathStatus::Failed;
     return exists(path) ? PathStatus::Present : PathStatus::Missing;
   }
+  enum class DirectoryMoveStatus { Missing, Ready, NotDirectory, Unavailable };
+  DirectoryMoveStatus identifyMoveDirectory(const char* path, uint32_t& cluster) const {
+    if (failReadPaths_.contains(path)) return DirectoryMoveStatus::Unavailable;
+    if (!directories_.contains(path))
+      return files_.contains(path) ? DirectoryMoveStatus::NotDirectory : DirectoryMoveStatus::Missing;
+    cluster = static_cast<uint32_t>(std::hash<std::string>{}(path)) | 2U;
+    return DirectoryMoveStatus::Ready;
+  }
   bool lookupNumberedChildren(const char* directory, const char* prefix, uint64_t& present) const {
     uint64_t mask = 0;
     for (unsigned i = 0; i < 64; ++i) {

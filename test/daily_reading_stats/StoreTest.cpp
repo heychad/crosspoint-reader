@@ -9,6 +9,9 @@ using namespace dailyreading;
 namespace {
 const char* A = "/.crosspoint/daily_reading/2026-11.a.bin";
 const char* B = "/.crosspoint/daily_reading/2026-11.b.bin";
+const char* CROSSINK = "/.crosspoint/daily_reading_crossink-001122334455";
+const char* CROSSINK_A = "/.crosspoint/daily_reading_crossink-001122334455/2026-11.a.bin";
+const char* CROSSINK_B = "/.crosspoint/daily_reading_crossink-001122334455/2026-11.b.bin";
 uint32_t day = readingStatsDayIndex({2026, 11, 15});
 void put(const std::string& path, const std::string& bytes) {
   HalFile file;
@@ -24,9 +27,9 @@ std::string bytes(const char* path) {
   EXPECT_TRUE(file.close());
   return result;
 }
-std::string legacyPath(uint32_t value) {
+std::string legacyPath(uint32_t value, const char* directory = DIRECTORY) {
   char path[64];
-  snprintf(path, sizeof(path), "%s/%05lu.bin", DIRECTORY, static_cast<unsigned long>(value));
+  snprintf(path, sizeof(path), "%s/%05lu.bin", directory, static_cast<unsigned long>(value));
   return path;
 }
 std::string legacy(uint32_t value, Counter counter) {
@@ -37,6 +40,11 @@ std::string legacy(uint32_t value, Counter counter) {
   write32(p + 5, counter.uploaded);
   write32(p + 9, checksum(p, 9, 2166136261U ^ value));
   return result;
+}
+std::string november(const Month& month) {
+  std::array<uint8_t, MONTH_BYTES> encoded{};
+  EXPECT_TRUE(encodeMonth(month, day - 14, 30, encoded));
+  return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
 }
 class DailyStore : public testing::Test {
   void SetUp() override {
@@ -61,6 +69,81 @@ TEST_F(DailyStore, ReadsDoNotCreateFilesAndAbsoluteWritesRoundTrip) {
   EXPECT_EQ(value.seconds, 120U);
   ASSERT_EQ(read(day + 1, value), ReadResult::Available);
   EXPECT_EQ(value.seconds, 40U);
+}
+TEST_F(DailyStore, SeedsNativeMonthFromNewestCrossInkSlotAndKeepsBothSourceFiles) {
+  Month old, latest;
+  old.generation = UINT32_MAX;
+  old.days[14] = {80, 30};
+  latest.days[14] = {150, 60};
+  latest.days[15] = {50, 40};
+  const auto first = november(old), second = november(latest);
+  put(CROSSINK_A, first);
+  put(CROSSINK_B, second);
+  const auto qualifiedLegacy = legacyPath(day + 2, CROSSINK);
+  put(qualifiedLegacy, legacy(day + 2, {180, 90}));
+
+  Counter value;
+  ASSERT_EQ(read(day, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{150, 60}));
+  EXPECT_FALSE(Storage.exists(DIRECTORY));
+  ASSERT_TRUE(write(day, {170, 60}));
+  EXPECT_EQ(bytes(CROSSINK_A), first);
+  EXPECT_EQ(bytes(CROSSINK_B), second);
+  EXPECT_EQ(bytes(qualifiedLegacy.c_str()), legacy(day + 2, {180, 90}));
+  ASSERT_EQ(read(day + 1, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{50, 40}));
+  ASSERT_EQ(read(day + 2, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{180, 90}));
+
+  // An independently updated CrossInk folder must not override native history.
+  latest.days[14] = {231, 100};
+  put(CROSSINK_B, november(latest));
+  ASSERT_EQ(read(day, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{170, 60}));
+}
+TEST_F(DailyStore, CheckedCrossInkMonthSurvivesInterruptedNativeBootstrap) {
+  Month month;
+  month.days[14] = {90, 50};
+  const auto snapshot = november(month);
+  put(CROSSINK_A, snapshot);
+  Storage.failNextWriteFor(B, 12);
+  EXPECT_FALSE(write(day, {120, 50}));
+  EXPECT_FALSE(Storage.exists(A));
+  ASSERT_TRUE(Storage.exists(B));
+  EXPECT_EQ(bytes(CROSSINK_A), snapshot);
+  Counter value;
+  ASSERT_EQ(read(day, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{90, 50}));
+  ASSERT_TRUE(write(day, {120, 50}));
+  ASSERT_EQ(read(day, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{120, 50}));
+}
+TEST_F(DailyStore, IgnoresForeignFoldersAndBlocksImportOnUncertainSource) {
+  Month month;
+  month.days[14] = {45, 20};
+  const auto snapshot = november(month);
+  put("/.crosspoint/daily_reading_crossink-aabbccddeeff/2026-11.a.bin", snapshot);
+  Counter value;
+  EXPECT_EQ(read(day, value), ReadResult::Missing);
+  put(CROSSINK_A, snapshot);
+  Storage.failReadsFor(CROSSINK_B);
+  EXPECT_EQ(read(day, value), ReadResult::Unavailable);
+  EXPECT_FALSE(write(day, {75, 20}));
+  EXPECT_FALSE(Storage.exists(DIRECTORY));
+  EXPECT_EQ(bytes(CROSSINK_A), snapshot);
+}
+TEST_F(DailyStore, SeedsFromQualifiedLegacyAndNativeLegacyWithoutAddingOverlappingTotals) {
+  const auto qualified = legacyPath(day, CROSSINK);
+  const auto source = legacy(day, {100, 30});
+  put(qualified, source);
+  put(legacyPath(day), legacy(day, {125, 20}));
+  Counter value;
+  ASSERT_EQ(read(day, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{125, 30}));
+  ASSERT_TRUE(write(day, {150, 30}));
+  EXPECT_EQ(bytes(qualified.c_str()), source);
+  ASSERT_EQ(read(day, value), ReadResult::Available);
+  EXPECT_EQ(value, (Counter{150, 30}));
 }
 TEST_F(DailyStore, RejectsDecreasesAndInvalidCounters) {
   ASSERT_TRUE(write(day, {120, 90}));

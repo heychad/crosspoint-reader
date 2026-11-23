@@ -3,6 +3,7 @@
 
 #include <HalStorage.h>
 #include <Memory.h>
+#include <esp_mac.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -11,6 +12,7 @@
 
 namespace dailyreading {
 namespace {
+constexpr size_t CROSSINK_DIRECTORY_BYTES = sizeof("/.crosspoint/daily_reading_crossink-001122334455");
 struct Work {
   Month selected;
   Month other;
@@ -26,15 +28,15 @@ struct Work {
   bool update = false;
 };
 static_assert(sizeof(Work) <= 832);
-void monthPath(const Work& work, int slot, char* path) {
-  snprintf(path, 64, "%s/%04u-%02u.%c.bin", DIRECTORY, work.date.year, work.date.month, slot ? 'b' : 'a');
+void monthPath(const Work& work, int slot, char* path, const char* directory = DIRECTORY) {
+  snprintf(path, 64, "%s/%04u-%02u.%c.bin", directory, work.date.year, work.date.month, slot ? 'b' : 'a');
 }
-void legacyPath(uint32_t day, const char* suffix, char* path) {
-  snprintf(path, 64, "%s/%05lu.bin%s", DIRECTORY, static_cast<unsigned long>(day), suffix);
+void legacyPath(uint32_t day, const char* suffix, char* path, const char* directory) {
+  snprintf(path, 64, "%s/%05lu.bin%s", directory, static_cast<unsigned long>(day), suffix);
 }
-Decode loadSlot(Work& work, int slot, Month& month) {
+Decode loadSlot(Work& work, int slot, Month& month, const char* directory = DIRECTORY) {
   char path[64];
-  monthPath(work, slot, path);
+  monthPath(work, slot, path, directory);
   const auto status = Storage.lookupPath(path);
   if (status == HalStorage::PathStatus::Missing) return Decode::Missing;
   if (status == HalStorage::PathStatus::Failed) return Decode::Unreadable;
@@ -47,13 +49,14 @@ Decode loadSlot(Work& work, int slot, Month& month) {
   if (!read || !closed) return Decode::Unreadable;
   return decodeMonth(work.bytes.data(), size, work.first, work.count, month);
 }
-bool loadLegacy(Work& work, uint32_t day, Counter& counter, bool& present, const char* writeTarget = nullptr) {
+bool loadLegacy(Work& work, uint32_t day, Counter& counter, bool& present, const char* directory,
+                const char* writeTarget) {
   counter = {};
   present = false;
   bool validRecord = false;
   for (const char* suffix : {"", ".bak", ".tmp"}) {
     char path[64];
-    legacyPath(day, suffix, path);
+    legacyPath(day, suffix, path, directory);
     const auto status = Storage.lookupPath(path);
     if (status == HalStorage::PathStatus::Failed) return false;
     if (status == HalStorage::PathStatus::Missing) continue;
@@ -76,6 +79,51 @@ bool loadLegacy(Work& work, uint32_t day, Counter& counter, bool& present, const
   }
   return !present || validRecord;
 }
+bool crossInkDirectory(char (&path)[CROSSINK_DIRECTORY_BYTES], uint32_t& cluster) {
+  uint8_t mac[6]{};
+  if (esp_efuse_mac_get_default(mac) != 0) return false;
+  const int length = snprintf(path, sizeof(path), "%s_crossink-%02x%02x%02x%02x%02x%02x", DIRECTORY, mac[0], mac[1],
+                              mac[2], mac[3], mac[4], mac[5]);
+  if (length != static_cast<int>(sizeof(path) - 1)) return false;
+  switch (Storage.identifyMoveDirectory(path, cluster)) {
+    case HalStorage::DirectoryMoveStatus::Missing:
+      path[0] = '\0';
+      return true;
+    case HalStorage::DirectoryMoveStatus::Ready:
+      return true;
+    case HalStorage::DirectoryMoveStatus::NotDirectory:
+    case HalStorage::DirectoryMoveStatus::Unavailable:
+      return false;
+  }
+  return false;
+}
+bool loadCrossInkMonth(Work& work, const char* directory, bool& present) {
+  const auto a = loadSlot(work, 0, work.selected, directory);
+  const auto b = loadSlot(work, 1, work.other, directory);
+  const auto selection = select(a, work.selected, b, work.other);
+  if (selection == Selection::Unavailable) return false;
+  if (selection == Selection::Second) work.selected = work.other;
+  present = selection != Selection::Empty;
+  // Native slot generations start with the first checked write.
+  work.selected.generation = 0;
+  return true;
+}
+bool loadDay(Work& work, uint32_t day, const char* crossInk, Counter& counter, bool& present,
+             const char* writeTarget = nullptr) {
+  Counter native;
+  if (!loadLegacy(work, day, native, present, DIRECTORY, writeTarget)) return false;
+  counter = work.selected.days[day - work.first];
+  counter.seconds = std::max(counter.seconds, native.seconds);
+  counter.uploaded = std::max(counter.uploaded, native.uploaded);
+  if (!crossInk[0]) return true;
+  Counter legacy;
+  bool legacyPresent;
+  if (!loadLegacy(work, day, legacy, legacyPresent, crossInk, writeTarget)) return false;
+  counter.seconds = std::max(counter.seconds, legacy.seconds);
+  counter.uploaded = std::max(counter.uploaded, legacy.uploaded);
+  present = present || legacyPresent;
+  return true;
+}
 bool saveSlot(Work& work, int target) {
   char path[64];
   monthPath(work, target, path);
@@ -91,12 +139,14 @@ bool operate(void* raw) {
   auto& work = *static_cast<Work*>(raw);
   work.slots[0] = loadSlot(work, 0, work.selected);
   work.slots[1] = loadSlot(work, 1, work.other);
+  const bool interruptedBootstrap = work.slots[0] == Decode::Missing && work.slots[1] == Decode::Corrupt;
   switch (select(work.slots[0], work.selected, work.slots[1], work.other)) {
     case Selection::Unavailable:
       // This writer always establishes b before creating a and never deletes a.
       // With only interrupted-file writes in scope, a lone corrupt b is an
-      // unfinished first bootstrap. Reads still report it as unavailable.
-      if (!work.update || work.slots[0] != Decode::Missing || work.slots[1] != Decode::Corrupt) return false;
+      // unfinished first bootstrap. A checked CrossInk source can supply the
+      // baseline again after a restart.
+      if (!interruptedBootstrap) return false;
       work.selected = {};
       break;
     case Selection::First:
@@ -110,14 +160,18 @@ bool operate(void* raw) {
       work.selected = {};
       break;
   }
+  const bool import = work.slot < 0;
+  char qualified[CROSSINK_DIRECTORY_BYTES]{};
+  uint32_t qualifiedCluster = 0;
+  bool qualifiedMonth = false;
+  if (import && (!crossInkDirectory(qualified, qualifiedCluster) ||
+                 (qualified[0] && !loadCrossInkMonth(work, qualified, qualifiedMonth))))
+    return false;
   if (!work.update) {
-    Counter old;
     bool present;
-    if (!loadLegacy(work, work.day, old, present)) return false;
-    work.counter = work.selected.days[work.day - work.first];
-    work.counter.seconds = std::max(work.counter.seconds, old.seconds);
-    work.counter.uploaded = std::max(work.counter.uploaded, old.uploaded);
-    work.result = work.slot >= 0 || present ? ReadResult::Available : ReadResult::Missing;
+    if (!loadDay(work, work.day, qualified, work.counter, present)) return false;
+    if (interruptedBootstrap && (!qualified[0] || (!qualifiedMonth && !present))) return false;
+    work.result = !import || qualifiedMonth || present ? ReadResult::Available : ReadResult::Missing;
     return true;
   }
   const int target = work.slot == 0 ? 1 : 0;
@@ -137,18 +191,15 @@ bool operate(void* raw) {
     protectedTarget = bootstrapPath;
   }
   for (uint8_t i = 0; i < work.count; ++i) {
-    Counter old;
     bool present;
-    if (!loadLegacy(work, work.first + i, old, present, protectedTarget)) return false;
-    auto& value = work.selected.days[i];
-    value.seconds = std::max(value.seconds, old.seconds);
-    value.uploaded = std::max(value.uploaded, old.uploaded);
+    if (!loadDay(work, work.first + i, qualified, work.selected.days[i], present, protectedTarget)) return false;
   }
   auto& previous = work.selected.days[work.day - work.first];
   if (work.counter.seconds < previous.seconds || work.counter.uploaded < previous.uploaded) return false;
   // Repeating a verified absolute value needs no additional write. An empty
   // month still needs a first snapshot, even when the requested value is zero.
   if (work.slot >= 0 && previous == work.counter) return true;
+  if (!import && !crossInkDirectory(qualified, qualifiedCluster)) return false;
   const auto directory = Storage.lookupPath(DIRECTORY);
   if (directory == HalStorage::PathStatus::Failed ||
       (directory == HalStorage::PathStatus::Missing && !Storage.mkdir(DIRECTORY)))
@@ -159,9 +210,14 @@ bool operate(void* raw) {
     const bool closed = dir.close();
     if (!usable || !closed) return false;
   }
+  if (qualified[0]) {
+    uint32_t nativeCluster = 0;
+    if (Storage.identifyMoveDirectory(DIRECTORY, nativeCluster) != HalStorage::DirectoryMoveStatus::Ready ||
+        nativeCluster == qualifiedCluster)
+      return false;
+  }
   if (work.slot < 0) {
-    // Keep an empty verified recovery copy before the first actual update.
-    // Legacy data has already been merged and is never removed.
+    // Keep a verified baseline before applying the first native update.
     if (!saveSlot(work, 1)) return false;
     work.slot = 1;
   }
