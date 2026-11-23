@@ -181,15 +181,11 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
   DirectPixelWriter pw;
   pw.init(renderer);
 
-  // The cache streams to disk one MCU-row band at a time. Flushing rows below
-  // this block (raster order guarantees they are final) repositions the band;
-  // cacheOriginY then maps screen rows to the band-local buffer rows. If a flush
-  // write fails, stop caching for the rest of this decode (and let finalize drop
-  // the partial file) rather than writing past the band buffer.
+  // Flush completed rows when this MCU block no longer fits in the cache band.
   DirectCacheWriter cw;
   int cacheOriginY = 0;
   if (caching) {
-    if (!ctx->cache.advanceTo(dstYStart)) {
+    if (!ctx->cache.advanceTo(dstYStart, dstYEnd - dstYStart)) {
       caching = false;
       ctx->caching = false;
     } else {

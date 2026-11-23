@@ -261,10 +261,7 @@ int pngDrawCallback(PNGDRAW* pDraw) {
 
     pw.beginRow(outY);
 
-    // The cache streams to disk one row at a time. Flushing rows below this one
-    // (PNGdec delivers scanlines top to bottom) repositions the single-row band.
-    // A flush failure stops caching for the rest of the decode so we never write
-    // past the band buffer; finalize() then drops the partial file.
+    // PNGdec delivers scanlines in order. Flush the band only when full.
     bool caching = ctx->caching;
     DirectCacheWriter cw;
     if (caching) {

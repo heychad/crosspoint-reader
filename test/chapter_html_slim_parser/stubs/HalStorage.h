@@ -7,6 +7,7 @@
 namespace HalFileTest {
 inline bool failNextWrite = false;
 inline bool failNextClose = false;
+inline size_t writeCalls = 0;
 }  // namespace HalFileTest
 
 constexpr int O_WRITE = 1;
@@ -30,6 +31,7 @@ class HalFile {
   int read() { return file_ ? std::fgetc(file_) : -1; }
   size_t read(void* buffer, size_t count) { return file_ ? std::fread(buffer, 1, count, file_) : 0; }
   size_t write(const void* buffer, size_t count) {
+    ++HalFileTest::writeCalls;
     if (HalFileTest::failNextWrite) {
       HalFileTest::failNextWrite = false;
       return 0;

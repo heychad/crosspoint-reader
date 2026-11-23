@@ -4,6 +4,7 @@
 #include <Logging.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -24,25 +25,22 @@
 // Correctness relies on JPEGDEC delivering blocks in raster MCU order (outer
 // loop over y, inner over x: see jpeg.inl DecodeJPEG). Consecutive MCU rows map
 // to contiguous, non-overlapping destination row ranges, so once a block whose
-// top row is Y arrives, every output row < Y is final and is flushed to disk.
+// top row is Y arrives, every output row < Y is safe to flush to disk.
 struct PixelCache {
-  uint8_t* buffer;   // band buffer: (bandRows + 1) rows; last row kept zeroed
-  uint8_t* zeroRow;  // points at the spare zeroed row, for gap/clip fill
+  uint8_t* buffer;  // bandRows packed output rows
   int width;
   int height;
   int bytesPerRow;
-  int originX;      // config.x - to convert screen coords to cache coords
-  int originY;      // config.y
-  int bandRows;     // rows held in the band buffer
-  int bandStart;    // image-local row index of band buffer row 0
-  int flushedRows;  // image-local rows already written to file
+  int originX;    // config.x - to convert screen coords to cache coords
+  int originY;    // config.y
+  int bandRows;   // rows held in the band buffer
+  int bandStart;  // image-local row index of band buffer row 0
   HalFile file;
   std::string cachePathStr;
   bool ok;
 
   PixelCache()
       : buffer(nullptr),
-        zeroRow(nullptr),
         width(0),
         height(0),
         bytesPerRow(0),
@@ -50,7 +48,6 @@ struct PixelCache {
         originY(0),
         bandRows(0),
         bandStart(0),
-        flushedRows(0),
         ok(false) {}
   PixelCache(const PixelCache&) = delete;
   PixelCache& operator=(const PixelCache&) = delete;
@@ -61,15 +58,16 @@ struct PixelCache {
   // Open the cache file, write the header, and allocate a band buffer big enough
   // to hold the tallest single decode block (maxBlockDstRows output rows).
   bool begin(const std::string& cachePath, int w, int h, int ox, int oy, int maxBlockDstRows) {
+    if (w <= 0 || w > UINT16_MAX || h <= 0 || h > UINT16_MAX || maxBlockDstRows <= 0) return false;
     width = w;
     height = h;
     originX = ox;
     originY = oy;
     bytesPerRow = (w + 3) / 4;  // 2 bits per pixel, 4 pixels per byte
     bandStart = 0;
-    flushedRows = 0;
     ok = false;
 
+    maxBlockDstRows = std::min(maxBlockDstRows, h);
     int wantRows = maxBlockDstRows + 2;
     if (wantRows < MIN_BAND_ROWS) wantRows = MIN_BAND_ROWS;
     if (wantRows > h) wantRows = h;
@@ -87,14 +85,13 @@ struct PixelCache {
     }
     bandRows = wantRows;
 
-    const size_t bufSize = (size_t)(bandRows + 1) * bytesPerRow;  // +1 spare zero row
+    const size_t bufSize = static_cast<size_t>(bandRows) * bytesPerRow;
     buffer = (uint8_t*)malloc(bufSize);
     if (!buffer) {
       LOG_ERR("IMG", "OOM cache band: %u bytes", (unsigned)bufSize);
       return false;
     }
     memset(buffer, 0, bufSize);
-    zeroRow = buffer + (size_t)bandRows * bytesPerRow;
 
     if (!Storage.openFileForWrite("IMG", cachePath, file)) {
       LOG_ERR("IMG", "Failed to open cache file for writing: %s", cachePath.c_str());
@@ -117,44 +114,28 @@ struct PixelCache {
     return true;
   }
 
-  // Flush every output row below newTopRow (they are final in raster order) and
-  // reposition the band to start at newTopRow. Returns false if a write failed,
-  // in which case the caller must stop caching for the rest of the decode.
-  bool advanceTo(int newTopRow) {
+  // Keep rows in the band until the incoming decoder block no longer fits.
+  // A failed write or invalid block ends caching for this decode.
+  bool advanceTo(int newTopRow, int blockRows = 1) {
     if (!ok) return false;
-    if (newTopRow <= bandStart) return true;
-    if (newTopRow > height) newTopRow = height;
-
-    for (int r = bandStart; r < newTopRow; ++r) {
-      const int idx = r - bandStart;
-      const uint8_t* rowPtr = (idx < bandRows) ? (buffer + (size_t)idx * bytesPerRow) : zeroRow;
-      if (file.write(rowPtr, (size_t)bytesPerRow) != (size_t)bytesPerRow) {
-        LOG_ERR("IMG", "Cache write error at row %d", r);
-        ok = false;
-        return false;
-      }
+    if (newTopRow < bandStart || newTopRow >= height || blockRows <= 0 || blockRows > bandRows ||
+        blockRows > height - newTopRow) {
+      LOG_ERR("IMG", "Cache block out of bounds at row %d (%d rows)", newTopRow, blockRows);
+      ok = false;
+      return false;
     }
-    flushedRows = newTopRow;
-    bandStart = newTopRow;
-    memset(buffer, 0, (size_t)bandRows * bytesPerRow);  // fresh band (gaps stay black)
+    if (newTopRow - bandStart <= bandRows - blockRows) return true;
+    if (!flushThrough(newTopRow)) return false;
+    memset(buffer, 0, static_cast<size_t>(bandRows) * bytesPerRow);
     return true;
   }
 
   // Flush the final band and zero-fill any rows never covered (image clipped by
   // the screen), then close the file.
   bool finalize() {
-    if (!ok) {
+    if (!ok || !flushThrough(height)) {
       abort();
       return false;
-    }
-    for (int r = flushedRows; r < height; ++r) {
-      const int idx = r - bandStart;
-      const uint8_t* rowPtr = (idx >= 0 && idx < bandRows) ? (buffer + (size_t)idx * bytesPerRow) : zeroRow;
-      if (file.write(rowPtr, (size_t)bytesPerRow) != (size_t)bytesPerRow) {
-        LOG_ERR("IMG", "Cache write error at row %d", r);
-        abort();
-        return false;
-      }
     }
     if (!file.close()) {
       LOG_ERR("IMG", "Failed to close cache: %s", cachePathStr.c_str());
@@ -187,5 +168,21 @@ struct PixelCache {
       free(buffer);
       buffer = nullptr;
     }
+  }
+
+ private:
+  bool flushThrough(int endRow) {
+    for (int row = bandStart; row < endRow; row += bandRows) {
+      // Once the buffered band is on disk, reuse it to fill any clipped gap.
+      if (row == bandStart + bandRows) memset(buffer, 0, static_cast<size_t>(bandRows) * bytesPerRow);
+      const size_t bytes = static_cast<size_t>(std::min(bandRows, endRow - row)) * bytesPerRow;
+      if (file.write(buffer, bytes) != bytes) {
+        LOG_ERR("IMG", "Cache write error starting at row %d", row);
+        ok = false;
+        return false;
+      }
+    }
+    bandStart = endRow;
+    return true;
   }
 };

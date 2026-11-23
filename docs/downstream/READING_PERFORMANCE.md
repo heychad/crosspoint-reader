@@ -56,3 +56,18 @@ directory took 51 storage reads to locate and stream both its container and
 package entries, down from 309. Both implementations returned identical
 data. Checks cover names across buffer boundaries, failed reads, and
 out-of-range entry lengths. On-device library scan timing is pending.
+
+## Writing decoded EPUB images
+
+The first decode of a JPEG, PNG, or GIF now writes completed rows in bands
+from the existing cache buffer. The writer fills off-screen gaps with zeros.
+JPEG passes each block's actual output height, so clipped blocks and short
+images use the available rows. A short write or failed close discards the
+partial cache. The writer uses the existing packed pixel format and stays
+within the 24 KiB band limit.
+
+The same 600-row host fixture went from 602 file-write calls to 40, with
+byte-identical output. Tests also cover repeated blocks at the same row,
+clipped gaps, short writes, and an image shorter than the decoder's block
+limit. The first-decode time on an X4 Pro SD card still needs measurement.
+This adapts the [CrossInk RC3 image cache change](https://github.com/uxjulia/CrossInk/commit/07346cb24f9ccc19ea46521e6fc6f7a9b17e7b58).

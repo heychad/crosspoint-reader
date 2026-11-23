@@ -77,7 +77,8 @@ the follow-up install. Both physical checks remain pending.
 
 Nearby device-to-device sync is skipped. The features Chad selected for Later
 remain deferred. Page-turn, rendering, and image performance tuning follows the
-selected feature work; no speed improvement is claimed without measurement.
+selected feature work. [Reading performance](READING_PERFORMANCE.md) records
+the measured reductions in file operations and the pending device timings.
 
 ## Historical baseline inventory
 
