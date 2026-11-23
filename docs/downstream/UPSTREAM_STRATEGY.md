@@ -44,6 +44,13 @@ RC3 adds the catalog keys `ruledLines`, `textDarkness`, and
 deferred reading modes and font work. Two-tone antialiasing belongs to RC3's
 EEGO display work. The 157-key settings inventory still covers RC2.
 
+The fork adapts [RC3's XTC bit-depth fix](https://github.com/uxjulia/CrossInk/commit/810cf78437995967f16b7895c382b16322b5d7bb).
+When a converter labels the container differently from its pages, the
+reader follows the first page's recognized format. Unreadable or unrecognized
+headers leave the container depth in place. Buffered and streaming reads
+still validate every page. The probe adds at most one four-byte read and
+no allocation.
+
 Review new releases at integration milestones. Pin the selected tag and SDK,
 review its changes, and test on a development branch. Promote an RC only after
 our relevant checks and device smoke test; installing on the reader remains a
