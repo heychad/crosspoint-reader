@@ -48,8 +48,12 @@ fixes, and batched image writes. Both X4 Pro profiles and all 2,542 enabled host
 checks passed. Four review axes cleared the candidate after correcting a dialog
 render race. The local `READER70.BIN` packet includes test65 rollback, two
 disposable EPUBs, and a five-minute device check. Version-3 completion moves
-must finish or recover before rollback. Test65 comes first for Drive deletion
-and restore, followed by test70. Device checks remain pending.
+must finish or recover before rollback. Chad asked to test the cumulative
+test70 build directly from test62. The card image, rollback and four fixture
+files match the package hashes. A Wi-Fi snapshot verified 488 readable state
+files before staging. It excludes protected credentials, hidden filenames,
+and generated per-book caches. Run the pending Drive deletion and restore
+check on test70 with a disposable synced EPUB.
 
 The test70 release check verified the pins against GitHub Releases and Git tags.
 See [CrossPoint 2.0.0](https://github.com/crosspoint-reader/crosspoint-reader/releases/tag/2.0.0)

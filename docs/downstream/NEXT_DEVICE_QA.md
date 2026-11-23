@@ -1,13 +1,12 @@
 # Next X4 Pro device test
 
-Install test65 from `zDev/RC365.BIN` for the next device check. Confirm the
-current book resumes, then test the Drive delete-and-restore path with one
-disposable synced EPUB.
-
-The follow-up is the reviewed test70 packet, `READER70.BIN`. Its local README
-has a five-minute check for saved passages, grayscale images, exact spacing,
-File Browser statistics, and Saved Items. Stage and verify that packet after
-test65 passes. The longer checklist below is for later regression sessions.
+Install the reviewed test70 image from `zDev/READER70.BIN` directly from
+test62. Test70 includes test65's changes, and the SD updater can install the
+application image in one step. Confirm the current book resumes. Use the
+packet's five-minute check for grayscale images, exact spacing, File Browser
+statistics, and Saved Items. Then check Drive deletion and restore with one
+disposable synced EPUB on test70. The longer checklist below is for later
+regression sessions.
 
 ## Before installing
 
