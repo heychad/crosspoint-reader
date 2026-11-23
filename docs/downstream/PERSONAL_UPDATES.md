@@ -209,10 +209,14 @@ update before finalization or boot selection. The harness uses real SHA-256
 with simulated transport and flash. Live TLS and installation still need a
 reader test.
 
-Run the compiled-image check after building the stable profile with
-`2.0.0-chad.4`. Use the app image from that build.
+The current host pipeline simulates upgrading from test70. Use a temporary
+PlatformIO configuration to build the stable test image from the repository
+root.
 
 ```sh
+mkdir -p build/stable-ota-check
+sed 's/^version = .*/version = 2.0.0-chad.4/' platformio.ini > build/stable-ota-check/platformio.preview.ini
+pio run --project-conf "$PWD/build/stable-ota-check/platformio.preview.ini" -e x4pro-gh_release
 python3 scripts/check_x4pro_firmware.py .pio/build/x4pro-gh_release/firmware.bin 2.0.0-chad.4
 cmake --build build/recovery-host-tests --target OtaPipelineTest
 CROSSPOINT_STABLE_TEST_IMAGE=.pio/build/x4pro-gh_release/firmware.bin \
@@ -220,6 +224,16 @@ CROSSPOINT_STABLE_TEST_IMAGE=.pio/build/x4pro-gh_release/firmware.bin \
   --gtest_also_run_disabled_tests \
   --gtest_filter=OtaPipeline.DISABLED_CompiledStableImageUpgrade
 ```
+
+On November 23, the stable profile built from `c97a5ab6` produced a
+5,813,456-byte image. It passed the board, version, slot-size, checksum, and
+validation-hash checks. The test70 host updater accepted the complete image
+and selected the simulated boot slot. Changing one byte stopped the upgrade
+before finalization or boot selection. All 44 ordinary updater checks passed.
+Real firmware TLS and installation still need a device test.
+
+Image SHA-256
+`a295ee664f088073a948719a7ef9667b826dfcc22c98d1b50f172d10296a86fd`.
 
 ## Verification boundary
 
