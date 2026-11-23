@@ -1325,29 +1325,43 @@ float Epub::calculateProgress(const int currentSpineIndex, const float currentSp
   return totalProgress / static_cast<float>(bookSize);
 }
 
-int Epub::resolveHrefToSpineIndex(const std::string& href) const {
+int Epub::resolveHrefToSpineIndex(const std::string& href, const int sourceSpineIndex) const {
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) return -1;
 
   // Split before decoding so escaped '#' characters in filenames stay part of the path.
   const size_t hashPos = href.find('#');
   const std::string rawTarget = hashPos != std::string::npos ? href.substr(0, hashPos) : href;
-  const std::string target = FsHelpers::normalisePath(FsHelpers::decodeUriEscapes(rawTarget));
+  const std::string decoded = FsHelpers::decodeUriEscapes(rawTarget);
+  const std::string target = FsHelpers::normalisePath(decoded);
 
   // Same-file reference (anchor-only)
   if (target.empty()) return -1;
 
+  const int spineCount = getSpineItemsCount();
+  std::string relativeTarget;
+  if (decoded.front() != '/' && sourceSpineIndex >= 0 && sourceSpineIndex < spineCount) {
+    const auto source = getSpineItem(sourceSpineIndex);
+    const auto slash = source.href.find_last_of('/');
+    if (slash != std::string::npos) {
+      relativeTarget = FsHelpers::normalisePath(source.href.substr(0, slash + 1) + decoded);
+    }
+  }
   const auto targetSlash = target.find_last_of('/');
   const auto targetFilename = std::string_view(target).substr(targetSlash == std::string::npos ? 0 : targetSlash + 1);
+  int rootMatch = -1;
   int filenameMatch = -1;
-  const int spineCount = getSpineItemsCount();
   for (int i = 0; i < spineCount; ++i) {
     const auto& spineHref = getSpineItem(i).href;
-    if (spineHref == target) return i;
+    if (!relativeTarget.empty() && spineHref == relativeTarget) return i;
+    if (spineHref == target) {
+      if (relativeTarget.empty()) return i;
+      if (rootMatch < 0) rootMatch = i;
+    }
     if (filenameMatch >= 0) continue;
     const auto spineSlash = spineHref.find_last_of('/');
     if (std::string_view(spineHref).substr(spineSlash == std::string::npos ? 0 : spineSlash + 1) == targetFilename) {
       filenameMatch = i;
     }
   }
-  return filenameMatch;
+  return rootMatch >= 0 ? rootMatch : filenameMatch;
 }

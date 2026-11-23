@@ -7,7 +7,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "src/network/WebDAVHandler.cpp").read_text()
-start = source.index("namespace {\nbool stageDavCopy(")
+start = source.index("namespace {\nstruct DavCopy")
 end = source.index("\n}\n", source.index("void WebDAVHandler::handleCopy(")) + 2
 program = r"""
 #include <algorithm>
@@ -38,14 +38,18 @@ constexpr char SOURCE[] = "/old.epub";
 constexpr char DEST[] = "/Books/new.epub";
 constexpr char PART[] = "/Books/.dav-copy-0000000700000007.part";
 constexpr char BACKUP[] = "/Books/.dav-copy-0000000700000007.bak";
-enum class Fault { None, ReadError, ShortRead, EarlyEof, ShortWrite, Sync, Close, Publish, Rollback, Confirm, LateCreate };
+enum class Fault {
+  None, ReadError, ShortRead, EarlyEof, ShortWrite, Sync, Close, Publish,
+  Confirm, WrongPublishedSize, BackupRemoval, LateCreate, MidWriter, PublishWriter
+};
 Fault problem;
+unsigned writers = 0, epoch = 0;
 struct Entry {
   std::vector<uint8_t> bytes;
   bool directory = false;
 };
 struct HalFile {
-  Entry* entry;
+  Entry* entry = nullptr;
   bool writer = false;
   size_t offset = 0;
   explicit operator bool() const { return entry; }
@@ -61,17 +65,35 @@ struct HalFile {
     return static_cast<int>(count);
   }
   size_t write(const uint8_t* data, size_t count) {
+    ++epoch;
     if (problem == Fault::ShortWrite) return count - 1;
     entry->bytes.insert(entry->bytes.end(), data, data + count);
     return count;
   }
-  bool sync() { return problem != Fault::Sync; }
-  bool close() { return !writer || problem != Fault::Close; }
+  bool sync() { ++epoch; return problem != Fault::Sync; }
+  bool close() {
+    if (writer) { --writers; ++epoch; }
+    entry = nullptr;
+    return !writer || problem != Fault::Close;
+  }
 };
 struct HalStorage {
   enum class PathStatus { Present, Missing, Failed };
+  struct MutationMarker { unsigned epoch; };
+  struct MutationSnapshot { unsigned epoch; };
   std::map<std::string, Entry> entries;
   bool locked = false, published = false;
+  unsigned calls = 0;
+  bool beginMutationSnapshot(MutationSnapshot& snapshot) {
+    if (writers) return false;
+    snapshot.epoch = epoch;
+    return true;
+  }
+  bool mutationSnapshotUnchanged(const MutationSnapshot& snapshot) const {
+    return !writers && snapshot.epoch == epoch;
+  }
+  bool captureMutationMarker(MutationMarker& marker) { marker.epoch = epoch; return true; }
+  bool mutationMarkerUnchanged(const MutationMarker& marker) const { return marker.epoch == epoch; }
   bool exists(const char* path) const { return entries.contains(path); }
   PathStatus lookupPath(const char* path) const {
     if (problem == Fault::Confirm && published) return PathStatus::Failed;
@@ -81,22 +103,34 @@ struct HalStorage {
     if (!flags) return {exists(path) ? &entries.at(path) : nullptr};
     assert(flags == (O_WRONLY | O_CREAT | O_EXCL));
     if (exists(path)) return {nullptr};
+    ++writers;
+    ++epoch;
     return {&entries[path], true};
   }
   bool rename(const std::string& from, const std::string& to) {
     assert(locked);
-    if ((from == PART && (problem == Fault::Publish || problem == Fault::Rollback)) ||
-        (from == BACKUP && problem == Fault::Rollback)) return false;
+    ++epoch;
+    if (from == PART && problem == Fault::Publish) return false;
     if (!entries.contains(from) || entries.contains(to)) return false;
     auto entry = entries.extract(from);
     entry.key() = to;
     entries.insert(std::move(entry));
     if (from == PART) published = true;
+    if (from == PART && problem == Fault::WrongPublishedSize) entries.at(to).bytes.pop_back();
     return true;
   }
-  bool remove(const char* path) { return entries.erase(path) == 1; }
+  bool remove(const std::string& path) {
+    ++epoch;
+    if (path == BACKUP && problem == Fault::BackupRemoval) return false;
+    return entries.erase(path) == 1;
+  }
   bool withStorageLock(bool (*operation)(void*), void* context) {
-    if (problem == Fault::LateCreate) entries[DEST] = {{1, 2, 3}};
+    ++calls;
+    if (problem == Fault::LateCreate && calls == 6) { entries[DEST] = {{1, 2, 3}}; ++epoch; }
+    if ((problem == Fault::MidWriter && calls == 3) || (problem == Fault::PublishWriter && calls == 6)) {
+      ++writers;
+      ++epoch;
+    }
     locked = true;
     const bool result = operation(context);
     locked = false;
@@ -121,6 +155,7 @@ int main() {
   const std::vector<uint8_t> book(8193, 42), original = {1, 2, 3};
   const auto reset = [&](Fault next, bool existing = true) {
     Storage = {};
+    writers = epoch = 0;
     problem = next;
     Storage.entries = {{"/", {{}, true}}, {"/Books", {{}, true}}, {SOURCE, {book}}};
     if (existing) Storage.entries[DEST] = {original};
@@ -128,19 +163,25 @@ int main() {
   WebDAVHandler dav;
   WebServer response;
   for (auto fault : {Fault::ReadError, Fault::ShortRead, Fault::EarlyEof,
-                     Fault::ShortWrite, Fault::Sync, Fault::Close, Fault::Publish}) {
+                     Fault::ShortWrite, Fault::Sync, Fault::Close, Fault::MidWriter, Fault::PublishWriter}) {
     reset(fault);
     dav.handleCopy(response);
     assert(response.code == 500 && Storage.entries.at(DEST).bytes == original);
-    assert(Storage.entries.at(SOURCE).bytes == book && !Storage.exists(PART) && !Storage.exists(BACKUP));
+    assert(Storage.entries.at(SOURCE).bytes == book && !Storage.exists(BACKUP));
   }
-  reset(Fault::Rollback);
+  reset(Fault::None);
+  ++writers;  // A WebSocket upload holds the destination under a different spelling.
+  dav.handleCopy(response);
+  assert(response.code == 423 && Storage.entries.at(DEST).bytes == original && !Storage.exists(PART));
+  reset(Fault::Publish);
   dav.handleCopy(response);
   assert(response.code == 500 && !Storage.exists(DEST));
   assert(Storage.entries.at(BACKUP).bytes == original && Storage.entries.at(PART).bytes == book);
-  reset(Fault::Confirm);
-  dav.handleCopy(response);
-  assert(response.code == 500 && Storage.entries.at(BACKUP).bytes == original);
+  for (auto fault : {Fault::Confirm, Fault::WrongPublishedSize, Fault::BackupRemoval}) {
+    reset(fault);
+    dav.handleCopy(response);
+    assert(response.code == 500 && Storage.entries.at(BACKUP).bytes == original);
+  }
   for (const bool existing : {false, true}) {
     reset(Fault::None, existing);
     dav.handleCopy(response);
@@ -158,7 +199,7 @@ int main() {
   assert(response.code == 412 && Storage.entries.at(DEST).bytes == original);
   reset(Fault::LateCreate, false);
   dav.handleCopy(response);
-  assert(response.code == 412 && Storage.entries.at(DEST).bytes == original && !Storage.exists(PART));
+  assert(response.code == 500 && Storage.entries.at(DEST).bytes == original);
   reset(Fault::None);
   dav.overwrite = true;
   dav.destination = "/empty.epub";

@@ -609,41 +609,88 @@ void WebDAVHandler::handleMove(WebServer& s) {
 // ── COPY ─────────────────────────────────────────────────────────────────────
 
 namespace {
-bool stageDavCopy(HalFile& source, const char* temporary) {
-  auto copy = Storage.openChecked(temporary, O_WRONLY | O_CREAT | O_EXCL);
-  if (!copy) return false;
-
-  uint8_t buffer[4096];
-  uint64_t remaining = source.fileSize64();
-  bool complete = !source.hasError();
-  while (complete && remaining) {
-    resetTaskWatchdogIfSubscribed();
-    const size_t count = std::min<uint64_t>(remaining, sizeof(buffer));
-    complete = source.read(buffer, count) == static_cast<int>(count) && !source.hasError() &&
-               copy.write(buffer, count) == count;
-    remaining -= count;
-  }
-  const bool sourceClosed = source.close();
-  const bool synced = complete && sourceClosed && copy.sync() && !copy.hasError();
-  const bool copyClosed = copy.close();
-  if (synced && copyClosed) return true;
-
-  Storage.remove(temporary);
-  return false;
-}
-
-struct DavCopyPublication {
+struct DavCopy {
+  const char* source;
   const char* destination;
   const char* temporary;
   const char* backup;
   bool overwrite;
+  HalFile input;
+  HalFile output;
+  HalStorage::MutationMarker marker;
+  HalStorage::MutationSnapshot stagedAt;
+  uint64_t size = 0;
+  uint64_t remaining = 0;
   int status = 500;
-  bool discardTemporary = true;
+  bool ownsTemporary = false;
 };
 
-bool publishDavCopy(void* context) {
-  auto& copy = *static_cast<DavCopyPublication*>(context);
+bool openDavCopy(void* context) {
+  auto& copy = *static_cast<DavCopy*>(context);
   using Status = HalStorage::PathStatus;
+  HalStorage::MutationSnapshot before;
+  if (!Storage.beginMutationSnapshot(before)) {
+    copy.status = 423;
+    return false;
+  }
+  const auto source = Storage.lookupPath(copy.source);
+  if (source == Status::Missing) copy.status = 404;
+  if (source != Status::Present) return false;
+  if (!copy.overwrite && Storage.lookupPath(copy.destination) == Status::Present) {
+    copy.status = 412;
+    return false;
+  }
+  copy.input = Storage.openChecked(copy.source);
+  if (!copy.input || copy.input.hasError()) return false;
+  if (copy.input.isDirectory()) {
+    copy.status = 403;
+    return false;
+  }
+  if (Storage.lookupPath(copy.temporary) != Status::Missing || !Storage.mutationSnapshotUnchanged(before)) return false;
+  copy.size = copy.remaining = copy.input.fileSize64();
+  copy.output = Storage.openChecked(copy.temporary, O_WRONLY | O_CREAT | O_EXCL);
+  copy.ownsTemporary = static_cast<bool>(copy.output);
+  return copy.ownsTemporary && Storage.captureMutationMarker(copy.marker);
+}
+
+bool copyDavChunk(void* context) {
+  auto& copy = *static_cast<DavCopy*>(context);
+  if (!Storage.mutationMarkerUnchanged(copy.marker)) return false;
+  uint8_t buffer[4096];
+  const size_t count = std::min<uint64_t>(copy.remaining, sizeof(buffer));
+  if (copy.input.read(buffer, count) != static_cast<int>(count) || copy.input.hasError() ||
+      copy.output.write(buffer, count) != count || copy.output.hasError() ||
+      !Storage.captureMutationMarker(copy.marker)) {
+    return false;
+  }
+  copy.remaining -= count;
+  return true;
+}
+
+bool finishDavCopy(void* context) {
+  auto& copy = *static_cast<DavCopy*>(context);
+  if (!Storage.mutationMarkerUnchanged(copy.marker)) return false;
+  const bool synced = copy.output.sync() && !copy.output.hasError();
+  const bool outputClosed = copy.output.close();
+  const bool inputClosed = copy.input.close();
+  return synced && outputClosed && inputClosed && Storage.beginMutationSnapshot(copy.stagedAt);
+}
+
+bool discardDavCopy(void* context) {
+  auto& copy = *static_cast<DavCopy*>(context);
+  const bool owned = copy.ownsTemporary && (copy.output ? Storage.mutationMarkerUnchanged(copy.marker)
+                                                        : Storage.mutationSnapshotUnchanged(copy.stagedAt));
+  if (copy.output) copy.output.close();
+  if (copy.input) copy.input.close();
+  HalStorage::MutationSnapshot idle;
+  if (owned && Storage.beginMutationSnapshot(idle)) Storage.remove(copy.temporary);
+  return true;
+}
+
+bool publishDavCopy(void* context) {
+  auto& copy = *static_cast<DavCopy*>(context);
+  using Status = HalStorage::PathStatus;
+  if (!Storage.mutationSnapshotUnchanged(copy.stagedAt)) return false;
   const auto destination = Storage.lookupPath(copy.destination);
   if (destination == Status::Failed) return false;
   const bool exists = destination == Status::Present;
@@ -661,31 +708,35 @@ bool publishDavCopy(void* context) {
       return false;
     }
     if (Storage.lookupPath(copy.backup) != Status::Missing) return false;
-    copy.discardTemporary = false;
-    if (!Storage.rename(copy.destination, copy.backup)) {
-      LOG_ERR("DAV", "COPY could not park %s at %s", copy.destination, copy.backup);
-      return false;
-    }
   }
+  if (!Storage.mutationSnapshotUnchanged(copy.stagedAt)) return false;
 
-  // Preserve both candidates if publishing or restoring the old file is uncertain.
-  copy.discardTemporary = false;
-  if (!Storage.rename(copy.temporary, copy.destination)) {
-    if (exists && Storage.lookupPath(copy.destination) == Status::Missing &&
-        Storage.rename(copy.backup, copy.destination)) {
-      copy.discardTemporary = true;
-    } else {
-      LOG_ERR("DAV", "COPY publication failed for %s, staged at %s, backup name %s", copy.destination, copy.temporary,
-              copy.backup);
-    }
+  // An uncertain rename can leave aliases. Keep the artifacts in that case.
+  copy.ownsTemporary = false;
+  HalStorage::MutationSnapshot idle;
+  if (exists && (!Storage.rename(copy.destination, copy.backup) || !Storage.beginMutationSnapshot(idle) ||
+                 Storage.lookupPath(copy.backup) != Status::Present ||
+                 Storage.lookupPath(copy.destination) != Status::Missing || !Storage.mutationSnapshotUnchanged(idle))) {
+    LOG_ERR("DAV", "COPY could not park %s at %s", copy.destination, copy.backup);
     return false;
   }
-  if (Storage.lookupPath(copy.destination) != Status::Present ||
-      Storage.lookupPath(copy.temporary) != Status::Missing) {
+  if (!Storage.rename(copy.temporary, copy.destination)) {
+    LOG_ERR("DAV", "COPY publication uncertain for %s. Stage %s, backup %s", copy.destination, copy.temporary,
+            copy.backup);
+    return false;
+  }
+  auto published = Storage.openChecked(copy.destination);
+  if (!published) return false;
+  const bool complete = !published.isDirectory() && published.fileSize64() == copy.size && !published.hasError();
+  if (!published.close() || !complete || Storage.lookupPath(copy.temporary) != Status::Missing ||
+      !Storage.beginMutationSnapshot(idle)) {
     LOG_ERR("DAV", "COPY could not verify publication for %s", copy.destination);
     return false;
   }
-  if (exists && !Storage.remove(copy.backup)) LOG_ERR("DAV", "COPY backup remains at %s", copy.backup);
+  if (exists && (!Storage.remove(copy.backup) || !Storage.beginMutationSnapshot(idle))) {
+    LOG_ERR("DAV", "COPY could not verify backup removal at %s", copy.backup);
+    return false;
+  }
   copy.status = exists ? 204 : 201;
   return true;
 }
@@ -714,34 +765,12 @@ void WebDAVHandler::handleCopy(WebServer& s) {
     return;
   }
 
-  if (!Storage.exists(srcPath.c_str())) {
-    s.send(404, "text/plain", "Source not found");
-    return;
-  }
-
-  HalFile srcFile = Storage.openChecked(srcPath.c_str());
-  if (!srcFile) {
-    s.send(500, "text/plain", "Failed to open source");
-    return;
-  }
-
-  if (srcFile.isDirectory()) {
-    srcFile.close();
-    s.send(403, "text/plain", "Cannot copy directories");
-    return;
-  }
-
   const size_t parentLength = std::max(1, dstPath.lastIndexOf('/'));
   const String parent = dstPath.substring(0, parentLength);
   if (parent.length() != parentLength || !Storage.exists(parent.c_str())) {
     s.send(409, "text/plain", "Destination parent unavailable");
     return;
   }
-  if (!overwrite && Storage.exists(dstPath.c_str())) {
-    s.send(412, "text/plain", "Destination exists and Overwrite is F");
-    return;
-  }
-
   char token[28];
   snprintf(token, sizeof(token), ".dav-copy-%08lx%08lx", static_cast<unsigned long>(esp_random()),
            static_cast<unsigned long>(esp_random()));
@@ -749,19 +778,25 @@ void WebDAVHandler::handleCopy(WebServer& s) {
   const String temporary = prefix + token + ".part";
   const String backup = prefix + token + ".bak";
   const size_t prefixLength = parentLength == 1 ? 1 : parentLength + 1;
-  if (temporary.length() != prefixLength + strlen(token) + 5 || backup.length() != prefixLength + strlen(token) + 4 ||
-      !stageDavCopy(srcFile, temporary.c_str())) {
+  if (temporary.length() != prefixLength + strlen(token) + 5 || backup.length() != prefixLength + strlen(token) + 4) {
     s.send(500, "text/plain", "Could not stage complete copy");
     return;
   }
 
-  DavCopyPublication copy{dstPath.c_str(), temporary.c_str(), backup.c_str(), overwrite};
-  if (Storage.withStorageLock(publishDavCopy, &copy)) {
-    s.send(copy.status);
-  } else {
-    if (copy.discardTemporary) Storage.remove(temporary.c_str());
-    s.send(copy.status, "text/plain", "Could not publish copy");
+  DavCopy copy{srcPath.c_str(), dstPath.c_str(), temporary.c_str(), backup.c_str(), overwrite};
+  if (Storage.withStorageLock(openDavCopy, &copy)) {
+    while (copy.remaining) {
+      resetTaskWatchdogIfSubscribed();
+      if (!Storage.withStorageLock(copyDavChunk, &copy)) break;
+    }
+    if (!copy.remaining && Storage.withStorageLock(finishDavCopy, &copy) &&
+        Storage.withStorageLock(publishDavCopy, &copy)) {
+      s.send(copy.status);
+      return;
+    }
   }
+  Storage.withStorageLock(discardDavCopy, &copy);
+  s.send(copy.status, "text/plain", "Could not complete copy");
 }
 
 // ── LOCK / UNLOCK (dummy for client compatibility) ───────────────────────────

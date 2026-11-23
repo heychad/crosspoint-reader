@@ -541,11 +541,14 @@ OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, MOVE, COPY, LOCK, UNLOCK
 Notes:
 
 - `PUT` writes to a temporary `.davtmp` file first, then renames it into place.
-- `COPY` checks the source byte count and closes a synced staging file before
-  changing the destination. Replacing an existing destination keeps a backup
-  until the reader verifies the rename. An interrupted or uncertain
-  publication can leave hidden `.dav-copy-*.part` and `.dav-copy-*.bak` files
-  beside the destination for manual recovery.
+- On X4 Pro, `COPY` checks that storage has no active writer, then copies in
+  4 KiB slices. A competing storage mutation stops the copy. The handler
+  checks the full byte count and closes the synced staging file before it
+  changes the destination. It reopens the published file and checks its size
+  before removing the old destination's backup. Failed or interrupted
+  publication can leave hidden `.dav-copy-*.part` and `.dav-copy-*.bak` entries
+  beside the destination. After an SD-card fault, check the filesystem before
+  attempting to remove those entries.
 - Protected paths are rejected.
 - `LOCK` and `UNLOCK` are accepted for client compatibility only. The server
   does not implement full WebDAV Class 2 locking semantics such as persistent

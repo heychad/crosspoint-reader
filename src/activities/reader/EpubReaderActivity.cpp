@@ -4213,7 +4213,7 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   }
 
   bool sameFile = !hrefStr.empty() && hrefStr[0] == '#';
-  int targetSpineIndex = sameFile ? currentSpineIndex : epub->resolveHrefToSpineIndex(hrefStr);
+  int targetSpineIndex = sameFile ? currentSpineIndex : epub->resolveHrefToSpineIndex(hrefStr, currentSpineIndex);
 
   if (targetSpineIndex < 0) {
     LOG_DBG("ERS", "Could not resolve href: %s", hrefStr.c_str());
