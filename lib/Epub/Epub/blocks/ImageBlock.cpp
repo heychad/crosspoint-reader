@@ -2,6 +2,9 @@
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
+#if defined(FREEINK_DEVICE_X4PRO)
+#include <HalMemory.h>
+#endif
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
@@ -92,11 +95,9 @@ void rememberImageFailure(const std::string& path) {
 // Column clipping cannot reduce the SD traffic: the row stride (~100 B) is
 // smaller than an SD sector, so every sector is touched regardless of the band
 // window. Instead the first pass loads the payload into RAM and later passes
-// render from it. Chunked allocation because a single full-image block (up to
-// 96 KB) rarely fits the fragmented mid-render heap; each chunk is heap-gated
-// and any failure falls back to the streaming path unchanged. The reader
-// releases the slot when the page render completes, so nothing stays resident
-// across page turns.
+// render from it. The X4 Pro uses PSRAM; without it the original heap-gated
+// chunks remain available. A failed cache fill falls back to streaming. The
+// reader releases the slot at the end of the page render.
 constexpr size_t PXC_CHUNK_SHIFT = 14;  // 16 KB chunks
 constexpr size_t PXC_CHUNK_SIZE = 1u << PXC_CHUNK_SHIFT;
 constexpr size_t PXC_MAX_CHUNKS = 6;  // 96 KB: a full-screen 2bpp image
@@ -107,18 +108,27 @@ constexpr size_t PXC_MAX_ALLOC_RESERVE = 8 * 1024;
 constexpr int PXC_MAX_BYTES_PER_ROW = 208;
 
 std::unique_ptr<uint8_t[]> pxcChunks[PXC_MAX_CHUNKS];
+#if defined(FREEINK_DEVICE_X4PRO)
+HalMemory::PsramBuffer pxcPsram;
+#endif
 uint64_t pxcSlotHash = 0;
 uint16_t pxcSlotWidth = 0;
 uint16_t pxcSlotHeight = 0;
 
 void releasePxcSlot() {
   for (auto& chunk : pxcChunks) chunk.reset();
+#if defined(FREEINK_DEVICE_X4PRO)
+  pxcPsram.reset();
+#endif
   pxcSlotHash = 0;
   pxcSlotWidth = 0;
   pxcSlotHeight = 0;
 }
 
 const uint8_t* pxcRowPtr(size_t rowStart, int bytesPerRow, uint8_t* tempRow) {
+#if defined(FREEINK_DEVICE_X4PRO)
+  if (pxcPsram) return pxcPsram.get() + rowStart;
+#endif
   const size_t chunk = rowStart >> PXC_CHUNK_SHIFT;
   const size_t offset = rowStart & (PXC_CHUNK_SIZE - 1);
   if (offset + bytesPerRow <= PXC_CHUNK_SIZE) {
@@ -142,14 +152,24 @@ bool loadPxcSlot(uint64_t cacheHash, HalFile& cacheFile, uint16_t cachedWidth, u
   if (chunkCount == 0 || chunkCount > PXC_MAX_CHUNKS) {
     return false;
   }
+#if defined(FREEINK_DEVICE_X4PRO)
+  pxcPsram = HalMemory::allocatePsram(remaining);
+#endif
   for (size_t i = 0; i < chunkCount; i++) {
     const size_t want = remaining < PXC_CHUNK_SIZE ? remaining : PXC_CHUNK_SIZE;
-    if (ESP.getFreeHeap() < remaining + PXC_HEAP_RESERVE || ESP.getMaxAllocHeap() < want + PXC_MAX_ALLOC_RESERVE) {
-      releasePxcSlot();
-      return false;
+    uint8_t* destination = nullptr;
+#if defined(FREEINK_DEVICE_X4PRO)
+    if (pxcPsram) destination = pxcPsram.get() + i * PXC_CHUNK_SIZE;
+#endif
+    if (!destination) {
+      if (ESP.getFreeHeap() < remaining + PXC_HEAP_RESERVE || ESP.getMaxAllocHeap() < want + PXC_MAX_ALLOC_RESERVE) {
+        releasePxcSlot();
+        return false;
+      }
+      pxcChunks[i] = makeUniqueNoThrow<uint8_t[]>(want);
+      destination = pxcChunks[i].get();
     }
-    pxcChunks[i] = makeUniqueNoThrow<uint8_t[]>(want);
-    if (!pxcChunks[i] || cacheFile.read(pxcChunks[i].get(), want) != static_cast<int>(want)) {
+    if (!destination || cacheFile.read(destination, want) != static_cast<int>(want)) {
       releasePxcSlot();
       return false;
     }
@@ -216,13 +236,22 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
   // images take the streaming path below, unchanged from pre-cache behavior.
   if (pxcSlotHash == 0 && loadPxcSlot(cacheHash, cacheFile, cachedWidth, cachedHeight, bytesPerRow)) {
     renderRowsFromPxcSlot(renderer, x, y);
+#if defined(FREEINK_DEVICE_X4PRO)
+    if (pxcPsram) {
+      LOG_DBG("IMG", "Cache render complete (%u bytes in PSRAM)", static_cast<unsigned>(bytesPerRow * cachedHeight));
+      return true;
+    }
+#endif
     LOG_DBG("IMG", "Cache render complete (payload now in RAM)");
     return true;
   }
 
   // Streaming fallback (slot didn't fit). A failed slot load may have consumed
   // part of the payload; rewind to just past the header.
-  cacheFile.seek(4);
+  if (!cacheFile.seek(4)) {
+    LOG_ERR("IMG", "Could not rewind pixel cache");
+    return false;
+  }
 
   // Read several rows per SD access. A one-row-per-read loop here means
   // cachedHeight (~728) tiny reads through the storage mutex + SdFat; batching

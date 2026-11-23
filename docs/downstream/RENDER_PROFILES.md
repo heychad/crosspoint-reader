@@ -22,6 +22,21 @@ three modes. Change modes and reopen the book to check its position, per-book
 setting, and reset behavior. Test both reader menus and the orientations used
 for reading. Report freezes, reboots, missing text, or layout errors.
 
+## Cached images on the X4 Pro
+
+The first eligible image on a page uses up to 96 KiB of PSRAM for its
+packed pixels. Grayscale passes can reuse that copy without rereading it
+from the SD card. The reader releases it after drawing the page. If PSRAM
+allocation fails, the existing chunked heap cache or SD streaming handles
+the image. The EPUB and its on-card image cache keep their existing formats.
+
+The host fixture reads a full-screen 96,004-byte cache file once and
+replays it with zero additional reads. All four orientations produce
+the same framebuffer as SD streaming, including both grayscale planes.
+For a device comparison, go back and forward between cached illustrated
+pages with the same orientation, refresh settings, and book layout.
+Serial logs identify whether PSRAM was used and report render timing.
+
 ## Chapter indexing
 
 Chapter indexing controls when pages are built, separately from the rendering
