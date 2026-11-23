@@ -20,6 +20,21 @@ To check for the slight text shift after a page turn, compare the same text-only
 pages with Text Anti-Aliasing on and off. With it on, the reader applies a
 grayscale pass that can make the text appear to settle after the first refresh.
 
+## Remapped EPUB page button
+
+The physical Up button can queue a remapped next or previous EPUB page on
+press. This applies when its effective hold action, the Up + Down chord, and
+the Power + Up chord are disabled, and Down has no input in the same frame.
+The reader consumes the rest of the Up contact, including release, so an
+end-of-book menu cannot reuse it. A remapped Down tap waits for release to
+support Power + Down screenshots. This adapts the
+[CrossInk RC3 press handling](https://github.com/uxjulia/CrossInk/commit/69e8c40a94c048b0570bc9f9da40742153fc0168).
+
+On the X4 Pro, map Up to Next page and disable its hold and chords. Hold Up on
+the final page. Confirm the turn starts while the button is held and its
+release leaves the end-of-book selection in place. Then restore a chord and
+check that the same press can start the chord before a turn is queued.
+
 ## Drawing scaled text
 
 Small caps, superscripts, subscripts, and drop caps now clip each character

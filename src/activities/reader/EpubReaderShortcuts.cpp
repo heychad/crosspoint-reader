@@ -197,6 +197,11 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
     return readershortcuts::defaultAction(up, hold, SETTINGS.sideButtonLayout, mappedInput.isNavDirectionSwapped(),
                                           SETTINGS.longPressButtonBehavior);
   };
+  const auto tapAction = [&](bool up) {
+    const bool logicalUp = readershortcuts::logicalSideUp(up, swapped);
+    const auto action = static_cast<Action>(logicalUp ? SETTINGS.readerUpTap : SETTINGS.readerDownTap);
+    return action == Action::Default ? defaultAction(up, false) : action;
+  };
   const auto holdAction = [&](bool up) {
     const bool logicalUp = readershortcuts::logicalSideUp(up, swapped);
     const auto action = static_cast<Action>(logicalUp ? SETTINGS.readerUpHold : SETTINGS.readerDownHold);
@@ -206,11 +211,22 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
       {{mappedInput.isPressed(Button::Up), mappedInput.wasPressed(Button::Up), mappedInput.wasReleased(Button::Up)},
        {mappedInput.isPressed(Button::Down), mappedInput.wasPressed(Button::Down),
         mappedInput.wasReleased(Button::Down)}}};
-  // The existing Power+side screenshot shortcut keeps ownership of its contact.
-  const bool powerDown = mappedInput.isPressed(Button::Power);
-  const auto event = shortcutTracker.update(
-      millis(), contacts, customSideShortcuts() && !powerDown,
-      {holdAction(true) != Action::Disabled, holdAction(false) != Action::Disabled}, SETTINGS.readerSideChord > 1);
+  const bool managed = customSideShortcuts() && !mappedInput.isPressed(Button::Power);
+  const bool sideChordEnabled = SETTINGS.readerSideChord > static_cast<uint8_t>(Action::Disabled);
+  const bool upHasHold = holdAction(true) != Action::Disabled;
+  const auto& down = contacts[1];
+  // Down can still join Power + Down. Up can act on press when it has no
+  // competing hold or chord and Down has no input to dispatch this frame.
+  if (managed && contacts[0].pressed && !down.down && !down.pressed && !down.released && !upHasHold &&
+      !sideChordEnabled && SETTINGS.powerUpChordAction <= static_cast<uint8_t>(Action::Disabled)) {
+    const auto action = tapAction(true);
+    if (action == Action::PreviousPage || action == Action::NextPage) {
+      mappedInput.consumeSideButtonUntilReleased(Button::Up);
+      return handleReaderShortcut(action, QuickLockTrigger::SideUpShort);
+    }
+  }
+  const auto event = shortcutTracker.update(millis(), contacts, managed,
+                                            {upHasHold, holdAction(false) != Action::Disabled}, sideChordEnabled);
   if (event.trigger != Trigger::None) {
     if (event.trigger == Trigger::UpHold || event.trigger == Trigger::Chord)
       mappedInput.consumeSideButtonUntilReleased(Button::Up);
@@ -219,10 +235,10 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
     Action action = Action::Disabled;
     switch (event.trigger) {
       case Trigger::UpTap:
-        action = static_cast<Action>(swapped ? SETTINGS.readerDownTap : SETTINGS.readerUpTap);
+        action = tapAction(true);
         break;
       case Trigger::DownTap:
-        action = static_cast<Action>(swapped ? SETTINGS.readerUpTap : SETTINGS.readerDownTap);
+        action = tapAction(false);
         break;
       case Trigger::UpHold:
         action = holdAction(true);
@@ -236,7 +252,6 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
       case Trigger::None:
         break;
     }
-    if (action == Action::Default) action = defaultAction(event.trigger == Trigger::UpTap, false);
     QuickLockTrigger origin = QuickLockTrigger::None;
     switch (event.trigger) {
       case Trigger::UpTap:

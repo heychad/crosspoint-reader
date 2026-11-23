@@ -1,5 +1,7 @@
 """Exercise the production side-shortcut input method with physical button frames."""
+import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 
@@ -21,6 +23,7 @@ struct Settings {
   uint8_t readerUpTap=uint8_t(Action::Bookmark), readerDownTap=uint8_t(Action::Dictionary);
   uint8_t readerUpHold=uint8_t(Action::Rotate), readerDownHold=uint8_t(Action::Refresh);
   uint8_t readerSideChord=uint8_t(Action::Screenshot);
+  uint8_t powerUpChordAction=uint8_t(Action::Default);
 } SETTINGS;
 enum class QuickLockTrigger { None, SideUpShort, SideUpLong, SideDownShort, SideDownLong, UpDown };
 uint32_t clockMs=0;
@@ -28,13 +31,19 @@ uint32_t millis(){return clockMs;}
 struct MappedInputManager {
   enum class Button { Up, Down, Power };
   std::array<bool,3> down{}, pressed{}, released{}, consumed{};
-  bool isPressed(Button b) const {return down[static_cast<int>(b)];}
-  bool wasPressed(Button b) const {return pressed[static_cast<int>(b)];}
-  bool wasReleased(Button b) const {return released[static_cast<int>(b)];}
+  SideButtonContactGuard guard;
+  bool blocked(Button b) const {return b!=Button::Power && guard.blocks(b==Button::Up);}
+  bool isPressed(Button b) const {return !blocked(b) && down[static_cast<int>(b)];}
+  bool wasPressed(Button b) const {return !blocked(b) && pressed[static_cast<int>(b)];}
+  bool wasReleased(Button b) const {return !blocked(b) && released[static_cast<int>(b)];}
   bool isNavDirectionSwapped() const{return false;}
-  void consumeSideButtonUntilReleased(Button b){consumed[static_cast<int>(b)]=true;}
+  void consumeSideButtonUntilReleased(Button b){
+    consumed[static_cast<int>(b)]=true;
+    guard.consume(b==Button::Up && (down[0] || released[0]), b==Button::Down && (down[1] || released[1]));
+  }
   void frame(bool u, bool d, bool upEdge, bool downEdge, bool upRelease, bool downRelease) {
     down={u,d,false}; pressed={upEdge,downEdge,false}; released={upRelease,downRelease,false};
+    guard.update(u,d,upRelease,downRelease);
   }
 };
 class EpubReaderActivity {
@@ -75,12 +84,80 @@ int main(){
   fixed.mappedInput.frame(true,false,true,false,false,false); assert(!fixed.handleReaderShortcutInput());
   fixed.mappedInput.frame(false,false,false,false,true,false); assert(fixed.handleReaderShortcutInput());
   assert(fixed.last==Action::Bookmark);
+
+  SETTINGS.readerSideFollowOrientation=1;
+  SETTINGS.readerUpTap=uint8_t(Action::NextPage);
+  SETTINGS.readerDownTap=uint8_t(Action::PreviousPage);
+  SETTINGS.readerUpHold=SETTINGS.readerDownHold=uint8_t(Action::Disabled);
+  SETTINGS.readerSideChord=uint8_t(Action::Disabled);
+  for (int orientation=0; orientation<4; ++orientation) {
+    SETTINGS.orientation=orientation;
+    EpubReaderActivity fast;
+    fast.mappedInput.frame(true,false,true,false,false,false);
+    assert(fast.handleReaderShortcutInput());
+    assert(fast.last==(orientation==0?Action::NextPage:Action::PreviousPage));
+    assert(fast.origin==QuickLockTrigger::SideUpShort && fast.mappedInput.consumed[0]);
+    fast.mappedInput.frame(true,false,false,false,false,false);
+    assert(!fast.handleReaderShortcutInput());
+    fast.mappedInput.frame(false,false,false,false,true,false);
+    assert(!fast.mappedInput.wasReleased(MappedInputManager::Button::Up));
+    assert(!fast.handleReaderShortcutInput() && fast.actions==1);
+  }
+  SETTINGS.orientation=0;
+  {
+    SETTINGS.powerUpChordAction=uint8_t(Action::QuickLock);
+    EpubReaderActivity deferred;
+    deferred.mappedInput.frame(true,false,true,false,false,false);
+    assert(!deferred.handleReaderShortcutInput());
+    deferred.mappedInput.frame(false,false,false,false,true,false);
+    assert(deferred.handleReaderShortcutInput() && deferred.last==Action::NextPage);
+    assert(!deferred.mappedInput.consumed[0]);
+    SETTINGS.powerUpChordAction=uint8_t(Action::Default);
+  }
+  {
+    SETTINGS.readerSideChord=uint8_t(Action::Screenshot);
+    EpubReaderActivity chord;
+    chord.mappedInput.frame(true,false,true,false,false,false);
+    assert(!chord.handleReaderShortcutInput());
+    chord.mappedInput.frame(true,true,false,true,false,false);
+    assert(chord.handleReaderShortcutInput() && chord.last==Action::Screenshot);
+    assert(chord.actions==1);
+    SETTINGS.readerSideChord=uint8_t(Action::Disabled);
+  }
+  {
+    SETTINGS.readerUpHold=uint8_t(Action::Bookmark);
+    EpubReaderActivity held;
+    clockMs=0;
+    held.mappedInput.frame(true,false,true,false,false,false);
+    assert(!held.handleReaderShortcutInput());
+    clockMs=readershortcuts::Tracker::HOLD_MS;
+    held.mappedInput.frame(true,false,false,false,false,false);
+    assert(held.handleReaderShortcutInput() && held.last==Action::Bookmark);
+    assert(held.actions==1);
+    SETTINGS.readerUpHold=uint8_t(Action::Disabled);
+  }
+  {
+    EpubReaderActivity overlapping;
+    overlapping.mappedInput.frame(false,true,false,true,false,false);
+    assert(!overlapping.handleReaderShortcutInput());
+    overlapping.mappedInput.frame(true,false,true,false,false,true);
+    assert(overlapping.handleReaderShortcutInput() && overlapping.last==Action::PreviousPage);
+    overlapping.mappedInput.frame(false,false,false,false,true,false);
+    assert(overlapping.handleReaderShortcutInput() && overlapping.last==Action::NextPage);
+    assert(overlapping.actions==2);
+  }
+  {
+    SETTINGS.readerUpTap=uint8_t(Action::Default);
+    EpubReaderActivity native;
+    native.mappedInput.frame(true,false,true,false,false,false);
+    assert(native.handleReaderShortcutInput() && native.last==Action::PreviousPage);
+  }
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'test.cpp').write_text(fixture)
-    subprocess.run(['c++', '-std=c++20', '-fsanitize=address', '-fno-omit-frame-pointer',
+    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', *shlex.split(os.environ.get('CXXFLAGS', '')),
                     '-I', str(ROOT / 'src'), str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
-print('Oriented side shortcuts passed with AddressSanitizer')
+print('Oriented side shortcuts passed')
