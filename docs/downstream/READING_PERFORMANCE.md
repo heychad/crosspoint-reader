@@ -19,9 +19,11 @@ physical reader. Keep reading positions and protected-book support intact.
   still triggers a rebuild. Measure first and repeated opens on the X4 Pro.
 - The Saved Items route now opens the saved list as soon as the book loads.
   The first reader frame waits until the user selects a passage or returns
-  from the list. Reader initialization still starts tracking and records the
-  book in Recents. Host checks cover the handoff and fallback paths. Device
-  confirmation remains.
+  from the list. Reader initialization starts tracking and records the book in
+  Recents. A legacy bookmark can open its exact page when the same chapter has
+  a complete cache that matches the current layout and page count. Missing,
+  partial, or mismatched caches use the saved passage marker. Host checks cover
+  the handoff, exact page, and fallback paths. Device confirmation remains.
 - Book → clipping list → clipping actions is the current navigation. Keep the
   grouped model unless its replacement is explicitly scoped.
 

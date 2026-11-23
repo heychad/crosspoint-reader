@@ -1492,10 +1492,23 @@ void EpubReaderActivity::applyProgressChange(const ProgressChangeResult& sync) {
 
   int targetSpineIndex = sync.spineIndex;
   int targetPage = sync.page;
-  const int activeTotalPages = section ? section->estimatedTotalPages() : 0;
-  const bool cachedPageMatchesActiveSection = section && sync.totalPages > 0 && currentSpineIndex == sync.spineIndex &&
-                                              sync.page >= 0 && sync.page < sync.totalPages &&
-                                              activeTotalPages == sync.totalPages;
+  const bool pageHintForCurrentSpine =
+      sync.totalPages > 0 && currentSpineIndex == sync.spineIndex && sync.page >= 0 && sync.page < sync.totalPages;
+  int activeTotalPages = section ? section->estimatedTotalPages() : 0;
+  if (!section && pendingSavedView == SavedItemKind::Bookmarks && sync.hasSavedProgress && pageHintForCurrentSpine &&
+      appliedOrientation == SETTINGS.orientation && currentSpineIndex >= 0 &&
+      currentSpineIndex < epub->getSpineItemsCount()) {
+    // A legacy bookmark may only have a chapter-wide XPath. Check the exact
+    // page hint against the current layout before falling back to that XPath.
+    RenderLock lock(*this);
+    const auto layout = readerPageLayout();
+    Section cached(epub, currentSpineIndex, renderer);
+    if (cached.loadSectionFile(effectiveRenderSpec(layout.width, layout.height, currentSpineIndex)) &&
+        !cached.isPartial()) {
+      activeTotalPages = cached.pageCount;
+    }
+  }
+  const bool cachedPageMatchesActiveSection = pageHintForCurrentSpine && activeTotalPages == sync.totalPages;
 
   if (!cachedPageMatchesActiveSection && sync.hasSavedProgress) {
     const int totalPages = section ? section->estimatedTotalPages() : cachedChapterTotalPageCount;

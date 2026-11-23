@@ -18,7 +18,7 @@ def block(source, signature):
         end += 1
     return source[start:end]
 
-legacy = block(reader, '  if (sync.hasChapterProgress)')
+apply_progress = block(reader, 'void EpubReaderActivity::applyProgressChange(')
 resolve = block(reader, '    if (pendingPercentJump && section->pageCount > 0)')
 code = r'''
 #include <cassert>
@@ -50,29 +50,58 @@ code += '\n' + block((ROOT/'src/activities/home/HomeActivity.cpp').read_text(), 
 code = code.replace('HomeActivity::MenuPage HomeActivity::menuPage()', 'MenuPage menuPage()')
 code += r'''
 };
-struct RenderLock {};
+struct RenderLock { RenderLock() = default; explicit RenderLock(const struct EpubReaderActivity&) {} };
 struct Epub { int getSpineItemsCount() const {return 4;} };
 struct Section {
   int pageCount=20,currentPage=0;
+  static inline bool cacheMatches=false, partial=false;
+  static inline int cachedPages=20, probes=0;
+  Section()=default;
+  Section(const std::unique_ptr<Epub>&, int spine, Renderer&) {assert(spine==1);}
+  int estimatedTotalPages() const {return pageCount;}
+  bool loadSectionFile(int spec) {assert(spec==100); ++probes; pageCount=cachedPages; return cacheMatches;}
+  bool isPartial() const {return partial;}
+  std::optional<uint16_t> getPageForVisibleTextOffset(uint32_t) {return 9;}
   std::optional<uint16_t> getPageForParagraphIndex(uint16_t index) {return index == 4 ? std::optional<uint16_t>(7) : std::nullopt;}
   std::optional<uint16_t> getReferenceTargetPage(){return std::nullopt;}
 };
+struct CrossPointPosition {int spineIndex, pageNumber;};
+struct ProgressMapper {
+  struct Saved {std::string xpath; decltype(ProgressChangeResult{}.percentage) percentage;};
+  static inline int calls=0;
+  static CrossPointPosition toCrossPoint(const std::unique_ptr<Epub>&, const Saved& saved, Renderer&, int, int) {
+    assert(saved.xpath=="/body/DocFragment[2]/body");
+    ++calls;
+    return {1,19};  // A chapter-only marker can resolve to a different page than the saved hint.
+  }
+};
+enum class SavedItemKind {Bookmarks, Clippings};
+struct {uint8_t orientation=0;} SETTINGS;
 struct EpubReaderActivity {
+  Renderer renderer;
   std::unique_ptr<Epub> epub=std::make_unique<Epub>();
   std::unique_ptr<Section> section=std::make_unique<Section>();
+  std::optional<SavedItemKind> pendingSavedView;
   std::optional<ReferencePageMap::Target> pendingReferenceJump;
   std::optional<uint32_t> pendingOffsetJump=6,cachedVisibleTextOffset=9;
   std::optional<uint16_t> pendingParagraphJump,pendingPageJump=3;
   bool pendingPercentJump=false;
+  uint8_t appliedOrientation=0;
   int currentSpineIndex=0,nextPageNumber=3,cachedChapterTotalPageCount=20,pendingManualTurn=1;
   float pendingSpineProgress=0;
   std::string pendingAnchor="old";
+  struct Layout {int width,height;};
+  Layout readerPageLayout() const {return {480,800};}
+  int effectiveRenderSpec(int width,int height,int spine) const {
+    assert(width==480 && height==800 && spine==1);
+    return 100;
+  }
   void requestUpdate() {}
   void clearDeferredReposition();
-  void applyProgressChange(const ProgressChangeResult& sync) {
+  void applyProgressChange(const ProgressChangeResult& sync);
 '''
-code += legacy
-code += '\n}\n void resolve() {' + resolve + '\n}\n};\n'
+code += 'void resolve() {' + resolve + '\n}\n};\n'
+code += apply_progress + '\n'
 code += block(reader, 'void EpubReaderActivity::clearDeferredReposition(')
 code += r'''
 int main() {
@@ -133,6 +162,31 @@ int main() {
   assert(reader.section->currentPage==19);
   target.spineIndex=4;reader.applyProgressChange(target);assert(reader.section);
   target.spineIndex=1;target.chapterProgress=std::nanf("");reader.applyProgressChange(target);assert(reader.section);
+
+  ProgressChangeResult bookmark;
+  bookmark.hasSavedProgress=true;
+  bookmark.spineIndex=1;
+  bookmark.page=8;
+  bookmark.totalPages=20;
+  bookmark.xpath="/body/DocFragment[2]/body";
+  for (const int scenario : {0,1,2,3,4,5}) {
+    EpubReaderActivity cold;
+    cold.currentSpineIndex=1;
+    cold.section.reset();
+    cold.pendingPageJump.reset();
+    if (scenario!=4) cold.pendingSavedView=SavedItemKind::Bookmarks;
+    SETTINGS.orientation=scenario==5 ? 1 : 0;
+    Section::cacheMatches=scenario!=1;
+    Section::partial=scenario==2;
+    Section::cachedPages=scenario==3 ? 21 : 20;
+    Section::probes=ProgressMapper::calls=0;
+    cold.applyProgressChange(bookmark);
+    assert(!cold.section && cold.currentSpineIndex==1);
+    assert(cold.nextPageNumber==(scenario==0 ? 8 : 19));
+    assert(Section::probes==(scenario>=4 ? 0 : 1));
+    assert(ProgressMapper::calls==(scenario==0 ? 0 : 1));
+    assert(!cold.cachedVisibleTextOffset && !cold.pendingOffsetJump);
+  }
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:
@@ -142,4 +196,4 @@ with tempfile.TemporaryDirectory() as temporary:
                     '-I', str(ROOT/'src'), '-I', str(ROOT/'lib/Epub'), str(directory/'navigation.cpp'),
                     '-o', str(directory/'navigation')], check=True)
     subprocess.run([str(directory/'navigation')], check=True)
-print('Saved Items menu routes, paragraph targets, fallback fractions and stale-position clearing passed')
+print('Saved Items menu routes, exact legacy page hints, and position fallbacks passed')
