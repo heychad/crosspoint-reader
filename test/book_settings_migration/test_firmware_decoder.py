@@ -12,23 +12,27 @@ FIELDS = ('fontSize', 'lineHeight', 'wordSpacing', 'characterSpacing', 'orientat
           'paragraphAlignment', 'extraParagraphSpacing', 'paragraphIndentSpaces', 'hyphenationEnabled',
           'embeddedStyle', 'textAntiAliasing', 'imageRendering', 'focusReadingEnabled', 'epubRenderMode')
 records = []
-for version in range(1, 14):
+for version in range(1, 17):
     data = test_preview.record(version)
     records.extend(data[:length] for length in range(len(data)))
     records.extend((data, data + b'\0'))
-for version in range(10, 14):
+for version in range(10, 17):
     for bit in range(19 if version == 10 else version + 9):
         records.append(test_preview.record(version, mask=1 << bit))
-for version in (11, 12, 13):
+for version in range(11, 17):
     records.append(test_preview.record(version, mask=1 << (version + 9)))
     records.append(test_preview.record(version, flags=0))
 records.append(test_preview.record(13, publisher_fonts=3))
+records.append(test_preview.record(17, mask=0))
+for version, field in ((14, 'text_darkness'), (15, 'two_tone_aa'), (16, 'ruled_lines')):
+    for value in range(256):
+        records.append(test_preview.record(version, **{field: value}))
 for version in (3, 8, 10, 13):
     for raw in range(256):
         records.append(test_preview.record(version, mask=1 << 14, force_indents=raw))
 for method in (0, 1, 2, 255):
     records.append(test_preview.record(10, mask=1 << 17, indexing_method=method))
-for version in range(2, 14):
+for version in range(2, 17):
     for flags in (0, 1, 4, 5, 0x14):
         for mode in (0, 1, 2, 3, 255):
             data = bytearray(test_preview.record(version, flags=flags, mask=0))
@@ -56,7 +60,7 @@ for version in (3, 10):
         records.append(bytes(data))
 records.extend((test_preview.record(10, flags=0), test_preview.record(10, flags=0x80),
                 test_preview.record(10, mask=1 << 20)))
-for version in range(2, 14):
+for version in range(2, 17):
     for name in (b'', b'caf\xc3\xa9', b'A' * 31, b'A' * 32, b'A' * 63, b'bad/name', b'.hidden',
                  b'bad\\name', b'bad\x1fname', b'\xc0\xaf', b'\xed\xa0\x80', b'\xf4\x90\x80\x80', b'\xe2\x82'):
         data = bytearray(test_preview.record(version))
@@ -100,7 +104,7 @@ with tempfile.TemporaryDirectory() as directory:
         if version >= 12:
             fields += ('characterSpacing',)
         if version >= 13:
-            fields += ('publisherFonts',)
+            fields += ('publisherFonts', 'textDarkness', 'twoToneTextAA', 'ruledLines')[:version - 12]
         expected_unmapped = sum(1 << i for i, name in enumerate(fields) if name in report['unmapped'])
         assert values[16] == expected_unmapped, (index, values[16], expected_unmapped)
         expected_flags = (2 if report['autoPageTurnSeconds'] else 0) if version == 1 else data[1] & ~1

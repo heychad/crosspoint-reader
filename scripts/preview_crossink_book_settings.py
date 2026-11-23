@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 # The order and version gates follow EpubReaderActivity::readReaderSettingsSnapshot
-# through CrossInk v2.0.0-rc, b8feaec4d10ecb484ed80e326f01f2a3ea949331.
+# through CrossInk v2.0.0-rc3, 0b939f41ec22c0d647a5c65ec5126141cbe7e565.
 MASK_FIELDS = (
     'fontFamily', 'readerFontPointSize', 'lineHeightPercent', 'wordSpacing',
     'orientation', 'screenMarginVertical', 'screenMarginHorizontal',
@@ -31,6 +31,15 @@ COMPATIBLE = {
     'indexingMethod': ('indexingMethod', 0, 1),
 }
 LINE_HEIGHTS = (100, 110, 120, 130, 145, 160, 175)
+LAST_SUPPORTED_VERSION = 16
+TRAILER_FIELDS = (
+    (11, 'imageGrayscale', 1),
+    (12, 'characterSpacing', 10),
+    (13, 'publisherFonts', 2),
+    (14, 'textDarkness', 2),
+    (15, 'twoToneTextAA', 1),
+    (16, 'ruledLines', 3),
+)
 
 
 def compatible_font_name(name: str) -> bool:
@@ -71,7 +80,7 @@ def decode(data: bytes) -> dict:
         raise ValueError('invalid settings record size')
     reader = Reader(data)
     version = reader.u8()
-    if not 1 <= version <= 13:
+    if not 1 <= version <= LAST_SUPPORTED_VERSION:
         raise ValueError('unsupported settings record version')
     if version == 1:
         seconds = reader.integer(2)
@@ -108,16 +117,12 @@ def decode(data: bytes) -> dict:
     fields = MASK_FIELDS
     if version >= 11:
         fields = MASK_FIELDS[:18] + ('imageGrayscale', 'sdFontFamilyName')
-    if version >= 12:
-        fields += ('characterSpacing',)
-    if version >= 13:
-        fields += ('publisherFonts',)
+        fields += tuple(key for introduced, key, _ in TRAILER_FIELDS if 12 <= introduced <= version)
     mask = reader.integer(4) if version >= 10 else (1 << len(fields)) - 1
     if mask & ~((1 << len(fields)) - 1):
         raise ValueError('unknown override bits')
-    for key, maximum in (('imageGrayscale', 1), ('characterSpacing', 10), ('publisherFonts', 2)):
-        minimum_version = {'imageGrayscale': 11, 'characterSpacing': 12, 'publisherFonts': 13}[key]
-        if version >= minimum_version:
+    for introduced, key, maximum in TRAILER_FIELDS:
+        if version >= introduced:
             snap[key] = reader.u8()
             if snap[key] > maximum:
                 raise ValueError('invalid ' + key)

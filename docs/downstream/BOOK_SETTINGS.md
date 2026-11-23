@@ -39,10 +39,14 @@ boundaries in [the selected migration inventory](RC2_SETTINGS_INVENTORY.json).
 
 `scripts/preview_crossink_book_settings.py` inspects a local copy of a CrossInk
 record without writing settings. It reports directly comparable values as
-candidates and lists remaining settings for review. Versions 1–13 are decoded;
-an optional local `--current` native preferences copy identifies conflicts.
+candidates and lists remaining settings for review. It reads versions 1–16,
+including CrossInk RC3. An optional local `--current` native preferences copy
+identifies conflicts.
 An existing native file takes precedence as a whole; the tool does not propose
-a patch or apply a migration.
+a patch or apply a migration. Versions 14–16 add text darkness, two-tone
+antialiasing, and ruled lines. The preview lists these values when the book
+owns them. The reader applies compatible overrides and retains the original
+binary with those display options.
 
 ## Resource budget
 

@@ -7,6 +7,11 @@
 namespace crossink {
 namespace {
 constexpr uint32_t ALL_OLD_BITS = (1UL << 19) - 1;
+// Versions 13–16 append publisher fonts, text darkness, two-tone AA, and ruled
+// lines in order. Validate the saved bytes and retain their bits as unmapped.
+constexpr uint8_t FIRST_UNMAPPED_TRAILER_VERSION = 13;
+constexpr uint8_t UNMAPPED_TRAILER_MAX[] = {2, 2, 1, 3};
+constexpr uint8_t LAST_SUPPORTED_VERSION = FIRST_UNMAPPED_TRAILER_VERSION + sizeof(UNMAPPED_TRAILER_MAX) - 1;
 struct Cursor {
   const uint8_t* bytes;
   size_t length;
@@ -43,7 +48,7 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
   if (!bytes || length == 0 || length > 256) return false;
   Cursor in{bytes, length};
   BookSettingsPreview result;
-  if (!in.byte(result.version) || result.version < 1 || result.version > 13) return false;
+  if (!in.byte(result.version) || result.version < 1 || result.version > LAST_SUPPORTED_VERSION) return false;
   if (result.version == 1) {
     if (!in.skip(2) || in.pos != length) return false;
     result.extraFlags = bytes[1] || bytes[2] ? 2 : 0;
@@ -81,10 +86,13 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     const unsigned fieldCount = result.version < 11 ? 19 : result.version + 9;
     if (mask & ~((1UL << fieldCount) - 1)) return false;
   }
-  uint8_t imageGrayscale = 1, characterSpacing = 5, publisherFonts = 0;
+  uint8_t imageGrayscale = 1, characterSpacing = 5;
   if (result.version >= 11 && (!in.byte(imageGrayscale) || imageGrayscale > 1)) return false;
   if (result.version >= 12 && (!in.byte(characterSpacing) || characterSpacing > 10)) return false;
-  if (result.version >= 13 && (!in.byte(publisherFonts) || publisherFonts > 2)) return false;
+  for (uint8_t version = FIRST_UNMAPPED_TRAILER_VERSION; version <= result.version; ++version) {
+    uint8_t value;
+    if (!in.byte(value) || value > UNMAPPED_TRAILER_MAX[version - FIRST_UNMAPPED_TRAILER_VERSION]) return false;
+  }
   if (in.pos != length) return false;
   if (!(flags & 1)) mask = 0;
   // Early versions lacked these bytes and inherit their global values.

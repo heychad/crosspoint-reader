@@ -153,9 +153,14 @@ Priorities from the current source comparison:
 ## Per-book settings format audit
 
 CrossInk release candidate `v2.0.0-rc` (`b8feaec4d`) writes per-book reader-settings version 13.
-The decoder now accepts versions 1–13. Versions 11–13 add image
+The decoder accepts versions 1–16. Versions 11–13 add image
 grayscale, character spacing, and publisher-font fields after the override mask;
 the SD font mask bit also moves from 18 to 19 in version 11. The update follows
 the actual writer and reader, preserves unsupported fields in the preview, and
-checks each version's size and override-mask boundaries. Do not interpret a
-new-format file as version 10 or overwrite its source.
+checks each version's size and override-mask boundaries.
+
+CrossInk `v2.0.0-rc3` (`0b939f41ec22`) writes version 16. Versions 14–16
+append text darkness, two-tone antialiasing, and ruled lines in order. The
+reader validates their ranges and reads the compatible owned settings from
+the same record. The preview lists the new fields as unmapped. Existing
+native preferences take precedence, and the CrossInk file stays intact.

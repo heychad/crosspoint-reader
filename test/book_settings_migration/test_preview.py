@@ -9,7 +9,8 @@ preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
 
 
-def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0, indexing_method=2, force_indents=0):
+def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, publisher_fonts=0,
+           indexing_method=2, force_indents=0, text_darkness=0, two_tone_aa=0, ruled_lines=0):
     if mask is None:
         mask = (1 << (19 if version < 11 else version + 9)) - 1
     if version == 1:
@@ -38,12 +39,18 @@ def record(version, flags=1, mask=None, image_grayscale=1, character_spacing=5, 
         data.append(character_spacing)
     if version >= 13:
         data.append(publisher_fonts)
+    if version >= 14:
+        data.append(text_darkness)
+    if version >= 15:
+        data.append(two_tone_aa)
+    if version >= 16:
+        data.append(ruled_lines)
     return bytes(data)
 
 
 class DecodeTest(unittest.TestCase):
     def test_all_versions_and_truncation(self):
-        for version in range(1, 14):
+        for version in range(1, 17):
             data = record(version)
             self.assertEqual(preview.decode(data)['version'], version)
             for length in range(len(data)):
@@ -88,7 +95,7 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual(preview.decode(bytes(data))['unmapped'], ['wordSpacing'])
 
     def test_rejects_unknown_version_flags_and_masks(self):
-        for data in (b'\x0e', record(10, flags=0x80), record(10, mask=1 << 20)):
+        for data in (record(17, mask=0), record(10, flags=0x80), record(10, mask=1 << 20)):
             with self.assertRaises(ValueError):
                 preview.decode(data)
 
@@ -104,7 +111,7 @@ class DecodeTest(unittest.TestCase):
             self.assertEqual(preview.decode(record(version, mask=1 << 19))['preview'], {'sdFontFamilyName': 'Font'})
 
     def test_named_font_and_size_require_font_ownership(self):
-        for version in range(2, 14):
+        for version in range(2, 17):
             bit = 18 if version < 11 else 19
             result = preview.decode(record(version, mask=(1 << bit) | (1 << 1)))
             self.assertEqual(result['preview']['sdFontFamilyName'], 'Font')
@@ -127,8 +134,22 @@ class DecodeTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 preview.decode(record(version, **kwargs))
 
+    def test_rc3_imports_owned_layout_and_reports_display_options(self):
+        result = preview.decode(record(16, mask=(1 << 4) | (7 << 22),
+                                       text_darkness=2, two_tone_aa=1, ruled_lines=3))
+        self.assertEqual(result['preview'], {'orientation': 1})
+        self.assertEqual(result['unmapped'], ['textDarkness', 'twoToneTextAA', 'ruledLines'])
+        self.assertEqual(result['overrides']['textDarkness'], 2)
+        self.assertEqual(result['overrides']['twoToneTextAA'], 1)
+        self.assertEqual(result['overrides']['ruledLines'], 3)
+        for version, kwargs in ((14, {'text_darkness': 3}), (15, {'two_tone_aa': 2}),
+                                (16, {'ruled_lines': 4})):
+            with self.assertRaises(ValueError):
+                preview.decode(record(version, mask=0, **kwargs))
+        self.assertEqual(preview.decode(record(16, flags=0))['unmapped'], [])
+
     def test_explicit_render_mode_is_independent_of_snapshot(self):
-        for version in range(2, 14):
+        for version in range(2, 17):
             for flags in (0, 1, 4, 5):
                 for mode in (0, 1, 2, 3, 255):
                     data = bytearray(record(version, flags=flags, mask=0))

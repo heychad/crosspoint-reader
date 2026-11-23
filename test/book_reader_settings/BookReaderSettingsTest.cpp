@@ -929,6 +929,32 @@ TEST_F(BookSettings, LegacySettingsApplyWithoutWritingAndResetIsRemembered) {
   EXPECT_FALSE(BookReaderPreferences::prepareMove(CACHE, "/book.epub"));
 }
 
+TEST_F(BookSettings, Rc3SettingsRetainCompatibleOverridesAndPreserveSourceAfterReset) {
+  const std::string legacy = std::string(CACHE) + "/reader_settings.bin";
+  auto rc3 = crossInkV10();
+  rc3[0] = 16;
+  rc3[rc3.size() - 1] = 1;  // Bit 24: ruled lines. Orientation is also owned.
+  // Image grayscale, character spacing, publisher fonts, darkness, two-tone AA, and ruled lines.
+  for (const char value : {1, 5, 0, 2, 1, 3}) rc3.push_back(value);
+  put(legacy, rc3);
+
+  BookReaderPreferences store;
+  BookReaderSettings settings;
+  ASSERT_TRUE(store.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, 1U << 4);
+  EXPECT_EQ(settings.preferences.values[4], 1);
+  ASSERT_TRUE(store.save(settings));
+  EXPECT_FALSE(Storage.exists(PATH));
+  ASSERT_TRUE(store.save({}));
+
+  BookReaderPreferences reopened;
+  ASSERT_TRUE(reopened.load(CACHE, "/book.epub", settings));
+  EXPECT_EQ(settings.mask, 0U);
+  std::string after;
+  ASSERT_TRUE(Storage.readFileToString("TEST", legacy, 256, after));
+  EXPECT_EQ(after, rc3);
+}
+
 TEST_F(BookSettings, LegacyNaturalWordSpacingOverridesTheGlobalValue) {
   auto record = crossInkV10();
   record[record.size() - 4] = 1 << 3;
