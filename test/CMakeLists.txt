@@ -119,6 +119,7 @@ add_test(NAME EpubRenderRecovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_S
 add_test(NAME SectionHeaderWrite COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_section_header_write.py)
 add_test(NAME ImageBlockWrite COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_image_block_write.py)
 add_test(NAME EpubPixelCache COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_epub_pixel_cache.py)
+add_test(NAME EpubGrayscaleBuffer COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_epub_grayscale_buffer.py)
 add_test(NAME EpubCompletionPrompt COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_epub_completion_prompt.py)
 add_test(NAME ConfirmationModes COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_confirmation_modes.py)
 add_test(NAME FileTransferShortcutDispatch COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/transfer_shortcut/test_dispatch.py)

@@ -42,6 +42,20 @@ only the image rows it draws. In the host fixture, an 80-row strip of an
 800 × 480 image reads 16,004 bytes, including the header, compared with
 96,004 bytes for a full pass. Portrait strips still need every row.
 
+## Buffered grayscale on the X4 Pro
+
+When the SSD1677 display and PSRAM can stage a full grayscale plane, the
+reader draws the page once per plane instead of once per 80-row strip.
+A plane uses 48,000 bytes. During an asynchronous black-and-white refresh,
+the reader can stage two planes, up to 96,000 bytes total, before waiting for
+the panel. Otherwise it reuses one plane. The buffers are released after the
+page, and the existing heap or strip paths handle allocation failures.
+
+The host display fixture matches the strip output byte for byte. It confirms
+two grayscale draws instead of twelve, the order of refresh and uploads, and
+preservation of the black-and-white frame. Use the serial render timings to
+check the difference on hardware.
+
 ## Chapter indexing
 
 Chapter indexing controls when pages are built, separately from the rendering

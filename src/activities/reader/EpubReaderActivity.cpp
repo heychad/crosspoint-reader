@@ -2989,39 +2989,49 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
     auto renderPlaneToBuffer = [&](const bool lsbPlane, uint8_t* buf) {
       renderer.setRenderMode(lsbPlane ? GfxRenderer::GRAYSCALE_LSB : GfxRenderer::GRAYSCALE_MSB);
-      for (int y = 0; y < gh; y += STRIP_ROWS) {
-        const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
-        renderer.beginStripTarget(buf + static_cast<size_t>(y) * gwBytes, y, rows);
-        renderer.clearScreen(0x00);
-        renderGrayscalePass();
-        renderer.endStripTarget();
-      }
+      renderer.beginStripTarget(buf, 0, gh);
+      renderer.clearScreen(0x00);
+      renderGrayscalePass();
+      renderer.endStripTarget();
     };
 
+    HalMemory::PsramBuffer lsbPsram, msbPsram;
+#if FREEINK_DEVICE_X4PRO
+    // The SSD1677's synchronous SPI write accepts this aligned PSRAM plane.
+    // The second plane is useful only while the B/W refresh is still running.
+    constexpr size_t X4_PRO_PLANE_BYTES = 800 * 480 / 8;
+    if (display.getController() == HalDisplay::Controller::SSD1677 && planeBytes == X4_PRO_PLANE_BYTES) {
+      lsbPsram = HalMemory::allocatePsram(planeBytes);
+      if (lsbPsram && overlapRefresh) msbPsram = HalMemory::allocatePsram(planeBytes);
+    }
+#endif
     constexpr size_t PLANE_BUF_HEADROOM = 60000;
     constexpr size_t PLANE_BUF_MAX_ALLOC_RESERVE = 16 * 1024;
     const auto planeBufFits = [planeBytes] {
       return ESP.getFreeHeap() >= planeBytes + PLANE_BUF_HEADROOM &&
              ESP.getMaxAllocHeap() >= planeBytes + PLANE_BUF_MAX_ALLOC_RESERVE;
     };
-    auto lsbPlaneBuf = (overlapRefresh && planeBufFits()) ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
-    auto msbPlaneBuf = (lsbPlaneBuf && planeBufFits()) ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
+    auto lsbHeap = (!lsbPsram && overlapRefresh && planeBufFits()) ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
+    auto msbHeap = (lsbHeap && planeBufFits()) ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
+    auto* lsbPlaneBuf = lsbPsram ? lsbPsram.get() : lsbHeap.get();
+    auto* msbPlaneBuf = msbPsram ? msbPsram.get() : msbHeap.get();
 
     if (lsbPlaneBuf) {
-      renderPlaneToBuffer(true, lsbPlaneBuf.get());
-      if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
+      renderPlaneToBuffer(true, lsbPlaneBuf);
+      if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf);
       const auto tGrayRender = millis();
 
       renderer.waitRefreshComplete();
       const auto tWait = millis();
 
-      renderer.writeGrayscalePlaneStrip(true, lsbPlaneBuf.get(), 0, gh);
-      if (msbPlaneBuf) {
-        renderer.writeGrayscalePlaneStrip(false, msbPlaneBuf.get(), 0, gh);
-      } else {
-        renderPlaneToBuffer(false, lsbPlaneBuf.get());
-        renderer.writeGrayscalePlaneStrip(false, lsbPlaneBuf.get(), 0, gh);
+      renderer.writeGrayscalePlaneStrip(true, lsbPlaneBuf, 0, gh);
+      unsigned long secondRenderMs = 0;
+      if (!msbPlaneBuf) {
+        const auto tSecondRender = millis();
+        renderPlaneToBuffer(false, lsbPlaneBuf);
+        secondRenderMs = millis() - tSecondRender;
       }
+      renderer.writeGrayscalePlaneStrip(false, msbPlaneBuf ? msbPlaneBuf : lsbPlaneBuf, 0, gh);
       const auto tGrayWrite = millis();
 
       renderer.setRenderMode(GfxRenderer::BW);
@@ -3032,10 +3042,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       const auto tEnd = millis();
 
       LOG_DBG("ERS",
-              "Page render (tiled async): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
+              "Page render (buffered): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
               "wait=%lums gray_write=%lums gray_display=%lums cleanup=%lums total=%lums (planes buffered: %d)",
-              tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tGrayRender - tDisplay, tWait - tGrayRender,
-              tGrayWrite - tWait, tGrayDisplay - tGrayWrite, tEnd - tGrayDisplay, tEnd - t0, msbPlaneBuf ? 2 : 1);
+              tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tGrayRender - tDisplay + secondRenderMs,
+              tWait - tGrayRender, tGrayWrite - tWait - secondRenderMs, tGrayDisplay - tGrayWrite, tEnd - tGrayDisplay,
+              tEnd - t0, msbPlaneBuf ? 2 : 1);
     } else {
       auto scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
       renderer.waitRefreshComplete();
