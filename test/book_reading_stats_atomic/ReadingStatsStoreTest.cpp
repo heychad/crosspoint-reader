@@ -1,10 +1,12 @@
 #include <BookCompletion.h>
+#include <CredentialIntegrity.h>
 #include <HalStorage.h>
 #include <ReadingStatsStore.h>
 #include <ZipFile.h>
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <optional>
 
 namespace {
 class ReadingStatsStoreTest : public testing::Test {
@@ -12,6 +14,33 @@ class ReadingStatsStoreTest : public testing::Test {
 };
 constexpr char CACHE[] = "/.crosspoint/epub_123";
 constexpr char BOOK[] = "/Authors/Author/Book.epub";
+
+std::string legacyDirectory() {
+  return "/.crosspoint/epub_" + std::to_string(ZipFile::fnvHash64(BOOK, sizeof(BOOK) - 1));
+}
+
+void writeBytes(const std::string& path, const std::vector<uint8_t>& bytes) {
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+  ASSERT_EQ(file.write(bytes.data(), bytes.size()), bytes.size());
+  ASSERT_TRUE(file.close());
+}
+
+std::vector<uint8_t> crossInkStats(uint8_t version, const BookReadingStats& stats, uint16_t fraction,
+                                   std::optional<uint32_t> sequence = {}) {
+  const size_t payloadSize = version == 7 ? 91 : 75;
+  std::vector<uint8_t> bytes(payloadSize + (sequence ? 8 : 0), 0xA1);
+  EXPECT_TRUE(stats.encode(bytes.data(), BookReadingStats::CURRENT_FILE_SIZE));
+  bytes[0] = version;
+  bytes[73] = fraction & 0xFF;
+  bytes[74] = fraction >> 8;
+  if (sequence) {
+    for (unsigned i = 0; i < 4; ++i) bytes[payloadSize + i] = *sequence >> (8 * i);
+    const auto crc = credential_integrity::crc32({reinterpret_cast<const char*>(bytes.data()), payloadSize + 4});
+    for (unsigned i = 0; i < 4; ++i) bytes[payloadSize + 4 + i] = crc >> (8 * i);
+  }
+  return bytes;
+}
 }  // namespace
 
 TEST_F(ReadingStatsStoreTest, ImportsCrossInkStatsWithoutChangingLegacyFiles) {
@@ -30,6 +59,88 @@ TEST_F(ReadingStatsStoreTest, ImportsCrossInkStatsWithoutChangingLegacyFiles) {
   ASSERT_TRUE(readingstats::saveBook(destination, imported));
   EXPECT_EQ(BookReadingStats::load(legacy).totalReadingSeconds, 900U);
   EXPECT_TRUE(Storage.exists((legacy + "/stats_v5.bin").c_str()));
+}
+
+TEST_F(ReadingStatsStoreTest, ReadsNewestQualifiedCrossInkSlotAndKeepsNativeReset) {
+  const std::string legacy = legacyDirectory();
+  const std::string source = legacy + "/stats_v7_crossink-001122334455.bin";
+  BookReadingStats original;
+  original.totalReadingSeconds = 600;
+  original.avgSecondsPerForwardPage = 8;
+  original.paceSampleCount = 32;
+  original.isCompleted = true;
+  original.finishedDate = {2026, 11, 6};
+  const auto primary = crossInkStats(7, original, 400, UINT32_MAX);
+  writeBytes(source, primary);
+  ASSERT_TRUE(original.save(legacy));
+  original.totalReadingSeconds = 900;
+  const auto backup = crossInkStats(7, original, 500, 0);
+  writeBytes(source + ".bak", backup);
+  bool enabled = false, found = false;
+  const auto imported = readingstats::loadBook(CACHE, BOOK, enabled, &found, BookReadingStats::LoadMode::ReadOnly);
+  EXPECT_TRUE(enabled);
+  EXPECT_TRUE(found);
+  EXPECT_TRUE(imported.writable);
+  EXPECT_EQ(imported.totalReadingSeconds, 900U);
+  EXPECT_EQ(imported.avgSecondsPerForwardPage, 9U);
+  EXPECT_EQ(imported.paceSampleCount, 32U);
+  EXPECT_TRUE(imported.isCompleted);
+  EXPECT_EQ(imported.finishedDate.year, 2026);
+  ASSERT_TRUE(readingstats::clearCache(legacy));
+  EXPECT_EQ(readingstats::loadBook(CACHE, BOOK, enabled).totalReadingSeconds, 900U);
+
+  auto damaged = backup;
+  damaged.back() ^= 1;
+  writeBytes(source + ".bak", damaged);
+  EXPECT_EQ(readingstats::loadBook(CACHE, BOOK, enabled).totalReadingSeconds, 600U);
+  writeBytes(source + ".bak", backup);
+  Storage.failNextReadFor(source + ".bak");
+  const auto guarded = readingstats::loadBook(CACHE, BOOK, enabled);
+  EXPECT_EQ(guarded.totalReadingSeconds, 600U);
+  EXPECT_FALSE(guarded.writable);
+
+  ASSERT_TRUE(readingstats::saveBook(readingstats::bookDirectory(CACHE), BookReadingStats{}));
+  EXPECT_EQ(readingstats::loadBook(CACHE, BOOK, enabled).totalReadingSeconds, 0U);
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", source + ".bak", file));
+  std::vector<uint8_t> stored(backup.size());
+  ASSERT_EQ(file.read(stored.data(), stored.size()), static_cast<int>(stored.size()));
+  ASSERT_TRUE(file.close());
+  EXPECT_EQ(stored, backup);
+}
+
+TEST_F(ReadingStatsStoreTest, ImportsQualifiedVersionSixAndKeepsQualifiedHistoryDuringCacheClear) {
+  const std::string legacy = legacyDirectory();
+  const std::string source = legacy + "/stats_v6_crossink-001122334455.bin";
+  BookReadingStats original;
+  original.totalReadingSeconds = 400;
+  original.avgSecondsPerForwardPage = 8;
+  const auto payload = crossInkStats(6, original, 499);
+  writeBytes(legacy + "/stats_v7_crossink-aabbccddeeff.bin", crossInkStats(7, original, 500));
+  bool enabled = false, found = false;
+  EXPECT_EQ(readingstats::loadBook(CACHE, BOOK, enabled, &found).totalReadingSeconds, 0U);
+  EXPECT_FALSE(found);
+  writeBytes(source, payload);
+  const auto imported = readingstats::loadBook(CACHE, BOOK, enabled, &found);
+  EXPECT_TRUE(found);
+  EXPECT_EQ(imported.totalReadingSeconds, 400U);
+  EXPECT_EQ(imported.avgSecondsPerForwardPage, 8U);
+
+  const auto badPace = legacy + "/stats_v7_crossink-001122334455.bin";
+  writeBytes(badPace, crossInkStats(7, original, 1000, 1));
+  const auto guarded = readingstats::loadBook(CACHE, BOOK, enabled, &found);
+  EXPECT_TRUE(found);
+  EXPECT_FALSE(guarded.writable);
+  EXPECT_EQ(guarded.totalReadingSeconds, 0U);
+  ASSERT_TRUE(Storage.remove(badPace.c_str()));
+
+  writeBytes(legacy + "/stats_origin.bin", {1});
+  writeBytes(legacy + "/book.bin", {2});
+  ASSERT_TRUE(readingstats::clearCache(legacy));
+  EXPECT_EQ(BookReadingStats::load(readingstats::bookDirectory(legacy)).totalReadingSeconds, 400U);
+  EXPECT_TRUE(Storage.exists(source.c_str()));
+  EXPECT_TRUE(Storage.exists((legacy + "/stats_origin.bin").c_str()));
+  EXPECT_FALSE(Storage.exists((legacy + "/book.bin").c_str()));
 }
 
 TEST_F(ReadingStatsStoreTest, ClosedBookDateEditReloadsAndPreservesCrossInkHistory) {

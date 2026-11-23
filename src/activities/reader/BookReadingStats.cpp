@@ -1,9 +1,11 @@
 // Adapted from CrossInk v1.6.1; see docs/downstream/CROSSINK_NOTICE.md.
 #include "BookReadingStats.h"
 
+#include <CredentialIntegrity.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <esp_mac.h>
 
 #include <algorithm>
 #include <array>
@@ -278,6 +280,115 @@ BookReadingStats loadBookUnlocked(const std::string& cachePath, BookReadingStats
   return stats;
 }
 
+struct CrossInkFormat {
+  uint8_t version;
+  size_t size;
+};
+// Tagged RC3 appends a pace fraction in v6 and a counter ID in v7. Native
+// statistics retain their v5 format. The original CrossInk bytes stay on card.
+constexpr std::array<CrossInkFormat, 4> CROSSINK_FORMATS{{{7, 91}, {6, 75}, {5, 73}, {4, 69}}};
+constexpr size_t CROSSINK_SLOT_TRAILER = 8;
+static_assert(STATS_FILE_VERSION == 5 && STATS_FILE_SIZE == 73);
+
+enum class CrossInkSlotState { Missing, Unreadable, Invalid, Raw, Checksummed };
+struct CrossInkSlot {
+  CrossInkSlotState state;
+  uint32_t sequence = 0;
+  bool valid() const { return state == CrossInkSlotState::Raw || state == CrossInkSlotState::Checksummed; }
+};
+
+CrossInkSlot readCrossInkSlot(const std::string& path, CrossInkFormat format, BookReadingStats& stats) {
+  HalFile file;
+  const auto opened = openChecked(path, file);
+  if (opened == StatsOpen::Missing) return {CrossInkSlotState::Missing};
+  if (opened != StatsOpen::Found) return {CrossInkSlotState::Unreadable};
+
+  std::array<uint8_t, CROSSINK_FORMATS.front().size + CROSSINK_SLOT_TRAILER> bytes{};
+  const size_t size = file.fileSize();
+  const bool framed = size == format.size + CROSSINK_SLOT_TRAILER;
+  const bool validSize = !file.isDirectory() && (framed || size == format.size);
+  const bool ok = !validSize || file.read(bytes.data(), size) == static_cast<int>(size);
+  if (!file.close() || !ok) return {CrossInkSlotState::Unreadable};
+  if (!validSize || bytes[0] != format.version) return {CrossInkSlotState::Invalid};
+
+  uint32_t sequence = 0;
+  if (framed) {
+    sequence = readLe32(bytes.data(), format.size);
+    const auto checksum =
+        credential_integrity::crc32({reinterpret_cast<const char*>(bytes.data()), format.size + sizeof(sequence)});
+    if (checksum != readLe32(bytes.data(), format.size + sizeof(sequence))) return {CrossInkSlotState::Invalid};
+  }
+
+  uint16_t fraction = 0;
+  size_t decodedSize = format.size;
+  if (format.version >= 6) {
+    fraction = readLe16(bytes.data(), STATS_FILE_SIZE);
+    if (fraction >= 1000 || (readLe16(bytes.data(), 12) == UINT16_MAX && fraction != 0))
+      return {CrossInkSlotState::Invalid};
+    bytes[0] = STATS_FILE_VERSION;
+    decodedSize = STATS_FILE_SIZE;
+  }
+  if (!decodeBookPayload(bytes.data(), decodedSize, stats)) return {CrossInkSlotState::Invalid};
+  if (fraction >= 500) ++stats.avgSecondsPerForwardPage;
+  return {framed ? CrossInkSlotState::Checksummed : CrossInkSlotState::Raw, sequence};
+}
+
+bool readCrossInkFamily(const std::string& path, CrossInkFormat format, BookReadingStats& stats) {
+  const auto primary = readCrossInkSlot(path, format, stats);
+  BookReadingStats secondary;
+  const auto backup = readCrossInkSlot(path + ".bak", format, secondary);
+  const bool unreadable =
+      primary.state == CrossInkSlotState::Unreadable || backup.state == CrossInkSlotState::Unreadable;
+  if (primary.valid() || backup.valid()) {
+    const uint32_t distance = backup.sequence - primary.sequence;
+    const bool backupNewer = backup.state == CrossInkSlotState::Checksummed &&
+                             (primary.state != CrossInkSlotState::Checksummed || (distance && distance < 0x80000000U));
+    if (backup.valid() && (!primary.valid() || backupNewer)) stats = secondary;
+    stats.writable = !unreadable;
+    return true;
+  }
+  if (!unreadable) {
+    const auto temporary = readCrossInkSlot(path + ".tmp", format, stats);
+    if (temporary.valid()) return true;
+    if (primary.state == CrossInkSlotState::Missing && backup.state == CrossInkSlotState::Missing &&
+        temporary.state == CrossInkSlotState::Missing)
+      return false;
+  }
+  stats.writable = false;
+  return true;
+}
+
+struct CrossInkLoadContext {
+  const std::string& path;
+  BookReadingStats result;
+  bool found = false;
+};
+
+bool loadCrossInkLocked(void* input) {
+  auto& request = *static_cast<CrossInkLoadContext*>(input);
+  const auto directory = Storage.lookupPath(request.path.c_str());
+  if (directory == HalStorage::PathStatus::Missing) return true;
+  uint8_t mac[6]{};
+  if (directory == HalStorage::PathStatus::Failed || !readingstats::normalStatsAllowed() ||
+      esp_efuse_mac_get_default(mac) != 0) {
+    request.found = true;
+    request.result.writable = false;
+    return true;
+  }
+  char identity[22];
+  snprintf(identity, sizeof(identity), "crossink-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4],
+           mac[5]);
+  for (const auto format : CROSSINK_FORMATS) {
+    char filename[40];
+    snprintf(filename, sizeof(filename), "/stats_v%u_%s.bin", static_cast<unsigned>(format.version), identity);
+    if (readCrossInkFamily(request.path + filename, format, request.result)) {
+      request.found = true;
+      return true;
+    }
+  }
+  return true;
+}
+
 struct LoadContext {
   const std::string& path;
   BookReadingStats::LoadMode mode;
@@ -304,6 +415,16 @@ bool BookReadingStats::decode(const uint8_t* data, size_t size, BookReadingStats
 BookReadingStats BookReadingStats::load(const std::string& cachePath, LoadMode mode) {
   LoadContext context{cachePath, mode, {}};
   if (!Storage.withStorageLock(loadBookLocked, &context)) context.result.writable = false;
+  return context.result;
+}
+
+BookReadingStats BookReadingStats::loadCrossInk(const std::string& cachePath, bool& found) {
+  CrossInkLoadContext context{cachePath, {}};
+  if (!Storage.withStorageLock(loadCrossInkLocked, &context)) {
+    context.found = true;
+    context.result.writable = false;
+  }
+  found = context.found;
   return context.result;
 }
 

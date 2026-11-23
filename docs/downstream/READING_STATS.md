@@ -31,10 +31,10 @@ and reading-pattern breakdowns. See [reading statistics views](READING_INSIGHTS.
 
 ## Data and compatibility
 
-CrossInk book formats v1–v5 and global formats v1–v3 are read. New writes retain
-book v5 (73 bytes) and global v3 (159 bytes). Unknown newer versions, malformed
-payloads and unreadable existing files disable writes for that snapshot; they
-are not replaced with empty counters. Counter additions saturate.
+Native loads read book formats v1–v5 and global formats v1–v3. New writes
+retain book v5 (73 bytes) and global v3 (159 bytes). Unknown newer versions,
+malformed payloads, and unreadable existing files disable writes for that
+snapshot. Counter additions saturate.
 
 Global statistics remain at `/.crosspoint/global_stats.bin`. Book statistics
 are saved under `/.crosspoint/reading_stats/<existing-cache-leaf>/stats_v5.bin`,
@@ -42,6 +42,17 @@ outside rebuildable page-cache directories. On first use, the loader looks for
 existing statistics in the current cache and then CrossInk's FNV-based EPUB
 cache. It reads those sources without moving/deleting them, retains the current
 CrossPoint cache identity, and honors existing per-book disable markers.
+
+The legacy cache reader also accepts device-qualified CrossInk book
+statistics v4–v7 for the current reader's hardware ID. It reads complete raw
+payloads and verifies the sequence and CRC of two-slot saves. A recognized
+damaged family without a valid recovery copy blocks a native save. Existing
+native history, including an intentional reset, takes priority in the native
+statistics directory. Version 6 and 7 pace values round to the nearest second
+for native v5, and the source retains the full fraction and counter identity.
+Cache clearing preserves the qualified files and their origin records. Where
+unqualified and qualified history coexist, it keeps both sources available so
+the normal loader can choose using the cache path.
 
 Bulk and individual cache-clear paths preserve historical statistics and disable
 markers, including not-yet-reopened CrossInk EPUB caches. Rebuildable metadata,

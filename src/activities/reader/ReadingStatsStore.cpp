@@ -79,6 +79,18 @@ BookReadingStats readingstats::loadBook(const std::string& cachePath, const std:
   for (const auto& path : directories) {
     if (path.empty()) continue;
     const auto status = statsPresence(path);
+    // In the older CrossInk directory, the qualified family wins over a
+    // legacy unqualified copy. Native history in the current paths wins first.
+    const bool crossInkCache = path == legacy || (legacy.empty() && path == cachePath);
+    if (status != HalStorage::PathStatus::Failed && crossInkCache &&
+        (status == HalStorage::PathStatus::Missing || path != cachePath)) {
+      bool crossInkFound = false;
+      auto imported = BookReadingStats::loadCrossInk(path, crossInkFound);
+      if (crossInkFound) {
+        if (found) *found = true;
+        return imported;
+      }
+    }
     if (status == HalStorage::PathStatus::Missing) continue;
     if (found) *found = true;
     if (status == HalStorage::PathStatus::Present) return BookReadingStats::load(path, mode);
@@ -141,8 +153,15 @@ bool readingstats::preserveCache(const std::string& cachePath) {
   if (marker == HalStorage::PathStatus::Failed) return false;
   const auto cacheStats = statsPresence(cachePath);
   if (cacheStats == HalStorage::PathStatus::Failed) return false;
-  if (cacheStats == HalStorage::PathStatus::Present) {
-    const auto stats = BookReadingStats::load(cachePath);
+  const bool nativeFound = cacheStats == HalStorage::PathStatus::Present;
+  bool crossInkFound = false;
+  const auto imported = BookReadingStats::loadCrossInk(cachePath, crossInkFound);
+  // Both kinds survive cache clearing. When they coexist, let loadBook pick
+  // the right history for the current/legacy path before making a native copy.
+  const bool copyNative = nativeFound && !crossInkFound;
+  const bool copyCrossInk = crossInkFound && !nativeFound;
+  if (copyNative || copyCrossInk) {
+    const auto stats = copyNative ? BookReadingStats::load(cachePath) : imported;
     if (!stats.writable) return false;
     const auto destinationStats = statsPresence(destination);
     if (destinationStats == HalStorage::PathStatus::Failed) return false;
@@ -297,6 +316,7 @@ bool readingstats::clearCache(const std::string& cachePath) {
     if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
     // Keep all versions and transaction artifacts, including opaque future data.
     if (strncmp(name, "stats_v", 7) == 0 || strncmp(name, "stats.bin", 9) == 0 ||
+        strncmp(name, "stats_origin.bin", 16) == 0 || strncmp(name, "stats_crossink-", 15) == 0 ||
         strncmp(name, "reading_stats_off", 17) == 0 || strncmp(name, "reader_prefs.json", 17) == 0 ||
         strncmp(name, "reader_settings.bin", 19) == 0)
       continue;

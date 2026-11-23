@@ -34,6 +34,10 @@ struct BookReadingStats {
   // Returns defaults if none exists; unsupported or damaged data disables writes.
   static BookReadingStats load(const std::string& cachePath, LoadMode mode = LoadMode::Repair);
 
+  // Read the current reader's CrossInk cache with no source-file changes.
+  // A present, unreadable family sets found and disables native writes.
+  static BookReadingStats loadCrossInk(const std::string& cachePath, bool& found);
+
   // Decode a supported complete payload; failure leaves output unchanged.
   static bool decode(const uint8_t* data, size_t size, BookReadingStats& output);
 
