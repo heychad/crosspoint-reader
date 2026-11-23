@@ -22,6 +22,7 @@ code = r'''
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 #define LOG_ERR(...) ((void)0)
@@ -33,11 +34,14 @@ struct RenderLock {template<class T>RenderLock(T&){assert(!lockDepth++);}~Render
 struct Book {std::string path,title,name,author;bool exists=true,readable=true;uint8_t kinds=1;};
 std::vector<Book> books;
 namespace library {
+ constexpr unsigned CLIX_FLAG_SCAN_COMPLETE = 1;
  enum class SortOrder {TitleAsc};
  struct ClixRecord {uint16_t id;};
  struct LibraryIndexFile {
   struct PathLookup {bool ready=false;explicit operator bool()const{return ready;}};
   int failRecord=-1;int pathReads=0;
+  struct { unsigned flags = CLIX_FLAG_SCAN_COMPLETE; } indexHeader;
+  const auto& header() const { return indexHeader; }
   uint16_t bookCount()const{return books.size();}
   uint16_t ordinalForRow(SortOrder,uint16_t row){assert(lockDepth);return row;}
   bool readRecord(uint16_t ordinal,ClixRecord& out){assert(lockDepth);out.id=ordinal;return ordinal!=failRecord;}
@@ -47,15 +51,30 @@ namespace library {
   bool readAuthor(const ClixRecord& r,std::string& text){text=books[r.id].author;return true;}
  };
 }
-struct {bool exists(const char* path){for(const auto& b:books)if(b.path==path)return b.exists;return false;}} Storage;
+struct {int probes=0;bool exists(const char* path){++probes;for(const auto& b:books)if(b.path==path)return b.exists;return false;}} Storage;
 namespace FsHelpers {bool hasReflowableBookExtension(const std::string& path){return !path.ends_with(".xtc");}}
-namespace saveditems {bool inspect(const std::string& path,uint8_t& kinds){assert(lockDepth);for(const auto& b:books)if(b.path==path){kinds=b.kinds;return b.readable;}assert(false);return false;}}
+namespace saveditems {
+ constexpr uint8_t ALL_KINDS = 7;
+ struct Candidates {
+   std::set<std::string> possible;
+   bool unchanged = true;
+   bool advance() const { return true; }
+   bool valid() const { return unchanged; }
+   bool empty() const { return possible.empty(); }
+   uint8_t kindsFor(const std::string& path) const { return possible.contains(path) ? ALL_KINDS : 0; }
+ };
+ bool inspect(const std::string& path,uint8_t& kinds,uint8_t candidates){
+   assert(lockDepth && candidates);for(const auto& b:books)if(b.path==path){kinds=b.kinds&candidates;return b.readable;}
+   assert(false);return false;
+ }
+}
 namespace fui {struct ListItem{const char* label=nullptr;const char* subtitle=nullptr;int actionValue=-1;};}
 struct SavedItemsActivity {
  enum class State {Scanning,Ready,Error};
  library::LibraryIndexFile index;
  library::ClixRecord record{};
  library::LibraryIndexFile::PathLookup scanPaths{true};
+ std::unique_ptr<saveditems::Candidates> sidecars;
  std::unique_ptr<uint16_t[]> ordinals;
  uint16_t count=0,scanned=0;
  State state=State::Scanning;bool incomplete=false;
@@ -63,10 +82,12 @@ struct SavedItemsActivity {
  explicit SavedItemsActivity(size_t total):ordinals(std::make_unique<uint16_t[]>(total)){scratch.reserve(512);}
  void requestUpdate(){++updates;}
  void scanBatch();
+ bool discardChangedSidecars();
  static void provideRow(void*,uint16_t,fui::ListItem&);
 };
 '''
 code += method('void SavedItemsActivity::scanBatch(')
+code += method('bool SavedItemsActivity::discardChangedSidecars(')
 code += method('void SavedItemsActivity::provideRow(')
 code += r'''
 int main(){
@@ -87,6 +108,28 @@ int main(){
   SavedItemsActivity damaged(books.size());damaged.index.failRecord=42;
   while(damaged.state==SavedItemsActivity::State::Scanning)damaged.scanBatch();
   assert(damaged.state==SavedItemsActivity::State::Error && damaged.count==39 && lockDepth==0);
+  Storage.probes=0;
+  SavedItemsActivity empty(books.size());
+  empty.sidecars=std::make_unique<saveditems::Candidates>();
+  empty.scanBatch();
+  assert(empty.state==SavedItemsActivity::State::Ready && !empty.count && !empty.index.pathReads && !Storage.probes);
+
+  SavedItemsActivity sparse(books.size());
+  sparse.sidecars=std::make_unique<saveditems::Candidates>();
+  sparse.sidecars->possible={books[0].path,books[5].path};
+  while(sparse.state==SavedItemsActivity::State::Scanning)sparse.scanBatch();
+  assert(sparse.count==2 && sparse.incomplete && Storage.probes==2 && sparse.updates==1);
+
+  SavedItemsActivity changed(books.size());
+  changed.sidecars=std::make_unique<saveditems::Candidates>();
+  changed.sidecars->possible={books[0].path};
+  changed.scanBatch();
+  assert(changed.count==1);
+  changed.sidecars->unchanged=false;
+  changed.scanBatch();
+  assert(!changed.sidecars && changed.count==0 && changed.scanned==0);
+  while(changed.state==SavedItemsActivity::State::Scanning)changed.scanBatch();
+  assert(changed.count==4093 && changed.incomplete && changed.updates==1);
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

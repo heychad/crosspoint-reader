@@ -8,6 +8,7 @@
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 #include "util/SavedItems.h"
+#include "util/SavedItemsCandidates.h"
 
 class SavedItemsActivity final : public UiListActivity {
  public:
@@ -15,11 +16,13 @@ class SavedItemsActivity final : public UiListActivity {
   void onEnter() override;
   void onExit() override;
   void loop() override;
+  bool skipLoopDelay() override { return state == State::Scanning; }
   void render(RenderLock&& lock) override;
 
  private:
   enum class State { Scanning, Ready, Error };
   void scanBatch();
+  bool discardChangedSidecars();
   static void provideRow(void* context, uint16_t index, freeink::ui::ListItem& row);
   int listCount() const override;
   const char* headerTitle() const override;
@@ -32,6 +35,7 @@ class SavedItemsActivity final : public UiListActivity {
   library::LibraryIndexFile index;
   library::ClixRecord record{};
   library::LibraryIndexFile::PathLookup scanPaths;
+  std::unique_ptr<saveditems::Candidates> sidecars;
   std::unique_ptr<uint16_t[]> ordinals;
   uint16_t count = 0;
   uint16_t scanned = 0;

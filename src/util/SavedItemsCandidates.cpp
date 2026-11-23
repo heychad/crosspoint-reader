@@ -1,0 +1,121 @@
+#include "SavedItemsCandidates.h"
+
+#include <CheckedStoragePath.h>
+#include <Memory.h>
+
+#include "BookMovePaths.h"
+#include "SavedItems.h"
+
+namespace saveditems {
+namespace {
+constexpr const char* DIRECTORIES[] = {"/.crosspoint/bookmarks", "/.crosspoint/clippings"};
+constexpr unsigned RECORDS_PER_BATCH = 32;
+
+bool ascii(std::string_view name) {
+  for (const unsigned char c : name) {
+    if (c >= 128) return false;
+  }
+  return true;
+}
+
+uint32_t foldedHash(std::string_view name) {
+  uint32_t hash = 2166136261U;
+  for (const unsigned char c : name) {
+    const unsigned char folded = c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+    hash = (hash ^ folded) * 16777619U;
+  }
+  return hash;
+}
+}  // namespace
+
+void Candidates::Names::insert(std::string_view name) {
+  any = true;
+  if (!ascii(name)) {
+    reliable = false;
+    return;
+  }
+  const uint32_t hash = foldedHash(name);
+  for (const uint32_t bit : {hash % BIT_COUNT, (hash >> 16) % BIT_COUNT}) {
+    bits[bit / 32] |= 1UL << (bit % 32);
+  }
+}
+
+bool Candidates::Names::mightContain(std::string_view name) const {
+  if (!reliable) return true;
+  if (!any) return false;
+  name.remove_prefix(name.find_last_of('/') + 1);
+  if (!ascii(name) || !validCheckedStorageComponent(name)) return true;
+  const auto dot = name.find('.');
+  // The inventory emits long names. A possible FAT short-name lookup must
+  // still go through the filesystem, even if it misses the filter.
+  if (name.size() <= 8 || (dot <= 8 && name.size() - dot <= 4)) return true;
+  const uint32_t hash = foldedHash(name);
+  for (const uint32_t bit : {hash % BIT_COUNT, (hash >> 16) % BIT_COUNT}) {
+    if ((bits[bit / 32] & (1UL << (bit % 32))) == 0) return false;
+  }
+  return true;
+}
+
+Candidates::Candidates() : initialized(Storage.beginMutationSnapshot(snapshot)) {}
+
+bool Candidates::valid() const { return initialized && Storage.mutationSnapshotUnchanged(snapshot); }
+
+bool Candidates::empty() const {
+  return current == STORE_COUNT && stores[0].reliable && stores[1].reliable && !stores[0].any && !stores[1].any;
+}
+
+bool Candidates::addEntry(void* context, const wirecheck::DirectoryEntry& entry) {
+  static_cast<Names*>(context)->insert(entry.name);
+  return true;
+}
+
+bool Candidates::advance() {
+  if (!valid() || current == STORE_COUNT) return true;
+  auto& names = stores[current];
+  if (!scan) {
+    const auto status = Storage.lookupPath(DIRECTORIES[current]);
+    if (status == HalStorage::PathStatus::Present) {
+      auto directory = Storage.openChecked(DIRECTORIES[current]);
+      if (directory && directory.isDirectory()) {
+        scan = makeUniqueNoThrow<wirecheck::StorageDirectoryScan>(
+            Storage, snapshot, std::move(directory),
+            wirecheck::StorageDirectoryScan::Callbacks{&names, [](void*) { return true; }, addEntry});
+      }
+    }
+    if (status != HalStorage::PathStatus::Missing && !scan) names.reliable = false;
+  }
+  if (scan) {
+    for (unsigned i = 0; i < RECORDS_PER_BATCH; ++i) {
+      const auto result = scan->step();
+      if (result == wirecheck::ScanResult::Pending) continue;
+      scan.reset();
+      names.reliable &= result == wirecheck::ScanResult::Complete;
+      break;
+    }
+    if (scan) return false;
+  }
+  return ++current == STORE_COUNT;
+}
+
+uint8_t Candidates::kindsFor(std::string_view book) const {
+  using bookmove::BookKind;
+  using bookmove::Root;
+  uint8_t kinds = 0;
+  const auto path = [book](Root root) { return bookmove::rootPath(book, BookKind::Reflowable, root); };
+  const auto& bookmarks = stores[0];
+  if (bookmarks.mightContain(path(Root::NativeBookmarks))) kinds |= BOOKMARKS;
+  for (const Root root : {Root::CrcBookmarks, Root::HashBookmarks}) {
+    const auto name = path(root);
+    if (bookmarks.mightContain(name) || bookmarks.mightContain(name + ".bookmark-edit.bak") ||
+        bookmarks.mightContain(name + ".bookmark-edit.guard")) {
+      kinds |= CROSSINK_BOOKMARKS;
+      break;
+    }
+  }
+  const auto name = path(Root::Clippings);
+  if (stores[1].mightContain(name) || stores[1].mightContain(name + ".bak")) kinds |= HAS_CLIPPINGS;
+  return kinds;
+}
+
+static_assert(sizeof(Candidates) + sizeof(wirecheck::StorageDirectoryScan) <= 3072);
+}  // namespace saveditems

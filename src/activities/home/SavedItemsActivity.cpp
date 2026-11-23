@@ -53,10 +53,13 @@ void SavedItemsActivity::onEnter() {
   if (!ordinals) {
     LOG_ERR("SAVED", "OOM: saved-item rows (%zu bytes)", sizeof(uint16_t) * index.bookCount());
     state = State::Error;
+    return;
   }
+  sidecars = makeUniqueNoThrow<saveditems::Candidates>();
 }
 
 void SavedItemsActivity::onExit() {
+  sidecars.reset();
   scanPaths = {};
   index.close();
   ordinals.reset();
@@ -65,6 +68,9 @@ void SavedItemsActivity::onExit() {
 
 void SavedItemsActivity::scanBatch() {
   RenderLock lock(*this);
+  if (sidecars && !sidecars->advance()) return;
+  if (discardChangedSidecars()) return;
+  if (sidecars && sidecars->empty()) scanned = index.bookCount();
   const uint16_t end = std::min<int>(index.bookCount(), scanned + 4);
   for (; scanned < end; ++scanned) {
     const uint16_t ordinal = index.ordinalForRow(library::SortOrder::TitleAsc, scanned);
@@ -75,20 +81,32 @@ void SavedItemsActivity::scanBatch() {
       return;
     }
     if (!FsHelpers::hasReflowableBookExtension(scratch)) continue;
+    const uint8_t candidates = sidecars ? sidecars->kindsFor(scratch) : saveditems::ALL_KINDS;
+    if (!candidates) continue;
     if (!Storage.exists(scratch.c_str())) {
       incomplete = true;
       continue;
     }
     uint8_t kinds = 0;
-    const bool readable = saveditems::inspect(scratch, kinds);
+    const bool readable = saveditems::inspect(scratch, kinds, candidates);
     incomplete |= !readable;
     if (kinds || !readable) ordinals[count++] = ordinal;
   }
+  if (discardChangedSidecars()) return;
   if (scanned == index.bookCount()) {
+    sidecars.reset();
     scanPaths = {};
     state = State::Ready;
+    requestUpdate();
   }
-  if (state == State::Ready || scanned % 32 == 0) requestUpdate();
+}
+
+bool SavedItemsActivity::discardChangedSidecars() {
+  if (!sidecars || sidecars->valid()) return false;
+  sidecars.reset();
+  count = scanned = 0;
+  incomplete = (index.header().flags & library::CLIX_FLAG_SCAN_COMPLETE) == 0;
+  return true;
 }
 
 void SavedItemsActivity::loop() {

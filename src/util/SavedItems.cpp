@@ -37,20 +37,20 @@ bool hasBookmarks(const std::string& path, bool& present) {
 }
 }  // namespace
 
-bool saveditems::inspect(const std::string& bookPath, uint8_t& kinds) {
+bool saveditems::inspect(const std::string& bookPath, uint8_t& kinds, const uint8_t candidates) {
   kinds = 0;
   bool bookmarks = false;
-  const bool readable = hasBookmarks(BookmarkUtil::getBookmarkPath(bookPath), bookmarks);
+  const bool readable = !(candidates & BOOKMARKS) || hasBookmarks(BookmarkUtil::getBookmarkPath(bookPath), bookmarks);
   if (bookmarks) kinds |= BOOKMARKS;
   CrossInkBookmarks legacy;
-  if (legacy.open(bookPath) && legacy.count() > 0) kinds |= CROSSINK_BOOKMARKS;
+  if ((candidates & CROSSINK_BOOKMARKS) && legacy.open(bookPath) && legacy.count() > 0) kinds |= CROSSINK_BOOKMARKS;
   bool legacyReadable = !legacy.unreadable() && legacy.count() <= MAX_LEGACY_RECORDS_PER_BOOK;
   CrossInkBookmarks::Entry legacyEntry;
   for (uint16_t i = 0; i < legacy.count() && i < MAX_LEGACY_RECORDS_PER_BOOK; ++i) {
     if (!legacy.read(i, legacyEntry)) legacyReadable = false;
   }
   uint16_t clippings = 0;
-  const bool clippingReadable = ClippingStore::countForBook(bookPath, clippings);
+  const bool clippingReadable = !(candidates & HAS_CLIPPINGS) || ClippingStore::countForBook(bookPath, clippings);
   if (clippings) kinds |= HAS_CLIPPINGS;
   if (!readable || !clippingReadable || !legacyReadable) {
     LOG_ERR("SAVED", "Unreadable saved items for %s", bookPath.c_str());

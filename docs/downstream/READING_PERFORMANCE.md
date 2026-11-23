@@ -10,8 +10,13 @@ physical reader. Keep reading positions and protected-book support intact.
 
 ## Saved Items feedback, November 12
 
-- First open took more than 30 seconds; Chad clarified that this was only the
-  first open. Measure first and repeated opens separately before changing caches.
+- First open took more than 30 seconds. Saved Items now scans the bookmark and
+  clipping directories once and skips books with no matching files. It shows the
+  loading screen once. A 4,096-book host regression checked only the two books
+  with possible saved items. FAT and exFAT tests cover case-insensitive names,
+  backup files, and a read failure. If the card changes during the scan, it
+  restarts with the original per-book checks. A missing or dirty library index
+  still triggers a rebuild. Measure first and repeated opens on the X4 Pro.
 - The Saved Items route now opens the saved list as soon as the book loads.
   The first reader frame waits until the user selects a passage or returns
   from the list. Reader initialization still starts tracking and records the
