@@ -133,6 +133,7 @@ add_test(NAME ClassicHomeUiScale COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_S
 add_test(NAME MinimalHomeRender COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_minimal_home.py)
 add_test(NAME DashboardHomeRender COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_dashboard_home.py)
 add_test(NAME BookProgressValidation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_book_progress_validation.py)
+add_test(NAME EpubNavigation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_epub_navigation.py)
 add_test(NAME HomeThumbnailFailure COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_thumbnail_failure.py)
 add_test(NAME HomeReaderShortcuts COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_home_reader_shortcuts.py)
 add_test(NAME HomeActionPicker COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/home_picker/test_handoff.py)

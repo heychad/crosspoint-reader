@@ -1336,18 +1336,18 @@ int Epub::resolveHrefToSpineIndex(const std::string& href) const {
   // Same-file reference (anchor-only)
   if (target.empty()) return -1;
 
-  // Extract just the filename for comparison
-  size_t targetSlash = target.find_last_of('/');
-  std::string targetFilename = (targetSlash != std::string::npos) ? target.substr(targetSlash + 1) : target;
-
-  for (int i = 0; i < getSpineItemsCount(); i++) {
+  const auto targetSlash = target.find_last_of('/');
+  const auto targetFilename = std::string_view(target).substr(targetSlash == std::string::npos ? 0 : targetSlash + 1);
+  int filenameMatch = -1;
+  const int spineCount = getSpineItemsCount();
+  for (int i = 0; i < spineCount; ++i) {
     const auto& spineHref = getSpineItem(i).href;
-    // Try exact match first
     if (spineHref == target) return i;
-    // Then filename-only match
-    size_t spineSlash = spineHref.find_last_of('/');
-    std::string spineFilename = (spineSlash != std::string::npos) ? spineHref.substr(spineSlash + 1) : spineHref;
-    if (spineFilename == targetFilename) return i;
+    if (filenameMatch >= 0) continue;
+    const auto spineSlash = spineHref.find_last_of('/');
+    if (std::string_view(spineHref).substr(spineSlash == std::string::npos ? 0 : spineSlash + 1) == targetFilename) {
+      filenameMatch = i;
+    }
   }
-  return -1;
+  return filenameMatch;
 }

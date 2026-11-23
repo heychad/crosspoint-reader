@@ -16,25 +16,19 @@ Source revisions:
 
 CrossInk RC2 was released November 12. Selected behavior and the 157-key settings
 inventory have been compared and checked; see [the RC2 audit](RC2_AUDIT.md).
-This does not adopt its SDK or establish full RC2 parity on the device.
+The [November 23 release check](UPSTREAM_STRATEGY.md) starts the RC3 comparison
+using CrossPoint 2.0.0 and its existing SDK pin.
 
 ## Selected first-release scope: current source snapshot
 
-The table describes the current local candidate. “Built” means implemented with
-local checks, not accepted on the X4 Pro. Chad installed the test58-based
-clipfix2 and confirmed clipping, saved-content navigation, cancellation across
-orientations, page turns, Quick Lock, sleep/resume, and direct Home covers.
-Subsequent feature work is not installed or physically tested. Test59 source
-`d8d6005a` passes all 2,451 host checks and the X4 Pro build. Two cumulative
-review rounds and bounded follow-ups are complete within the coverage described
-in [the candidate record](CUMULATIVE_CANDIDATE.md). The verified package and
-remaining backup/device gates are in [the handoff](TEST59_HANDOFF.md).
-The historical inventory below records an earlier stage, not the current status.
-
-November 14 feedback identified a swipe/link-return conflict. The bounded
-[test60 swipe fix](SWIPE_LINK_RETURN_FIX.md) passes 2,452 host checks, the X4 Pro
-build, sanitizers, and focused review. Its fresh scoped state backup and verified
-SD transfer are complete; installation and physical confirmation remain pending.
+The table records local implementation and feature-specific evidence. Chad
+confirmed clipping and Saved Items on clipfix2, and progress, bookmarks, and
+clippings across a move on [test62](STATEFUL_BOOK_MOVES.md). On November 23 the
+reader still reported test62. The reviewed test64 deletion-sync candidate
+at `20361b80` passed both X4 Pro builds and 2,469 host checks. Its card copy
+at `zDev/DEL64.BIN` was verified by SHA-256. Installation and the disposable
+EPUB delete-and-restore test remain pending. The cumulative reviews before
+these builds are recorded in [the test59 candidate record](CUMULATIVE_CANDIDATE.md).
 
 | Choice | Current state |
 | --- | --- |
@@ -57,7 +51,7 @@ SD transfer are complete; installation and physical confirmation remain pending.
 | C4 History charts and trends | Built: time-of-day, weekday, reading-day calendar, and 7/30/365-day counts. The optional daily recorder adds Device rows for recorded Today and a 7-day daily average, preserving unknown data and partial warnings. The standard profile leaves daily recording disabled; test59 enables it. Device validation remains. See [daily statistics](DAILY_READING_STATS.md). |
 | C5 Statistics backup, restore, reset | Core built behind backup/restore flags. Manual book/device snapshots, automatic dated/clockless snapshots, independent seven-file retention groups, confirmed closed-book/device restore, device reset, and reader book/pace reset are implemented. Backups require checked sync/close/readback; restore/reset stop before replacement when the pre-operation backup fails. RC2 v4 device backups translate totals/history into the native format while preserving all 175 source bytes and reader identity. 231 focused checks, 65 sanitizer cases, FAT/exFAT faults, and default/ten-flag X4 Pro builds pass. Runtime measurements and device acceptance remain. |
 | C6 Near-end completion prompt | Core built behind experimental prompt/completion/automation flags. Valid optimizer character/word metadata locates the near-99% threshold, with byte-weighted fallback. The prompt is offered once per open after crossing and leaving that chapter. Actual confirm/cancel/retry callbacks now join statistics saves, reader destruction, deferred moves, and remount checks on FAT/exFAT. Global and per-book tracking stay off when disabled; retries preserve exact totals. The cumulative host suite and nine-flag X4 Pro build pass. Responsiveness measurements and device acceptance remain. |
-| D1 Google Drive to reader sync | Core built for the selected-book web-library flow: Drive Desktop cache, queue, create-only Wi-Fi uploads, capability-selected checksum/download verification, durable receipts, and live progress. Atomic exclusive creation now prevents late collisions from truncating files. Eight real-HTTP queue checks, 303 client tests, the validator, nine firmware checks, FAT/exFAT remount cases, ASan, and both X4 Pro profiles pass. Vendor arithmetic findings are corrected; real FAT/exFAT checks pass both sanitizers. Experimental staged publication stays separate and disabled. The client code is pushed on a private code-only branch. Runtime measurements and physical validation remain. See [sync contract](FILE_CHECKSUM_API.md). |
+| D1 Google Drive to reader sync | The web library uses a Drive Desktop cache, create-only Wi-Fi uploads, card checksum or download verification, and durable receipts. Previous Wi-Fi transfers were verified byte for byte. Test62 added state-preserving moves and passed the on-device resume, bookmark, and clipping checks. Test64 adds recoverable intentional-deletion sync with a 60-day Drive recovery window and local reading-state retention for same-path restores. Its disposable EPUB test is pending. See [the sync contract](FILE_CHECKSUM_API.md). |
 | E1 Extra home-screen themes | Core implementation built for Cover grid, Minimal, Dashboard, and gated Carousel. Compact Home gestures, Menu, preview cycling, cover taps, and current-book statistics are implemented. Minimal now adds rounded adaptive artwork, reading time, and progress. Dashboard adds chapter text, clock-based/clockless reading fields, and device footers, with a landscape grid. The read-only summaries and artwork-only cache preserve reading state; native fonts, SDK controls, empty-state copy, and placeholder art remain. See [presentation](HOME_PRESENTATION.md), [controls](COMPACT_HOME_CONTROLS.md), and [Carousel](CAROUSEL_HOME.md). Device acceptance remains. |
 | E2 Extra sleep-screen dashboards | Core implementation built for the selected X4 Pro modes, including the gated Page Overlay family. Reading-statistics, Reading summary, cover summary, Minimal book, and Book dashboard sleep screens built. Without a clock, Reading statistics also shows locally available All devices totals, with an explicit partial-data warning. The latter two show progress without requiring statistics and use a title fallback when no cached cover is available. Book dashboard can show the saved EPUB section's chapter title, start date, daily average, and current device streak when their data is available. Experimental Page Overlay uses retained screen content and CrossInk image locations; its favorite and folder controls use a recoverable state writer. Normal state saves now use that same checked writer. Reader and Home show state-save warnings; Home Retry saves current RAM state after recovery and can retry failures with no artifacts. Active or unreadable completion journals and unresolved artifacts block recovery; retired journals no longer block Home Retry. The journal gate, recovery, and resave share one storage lock. The loaded reader now reconstructs EPUB/TXT/Markdown/XTC/XTCH pages before teardown, including materialized pages from unfinished builds. Stale-layout guards protect reading state; unavailable layouts can use the reconstruction path below. When no overlay art is available, the loaded reader now uses its normal grayscale display path before teardown. Sleep now processes its pending transition without replaying reader input. Custom BMPs use runtime fit/crop bounds, retain native gray levels, and refresh their converted cache when content changes, even with unchanged FAT timestamps. Failed bitmap renders propagate to existing fallbacks. Missing or stale EPUB/TXT/Markdown section layouts can now rebuild to the saved passage through the loaded book, with local memory-recovery profiles and unchanged progress/settings. Active section builders keep exclusive ownership; already materialized pages remain available. RC2 Cover + overlay is built in the enabled Page Overlay profile, including import and favorite/folder selection. RC2 Minimal statistics adds its extra overlay only on X3, so the existing Minimal book mapping is correct for X4 Pro; see [sleep-mode mapping](COVER_OVERLAY_SLEEP.md). Visual acceptance and device checks remain. |
 | E4 Small/large UI scale | Built; display fit needs hardware checks. |

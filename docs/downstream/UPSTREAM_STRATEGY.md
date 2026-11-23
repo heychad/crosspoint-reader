@@ -1,6 +1,6 @@
 # Upstream maintenance strategy
 
-Checked November 13, 2026.
+Checked November 23, 2026.
 
 ## Release channels
 
@@ -20,7 +20,8 @@ Current pins verified through GitHub Releases:
 
 - CrossPoint stable: `2.0.0`, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - CrossInk stable reference: `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`.
-- CrossInk RC reference: `v2.0.0-rc2`, `959e3d1575cf1cf49475c4c4546e49adadf4d477`.
+- New CrossInk RC comparison: `v2.0.0-rc3`, `0b939f41ec22c0d647a5c65ec5126141cbe7e565`.
+- Last full CrossInk settings audit: `v2.0.0-rc2`, `959e3d1575cf1cf49475c4c4546e49adadf4d477`.
 - CrossPoint `2.0.0rc` is older than stable `2.0.0`; it is not an upgrade target.
 
 The November 12 release check found CrossInk `v2.0.0-rc2`,
@@ -29,10 +30,16 @@ the fork has not adopted its SDK or full change set. See the
 [RC2 review](RC2_AUDIT.md) for the integration order. CrossPoint stable remains
 2.0.0.
 
-The November 13 fresh fetch and GitHub Releases API check found no newer stable
-CrossPoint or tagged CrossInk RC. The references remain CrossPoint 2.0.0 and
-CrossInk v2.0.0-rc2. The migration audit compares RC2 source directly; this does
-not adopt either moving development branch or change the SDK pin.
+The November 23 release and Git tag check confirmed CrossPoint 2.0.0 remains
+the stable base. [CrossInk RC3](https://github.com/uxjulia/CrossInk/releases/tag/v2.0.0-rc3)
+adds 65 commits after RC2, with 51 paths also changed in the fork. The two EPUB
+navigation fixes from [`8e809653`](https://github.com/uxjulia/CrossInk/commit/8e80965331011d871f72856259e1dc850846fe51)
+are adapted to the fork's current reader. The WebDAV copy fix from that commit
+still needs a separate storage review. The source check flagged five changed
+settings files. RC3 adds the catalog keys `ruledLines`, `textDarkness`, and
+`twoToneTextAA`. Ruled lines and text darkness can be considered with the
+deferred reading modes and font work. Two-tone antialiasing belongs to RC3's
+EEGO display work. The 157-key settings inventory still covers RC2.
 
 Review new releases at integration milestones. Pin the selected tag and SDK,
 review its changes, and test on a development branch. Promote an RC only after
@@ -57,7 +64,8 @@ in RELEASE_BASELINE.md. Keep the preserved branch as historical evidence.
 - Stable baseline: CrossPoint 2.0.0, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - Previously integrated upstream development tip: `0333cbbe4`, 45 commits beyond the stable baseline.
 - Original CrossInk reference: v1.6.1, `9914146ee`.
-- Active CrossInk feature comparison: v2.0.0-rc2, `959e3d157`.
+- New CrossInk feature comparison: v2.0.0-rc3, `0b939f41`.
+- Previous CrossInk audit: v2.0.0-rc2, `959e3d157`.
 - Earlier RC comparison: v2.0.0-rc, `b8feaec4d`. Historical development audit: `1990a78f2`.
 
 These are dated observations, not moving version pins. Refresh before integration.
@@ -74,7 +82,7 @@ pending integration task. Evaluate future updates against the pinned release.
 At the next integration milestone, run:
 
 ```sh
-python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc2
+python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc3 --crossink-base refs/tags/v2.0.0-rc2
 ```
 
 Inspect newly reported changes, prioritize fixes to already-ported behavior, and update the comparison baseline after recording
