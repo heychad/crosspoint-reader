@@ -311,6 +311,70 @@ TEST_F(ZipFileTest, SkipsOversizedNamesAndEntriesWithExtraFieldsAndComments) {
   EXPECT_EQ(extract(zip, "plain"), "plain!");
 }
 
+TEST_F(ZipFileTest, BoundsSdReadsWhenFindingPackageMetadataPastManyChapters) {
+  const char* container = "META-INF/container.xml";
+  const char* package = "OEBPS/package.opf";
+  ZipBuilder builder;
+  builder.addStored(container, "package location");
+  for (int i = 0; i < 300; i++) {
+    builder.addStored("OEBPS/text/chapter-" + std::to_string(i) + ".xhtml", "chapter content");
+  }
+  builder.addStored(package, "package metadata");
+  install(builder);
+
+  ZipFile zip(path);
+  ASSERT_TRUE(zip.open());
+  for (const auto* entry : {container, package}) {
+    EXPECT_EQ(sizeOf(zip, entry), 16u);
+    VectorSink sink;
+    ASSERT_TRUE(zip.readFileToStream(entry, sink, 512));
+    EXPECT_EQ(sink.text(), entry == container ? "package location" : "package metadata");
+  }
+  RecordProperty("storage_read_calls", static_cast<int>(HalFile::readOffsets.size()));
+  EXPECT_LT(HalFile::readOffsets.size(), 70u);
+}
+
+TEST_F(ZipFileTest, FindsEntryWithNameAcrossReadWindowBoundary) {
+  const auto target = "OEBPS/" + std::string(120, 'a') + ".opf";
+  ZipBuilder builder;
+  // 46 header + 1 filename + 411 extra bytes put the next name at byte 504.
+  builder.addStored("a", "a", std::string(411, 'x')).addStored(target, "package metadata");
+  install(builder);
+
+  ZipFile zip(path);
+  ASSERT_TRUE(zip.open());
+  EXPECT_EQ(sizeOf(zip, target.c_str()), 16u);
+  EXPECT_EQ(extract(zip, target.c_str()), "package metadata");
+}
+
+TEST_F(ZipFileTest, DirectoryReadFailuresCanBeRetried) {
+  ZipBuilder builder;
+  builder.addStored("META-INF/container.xml", "package location");
+  install(builder);
+
+  ZipFile zip(path);
+  ASSERT_TRUE(zip.open());
+  size_t size = 0;
+  HalFile::failReadAt = 0;  // This archive fits inside the end-record scan.
+  EXPECT_FALSE(zip.getInflatedFileSize("META-INF/container.xml", &size));
+  HalFile::failReadAt = centralDirOffset;
+  EXPECT_FALSE(zip.getInflatedFileSize("META-INF/container.xml", &size));
+  EXPECT_EQ(sizeOf(zip, "META-INF/container.xml"), 16u);
+}
+
+TEST_F(ZipFileTest, RejectsDirectoryEntriesWithLengthsPastEndOfFile) {
+  ZipBuilder builder;
+  builder.addStored("OEBPS/package.opf", "package metadata");
+  auto bytes = builder.build();
+  const auto commentLength = builder.centralDirOffset + 32;
+  bytes[commentLength] = bytes[commentLength + 1] = 0xff;
+  Storage.setFile(path, std::move(bytes));
+
+  ZipFile zip(path);
+  size_t size = 0;
+  EXPECT_FALSE(zip.getInflatedFileSize("OEBPS/package.opf", &size));
+}
+
 TEST_F(ZipFileTest, PreloadedDirectoryServesLookupsWithoutOpeningTheArchive) {
   ZipBuilder builder;
   builder.addStored("a.txt", "aaaa").addStored("b.txt", "bb");

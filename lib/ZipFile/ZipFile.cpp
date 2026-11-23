@@ -1,8 +1,10 @@
 #include "ZipFile.h"
 
+#include <BufferedFile.h>
 #include <HalStorage.h>
 #include <InflateStream.h>
 #include <Logging.h>
+#include <Memory.h>
 
 #include <algorithm>
 #include <cstring>
@@ -19,6 +21,7 @@ constexpr uint16_t ZIP_METHOD_STORED = 0;
 constexpr uint16_t ZIP_METHOD_DEFLATED = 8;
 // Central directory header excluding the filename, extra field, and comment.
 constexpr size_t CENTRAL_HEADER_BYTES = 46;
+constexpr size_t CENTRAL_READ_BUFFER_BYTES = 512;
 constexpr uint32_t CENTRAL_HEADER_SIGNATURE = 0x02014b50;
 
 uint16_t readLe16(const uint8_t* bytes) {
@@ -149,49 +152,54 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
 
   if (!loadZipDetails()) return false;
 
-  // Phase 1: Try scanning from cursor position first
+  // Start after the preceding match, then wrap at the end. The buffer makes
+  // adjacent header reads and skips within the same window local to RAM.
   const uint32_t startPos = lastCentralDirPosValid ? lastCentralDirPos : zipDetails.centralDirOffset;
   uint32_t entryStart = startPos;
   bool wrapped = false;
-  file.seek(entryStart);
+  const size_t archiveSize = file.size();
+  serialization::BufferedFileReader directory(file, CENTRAL_READ_BUFFER_BYTES);
 
   const size_t targetLen = strlen(filename);
   uint8_t header[CENTRAL_HEADER_BYTES];
   char itemName[256];
 
-  while (true) {
-    // stop if we've wrapped and reached our start position
-    if (wrapped && entryStart >= startPos) break;
+  while (!wrapped || entryStart < startPos) {
+    if (entryStart > archiveSize || !directory.seek(entryStart)) {
+      LOG_ERR("ZIP", "Invalid central directory offset for %s", filename);
+      return false;
+    }
+    const size_t available = archiveSize - entryStart;
+    const size_t headerRead = directory.read(header, sizeof(header));
+    if (headerRead != std::min(sizeof(header), available)) {
+      LOG_ERR("ZIP", "Failed to read central directory for %s", filename);
+      return false;
+    }
 
-    if (file.read(header, sizeof(header)) != static_cast<int>(sizeof(header)) ||
-        readLe32(header) != CENTRAL_HEADER_SIGNATURE) {
-      // End of central directory
-      if (!wrapped && startPos != zipDetails.centralDirOffset) {
-        // Wrap around to beginning
-        entryStart = zipDetails.centralDirOffset;
-        file.seek(entryStart);
-        wrapped = true;
-        continue;
-      }
-      break;
+    if (headerRead != sizeof(header) || readLe32(header) != CENTRAL_HEADER_SIGNATURE) {
+      if (wrapped || startPos == zipDetails.centralDirOffset) break;
+      entryStart = zipDetails.centralDirOffset;
+      wrapped = true;
+      continue;
     }
 
     const uint16_t nameLen = readLe16(header + 28);
     const uint16_t extraLen = readLe16(header + 30);
     const uint16_t commentLen = readLe16(header + 32);
-    // skip name, extra field + comment
-    const uint32_t nextEntry = entryStart + sizeof(header) + nameLen + extraLen + commentLen;
+    const size_t entryBytes = sizeof(header) + nameLen + extraLen + commentLen;
+    if (entryBytes > available || entryBytes > UINT32_MAX - entryStart) {
+      LOG_ERR("ZIP", "Invalid central directory entry length for %s", filename);
+      return false;
+    }
+    const uint32_t nextEntry = entryStart + entryBytes;
 
-    // Skip names that are too long or cannot match by length
     if (nameLen == targetLen && nameLen < sizeof(itemName)) {
-      const int nameRead = file.read(itemName, nameLen);
-      if (nameRead != static_cast<int>(nameLen)) {
-        LOG_ERR("ZIP", "Failed to read entry name for %s: expected %u bytes, got %d", filename,
-                static_cast<unsigned int>(nameLen), nameRead);
-        break;
+      const size_t nameRead = directory.read(itemName, nameLen);
+      if (nameRead != nameLen) {
+        LOG_ERR("ZIP", "Failed to read entry name for %s", filename);
+        return false;
       }
       if (memcmp(itemName, filename, nameLen) == 0) {
-        // Found it! Update cursor to next entry
         fileStat->method = readLe16(header + 10);
         fileStat->compressedSize = readLe32(header + 20);
         fileStat->uncompressedSize = readLe32(header + 24);
@@ -206,7 +214,6 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
     }
 
     entryStart = nextEntry;
-    file.seek(entryStart);
   }
 
   return false;
@@ -257,20 +264,22 @@ bool ZipFile::loadZipDetails() {
   // We scan the last 1KB (or the whole file if smaller) for the EOCD signature
   // 0x06054b50 is stored as 0x50, 0x4b, 0x05, 0x06 in little-endian
   const int scanRange = fileSize > 1024 ? 1024 : fileSize;
-  const auto buffer = static_cast<uint8_t*>(malloc(scanRange));
+  const auto buffer = makeUniqueNoThrow<uint8_t[]>(scanRange);
   if (!buffer) {
     LOG_ERR("ZIP", "Failed to allocate memory for EOCD scan buffer");
     return false;
   }
 
-  file.seek(fileSize - scanRange);
-  file.read(buffer, scanRange);
+  if (!file.seek(fileSize - scanRange) || file.read(buffer.get(), scanRange) != scanRange) {
+    LOG_ERR("ZIP", "Could not read end of central directory");
+    return false;
+  }
 
   // Scan backwards for the signature
   int foundOffset = -1;
   for (int i = scanRange - 22; i >= 0; i--) {
     constexpr uint32_t signature = 0x06054b50;
-    if (*reinterpret_cast<uint32_t*>(&buffer[i]) == signature) {
+    if (readLe32(buffer.get() + i) == signature) {
       foundOffset = i;
       break;
     }
@@ -278,7 +287,6 @@ bool ZipFile::loadZipDetails() {
 
   if (foundOffset == -1) {
     LOG_ERR("ZIP", "EOCD signature not found in zip file");
-    free(buffer);
     return false;
   }
 
@@ -286,11 +294,10 @@ bool ZipFile::loadZipDetails() {
   // Relative positions within EOCD:
   // Offset 10: Total number of entries (2 bytes)
   // Offset 16: Offset of start of central directory with respect to the starting disk number (4 bytes)
-  zipDetails.totalEntries = *reinterpret_cast<uint16_t*>(&buffer[foundOffset + 10]);
-  zipDetails.centralDirOffset = *reinterpret_cast<uint32_t*>(&buffer[foundOffset + 16]);
+  zipDetails.totalEntries = readLe16(buffer.get() + foundOffset + 10);
+  zipDetails.centralDirOffset = readLe32(buffer.get() + foundOffset + 16);
   zipDetails.isSet = true;
 
-  free(buffer);
   return true;
 }
 

@@ -42,3 +42,16 @@ rebuild went from 41,273 read calls to 7,554 and from 41,484 seeks to 7,765.
 The index bytes matched across both builds. Measure elapsed time on the X4 Pro
 after a card change. A fresh index or newly added EPUB still needs metadata
 extraction.
+
+## Finding metadata in EPUB archives
+
+EPUB package lookups read the ZIP directory through the existing 512-byte
+buffer. The buffer lives for one lookup and falls back to direct reads if
+allocation fails. Library scans still extract the same title, author, series,
+and genre. The reader also uses this lookup when opening EPUBs.
+
+A 300-chapter host EPUB with its package entry near the end of the ZIP
+directory took 49 storage reads to locate and stream both its container and
+package entries, down from 309. Both implementations returned identical
+data. Checks cover names across buffer boundaries, failed reads, and
+out-of-range entry lengths. On-device library scan timing is pending.

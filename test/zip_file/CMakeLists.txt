@@ -11,6 +11,7 @@ target_include_directories(ZipFileTest PRIVATE
   ${REPO_ROOT}/lib/ZipFile
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/lib/hal
   ${REPO_ROOT}/lib/miniz/src
 )
