@@ -124,11 +124,19 @@ bool ReaderPreferences::read(JsonObjectConst object, uint32_t& mask) {
     mask |= 1U << i;
   }
   const auto legacyHeight = object["lineHeight"];
-  if (object["lineHeightPercent"].isUnbound() && !legacyHeight.isNull()) {
-    if (!legacyHeight.is<uint8_t>() || legacyHeight.as<uint8_t>() >= sizeof(readerlinespacing::PRESET_PERCENTAGES))
-      return false;
-    values[LINE_HEIGHT] = readerlinespacing::fromPreset(legacyHeight.as<uint8_t>());
-    mask |= 1U << LINE_HEIGHT;
+  if ((mask & (1U << LINE_HEIGHT)) || !legacyHeight.isNull()) {
+    // Older builds leave the unknown percentage in place while rewriting or
+    // removing the preset. Its absence means the override was reset.
+    if (legacyHeight.isNull()) {
+      mask &= ~(1U << LINE_HEIGHT);
+    } else {
+      if (!legacyHeight.is<uint8_t>() || legacyHeight.as<uint8_t>() >= sizeof(readerlinespacing::PRESET_PERCENTAGES))
+        return false;
+      const uint8_t preset = legacyHeight.as<uint8_t>();
+      if (!(mask & (1U << LINE_HEIGHT)) || readerlinespacing::nearestPreset(values[LINE_HEIGHT]) != preset)
+        values[LINE_HEIGHT] = readerlinespacing::fromPreset(preset);
+      mask |= 1U << LINE_HEIGHT;
+    }
   }
   const auto name = object["sdFontFamilyName"];
   if (!name.isNull()) {

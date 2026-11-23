@@ -73,8 +73,14 @@ class BufferedFileWriter {
 
 class BufferedFileReader {
  public:
-  BufferedFileReader(HalFile& file, const size_t capacity)
-      : file(file), buf(makeUniqueNoThrow<uint8_t[]>(capacity)), cap(buf ? capacity : 0), bufStart(file.position()) {}
+  // Alignment limits each refill to its current storage block. This lets a
+  // caller read the end of a healthy sector even if the following one fails.
+  BufferedFileReader(HalFile& file, const size_t capacity, const size_t alignment = 0)
+      : file(file),
+        buf(makeUniqueNoThrow<uint8_t[]>(capacity)),
+        cap(buf ? capacity : 0),
+        alignment(alignment),
+        bufStart(file.position()) {}
   BufferedFileReader(const BufferedFileReader&) = delete;
   BufferedFileReader& operator=(const BufferedFileReader&) = delete;
 
@@ -91,7 +97,8 @@ class BufferedFileReader {
       if (off == fill) {
         bufStart += fill;
         off = 0;
-        const int n = file.read(buf.get(), cap);
+        const size_t refill = alignment ? std::min(cap, alignment - bufStart % alignment) : cap;
+        const int n = file.read(buf.get(), refill);
         fill = n < 0 ? 0 : static_cast<size_t>(n);
         if (fill == 0) break;  // EOF or error
       }
@@ -127,6 +134,7 @@ class BufferedFileReader {
   HalFile& file;
   std::unique_ptr<uint8_t[]> buf;
   const size_t cap;
+  const size_t alignment;
   size_t fill = 0;
   size_t off = 0;
   size_t bufStart;

@@ -347,6 +347,27 @@ TEST_F(ZipFileTest, FindsEntryWithNameAcrossReadWindowBoundary) {
   EXPECT_EQ(extract(zip, target.c_str()), "package metadata");
 }
 
+TEST_F(ZipFileTest, HealthyEntryDoesNotReadIntoAnUnreadableNextSector) {
+  const auto makeBook = [](size_t padding) {
+    ZipBuilder builder;
+    builder.addStored("package.opf", std::string(padding, 'p'));
+    for (int i = 0; i < 60; ++i) builder.addStored("chapter-" + std::to_string(i), "text");
+    return builder;
+  };
+  auto base = makeBook(0);
+  base.build();
+  auto builder = makeBook((384 + 512 - base.centralDirOffset % 512) % 512);
+  install(builder);
+  ASSERT_EQ(centralDirOffset % 512, 384u);
+  HalFile::badSectorStart = centralDirOffset - 384 + 512;
+  HalFile::badSectorEnd = HalFile::badSectorStart + 512;
+
+  ZipFile zip(path);
+  size_t size = 0;
+  ASSERT_TRUE(zip.getInflatedFileSize("package.opf", &size));
+  EXPECT_EQ(size, (384 + 512 - base.centralDirOffset % 512) % 512);
+}
+
 TEST_F(ZipFileTest, DirectoryReadFailuresCanBeRetried) {
   ZipBuilder builder;
   builder.addStored("META-INF/container.xml", "package location");

@@ -2429,6 +2429,8 @@ void CrossPointWebServer::handleGetSettings() const {
   DictionaryRegistry::discover(dictionaries);
   const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
 
+  // Keep the preset row for existing clients. The bundled page requests percentages.
+  const bool percentLineHeight = server->hasArg("lineHeight") && server->arg("lineHeight") == "percent";
   // Encode UTF-8 bytes so translated text is safe in an HTTP header.
   String reloadHelp;
   for (const auto* p = reinterpret_cast<const unsigned char*>(tr(STR_WEB_SETTINGS_RELOAD_HELP)); *p; ++p) {
@@ -2486,6 +2488,25 @@ void CrossPointWebServer::handleGetSettings() const {
         break;
       }
       case SettingType::VALUE: {
+        if (s.valuePtr == &CrossPointSettings::lineHeightPercent) {
+          if (!percentLineHeight) {
+            static constexpr StrId labels[] = {StrId::STR_SPACING_0_PERCENT,
+                                               StrId::STR_SPACING_PLUS_10_PERCENT,
+                                               StrId::STR_SPACING_PLUS_20_PERCENT_DEFAULT,
+                                               StrId::STR_SPACING_PLUS_30_PERCENT,
+                                               StrId::STR_SPACING_PLUS_45_PERCENT,
+                                               StrId::STR_SPACING_PLUS_60_PERCENT,
+                                               StrId::STR_SPACING_PLUS_75_PERCENT};
+            static_assert(std::size(labels) == sizeof(readerlinespacing::PRESET_PERCENTAGES));
+            doc["key"] = "lineHeight";
+            doc["type"] = "enum";
+            doc["value"] = readerlinespacing::nearestPreset(SETTINGS.lineHeightPercent);
+            JsonArray options = doc["options"].to<JsonArray>();
+            for (const auto label : labels) options.add(I18N.get(label));
+            break;
+          }
+          doc["name"] = tr(STR_LINE_SPACING_PERCENT);
+        }
         doc["type"] = "value";
         if (s.valuePtr) {
           doc["value"] = static_cast<int>(SETTINGS.*(s.valuePtr));

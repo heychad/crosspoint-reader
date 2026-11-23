@@ -27,7 +27,7 @@ methods = "\n".join(method(source, name) for name in (
 line_compression = method((root / "src/CrossPointSettings.cpp").read_text(),
                           "float CrossPointSettings::getReaderLineCompression() const")
 parent = method((root / "src/activities/reader/EpubReaderActivity.cpp").read_text(),
-                "void EpubReaderActivity::applyReaderTextSettings()")
+                "void EpubReaderActivity::applyReaderTextSettings(uint8_t lineHeightPercent)")
 code = r'''
 #include <algorithm>
 #include <cassert>
@@ -40,7 +40,7 @@ code = r'''
 #include "ReaderLineSpacing.h"
 int lockDepth=0;
 struct RenderLock {RenderLock(){++lockDepth;}~RenderLock(){--lockDepth;}};
-struct {const char*get(StrId){return "translated";}} I18N;
+struct {const char*get(StrId id){return id==StrId::STR_PERCENT_VALUE_FORMAT?"%u%%":"translated";}} I18N;
 struct CrossPointSettings {
  enum {SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=150,SCREEN_MARGIN_STEP=1,
  WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
@@ -69,7 +69,7 @@ template<class T,class... A>std::unique_ptr<T>makeUniqueNoThrow(A&&...a){return 
 #define LOG_ERR(...) ((void)0)
 class EpubReaderMenuActivity {public:
  enum class MenuAction {__ACTIONS__};
- bool tabbed=true;int renderer=0,mappedInput=0;char layoutLabels[3][5]{};int updates=0;Popup optionPopup;std::function<void()>textSettingsChanged;
+ bool tabbed=true;int renderer=0,mappedInput=0;char marginLabels[2][4]{};char lineSpacingLabel[24]{};int updates=0;Popup optionPopup;std::function<void()>textSettingsChanged;
  std::function<void(const ActivityResult&)>finished;
  void startActivityForResult(std::unique_ptr<IntervalSelectionActivity>p,std::function<void(const ActivityResult&)>cb){
   const int minimum = p->minimum;
@@ -92,7 +92,7 @@ struct EpubReaderActivity {
  struct {int resets=0;void reset(){++resets;}}renderRecovery;
  void rememberCurrentContentOffset(){assert(section);++anchors;}
  bool saveBookReaderSettings(){assert(lockDepth==0&&!section);++saved;return true;}
- void applyReaderTextSettings();
+ void applyReaderTextSettings(uint8_t lineHeightPercent=0);
 };
 '''.replace("__ACTIONS__", actions) + data + "\n" + methods + "\n" + line_compression + "\n" + parent + r'''
 int main(){
@@ -159,6 +159,11 @@ int main(){
  menu.optionPopup.select(53);assert(SETTINGS.lineHeightPercent==123);
  fui::ListItem lineHeight;menu.updateInlineTextRow(A::LINE_SPACING,lineHeight);
  assert(std::string(lineHeight.value)=="123%");
+ EpubReaderActivity toolbarReader;
+ toolbarReader.applyReaderTextSettings(123);
+ assert(toolbarReader.section&&toolbarReader.saved==0);
+ toolbarReader.applyReaderTextSettings(125);
+ assert(SETTINGS.lineHeightPercent==125&&!toolbarReader.section&&toolbarReader.anchors==1&&toolbarReader.saved==1);
  allocationAllowed=false;assert(menu.handleInlineTextSetting(A::SCREEN_MARGIN));assert(SETTINGS.screenMargin==5);
 }
 '''

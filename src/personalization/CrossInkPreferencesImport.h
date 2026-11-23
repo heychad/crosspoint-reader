@@ -142,8 +142,10 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
   }
   const auto legacyHeight = legacy["lineHeightPercent"];
   if (legacyHeight.is<uint8_t>() && readerlinespacing::valid(legacyHeight.as<uint8_t>()) &&
-      (replaceExisting || (proposed["lineHeight"].isUnbound() && proposed["lineSpacing"].isUnbound()))) {
+      (replaceExisting || (proposed["lineHeightPercent"].isUnbound() && proposed["lineHeight"].isUnbound() &&
+                           proposed["lineSpacing"].isUnbound()))) {
     stageMapped("lineHeightPercent", legacyHeight.as<uint8_t>());
+    stageMapped("lineHeight", readerlinespacing::nearestPreset(legacyHeight.as<uint8_t>()));
   }
   for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
     auto value = legacy[key];

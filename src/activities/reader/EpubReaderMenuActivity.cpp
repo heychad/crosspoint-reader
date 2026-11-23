@@ -513,11 +513,15 @@ void EpubReaderMenuActivity::updateInlineTextRow(MenuAction action, fui::ListIte
   const int index = std::clamp((static_cast<int>(SETTINGS.*(control->field)) - control->minimum) / control->step, 0,
                                static_cast<int>(control->count) - 1);
   if (!control->ids && !control->text) {
-    const bool percent = action == MenuAction::LINE_SPACING;
-    auto& label = layoutLabels[percent ? 2 : (action == MenuAction::VERTICAL_MARGIN ? 1 : 0)];
-    snprintf(label, sizeof(label), percent ? "%u%%" : "%u",
-             static_cast<unsigned>(control->minimum + index * control->step));
-    item.value = label;
+    const unsigned value = control->minimum + index * control->step;
+    if (action == MenuAction::LINE_SPACING) {
+      snprintf(lineSpacingLabel, sizeof(lineSpacingLabel), I18N.get(StrId::STR_PERCENT_VALUE_FORMAT), value);
+      item.value = lineSpacingLabel;
+    } else {
+      auto& label = marginLabels[action == MenuAction::VERTICAL_MARGIN ? 1 : 0];
+      snprintf(label, sizeof(label), "%u", value);
+      item.value = label;
+    }
   } else {
     item.value = control->ids ? I18N.get(control->ids[index]) : control->text[index];
   }

@@ -7,6 +7,8 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source = root / "src/activities/settings/DeviceDiagnosticsActivity.cpp"
 keys = sorted(set(re.findall(r"STR_[A-Z_]+", source.read_text())))
+english = (root / 'lib/I18n/translations/english.yaml').read_text()
+timing_format = re.search(r'^STR_EPUB_TIMING_VALUE_FORMAT: "([^"]+)"$', english, re.M).group(1)
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / "activities").mkdir()
@@ -14,7 +16,7 @@ with tempfile.TemporaryDirectory() as directory:
     (path / "I18n.h").write_text(
         "#pragma once\nenum class StrId {" + ",".join(keys) + "};\n"
         + "struct Lang{const char*get(StrId i)const{static const char*labels[]={"
-        + ",".join('"' + key + '"' for key in keys)
+        + ",".join('"' + (timing_format if key == 'STR_EPUB_TIMING_VALUE_FORMAT' else key) + '"' for key in keys)
         + "};return labels[static_cast<unsigned>(i)];}};inline Lang I18N;\n"
         + "#define tr(x) I18N.get(StrId::x)\n"
     )

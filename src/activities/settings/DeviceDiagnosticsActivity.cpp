@@ -64,7 +64,7 @@ void DeviceDiagnosticsActivity::sample() {
     if (summary.count == 0) {
       snprintf(timingValues[i], sizeof(timingValues[i]), "-");
     } else {
-      snprintf(timingValues[i], sizeof(timingValues[i]), "%lu / %lu ms (%u)",
+      snprintf(timingValues[i], sizeof(timingValues[i]), tr(STR_EPUB_TIMING_VALUE_FORMAT),
                static_cast<unsigned long>(summary.medianMs), static_cast<unsigned long>(summary.maxMs),
                static_cast<unsigned>(summary.count));
     }

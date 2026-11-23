@@ -6,6 +6,11 @@ source=(root/'src/network/CrossPointWebServer.cpp').read_text()
 start=source.index('  const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);')
 end=source.index('  LOG_DBG("WEB", "Applied',start)
 body=source[start:end]
+get_start=source.index('      case SettingType::VALUE:', source.index('void CrossPointWebServer::handleGetSettings()'))
+get_end=source.index('      case SettingType::STRING:', get_start)
+get_value=source[get_start:get_end]
+html=(root/'src/network/html/SettingsPage.html').read_text()
+assert "fetch('/api/settings?lineHeight=percent')" in html
 code=r'''
 #include <ArduinoJson.h>
 #include <cassert>
@@ -16,8 +21,15 @@ code=r'''
 #include <cstring>
 #include "personalization/ReaderQuickBindings.h"
 CrossPointSettings SETTINGS;
-enum {STR_WEB_SETTINGS_SAVE_UNCERTAIN};
-const char* tr(int){return "settings failed";}
+enum {STR_WEB_SETTINGS_SAVE_UNCERTAIN, STR_LINE_SPACING_PERCENT};
+const char* tr(int id){return id==STR_LINE_SPACING_PERCENT?"Line spacing (%)":"settings failed";}
+enum class StrId {STR_SPACING_0_PERCENT, STR_SPACING_PLUS_10_PERCENT, STR_SPACING_PLUS_20_PERCENT_DEFAULT,
+                  STR_SPACING_PLUS_30_PERCENT, STR_SPACING_PLUS_45_PERCENT, STR_SPACING_PLUS_60_PERCENT,
+                  STR_SPACING_PLUS_75_PERCENT};
+struct {const char* get(StrId label) const {
+ static const char* names[]={"0%","+10%","+20% (default)","+30%","+45%","+60%","+75%"};
+ return names[static_cast<int>(label)];
+}} I18N;
 struct Server {int status=0;void send(int code,const char*,const char*){status=code;}} web;
 Server* server=&web;
 enum class SettingType{TOGGLE,ENUM,VALUE,STRING,ACTION};
@@ -25,7 +37,7 @@ struct Info{
  const char*key;SettingType type=SettingType::ENUM;uint8_t CrossPointSettings::*valuePtr=nullptr;
  bool webHidden=false;std::function<void(uint8_t)>valueSetter;std::function<void(const std::string&)>stringSetter;
  std::vector<int>values;std::vector<std::string>enumStringValues;size_t stringMaxLen=0,stringOffset=0;
- struct{int min=0,max=255;}valueRange;
+ struct{int min=0,max=255,step=1;}valueRange;
  std::span<const int>enumLabels()const{return values;}
 };
 std::vector<Info> makeSettings(){
@@ -40,6 +52,16 @@ std::vector<Info> makeSettings(){
 }
 void apply(const char*json){JsonDocument doc;assert(!deserializeJson(doc,json));const auto settings=makeSettings();
 ''' +body+r'''
+}
+void readHeight(JsonDocument& doc, bool percentLineHeight){
+ const auto settings=makeSettings();
+ const auto& s=settings.back();
+ doc["key"]=s.key;
+ doc["name"]="Line spacing";
+ switch(s.type){
+''' +get_value+r'''
+ default:break;
+ }
 }
 int main(){
  using namespace readerquickactions;
@@ -59,6 +81,13 @@ int main(){
  apply(R"({"lineHeight":4})");assert(SETTINGS.lineHeightPercent==145);
  apply(R"({"lineHeight":1,"lineHeightPercent":123})");assert(SETTINGS.lineHeightPercent==123);
  apply(R"({"lineHeight":7,"lineHeightPercent":201})");assert(SETTINGS.lineHeightPercent==123);
+ JsonDocument row;
+ readHeight(row,false);
+ assert(row["key"]=="lineHeight"&&row["type"]=="enum"&&row["value"]==2&&row["options"].size()==7);
+ row.clear();
+ readHeight(row,true);
+ assert(row["key"]=="lineHeightPercent"&&row["name"]=="Line spacing (%)"&&row["value"]==123);
+ assert(row["type"]=="value"&&row["min"]==70&&row["max"]==200&&row["step"]==1);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

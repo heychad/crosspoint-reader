@@ -46,12 +46,13 @@ extraction.
 ## Finding metadata in EPUB archives
 
 EPUB package lookups read the ZIP directory through the existing 512-byte
-buffer. The buffer lives for one lookup and falls back to direct reads if
-allocation fails. Library scans still extract the same title, author, series,
+buffer. Refills stop at the next sector boundary. A read of a healthy
+sector can succeed even if the following sector is unreadable. The buffer
+lives for one lookup and falls back to direct reads if allocation fails. Library scans still extract the same title, author, series,
 and genre. The reader also uses this lookup when opening EPUBs.
 
 A 300-chapter host EPUB with its package entry near the end of the ZIP
-directory took 49 storage reads to locate and stream both its container and
+directory took 51 storage reads to locate and stream both its container and
 package entries, down from 309. Both implementations returned identical
 data. Checks cover names across buffer boundaries, failed reads, and
 out-of-range entry lengths. On-device library scan timing is pending.

@@ -244,7 +244,7 @@
 
   async function loadSettings() {
     try {
-      const response = await fetch('/api/settings');
+      const response = await fetch('/api/settings?lineHeight=percent');
       if (!response.ok) {
         throw new Error('Failed to load settings: ' + response.status);
       }

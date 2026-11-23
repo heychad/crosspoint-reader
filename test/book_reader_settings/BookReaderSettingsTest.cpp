@@ -445,6 +445,7 @@ TEST_F(BookSettings, CrossInkPreferencesImportBacksUpAndPreservesOtherSettings) 
   EXPECT_EQ(persisted["trackReadingStats"].as<int>(), 0);
   EXPECT_EQ(persisted["readingIdleTimeThresholdUnits"].as<int>(), 12);
   EXPECT_EQ(persisted["lineHeightPercent"].as<int>(), 145);
+  EXPECT_EQ(persisted["lineHeight"].as<int>(), 4);
   EXPECT_EQ(persisted["paragraphAlignment"].as<int>(), 3);
   EXPECT_EQ(persisted["embeddedStyle"].as<int>(), 0);
   EXPECT_EQ(persisted["hyphenationEnabled"].as<int>(), 1);
@@ -906,6 +907,15 @@ TEST(ReaderPreferences, PreservesLegacyLineHeightAndWritesRollbackPreset) {
   ASSERT_TRUE(restored.read(saved.as<JsonObjectConst>(), mask));
   EXPECT_EQ(restored.values[1], 123);
   EXPECT_EQ(mask, lineHeightBit);
+
+  // Older builds update their preset even when the unknown exact field survives.
+  saved["lineHeight"] = 5;
+  ASSERT_TRUE(restored.read(saved.as<JsonObjectConst>(), mask));
+  EXPECT_EQ(restored.values[1], 160);
+  EXPECT_EQ(mask, lineHeightBit);
+  saved.remove("lineHeight");
+  ASSERT_TRUE(restored.read(saved.as<JsonObjectConst>(), mask));
+  EXPECT_EQ(mask, 0U);
   preferences.write(saved.as<JsonObject>(), 0);
   EXPECT_TRUE(saved["lineHeight"].isUnbound());
   EXPECT_TRUE(saved["lineHeightPercent"].isUnbound());

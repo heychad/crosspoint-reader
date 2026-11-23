@@ -208,8 +208,16 @@ Native settings store `lineHeightPercent`. Old per-book and global
 `lineHeight` presets retain the same render multiplier and cache identity.
 The oldest global `lineSpacing` presets still load. Saves also write the
 closest old preset so an older build can read a familiar value. Non-preset
-spacing can render differently on an older build. The current book's
-override remains separate from the global default.
+spacing can render differently on an older build. The per-book writer saves
+both fields together. If an older build changes the preset or removes it to
+reset the override, this build uses that change when it reopens the book.
+A matching pair restores the exact percentage. The current book's override
+remains separate from the global default.
+
+The bundled web Settings page shows line spacing as a percentage. Existing
+clients can read and write the preset on `/api/settings`. Clients that need
+the exact value can read `/api/settings?lineHeight=percent` and post
+`lineHeightPercent`.
 
 The layout uses the existing section-cache format. Changing line spacing
 repaginates through the existing passage-resume path. The host checks verify

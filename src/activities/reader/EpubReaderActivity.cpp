@@ -3462,8 +3462,11 @@ std::string EpubReaderActivity::textRowValue(int row) const {
       return I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]);
     case 1:
       return std::to_string(SETTINGS.fontPointSize) + " pt";
-    case 2:
-      return std::to_string(SETTINGS.lineHeightPercent) + "%";
+    case 2: {
+      char text[24];
+      snprintf(text, sizeof(text), tr(STR_PERCENT_VALUE_FORMAT), static_cast<unsigned>(SETTINGS.lineHeightPercent));
+      return text;
+    }
     case 3:
       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
     default:
@@ -3517,18 +3520,15 @@ void EpubReaderActivity::showTextRowPopup(const int row) {
         overlay = Overlay::None;
       }
       startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+        const auto* selected = std::get_if<IntervalResult>(&result.data);
+        if (!result.isCancelled && selected && readerlinespacing::valid(selected->value)) {
+          applyReaderTextSettings(static_cast<uint8_t>(selected->value));
+        }
         {
           RenderLock lock;
           overlay = Overlay::Text;
         }
-        const auto* selected = std::get_if<IntervalResult>(&result.data);
-        if (!result.isCancelled && selected && readerlinespacing::valid(selected->value) &&
-            SETTINGS.lineHeightPercent != selected->value) {
-          SETTINGS.lineHeightPercent = static_cast<uint8_t>(selected->value);
-          applyTextSettingLive();
-        } else {
-          requestUpdate();
-        }
+        requestUpdate();
       });
       return;
     }
@@ -4108,15 +4108,17 @@ void EpubReaderActivity::cycleFontFamily() {
   requestUpdate();
 }
 
-void EpubReaderActivity::applyReaderTextSettings() {
+void EpubReaderActivity::applyReaderTextSettings(uint8_t lineHeightPercent) {
   {
     RenderLock lock;
+    if (lineHeightPercent && SETTINGS.lineHeightPercent == lineHeightPercent) return;
     if (section) {
       rememberCurrentContentOffset();
       cachedSpineIndex = currentSpineIndex;
       cachedChapterTotalPageCount = section->pageCount;
       nextPageNumber = section->currentPage;
     }
+    if (lineHeightPercent) SETTINGS.lineHeightPercent = lineHeightPercent;
     // Release the old parser and page table before settings serialization needs heap.
     section.reset();  // force re-pagination with the new settings
     renderRecovery.reset();

@@ -158,7 +158,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
   uint32_t entryStart = startPos;
   bool wrapped = false;
   const size_t archiveSize = file.size();
-  serialization::BufferedFileReader directory(file, CENTRAL_READ_BUFFER_BYTES);
+  serialization::BufferedFileReader directory(file, CENTRAL_READ_BUFFER_BYTES, CENTRAL_READ_BUFFER_BYTES);
 
   const size_t targetLen = strlen(filename);
   uint8_t header[CENTRAL_HEADER_BYTES];

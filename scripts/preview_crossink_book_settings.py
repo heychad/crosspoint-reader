@@ -188,8 +188,13 @@ def compare_current(report: dict, current: dict | None) -> dict:
         raise ValueError('current settings must have version 1 and an overrides object')
     existing = dict(current['overrides'])
     preset = existing.get('lineHeight')
-    if 'lineHeightPercent' not in existing and type(preset) is int and 0 <= preset < len(LINE_HEIGHTS):
-        existing['lineHeightPercent'] = LINE_HEIGHTS[preset]
+    if type(preset) is int and 0 <= preset < len(LINE_HEIGHTS):
+        exact = existing.get('lineHeightPercent')
+        if (type(exact) is not int or not 70 <= exact <= 200
+                or min(range(len(LINE_HEIGHTS)), key=lambda i: abs(LINE_HEIGHTS[i] - exact)) != preset):
+            existing['lineHeightPercent'] = LINE_HEIGHTS[preset]
+    else:
+        existing.pop('lineHeightPercent', None)
     fields = {}
     if report.get('safeMode'):
         fields['safeMode'] = 'already_matching' if current.get('safeMode') is True else 'existing_value_preserved'

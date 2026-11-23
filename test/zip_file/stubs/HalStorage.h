@@ -40,6 +40,7 @@ class HalFile : public Print {
   int read(void* dst, size_t len) {
     if (!data) return -1;
     readOffsets.push_back(pos);
+    if (pos < badSectorEnd && pos + len > badSectorStart) return -1;
     if (pos == failReadAt) {
       failReadAt = SIZE_MAX;
       return -1;
@@ -62,6 +63,8 @@ class HalFile : public Print {
 
   static inline std::vector<size_t> readOffsets;
   static inline size_t failReadAt = SIZE_MAX;
+  static inline size_t badSectorStart = SIZE_MAX;
+  static inline size_t badSectorEnd = SIZE_MAX;
 
  private:
   const std::vector<uint8_t>* data = nullptr;
@@ -89,6 +92,7 @@ class HalStorage {
     openCount = 0;
     HalFile::readOffsets.clear();
     HalFile::failReadAt = SIZE_MAX;
+    HalFile::badSectorStart = HalFile::badSectorEnd = SIZE_MAX;
   }
 
   int openCount = 0;

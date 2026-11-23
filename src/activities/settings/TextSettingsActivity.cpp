@@ -451,12 +451,14 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
       }
       startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
         const auto* selected = std::get_if<IntervalResult>(&result.data);
-        if (!result.isCancelled && selected && readerlinespacing::valid(selected->value) &&
-            SETTINGS.lineHeightPercent != selected->value) {
+        if (result.isCancelled || !selected || !readerlinespacing::valid(selected->value)) return;
+        {
+          RenderLock lock;
+          if (SETTINGS.lineHeightPercent == selected->value) return;
           SETTINGS.lineHeightPercent = static_cast<uint8_t>(selected->value);
-          SETTINGS.saveToFile();
-          requestUpdate();
         }
+        SETTINGS.saveToFile();
+        requestUpdate();
       });
       break;
     }
@@ -521,8 +523,11 @@ std::string TextSettingsActivity::layoutValueText(int row) const {
       const uint8_t mode = SETTINGS.paragraphIndentMode;
       return I18N.get(INDENT_STYLE_IDS[mode < std::size(INDENT_STYLE_IDS) ? mode : 0]);
     }
-    case LayoutRow::LineSpacing:
-      return std::to_string(SETTINGS.lineHeightPercent) + "%";
+    case LayoutRow::LineSpacing: {
+      char text[24];
+      snprintf(text, sizeof(text), tr(STR_PERCENT_VALUE_FORMAT), static_cast<unsigned>(SETTINGS.lineHeightPercent));
+      return text;
+    }
     case LayoutRow::ParaIndentation: {
       const int spaces = std::clamp<int>(SETTINGS.paragraphIndentSpaces, 0, 5);
       return spaces == 0 ? tr(STR_STATE_OFF) : std::to_string(spaces);
