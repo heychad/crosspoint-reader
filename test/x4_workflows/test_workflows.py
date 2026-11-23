@@ -1,8 +1,10 @@
 """Verify X4 Pro workflow matrices and run release safeguards without GitHub."""
+import configparser
 import hashlib
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -38,7 +40,19 @@ assert 'pio check -e x4pro' in ci
 assert 'python3 scripts/gen_i18n.py' in ci
 assert 'ctest --test-dir build/test --output-on-failure -j 1' in ci
 assert 'if: ${{ !github.event.release.prerelease }}' in release
+config = configparser.ConfigParser(interpolation=None)
+config.read(ROOT / 'platformio.ini')
+feature_section = '${x4pro_personal_features.build_flags}'
+features = set(config['x4pro_personal_features']['build_flags'].split())
+assert features == {'-DCROSSPOINT_EXPERIMENTAL_' + feature + '=1' for feature in (
+    'COMPLETION', 'COMPLETION_PROMPT', 'STATS_RESTORE', 'DAILY_STATS', 'PAGE_OVERLAY', 'CAROUSEL',
+    'COMPLETION_MOVE', 'CHAPTER_TIME', 'DEFERRED_AUTOMATION', 'STATS_BACKUP', 'CHAPTER_PREFETCH', 'PERSONAL_UPDATES')}
+for profile in ('x4pro-chad-test', 'x4pro-gh_release'):
+    assert feature_section in config[f'env:{profile}']['build_flags']
+assert feature_section not in config['env:x4pro']['build_flags']
+
 validate = run_block(release, 'Validate release version')
+prepare_release = run_block(release, 'Prepare firmware asset')
 attach = run_block(release, 'Attach firmware assets')
 validate_test = run_block(rc, 'Validate test version')
 verify_candidate = run_block(rc, 'Verify and name candidate asset')
@@ -103,6 +117,8 @@ esac
     git.chmod(0o755)
     profile = 'x4pro-chad-test'
     (root / 'partitions.csv').write_bytes((ROOT / 'partitions.csv').read_bytes())
+    (root / 'scripts').mkdir()
+    shutil.copyfile(ROOT / 'scripts/check_x4pro_firmware.py', root / 'scripts/check_x4pro_firmware.py')
     build = root / '.pio/build' / profile
     build.mkdir(parents=True)
     firmware = build / 'firmware.bin'
@@ -121,6 +137,25 @@ esac
     assert (build / 'SHA256SUMS').read_text() == f'{hashlib.sha256(image).hexdigest()}  {asset_name}\n'
     assert (build / 'SOURCE.txt').read_text().splitlines() == [
         f'Commit: {source}', f'FreeInk SDK: {sdk}', f'Profile: {profile}', f'Version: {version}-x4pro']
+
+    stable_profile = 'x4pro-gh_release'
+    stable_build = root / '.pio/build' / stable_profile
+    stable_build.mkdir()
+    stable_firmware = stable_build / 'firmware.bin'
+    stable_asset = root / 'crosspoint-2.0.0-chad.4-x4pro.bin'
+    stable_image = image.replace((version + '-x4pro').encode(), b'2.0.0-chad.4')
+    github_output = root / 'github-output'
+    stable_env = {'PIO_ENV': stable_profile, 'GITHUB_OUTPUT': str(github_output)}
+    for invalid_stable in (image, stable_image.replace(b'2.0.0-chad.4', b'12.0.0-chad.4'),
+                           stable_image.replace(board, b'CROSSPOINT-BOARD-V1:x4;')):
+        stable_firmware.write_bytes(invalid_stable)
+        assert run(prepare_release, **stable_env).returncode != 0
+        assert not stable_asset.exists() and not github_output.exists()
+    stable_firmware.write_bytes(stable_image)
+    assert run(prepare_release, **stable_env).returncode == 0
+    assert stable_asset.read_bytes() == stable_image
+    assert github_output.read_text() == f'name={stable_asset.name}\n'
+
     (build / asset_name).unlink()
     assert run(verify_candidate, **(candidate_env | {'SDK_CHECKOUT': source})).returncode != 0
     assert run(verify_candidate, **(candidate_env | {'GITHUB_SHA': sdk})).returncode != 0

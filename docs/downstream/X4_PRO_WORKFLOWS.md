@@ -13,10 +13,14 @@ requires review and a device test.
 
 A published stable release triggers a separate workflow. It validates the
 tag against the configured `X.Y.Z-chad.N` version before building. Each numeric
-part has at most nine digits and the entire tag at most 26 characters. The
-workflow attaches one `crosspoint-<tag>-x4pro.bin` asset and refuses to overwrite
-an existing one. It skips prereleases. A failed build can leave a published
-release with no firmware asset.
+part has at most nine digits and the entire tag at most 26 characters. The same
+image check runs before packaging the stable asset. The workflow attaches one
+`crosspoint-<tag>-x4pro.bin` asset and refuses to overwrite an existing one. It
+skips prereleases. A failed build can leave a published release with no
+firmware asset.
 
-The standard profile keeps online updates disabled. The test profile enables
-them for validation. See [the personal update channel](PERSONAL_UPDATES.md).
+The personal test and stable profiles share the twelve selected feature flags.
+An update built from the stable profile retains those features, including the
+ability to check for another update. The base `x4pro` profile remains available
+for diagnosis. Review and device validation precede a stable release. See
+[the personal update channel](PERSONAL_UPDATES.md).

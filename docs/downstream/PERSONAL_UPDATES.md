@@ -12,11 +12,11 @@ versions with descriptive test labels such as `2.0.0-chad.3-test65-rc3-fixes-x4p
 The offered version must use the stable release format. The local OTA pipeline
 test covers this exact installed version.
 
-Online checking and installation remain disabled in the standard build.
+The base `x4pro` profile keeps online checking and installation disabled.
 `CROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES=1` enables the update-only HTTPS
-implementation through `personalupdate::transportAvailable()`. It is a WIP
-test configuration pending cumulative review and device validation. Nothing in this WIP publishes a release or
-installs firmware.
+implementation through `personalupdate::transportAvailable()`. The personal
+test and stable profiles use the same feature list. Stable OTA publication
+requires cumulative review and device validation.
 The disabled update screen directs the reader to SD-card installation and does
 not start Wi-Fi. Reader-state backup and a known-good rollback image remain
 part of the device handoff.
@@ -189,9 +189,16 @@ dependencies. These are build footprints, not runtime memory measurements.
   enabled update path and active screen.
 - Confirm certificate-chain, hostname/date rejection, update success/failure,
   and reading-state preservation on the reader.
-- Complete cumulative release review and reproducible release artifacts. The
-  standard release profile does not yet enable this or the other WIP flags.
-  No release is published by WIP pushes.
+- Complete cumulative release review and run the stable publication workflow
+  after device validation. Both personal build workflows share the OTA slot,
+  X4 Pro board tag, and embedded version checks before they package an image.
+
+A local stable-version preview built `x4pro-gh_release` with `2.0.0-chad.4` in
+a temporary PlatformIO configuration. The release packaging step produced the
+expected asset name and passed the image checks. The host updater, configured
+with test66's installed version, accepted the compiled image and rejected a
+one-byte change before selecting the boot slot. This used simulated transport
+and flash. Online installation still needs a reader test.
 
 ## Verification boundary
 

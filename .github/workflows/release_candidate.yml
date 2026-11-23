@@ -92,38 +92,16 @@ jobs:
           ASSET: ${{ matrix.asset }}
         run: |
           set -euo pipefail
-          export SDK_REVISION="$(git rev-parse HEAD:freeink-sdk)"
+          sdk_revision="$(git rev-parse HEAD:freeink-sdk)"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git -C freeink-sdk rev-parse HEAD)" = "$SDK_REVISION"
-          python3 - <<'PY'
-          import csv
-          import hashlib
-          import os
-          from pathlib import Path
-          import re
-
-          profile = os.environ['PIO_ENV']
-          build = Path('.pio/build') / profile
-          asset = os.environ['ASSET']
-          version = os.environ['CROSSPOINT_X4PRO_TEST_VERSION'] + '-x4pro'
-          image = (build / 'firmware.bin').read_bytes()
-          with Path('partitions.csv').open(newline='') as table:
-              slots = {row[2].strip(): int(row[4], 0) for row in csv.reader(table)
-                       if len(row) >= 5 and row[1].strip() == 'app' and row[2].strip() in ('ota_0', 'ota_1')}
-          if len(slots) != 2:
-              raise SystemExit('Expected both X4 Pro OTA partitions')
-          if not (24 <= len(image) <= min(slots.values()) and image[0] == 0xe9 and image[12:14] == b'\x09\x00'):
-              raise SystemExit('Expected an ESP32-S3 app image that fits the X4 Pro OTA slot')
-          boards = re.findall(rb'CROSSPOINT-BOARD-V1:([!-:<-~]{1,23});', image)
-          if boards != [b'x4pro'] or version.encode() + b'\x00' not in image:
-              raise SystemExit('Firmware board tag or embedded version does not match this candidate')
-          (build / asset).write_bytes(image)
-          (build / 'SHA256SUMS').write_text(f'{hashlib.sha256(image).hexdigest()}  {asset}\n')
-          (build / 'SOURCE.txt').write_text(
-              f'Commit: {os.environ["GITHUB_SHA"]}\nFreeInk SDK: {os.environ["SDK_REVISION"]}\n'
-              f'Profile: {profile}\nVersion: {version}\n'
-          )
-          PY
+          test "$(git -C freeink-sdk rev-parse HEAD)" = "$sdk_revision"
+          build=".pio/build/$PIO_ENV"
+          version="${CROSSPOINT_X4PRO_TEST_VERSION}-x4pro"
+          checksum="$(python3 scripts/check_x4pro_firmware.py "$build/firmware.bin" "$version")"
+          cp "$build/firmware.bin" "$build/$ASSET"
+          printf '%s  %s\n' "$checksum" "$ASSET" > "$build/SHA256SUMS"
+          printf 'Commit: %s\nFreeInk SDK: %s\nProfile: %s\nVersion: %s\n' \
+            "$GITHUB_SHA" "$sdk_revision" "$PIO_ENV" "$version" > "$build/SOURCE.txt"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v6
