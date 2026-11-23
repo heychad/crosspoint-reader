@@ -1,4 +1,4 @@
-# Book statistics from Library
+# Book statistics from Library and File Browser
 
 On any Library shelf, hold a book and choose Reading statistics to open the
 existing book statistics screen. This includes pinned recents, indexed rows,
@@ -8,9 +8,17 @@ the global tracking switch must also be enabled. For books with readable saved
 statistics, select Started or Finished to enter a `YYYY-MM-DD` date or clear it
 with an empty field. Clearing is a manual override.
 
+In File Browser, hold an EPUB, TXT, Markdown, XTC, or XTCH file and choose
+**Reading statistics** for the same controls. In builds with book completion
+enabled, the Completion row uses the configured Recents and Move to Read
+policies. If a move removes the book from the current folder, File Browser
+reloads the folder and keeps the selection within its remaining rows.
+
 The launcher closes the Library index while it reads saved book/global data and
 opens the child screen. It reopens the index on return; an index reopen failure
-shows the existing library error state. Missing, unreadable, or unknown book
+shows the existing library error state. Library refreshes its rows when a
+completion edit changes which books pass Hide finished or removes an entry
+from Recents. Missing, unreadable, or unknown book
 statistics show as unavailable rather than zero. Device totals are read from
 the primary global file only; a recovery copy may exist even when this view
 shows them as unavailable, and opening the view does not repair it. TXT and

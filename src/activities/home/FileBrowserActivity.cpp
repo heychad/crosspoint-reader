@@ -15,6 +15,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/settings/ReadingStatsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -361,8 +362,12 @@ void FileBrowserActivity::showEntryActions() {
     return;
   }
 
-  const bool isDirectory = files[nav.selected].back() == '/';
-  static constexpr StrId FILE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_RENAME};
+  const auto& entry = files[nav.selected];
+  const bool isDirectory = entry.back() == '/';
+  const bool isBook =
+      !isDirectory && (FsHelpers::hasReflowableBookExtension(entry) || FsHelpers::hasXtcExtension(entry));
+  static constexpr StrId FILE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_RENAME,
+                                           StrId::STR_READING_STATISTICS};
   static constexpr StrId DIRECTORY_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE};
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
   if (isDirectory) {
@@ -390,7 +395,8 @@ void FileBrowserActivity::showEntryActions() {
     return;
   }
 #endif
-  optionPopup.show(StrId::STR_FILENAME, isDirectory ? DIRECTORY_OPTIONS : FILE_OPTIONS, isDirectory ? 2 : 3, 0,
+  const int optionCount = isDirectory ? 2 : isBook ? 4 : 3;
+  optionPopup.show(StrId::STR_FILENAME, isDirectory ? DIRECTORY_OPTIONS : FILE_OPTIONS, optionCount, 0,
                    [this](const int index) {
                      if (index == 0) {
                        activateSelected();
@@ -398,9 +404,34 @@ void FileBrowserActivity::showEntryActions() {
                        deleteSelected();
                      } else if (index == 2) {
                        startRename();
+                     } else if (index == 3) {
+                       openSelectedBookStatistics();
                      }
                    });
   requestUpdate();
+}
+
+void FileBrowserActivity::openSelectedBookStatistics() {
+  const int selected = nav.selected;
+  if (selected < 0 || selected >= listCount()) return;
+  const auto& entry = files[selected];
+  std::string path = basepath;
+  if (path.back() != '/') path += '/';
+  path += entry;
+  auto screen = ReadingStatsActivity::forClosedBook(renderer, mappedInput, path, utf8ComposeNfc(entry));
+  if (!screen) {
+    statisticsOpenFailed = true;
+    return;
+  }
+  startActivityForResult(std::move(screen), [this, path = std::move(path)](const ActivityResult&) {
+    if (Storage.lookupPath(path.c_str()) != HalStorage::PathStatus::Missing) return;
+    // Move to Read can remove the selected book from this folder.
+    RenderLock lock(*this);
+    closeRouting();
+    loadFiles();
+    nav.selected = std::clamp<int>(nav.selected, 0, std::max(0, listCount() - 1));
+    nav.follow(listCount());
+  });
 }
 
 void FileBrowserActivity::deleteSelected() {
@@ -519,6 +550,13 @@ void FileBrowserActivity::renameSelectedFile(const std::string& oldPath, const s
 }
 
 bool FileBrowserActivity::handleCustomInput() {
+  if (statisticsOpenFailed) {
+    statisticsOpenFailed = false;
+    const char* options[] = {tr(STR_OK_BUTTON)};
+    optionPopup.showMessage(tr(STR_READING_STATISTICS), tr(STR_LIBRARY_STATS_OPEN_ERROR), options, 1, 0, [](int) {});
+    requestUpdate();
+    return true;
+  }
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
 
   // Long press BACK (1s+) goes to root folder (Books mode only).

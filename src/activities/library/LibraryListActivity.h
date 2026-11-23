@@ -91,7 +91,7 @@ class LibraryListActivity final : public UiTabListActivity {
   // Shared tail of row activation and the options menu's Open entry.
   void openBookByPath(const std::string& path);
   void openBookStatistics(const std::string& path, const std::string& title);
-  void restoreIndexAfterStatistics(bool reopenIndex);
+  void restoreIndexAfterStatistics(bool reopenIndex, bool refreshRows = false);
   void promptRebuildIndex();
   void resetAfterRebuild();
   // Long-press menus for Recent and the other shelves.

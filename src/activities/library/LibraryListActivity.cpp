@@ -476,6 +476,9 @@ void LibraryListActivity::openBookStatistics(const std::string& path, const std:
   RenderLock lock(*this);
   const bool reopenIndex = index.isOpen();
   index.close();
+  const bool hideFinished = reopenIndex && !historyView() && SETTINGS.libraryHideFinishedBooks;
+  const bool wasFinished = hideFinished && readingstats::bookCompletion(path).value_or(false);
+  const int recentCount = RECENT_BOOKS.getCount();
   auto screen = ReadingStatsActivity::forClosedBook(renderer, mappedInput, path, title);
   if (!screen) {
     LOG_ERR("LIB", "Cannot open book statistics screen");
@@ -485,15 +488,18 @@ void LibraryListActivity::openBookStatistics(const std::string& path, const std:
     return;
   }
   lock.unlock();
-  startActivityForResult(std::move(screen), [this, reopenIndex](const ActivityResult&) {
-    swallowHeldReleases();
-    RenderLock lock(*this);
-    restoreIndexAfterStatistics(reopenIndex);
-    requestUpdate();
-  });
+  startActivityForResult(
+      std::move(screen), [this, reopenIndex, path, hideFinished, wasFinished, recentCount](const ActivityResult&) {
+        swallowHeldReleases();
+        RenderLock lock(*this);
+        const bool refreshRows = recentCount != RECENT_BOOKS.getCount() ||
+                                 (hideFinished && wasFinished != readingstats::bookCompletion(path).value_or(false));
+        restoreIndexAfterStatistics(reopenIndex, refreshRows);
+        requestUpdate();
+      });
 }
 
-void LibraryListActivity::restoreIndexAfterStatistics(bool reopenIndex) {
+void LibraryListActivity::restoreIndexAfterStatistics(bool reopenIndex, bool refreshRows) {
   if (historyView()) {
     refreshViewIndex();
     resetAfterRebuild();
@@ -515,7 +521,14 @@ void LibraryListActivity::restoreIndexAfterStatistics(bool reopenIndex) {
     return;
   }
 #endif
-  if (!reopenIndex || index.open(library::libraryIndexPath())) return;
+  if (!reopenIndex) return;
+  if (index.open(library::libraryIndexPath())) {
+    if (refreshRows) {
+      closeRouting();
+      resetAfterRebuild();
+    }
+    return;
+  }
   LOG_ERR("LIB", "cannot reopen library index after statistics");
   filterFailed = true;
   filteredCount = 0;

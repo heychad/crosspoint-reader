@@ -16,6 +16,7 @@ class FileBrowserActivity final : public UiListActivity {
   // File actions
   bool removeDirFile(const std::string& fullPath);
   void showEntryActions();
+  void openSelectedBookStatistics();
   void startRename();
   void renameSelectedFile(const std::string& oldPath, const std::string& oldEntry, const std::string& newStem,
                           const std::string& extension);
@@ -28,6 +29,7 @@ class FileBrowserActivity final : public UiListActivity {
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
   OptionPopup optionPopup;
+  bool statisticsOpenFailed = false;
 
   // Pull-based rows: the SDK list resolves each drawn row on demand through
   // provideRow() (fui::ListProps::rowProvider), so the only per-file
