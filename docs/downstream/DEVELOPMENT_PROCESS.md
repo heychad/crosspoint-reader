@@ -227,3 +227,24 @@ It enables the same twelve flags as the checked WIP profile and identifies as
 `x4pro` environment keeps its existing feature gates. Build, full-suite,
 review, backup, and installation status belong to
 [the candidate record](CUMULATIVE_CANDIDATE.md).
+
+### Version-only personal builds
+
+Set the personal candidate version on the build command to reuse the existing
+PlatformIO build directory. The build adds the `-x4pro` suffix.
+
+```sh
+CROSSPOINT_X4PRO_TEST_VERSION=2.0.0-chad.3-test66 pio run -e x4pro-chad-test
+```
+
+Use the same value when reproducing the candidate and record it with the
+source commit and firmware checksum. The X4 Pro profiles compile the version
+into the source files that use it. GitHub release profiles use their version
+definitions in `platformio.ini`.
+
+On November 23, a version-only build of `x4pro-chad-test` took 206.65 seconds
+and compiled 875 files with the old global flag. With a warm cache and the new
+override, the same version-only task took 84.09 seconds and compiled 11 files.
+The first build after changing the configuration compiled 875 files in
+210.57 seconds. The warm build retained PlatformIO's project checksum and
+embedded the expected version in the firmware and FreeInk OPDS object.

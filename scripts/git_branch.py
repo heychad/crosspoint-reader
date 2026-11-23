@@ -1,13 +1,13 @@
 """
-PlatformIO pre-build script: inject git branch and short SHA into
-CROSSPOINT_VERSION for development environments.
+PlatformIO pre-build script to set CROSSPOINT_VERSION on the objects that use it.
 
-Results in a version string like:  1.1.0-dev-feat-kosync-xpath-05c6cf8
-Release environments are unaffected; they set CROSSPOINT_VERSION in the ini.
+Development builds use Git metadata. Local X4 Pro builds use the configured
+version. GitHub release profiles still set their version through build_flags.
 """
 
 import configparser
 import os
+import re
 import subprocess
 import sys
 
@@ -77,20 +77,27 @@ def get_base_version(project_dir):
 
 
 def inject_version(env):
-    # Only applies to development environments; release envs set the
-    # version via build_flags in platformio.ini and are unaffected.
-    if env['PIOENV'] not in ('default', 'sticky'):
+    profile = env['PIOENV']
+    if profile in ('default', 'sticky'):
+        project_dir = env['PROJECT_DIR']
+        base_version = get_base_version(project_dir)
+        branch = get_git_branch(project_dir)
+        short_sha = get_git_short_sha(project_dir)
+        version_string = f'{base_version}-dev-{branch}-{short_sha}'
+    elif profile in ('x4pro', 'x4pro-chad-test'):
+        base_version = env.GetProjectOption('custom_crosspoint_base_version')
+        if profile == 'x4pro-chad-test':
+            override = os.environ.get('CROSSPOINT_X4PRO_TEST_VERSION')
+            if override is not None:
+                if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.+-]*', override) is None:
+                    raise ValueError('Invalid CROSSPOINT_X4PRO_TEST_VERSION')
+                base_version = override
+        version_string = f'{base_version}-x4pro'
+    else:
         return
 
-    project_dir = env['PROJECT_DIR']
-    base_version = get_base_version(project_dir)
-    branch = get_git_branch(project_dir)
-    short_sha = get_git_short_sha(project_dir)
-    version_string = f'{base_version}-dev-{branch}-{short_sha}'
-
     def add_version(build_env, node):
-        # Only these translation units depend on Git metadata. Keep library and
-        # reader objects reusable when the branch or commit changes.
+        # Keep unrelated objects reusable when only the version changes.
         if b'CROSSPOINT_VERSION' not in node.srcnode().get_contents():
             return node
         version_env = build_env.Clone()
