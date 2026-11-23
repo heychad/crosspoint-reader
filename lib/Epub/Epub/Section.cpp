@@ -85,7 +85,8 @@ namespace {
 // v78: Rendering mode is included in the header.
 // v79: Preserve clipping source ranges across hidden text inside a word.
 // v82: Keep explicit first-letter rules and use nested styles for span-based drop caps.
-constexpr uint8_t SECTION_FILE_VERSION = 82;
+// v83: Keep image-backed divider fallbacks and honor fully suppressed borders.
+constexpr uint8_t SECTION_FILE_VERSION = 83;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

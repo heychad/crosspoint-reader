@@ -1210,6 +1210,36 @@ TEST_F(ChapterBlockDecorationTest, FirstLetterRuleCapturesQuoteAndLetter) {
   std::filesystem::remove(cssPath);
 }
 
+TEST_F(ChapterBlockDecorationTest, BorderlessDividerKeepsOnlyExplicitSpacing) {
+  open("hr", "border: none; margin-top: 5px; margin-bottom: 9px; padding-bottom: 3px");
+  close("hr");
+  EXPECT_TRUE(elementsWithTag(TAG_PageHorizontalRule).empty());
+  EXPECT_EQ(parser.currentPageNextY, 17);
+}
+
+TEST_F(ChapterBlockDecorationTest, ImageBackedDividerRetainsFallback) {
+  open("hr", "border: none; background: url(ornament.png) center no-repeat");
+  close("hr");
+  EXPECT_EQ(elementsWithTag(TAG_PageHorizontalRule).size(), 1u);
+  open("hr", "border: none; background-image: url(ornament.png); display: none");
+  close("hr");
+  open("div", "background-image: url(ornament.png)");
+  open("hr", "border-width: 0");
+  close("hr");
+  close("div");
+  EXPECT_EQ(elementsWithTag(TAG_PageHorizontalRule).size(), 1u);
+  open("hr", "border: none; border-top-style: solid; border-top-width: 1px");
+  close("hr");
+  EXPECT_EQ(elementsWithTag(TAG_PageHorizontalRule).size(), 2u);
+}
+
+TEST_F(ChapterBlockDecorationTest, PlainDividerRemainsAvailableWithoutPublisherStyling) {
+  parser.embeddedStyle = false;
+  open("hr", "border: none");
+  close("hr");
+  EXPECT_EQ(elementsWithTag(TAG_PageHorizontalRule).size(), 1u);
+}
+
 TEST_F(ChapterBlockDecorationTest, BorderedBlockFramesItsTextAndInsetsIt) {
   open("div", "border: 2px solid black");
   open("p", nullptr);

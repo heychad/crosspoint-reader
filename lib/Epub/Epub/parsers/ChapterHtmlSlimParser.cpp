@@ -521,6 +521,7 @@ void ChapterHtmlSlimParser::simplifyPublisherStyle(CssStyle& style) const {
   style.borderWidthsDefined = 0;
   style.borderStylesDefined = 0;
   style.shaded = false;
+  style.backgroundImage = false;
   style.floatLeft = false;
   style.initialLetter = 0;
   style.defined.textIndent = 0;
@@ -540,6 +541,7 @@ void ChapterHtmlSlimParser::simplifyPublisherStyle(CssStyle& style) const {
   style.defined.borderBottom = 0;
   style.defined.borderLeft = 0;
   style.defined.shaded = 0;
+  style.defined.backgroundImage = 0;
   style.defined.floatLeft = 0;
   style.defined.initialLetter = 0;
 }
@@ -880,7 +882,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle, cons
   listItemBulletOnly = false;
 }
 
-void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
+void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle, const bool visible) {
   if (stopRequested) return;
   if (partWordBufferIndex > 0) {
     flushPartWordBuffer();
@@ -903,19 +905,16 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
   }
 
   const int16_t lineHeight = static_cast<int16_t>(renderer.getLineHeight(fontId, lineCompression));
-  const int16_t defaultVerticalSpacing = static_cast<int16_t>(lineHeight / 2);
+  const int16_t defaultVerticalSpacing = visible ? static_cast<int16_t>(lineHeight / 2) : 0;
   const int16_t topSpacing =
       static_cast<int16_t>((blockStyle.marginTop > 0 ? blockStyle.marginTop : defaultVerticalSpacing) +
                            (blockStyle.paddingTop > 0 ? blockStyle.paddingTop : 0));
   const int16_t bottomSpacing =
       static_cast<int16_t>((blockStyle.marginBottom > 0 ? blockStyle.marginBottom : defaultVerticalSpacing) +
                            (blockStyle.paddingBottom > 0 ? blockStyle.paddingBottom : 0));
-  constexpr uint8_t ruleThickness = 2;
-  const int16_t availableWidth =
-      std::max<int16_t>(1, static_cast<int16_t>(viewportWidth - blockStyle.totalHorizontalInset()));
-  const int16_t width = std::max<int16_t>(1, static_cast<int16_t>(availableWidth / 4));
-  const int16_t xPos = static_cast<int16_t>(blockStyle.leftInset() + ((availableWidth - width) / 2));
-  const int clearTopSpacing = std::max<int>(topSpacing, lastLineGlyphBottom() - currentPageNextY);
+  const uint8_t ruleThickness = visible ? 2 : 0;
+  const int clearTopSpacing =
+      visible ? std::max<int>(topSpacing, lastLineGlyphBottom() - currentPageNextY) : topSpacing;
   const int16_t totalHeight = static_cast<int16_t>(clearTopSpacing + ruleThickness + bottomSpacing);
 
   if (!currentPage->elements.empty() && currentPageNextY + totalHeight > viewportHeight) {
@@ -932,17 +931,22 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
     currentPageVisibleOffsetSet = false;
   }
 
-  // The rule starts below the previous line's glyphs; its top spacing can cover them.
-  currentPageNextY += std::max<int>(topSpacing, lastLineGlyphBottom() - currentPageNextY);
-
-  auto pageRule = makeUniqueNoThrow<PageHorizontalRule>(width, ruleThickness, xPos, currentPageNextY);
-  if (!pageRule) {
-    LOG_ERR("EHP", "Failed to create PageHorizontalRule");
-    return;
+  // Only the visible line needs to clear the previous line's glyphs.
+  currentPageNextY += visible ? std::max<int>(topSpacing, lastLineGlyphBottom() - currentPageNextY) : topSpacing;
+  if (visible) {
+    const int16_t availableWidth =
+        std::max<int16_t>(1, static_cast<int16_t>(viewportWidth - blockStyle.totalHorizontalInset()));
+    const int16_t width = std::max<int16_t>(1, static_cast<int16_t>(availableWidth / 4));
+    const int16_t xPos = static_cast<int16_t>(blockStyle.leftInset() + ((availableWidth - width) / 2));
+    auto pageRule = makeUniqueNoThrow<PageHorizontalRule>(width, ruleThickness, xPos, currentPageNextY);
+    if (!pageRule) {
+      LOG_ERR("EHP", "Failed to create PageHorizontalRule");
+      return;
+    }
+    currentPage->elements.push_back(std::move(pageRule));
+    setCurrentPageVisibleOffset(visibleTextOffset);
+    noteContent(currentPageNextY, currentPageNextY + ruleThickness);
   }
-  currentPage->elements.push_back(std::move(pageRule));
-  setCurrentPageVisibleOffset(visibleTextOffset);
-  noteContent(currentPageNextY, currentPageNextY + ruleThickness);
   keepWithNextLines = 0;
   currentPageNextY = static_cast<int16_t>(currentPageNextY + ruleThickness + bottomSpacing);
 
@@ -2163,7 +2167,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       hrBlockStyle.textIndentDefined = false;
       hrBlockStyle.textIndent = 0;
     }
-    self->emitHorizontalRule(hrBlockStyle);
+    self->emitHorizontalRule(hrBlockStyle, !self->embeddedStyle || !cssStyle.suppressesHorizontalRule());
     self->depth += 1;
     return;
   }

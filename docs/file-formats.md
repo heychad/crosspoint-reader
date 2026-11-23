@@ -90,6 +90,16 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 83
+
+Completed and partial section caches rebuild for publisher-styled EPUB
+dividers. A divider with all borders explicitly suppressed keeps its
+declared spacing. A background image keeps the fallback line visible.
+CSS cache version 20 stores one byte for image presence and uses defined
+flag bit 31 for the property. CSS addresses and image bytes stay in the EPUB.
+Clipping layout signatures advance to version 4. Saved reading positions,
+clipping text, and portable source offsets remain in their existing files.
+
 ### Version 82
 
 Completed and partial section caches rebuild for corrected EPUB drop caps.

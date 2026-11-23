@@ -290,7 +290,7 @@ class ChapterHtmlSlimParser {
   static void applyVerticalAlignToEntry(StyleStackEntry& entry, const CssStyle& css);
   void pushBlockTextStyleEntry(const CssStyle& cssStyle);
   void pushDecorationStyleEntry(CssTextDecoration defaultDecoration, const CssStyle& cssStyle);
-  void emitHorizontalRule(const BlockStyle& blockStyle);
+  void emitHorizontalRule(const BlockStyle& blockStyle, bool visible);
   // XML callbacks
   static void XMLCALL startElement(void* userData, const XML_Char* name, const XML_Char** atts);
   static void XMLCALL characterData(void* userData, const XML_Char* s, int len);

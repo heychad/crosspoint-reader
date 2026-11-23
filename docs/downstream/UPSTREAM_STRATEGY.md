@@ -56,6 +56,13 @@ The fork applies the same adjustment to its auto-sleep and CPU idle timers.
 Time already spent idle still counts. Host checks cover long dispatches, an
 ordinary idle tick, and timer rollover.
 
+The fork also adapts [RC3's divider fallback](https://github.com/uxjulia/CrossInk/commit/1b16a1819b28446379cd8e9c7038abf5fcc6480a).
+Publisher CSS can suppress a divider's line and keep its spacing. If the CSS
+uses a background image, the reader draws a fallback line. The rule parser
+stores the presence of an image for this decision. On the X4 Pro, the flag
+fits in the existing 128-byte style record in memory. Each cached rule grows
+by one byte on disk.
+
 Review new releases at integration milestones. Pin the selected tag and SDK,
 review its changes, and test on a development branch. Promote an RC only after
 our relevant checks and device smoke test; installing on the reader remains a

@@ -528,6 +528,30 @@ TEST_F(CssParserTest, ParsesBordersAndBackgroundShade) {
   EXPECT_TRUE(reader.resolveStyle("div", "rgb").shaded);
 }
 
+TEST_F(CssParserTest, BackgroundImageKeepsDividerFallbackThroughCascadeAndCache) {
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer,
+                    "hr { border-style: none; }"
+                    "hr.ornament { background-image: URL( 'ornament.png' ) !important; }"
+                    "hr.ornament.tint { background-color: white; }"
+                    "hr.ornament.blank { background: none; }"
+                    "hr.ornament.no-art { background-image: none; }"
+                    "hr.empty { background: url(' '); }"
+                    "hr.border { border-top: 1px solid; }"),
+            CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+  CssParser reader(cachePath());
+  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+  for (const auto* parser : {&writer, &reader}) {
+    EXPECT_TRUE(parser->resolveStyle("hr", "").suppressesHorizontalRule());
+    EXPECT_FALSE(parser->resolveStyle("hr", "ornament tint").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "ornament blank").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "ornament no-art").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "empty").suppressesHorizontalRule());
+    EXPECT_FALSE(parser->resolveStyle("hr", "border").suppressesHorizontalRule());
+  }
+}
+
 TEST_F(CssParserTest, StoresFirstLetterRulesSeparately) {
   CssParser writer(cachePath());
   ASSERT_EQ(loadCss(writer,

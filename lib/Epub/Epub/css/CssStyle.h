@@ -118,6 +118,7 @@ struct CssPropertyFlags {
   uint16_t floatLeft : 1;
   uint16_t initialLetter : 1;
   uint16_t whiteSpace : 1;
+  uint16_t backgroundImage : 1;
 
   CssPropertyFlags()
       : textAlign(0),
@@ -150,22 +151,20 @@ struct CssPropertyFlags {
         shaded(0),
         floatLeft(0),
         initialLetter(0),
-        whiteSpace(0) {}
+        whiteSpace(0),
+        backgroundImage(0) {}
 
   [[nodiscard]] bool anySet() const {
     return textAlign || fontStyle || fontWeight || textDecoration || textIndent || marginTop || marginBottom ||
            marginLeft || marginRight || paddingTop || paddingBottom || paddingLeft || paddingRight || imageHeight ||
            imageWidth || display || direction || verticalAlign || listStyleType || fontSize || smallCaps ||
            pageBreakBefore || pageBreakAfter || borderTop || borderRight || borderBottom || borderLeft || shaded ||
-           floatLeft || initialLetter || whiteSpace;
+           floatLeft || initialLetter || whiteSpace || backgroundImage;
   }
 };
 
-// Cache serializes defined flags as uint32_t with bit indices 0..30.
-static_assert(sizeof(CssPropertyFlags) <= sizeof(uint32_t),
-              "CssPropertyFlags exceeds 32 bits; update cache read/write in CssParser.cpp");
-static_assert(sizeof(CssPropertyFlags) * 8 >= 31,
-              "CssPropertyFlags has fewer bits than properties; update bitfield widths");
+// Cache serializes all 32 defined flags explicitly.
+static_assert(sizeof(CssPropertyFlags) == sizeof(uint32_t));
 
 // Represents a collection of CSS style properties
 // Only stores properties relevant to e-ink text rendering
@@ -176,6 +175,7 @@ struct CssStyle {
   CssFontWeight fontWeight = CssFontWeight::Normal;
   CssTextDecoration textDecoration = CssTextDecoration::None;
   CssTextDirection direction = CssTextDirection::Ltr;
+  bool backgroundImage = false;  // Presence only, for a thematic break's fallback rule.
 
   CssLength textIndent;     // First-line indent (deferred resolution)
   CssLength marginTop;      // Vertical spacing before block
@@ -327,6 +327,10 @@ struct CssStyle {
       shaded = base.shaded;
       defined.shaded = 1;
     }
+    if (base.defined.backgroundImage) {
+      backgroundImage = base.backgroundImage;
+      defined.backgroundImage = 1;
+    }
     if (base.defined.floatLeft) {
       floatLeft = base.floatLeft;
       defined.floatLeft = 1;
@@ -366,6 +370,14 @@ struct CssStyle {
   [[nodiscard]] bool hasPageBreakAfter() const { return defined.pageBreakAfter; }
   [[nodiscard]] bool hasVisibleBorder() const {
     return borderTop.visible() || borderRight.visible() || borderBottom.visible() || borderLeft.visible();
+  }
+  [[nodiscard]] bool suppressesHorizontalRule() const {
+    const auto hidden = [this](const CssBorderSide& side, const uint8_t bit) {
+      return ((borderWidthsDefined & bit) && side.width == 0) ||
+             ((borderStylesDefined & bit) && side.style == CssBorderStyle::None);
+    };
+    return !backgroundImage && hidden(borderTop, 1) && hidden(borderRight, 2) && hidden(borderBottom, 4) &&
+           hidden(borderLeft, 8);
   }
 
   void reset() { *this = CssStyle{}; }

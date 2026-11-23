@@ -263,6 +263,23 @@ bool interpretForcedBreak(const std::string_view value) {
          iequalsAscii(value, "right") || iequalsAscii(value, "recto") || iequalsAscii(value, "verso");
 }
 
+bool hasBackgroundImageUrl(const std::string_view value) {
+  for (size_t i = 0; i + 4 < value.size(); ++i) {
+    if (i != 0 && !isAsciiWhitespace(value[i - 1]) && value[i - 1] != ',') continue;
+    if (!iequalsAscii(value.substr(i, 4), "url(")) continue;
+    const size_t end = value.find(')', i + 4);
+    if (end == std::string_view::npos) return false;
+    auto address = trimAsciiWhitespace(value.substr(i + 4, end - i - 4));
+    if (address.size() >= 2 && (address.front() == '\'' || address.front() == '"') &&
+        address.front() == address.back()) {
+      address = trimAsciiWhitespace(address.substr(1, address.size() - 2));
+    }
+    if (!address.empty()) return true;
+    i = end;
+  }
+  return false;
+}
+
 // CSS pixels for a border width token (thin/medium/thick or a length); false if not a width.
 bool interpretBorderWidth(const std::string_view token, uint8_t& out) {
   static constexpr std::string_view KEYWORDS[] = {"thin", "medium", "thick"};
@@ -426,8 +443,7 @@ constexpr std::array STYLE_LENGTH_FIELDS = {
 };
 constexpr size_t STYLE_LENGTH_FIELD_COUNT = STYLE_LENGTH_FIELDS.size();
 constexpr size_t STYLE_WIRE_BYTES =
-    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 6 + 13 + sizeof(uint32_t);
-constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 31) - 1;
+    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 6 + 14 + sizeof(uint32_t);
 constexpr uint8_t MAX_INITIAL_LETTER = 6;
 
 void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
@@ -461,6 +477,7 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   out[offset++] = style.floatLeft ? 1 : 0;
   out[offset++] = style.initialLetter;
   out[offset++] = style.preserveWhitespace ? 1 : 0;
+  out[offset++] = style.backgroundImage ? 1 : 0;
 
   uint32_t definedBits = 0;
   if (style.defined.textAlign) definedBits |= 1 << 0;
@@ -494,6 +511,7 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   if (style.defined.floatLeft) definedBits |= 1 << 28;
   if (style.defined.initialLetter) definedBits |= 1 << 29;
   if (style.defined.whiteSpace) definedBits |= 1u << 30;
+  if (style.defined.backgroundImage) definedBits |= 1u << 31;
   memcpy(out + offset, &definedBits, sizeof(definedBits));
 }
 
@@ -565,12 +583,13 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.floatLeft = floatLeft != 0;
   style.initialLetter = initialLetter;
   const uint8_t preserveWhitespace = in[offset++];
-  if (preserveWhitespace > 1) return false;
+  const uint8_t backgroundImage = in[offset++];
+  if (preserveWhitespace > 1 || backgroundImage > 1) return false;
   style.preserveWhitespace = preserveWhitespace != 0;
+  style.backgroundImage = backgroundImage != 0;
 
   uint32_t definedBits = 0;
   memcpy(&definedBits, in + offset, sizeof(definedBits));
-  if ((definedBits & ~CSS_DEFINED_BITS_MASK) != 0) return false;
   style.defined.textAlign = (definedBits & 1 << 0) != 0;
   style.defined.fontStyle = (definedBits & 1 << 1) != 0;
   style.defined.fontWeight = (definedBits & 1 << 2) != 0;
@@ -602,6 +621,7 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.defined.floatLeft = (definedBits & 1 << 28) != 0;
   style.defined.initialLetter = (definedBits & 1 << 29) != 0;
   style.defined.whiteSpace = (definedBits & 1u << 30) != 0;
+  style.defined.backgroundImage = (definedBits & 1u << 31) != 0;
   return true;
 }
 
@@ -1065,7 +1085,17 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
     style.defined.pageBreakAfter = 1;
   } else if (name.size() >= 6 && iequalsAscii(name.substr(0, 6), "border")) {
     parseBorderDeclaration(name, value, style);
+  } else if (iequalsAscii(name, "background-image")) {
+    const bool image = hasBackgroundImageUrl(value);
+    if (image || iequalsAscii(value, "none")) {
+      style.backgroundImage = image;
+      style.defined.backgroundImage = 1;
+    }
   } else if (iequalsAscii(name, "background-color") || iequalsAscii(name, "background")) {
+    if (iequalsAscii(name, "background")) {
+      style.backgroundImage = hasBackgroundImageUrl(value);
+      style.defined.backgroundImage = 1;
+    }
     style.shaded = interpretShade(value);
     style.defined.shaded = 1;
   } else if (iequalsAscii(name, "float")) {
