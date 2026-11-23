@@ -1,16 +1,28 @@
 #pragma once
 
-#include <I18n.h>
+#include <cstddef>
+#include <cstdint>
 
-#include <iterator>
+namespace readerlinespacing {
+inline constexpr uint8_t MIN_PERCENT = 70;
+inline constexpr uint8_t MAX_PERCENT = 200;
+inline constexpr uint8_t DEFAULT_PERCENT = 120;
+inline constexpr uint8_t PRESET_PERCENTAGES[] = {100, 110, 120, 130, 145, 160, 175};
 
-#include "CrossPointSettings.h"
+constexpr bool valid(int percent) { return percent >= MIN_PERCENT && percent <= MAX_PERCENT; }
 
-// Labels and multipliers follow the persisted LINE_COMPRESSION order.
-inline constexpr StrId LINE_SPACING_IDS[] = {
-    StrId::STR_SPACING_0_PERCENT,       StrId::STR_SPACING_PLUS_10_PERCENT, StrId::STR_SPACING_PLUS_20_PERCENT_DEFAULT,
-    StrId::STR_SPACING_PLUS_30_PERCENT, StrId::STR_SPACING_PLUS_45_PERCENT, StrId::STR_SPACING_PLUS_60_PERCENT,
-    StrId::STR_SPACING_PLUS_75_PERCENT};
-inline constexpr float LINE_SPACING_MULTIPLIERS[] = {1.0f, 1.1f, 1.2f, 1.3f, 1.45f, 1.6f, 1.75f};
-static_assert(std::size(LINE_SPACING_IDS) == CrossPointSettings::LINE_COMPRESSION_COUNT);
-static_assert(std::size(LINE_SPACING_MULTIPLIERS) == CrossPointSettings::LINE_COMPRESSION_COUNT);
+constexpr uint8_t fromPreset(int index) {
+  return index >= 0 && index < static_cast<int>(sizeof(PRESET_PERCENTAGES)) ? PRESET_PERCENTAGES[index]
+                                                                            : DEFAULT_PERCENT;
+}
+
+// Older builds can read the closest preset from a percentage-based save.
+constexpr uint8_t nearestPreset(int percent) {
+  uint8_t index = 0;
+  while (static_cast<size_t>(index) + 1 < sizeof(PRESET_PERCENTAGES) &&
+         2 * percent > PRESET_PERCENTAGES[index] + PRESET_PERCENTAGES[index + 1]) {
+    ++index;
+  }
+  return index;
+}
+}  // namespace readerlinespacing

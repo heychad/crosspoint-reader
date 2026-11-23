@@ -2569,6 +2569,13 @@ void CrossPointWebServer::handlePostSettings() {
   const auto quickBindingsBefore = readerquickactions::bindingValues(SETTINGS);
   int applied = 0;
 
+  const auto legacyHeight = doc["lineHeight"];
+  if (doc["lineHeightPercent"].isNull() && legacyHeight.is<uint8_t>() &&
+      legacyHeight.as<uint8_t>() < sizeof(readerlinespacing::PRESET_PERCENTAGES)) {
+    SETTINGS.lineHeightPercent = readerlinespacing::fromPreset(legacyHeight.as<uint8_t>());
+    ++applied;
+  }
+
   // Older clients set one margin. Explicit axis keys take precedence.
   const auto legacyMargin = doc["screenMargin"];
   if (legacyMargin.is<int>() && legacyMargin.as<int>() >= CrossPointSettings::SCREEN_MARGIN_MIN &&

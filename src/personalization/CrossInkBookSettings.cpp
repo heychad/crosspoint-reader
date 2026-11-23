@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "CrossInkFontName.h"
+#include "ReaderLineSpacing.h"
 
 namespace crossink {
 namespace {
@@ -116,15 +117,9 @@ bool decodeBookSettings(const uint8_t* bytes, size_t length, BookSettingsPreview
     set(result, 0, old[1]);
     result.unmappedMask &= ~(1UL << 1);
   }
-  constexpr uint8_t heights[] = {100, 110, 120, 130, 145, 160, 175};
-  if (mask & (1UL << 2)) {
-    for (uint8_t i = 0; i < sizeof(heights); ++i) {
-      if (old[2] == heights[i]) {
-        set(result, 1, i);
-        result.unmappedMask &= ~(1UL << 2);
-        break;
-      }
-    }
+  if ((mask & (1UL << 2)) && readerlinespacing::valid(old[2])) {
+    set(result, 1, old[2]);
+    result.unmappedMask &= ~(1UL << 2);
   }
   // CrossInk's zero adds no pixels; the native equivalent is 100 percent.
   if ((mask & (1UL << 3)) && old[3] == 0) {

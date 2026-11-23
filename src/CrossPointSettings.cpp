@@ -339,6 +339,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   readerquickactions::write(doc, readerQuickActions);
   bleturner::writeJson(ble, doc);
   bookReaderSettings.writeGlobal(doc.as<JsonObject>());
+  doc["lineHeight"] = readerlinespacing::nearestPreset(doc["lineHeightPercent"].as<uint8_t>());
   doc["screenMargin"] = doc["screenMarginHorizontal"];  // Compatibility for older settings readers.
 }
 
@@ -470,11 +471,15 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     sleepTimeoutMinutes = sleepTimeoutEnumToMinutes(legacyValue);
     needsResave = true;
   }
-  // "lineSpacing" saves predate the 1.0 option: Tight/Normal/Wide/Extra Wide (0..3) become 1.1..1.45.
-  if (doc["lineHeight"].isNull() && doc["lineSpacing"].is<uint8_t>()) {
-    const int legacyValue = doc["lineSpacing"].as<uint8_t>();
-    lineSpacing = legacyValue + 1 < LINE_COMPRESSION_COUNT ? static_cast<uint8_t>(legacyValue + 1) : LINE_SPACING_120;
-    needsResave = true;
+  // Older lineSpacing indices predate the 100% preset and start at 110%.
+  if (doc["lineHeightPercent"].isNull()) {
+    if (doc["lineHeight"].is<uint8_t>()) {
+      lineHeightPercent = readerlinespacing::fromPreset(doc["lineHeight"].as<uint8_t>());
+      needsResave = true;
+    } else if (doc["lineHeight"].isNull() && doc["lineSpacing"].is<uint8_t>()) {
+      lineHeightPercent = readerlinespacing::fromPreset(doc["lineSpacing"].as<uint8_t>() + 1);
+      needsResave = true;
+    }
   }
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
@@ -636,7 +641,9 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
 }
 
 float CrossPointSettings::getReaderLineCompression() const {
-  return LINE_SPACING_MULTIPLIERS[lineSpacing < LINE_COMPRESSION_COUNT ? lineSpacing : LINE_SPACING_120];
+  const int percent =
+      readerlinespacing::valid(lineHeightPercent) ? lineHeightPercent : readerlinespacing::DEFAULT_PERCENT;
+  return static_cast<float>(percent) / 100.0f;
 }
 
 unsigned long CrossPointSettings::getSleepTimeoutMs() const {

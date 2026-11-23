@@ -2,10 +2,11 @@
 #include <cstdint>
 
 #include "Epub/EpubRenderMode.h"
+#include "ReaderLineSpacing.h"
 class CrossPointSettings {
  public:
   uint8_t fontPointSize = 14;
-  uint8_t lineSpacing = 2;
+  uint8_t lineHeightPercent = 120;
   uint8_t wordSpacing = 100;
   uint8_t characterSpacing = 2;
   uint8_t orientation = 0;

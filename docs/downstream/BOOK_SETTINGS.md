@@ -197,6 +197,25 @@ The existing native override and reset paths handle the imported profile.
 Device verification remains pending: open a book with a legacy Balanced or Light
 profile, confirm the selected profile, reset it to global, and check the passage.
 
+## Line spacing
+
+Text Settings and both EPUB controls use the 70–200% range. Touch and the
+inline buttons adjust by one percentage point. The physical side buttons
+adjust by five. The global and per-book CrossInk importers preserve the
+exact saved percentage in that range.
+
+Native settings store `lineHeightPercent`. Old per-book and global
+`lineHeight` presets retain the same render multiplier and cache identity.
+The oldest global `lineSpacing` presets still load. Saves also write the
+closest old preset so an older build can read a familiar value. Non-preset
+spacing can render differently on an older build. The current book's
+override remains separate from the global default.
+
+The layout uses the existing section-cache format. Changing line spacing
+repaginates through the existing passage-resume path. The host checks verify
+cancellation, saved values, and identical multipliers for all seven old
+presets. Screen fit and passage resume still need hardware validation.
+
 ## Independent margins
 
 Horizontal and vertical margins now use CrossInk's 5–150-pixel range with

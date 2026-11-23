@@ -7,6 +7,7 @@
 
 #include <cstdint>
 
+#include "ReaderLineSpacing.h"
 #include "personalization/BookReaderSettings.h"
 #include "personalization/CrossInkImportGuard.h"
 #include "personalization/CrossInkImportTransaction.h"
@@ -149,17 +150,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // slot; fromJson() folds that range up (see LEGACY_FONT_SIZE_MAX).
   static constexpr uint8_t LEGACY_FONT_SIZE_MAX = 3;
   static constexpr uint8_t DEFAULT_FONT_POINT_SIZE = 14;
-  // Line height as a percent of font size.
-  enum LINE_COMPRESSION {
-    LINE_SPACING_100 = 0,
-    LINE_SPACING_110 = 1,
-    LINE_SPACING_120 = 2,
-    LINE_SPACING_130 = 3,
-    LINE_SPACING_145 = 4,
-    LINE_SPACING_160 = 5,
-    LINE_SPACING_175 = 6,
-    LINE_COMPRESSION_COUNT
-  };
   enum PARAGRAPH_ALIGNMENT {
     JUSTIFIED = 0,
     LEFT_ALIGN = 1,
@@ -400,7 +390,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
-  uint8_t lineSpacing = LINE_SPACING_120;
+  uint8_t lineHeightPercent = readerlinespacing::DEFAULT_PERCENT;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.
   uint8_t sleepTimeoutMinutes = 10;

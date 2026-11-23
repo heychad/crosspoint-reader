@@ -17,7 +17,8 @@ struct Field {
 };
 constexpr std::array<Field, ReaderPreferences::FIELD_COUNT> FIELDS = {{
     {"fontSize", &CrossPointSettings::fontPointSize, 8, 255},
-    {"lineHeight", &CrossPointSettings::lineSpacing, 0, 6},
+    {"lineHeightPercent", &CrossPointSettings::lineHeightPercent, readerlinespacing::MIN_PERCENT,
+     readerlinespacing::MAX_PERCENT},
     {"wordSpacing", &CrossPointSettings::wordSpacing, 50, 200},
     {"characterSpacing", &CrossPointSettings::characterSpacing, 0, 4},
     {"orientation", &CrossPointSettings::orientation, 0, 3},
@@ -32,6 +33,7 @@ constexpr std::array<Field, ReaderPreferences::FIELD_COUNT> FIELDS = {{
     {"focusReadingEnabled", &CrossPointSettings::focusReadingEnabled, 0, 1},
     {"epubRenderMode", &CrossPointSettings::epubRenderMode, 0, EPUB_RENDER_MODE_COUNT - 1},
 }};
+constexpr size_t LINE_HEIGHT = 1;
 constexpr size_t EMBEDDED_STYLE = 10;
 constexpr size_t FOCUS_READING = 13;
 constexpr size_t RENDER_MODE = 14;
@@ -82,6 +84,8 @@ void ReaderPreferences::write(JsonObject object, uint32_t mask) const {
     object.remove(FIELDS[i].key);
     if (mask & (1U << i)) object[FIELDS[i].key] = values[i];
   }
+  object.remove("lineHeight");
+  if (mask & (1U << LINE_HEIGHT)) object["lineHeight"] = readerlinespacing::nearestPreset(values[LINE_HEIGHT]);
   object.remove("indexingMethod");
   object.remove("screenMarginVertical");
   object.remove("paragraphIndentMode");
@@ -118,6 +122,13 @@ bool ReaderPreferences::read(JsonObjectConst object, uint32_t& mask) {
     if (numeric < FIELDS[i].minimum || numeric > FIELDS[i].maximum) return false;
     values[i] = numeric;
     mask |= 1U << i;
+  }
+  const auto legacyHeight = object["lineHeight"];
+  if (object["lineHeightPercent"].isUnbound() && !legacyHeight.isNull()) {
+    if (!legacyHeight.is<uint8_t>() || legacyHeight.as<uint8_t>() >= sizeof(readerlinespacing::PRESET_PERCENTAGES))
+      return false;
+    values[LINE_HEIGHT] = readerlinespacing::fromPreset(legacyHeight.as<uint8_t>());
+    mask |= 1U << LINE_HEIGHT;
   }
   const auto name = object["sdFontFamilyName"];
   if (!name.isNull()) {

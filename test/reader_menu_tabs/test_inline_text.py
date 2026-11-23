@@ -24,12 +24,10 @@ methods = "\n".join(method(source, name) for name in (
     "void EpubReaderMenuActivity::applyInlineTextSetting(",
     "bool EpubReaderMenuActivity::handleInlineTextSetting(",
     "void EpubReaderMenuActivity::updateInlineTextRow("))
+line_compression = method((root / "src/CrossPointSettings.cpp").read_text(),
+                          "float CrossPointSettings::getReaderLineCompression() const")
 parent = method((root / "src/activities/reader/EpubReaderActivity.cpp").read_text(),
                 "void EpubReaderActivity::applyReaderTextSettings()")
-line = (root / "src/ReaderLineSpacing.h").read_text()
-start = line.index("inline constexpr StrId LINE_SPACING_IDS[]")
-line = line[start:line.index("};", start) + 2]
-
 code = r'''
 #include <algorithm>
 #include <cassert>
@@ -39,15 +37,17 @@ code = r'''
 #include <cstdio>
 #include <variant>
 #include "I18nKeys.h"
+#include "ReaderLineSpacing.h"
 int lockDepth=0;
 struct RenderLock {RenderLock(){++lockDepth;}~RenderLock(){--lockDepth;}};
 struct {const char*get(StrId){return "translated";}} I18N;
 struct CrossPointSettings {
  enum {SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=150,SCREEN_MARGIN_STEP=1,
  WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
- uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
+ uint8_t lineHeightPercent=120,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
  screenMargin=5,screenMarginVertical=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
  paragraphIndentSpaces=0,paragraphIndentMode=0,embeddedStyle=0,imageRendering=0;
+ float getReaderLineCompression() const;
  int saved=0;
  bool saveToFile(){assert(lockDepth==0);++saved;return true;}
 } SETTINGS;
@@ -69,12 +69,15 @@ template<class T,class... A>std::unique_ptr<T>makeUniqueNoThrow(A&&...a){return 
 #define LOG_ERR(...) ((void)0)
 class EpubReaderMenuActivity {public:
  enum class MenuAction {__ACTIONS__};
- bool tabbed=true;int renderer=0,mappedInput=0;char marginLabels[2][4]{};int updates=0;Popup optionPopup;std::function<void()>textSettingsChanged;
+ bool tabbed=true;int renderer=0,mappedInput=0;char layoutLabels[3][5]{};int updates=0;Popup optionPopup;std::function<void()>textSettingsChanged;
  std::function<void(const ActivityResult&)>finished;
  void startActivityForResult(std::unique_ptr<IntervalSelectionActivity>p,std::function<void(const ActivityResult&)>cb){
-  assert(p->minimum==5&&p->maximum==150&&p->small==1&&p->large==5);
-  finished=std::move(cb);optionPopup.count=146;optionPopup.current=p->initial-5;
-  optionPopup.select=[this](int index){finished(ActivityResult{false,IntervalResult{static_cast<uint32_t>(5+index)}});};
+  const int minimum = p->minimum;
+  assert(((minimum==5&&p->maximum==150)||(minimum==70&&p->maximum==200))&&p->small==1&&p->large==5);
+  finished=std::move(cb);optionPopup.count=p->maximum-minimum+1;optionPopup.current=p->initial-minimum;
+  optionPopup.select=[this,minimum](int index){
+   finished(ActivityResult{false,IntervalResult{static_cast<uint32_t>(minimum+index)}});
+  };
  }
  void requestUpdate(){++updates;}
  void applyInlineTextSetting(uint8_t CrossPointSettings::*,uint8_t);
@@ -91,12 +94,18 @@ struct EpubReaderActivity {
  bool saveBookReaderSettings(){assert(lockDepth==0&&!section);++saved;return true;}
  void applyReaderTextSettings();
 };
-'''.replace("__ACTIONS__", actions) + line + "\n" + data + "\n" + methods + "\n" + parent + r'''
+'''.replace("__ACTIONS__", actions) + data + "\n" + methods + "\n" + line_compression + "\n" + parent + r'''
 int main(){
  using M=EpubReaderMenuActivity;using A=M::MenuAction;
+ const float oldMultipliers[]={1.0f,1.1f,1.2f,1.3f,1.45f,1.6f,1.75f};
+ for(int index=0;index<7;++index){
+  SETTINGS.lineHeightPercent=readerlinespacing::fromPreset(index);
+  assert(SETTINGS.getReaderLineCompression()==oldMultipliers[index]);
+ }
+ SETTINGS.lineHeightPercent=123;assert(SETTINGS.getReaderLineCompression()==1.23f);
  struct Expected {A action;uint8_t CrossPointSettings::*field;int count,minimum,step;};
  const Expected expected[]={
-  {A::LINE_SPACING,&CrossPointSettings::lineSpacing,7,0,1},
+  {A::LINE_SPACING,&CrossPointSettings::lineHeightPercent,131,70,1},
   {A::WORD_SPACING,&CrossPointSettings::wordSpacing,7,50,25},
   {A::CHARACTER_SPACING,&CrossPointSettings::characterSpacing,5,0,1},
   {A::TEXT_AA,&CrossPointSettings::textAntiAliasing,0,0,1},
@@ -145,13 +154,18 @@ int main(){
  menu.optionPopup.select(95);assert(SETTINGS.screenMarginVertical==100&&SETTINGS.screenMargin==5);
  fui::ListItem h,v;menu.updateInlineTextRow(A::SCREEN_MARGIN,h);menu.updateInlineTextRow(A::VERTICAL_MARGIN,v);
  assert(std::string(h.value)=="5"&&std::string(v.value)=="100");
+ menu.handleInlineTextSetting(A::LINE_SPACING);
+ menu.finished(ActivityResult{true,IntervalResult{123}});assert(SETTINGS.lineHeightPercent==120);
+ menu.optionPopup.select(53);assert(SETTINGS.lineHeightPercent==123);
+ fui::ListItem lineHeight;menu.updateInlineTextRow(A::LINE_SPACING,lineHeight);
+ assert(std::string(lineHeight.value)=="123%");
  allocationAllowed=false;assert(menu.handleInlineTextSetting(A::SCREEN_MARGIN));assert(SETTINGS.screenMargin==5);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
     directory = Path(directory)
     (directory / "test.cpp").write_text(code)
-    subprocess.run(["c++", "-std=c++20", "-I", str(root / "lib/I18n"),
+    subprocess.run(["c++", "-std=c++20", "-I", str(root / "lib/I18n"), "-I", str(root / "src"),
                     str(directory / "test.cpp"), "-o", str(directory / "test")], check=True)
     subprocess.run([str(directory / "test")], check=True)
-print("All 12 inline controls, invalid choices, unchanged values, and pagination handoff passed")
+print("Inline text controls, line-height compatibility, and pagination handoff passed")

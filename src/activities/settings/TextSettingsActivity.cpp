@@ -441,14 +441,25 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
       requestUpdate();
       break;
     }
-    case LayoutRow::LineSpacing:
-      optionPopup_.show(StrId::STR_LINE_SPACING, LINE_SPACING_IDS, static_cast<int>(std::size(LINE_SPACING_IDS)),
-                        SETTINGS.lineSpacing, [](int idx) {
-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFile();
-                        });
-      requestUpdate();
+    case LayoutRow::LineSpacing: {
+      auto picker = makeUniqueNoThrow<IntervalSelectionActivity>(
+          renderer, mappedInput, "ReaderLineSpacing", StrId::STR_LINE_SPACING, SETTINGS.lineHeightPercent,
+          readerlinespacing::MIN_PERCENT, readerlinespacing::MAX_PERCENT, 1, 5, StrId::STR_PERCENT_VALUE_FORMAT);
+      if (!picker) {
+        LOG_ERR("TEXT", "Could not allocate line spacing picker");
+        break;
+      }
+      startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+        const auto* selected = std::get_if<IntervalResult>(&result.data);
+        if (!result.isCancelled && selected && readerlinespacing::valid(selected->value) &&
+            SETTINGS.lineHeightPercent != selected->value) {
+          SETTINGS.lineHeightPercent = static_cast<uint8_t>(selected->value);
+          SETTINGS.saveToFile();
+          requestUpdate();
+        }
+      });
       break;
+    }
     case LayoutRow::Alignment:
       optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
                         SETTINGS.paragraphAlignment, [](int idx) {
@@ -510,10 +521,8 @@ std::string TextSettingsActivity::layoutValueText(int row) const {
       const uint8_t mode = SETTINGS.paragraphIndentMode;
       return I18N.get(INDENT_STYLE_IDS[mode < std::size(INDENT_STYLE_IDS) ? mode : 0]);
     }
-    case LayoutRow::LineSpacing: {
-      const uint8_t v = SETTINGS.lineSpacing;
-      return I18N.get(LINE_SPACING_IDS[v < std::size(LINE_SPACING_IDS) ? v : CrossPointSettings::LINE_SPACING_120]);
-    }
+    case LayoutRow::LineSpacing:
+      return std::to_string(SETTINGS.lineHeightPercent) + "%";
     case LayoutRow::ParaIndentation: {
       const int spaces = std::clamp<int>(SETTINGS.paragraphIndentSpaces, 0, 5);
       return spaces == 0 ? tr(STR_STATE_OFF) : std::to_string(spaces);

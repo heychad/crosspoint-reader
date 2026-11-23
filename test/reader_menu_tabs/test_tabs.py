@@ -44,11 +44,11 @@ struct {const char* get(StrId){return "label";}} I18N;
 struct CrossPointSettings {
  enum {SLIDE_SWITCH_NIGHT_MODE,SCREEN_MARGIN_MIN=5,SCREEN_MARGIN_MAX=150,SCREEN_MARGIN_STEP=1,
  WORD_SPACING_MIN=50,WORD_SPACING_MAX=200,WORD_SPACING_STEP=25};
- uint8_t lineSpacing=0,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
+ uint8_t lineHeightPercent=120,wordSpacing=100,characterSpacing=2,textAntiAliasing=0,focusReadingEnabled=0,
  screenMargin=5,screenMarginVertical=5,paragraphAlignment=0,hyphenationEnabled=0,extraParagraphSpacing=0,
  paragraphIndentSpaces=0,paragraphIndentMode=0,embeddedStyle=0,imageRendering=0;
 };
-constexpr StrId LINE_SPACING_IDS[7]{};
+#include "ReaderLineSpacing.h"
 struct {char dictionaryName[2]={'x',0};struct {char peerAddr[2]={'x',0};} ble;bool moveFinishedToReadFolder=false;} SETTINGS;
 struct BoardConfig {static bool hasHomeKey(){return true;}};
 struct {bool present(){return true;}} Frontlight;
@@ -149,6 +149,6 @@ with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / 'tabs.cpp').write_text(code)
     for flags in ([], ['-DCROSSPOINT_EXPERIMENTAL_COMPLETION', '-DCROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT', '-DCROSSPOINT_EXPERIMENTAL_STATS_RESTORE']):
-        subprocess.run(['c++','-std=c++20','-Wall','-Wextra','-Werror',*flags,str(path/'tabs.cpp'),'-o',str(path/'tabs')],check=True)
+        subprocess.run(['c++','-std=c++20','-I',str(ROOT/'src'),'-Wall','-Wextra','-Werror',*flags,str(path/'tabs.cpp'),'-o',str(path/'tabs')],check=True)
         subprocess.run([str(path/'tabs')],check=True)
 print('Tabbed menu grouping, remembered rows, wrap, popup ownership, and flat-list behavior passed')

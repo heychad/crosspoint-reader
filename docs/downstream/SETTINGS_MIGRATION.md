@@ -137,7 +137,7 @@ cumulative release review and physical-device validation remain.
 | Built-in font family and size | CrossInk has Lexend Deca and Bitter; this CrossPoint base has built-in Noto Sans. Their IDs and legacy size slots are not equivalent. Built-in selections are left unchanged. Font pack and full font-engine parity are Later. |
 | Named SD font and point size | Compatible names and paired point sizes import through global preferences and owned per-book fields. Installing or converting fonts is separate. |
 | RC character spacing | Exact whole-pixel values import; half-pixel values remain unsupported. |
-| Word and line spacing | Default word spacing and exact native line-height presets import. Other values remain unchanged. |
+| Word spacing | Default word spacing imports. Other word spacing values remain unchanged. |
 | Focus/guide, publisher fonts/pages, and stable pagination | Preserve their source data. Deferred features need their own migration checks when enabled. |
 | Status bars | The explicit bars import translates supported custom slots and legacy flat fields. Unsupported stable-page or disabled chapter-time requests leave the current bars unchanged. RC2 centering, separators, hidden-bar state, per-bar battery styles, and chapter percentage now import through the [native bar controls](RC2_READER_BARS.md). |
 | Device, date, frontlight schedule, and dictionary typography | Their additional CrossInk controls are Later; do not copy raw IDs into different native fields. |
@@ -154,9 +154,9 @@ separately. Nested bar codecs and per-book formats retain their own checks.
 
 | Handling | Keys |
 | --- | ---: |
-| Compatible mappings | 74 |
+| Compatible mappings | 75 |
 | Conditional mappings or feature gates | 17 |
-| Partial mappings with explicit compatibility limits | 6 |
+| Partial mappings with explicit compatibility limits | 5 |
 | Open selected compatibility | 0 |
 | Selected for Later | 19 |
 | Inputs absent from the pinned X4 Pro profile | 21 |

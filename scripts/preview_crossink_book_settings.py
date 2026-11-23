@@ -20,6 +20,7 @@ MASK_FIELDS = (
 COMPATIBLE = {
     # CrossInk treats values below 8 as legacy font-size slots, not points.
     'readerFontPointSize': ('fontSize', 8, 255),
+    'lineHeightPercent': ('lineHeightPercent', 70, 200),
     'orientation': ('orientation', 0, 3),
     'paragraphAlignment': ('paragraphAlignment', 0, 4),
     'embeddedStyle': ('embeddedStyle', 0, 1),
@@ -149,9 +150,6 @@ def decode(data: bytes) -> dict:
         if key == 'characterSpacing' and 1 <= value <= 9 and value % 2:
             preview['characterSpacing'] = (value - 1) // 2
             continue
-        if key == 'lineHeightPercent' and value in LINE_HEIGHTS:
-            preview['lineHeight'] = LINE_HEIGHTS.index(value)
-            continue
         if key == 'wordSpacing' and value == 0:
             preview['wordSpacing'] = 100
             continue
@@ -188,7 +186,10 @@ def compare_current(report: dict, current: dict | None) -> dict:
     if (not isinstance(current, dict) or type(current.get('version')) is not int
             or current['version'] != 1 or not isinstance(current.get('overrides'), dict)):
         raise ValueError('current settings must have version 1 and an overrides object')
-    existing = current['overrides']
+    existing = dict(current['overrides'])
+    preset = existing.get('lineHeight')
+    if 'lineHeightPercent' not in existing and type(preset) is int and 0 <= preset < len(LINE_HEIGHTS):
+        existing['lineHeightPercent'] = LINE_HEIGHTS[preset]
     fields = {}
     if report.get('safeMode'):
         fields['safeMode'] = 'already_matching' if current.get('safeMode') is True else 'existing_value_preserved'

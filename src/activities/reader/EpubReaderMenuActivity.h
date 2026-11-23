@@ -126,7 +126,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   std::vector<uint8_t> fontSizes;
   int selectedFontRow = 0;
   char fontSizeLabel[12]{};
-  char marginLabels[2][4]{};
+  char layoutLabels[3][5]{};
   bool openFontPane(Pane next);
   void closeFontPane();
   void selectFontRow(int index);

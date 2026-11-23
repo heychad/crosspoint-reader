@@ -8,7 +8,7 @@ import test_preview
 
 ROOT = Path(__file__).resolve().parents[2]
 module = test_preview.preview
-FIELDS = ('fontSize', 'lineHeight', 'wordSpacing', 'characterSpacing', 'orientation', 'screenMarginHorizontal',
+FIELDS = ('fontSize', 'lineHeightPercent', 'wordSpacing', 'characterSpacing', 'orientation', 'screenMarginHorizontal',
           'paragraphAlignment', 'extraParagraphSpacing', 'paragraphIndentSpaces', 'hyphenationEnabled',
           'embeddedStyle', 'textAntiAliasing', 'imageRendering', 'focusReadingEnabled', 'epubRenderMode')
 records = []
@@ -47,6 +47,11 @@ for version in (3, 7, 8, 10, 13):
                 if version >= 8:
                     data[11] = horizontal
                 records.append(bytes(data))
+for version in (2, 8, 10, 16):
+    for percent in range(256):
+        data = bytearray(test_preview.record(version, mask=1 << 2))
+        data[7] = percent
+        records.append(bytes(data))
 for value in range(12):
     records.append(test_preview.record(12, mask=1 << 20, character_spacing=value))
 for gray in range(3):
@@ -70,7 +75,7 @@ for version in range(2, 17):
 with tempfile.TemporaryDirectory() as directory:
     executable = Path(directory) / 'probe'
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',
-                    *shlex.split(os.environ.get('CXXFLAGS', '')), '-I', str(ROOT / 'src/personalization'),
+                    *shlex.split(os.environ.get('CXXFLAGS', '')), '-I', str(ROOT / 'src/personalization'), '-I', str(ROOT / 'src'),
                     str(ROOT / 'test/book_settings_migration/decoder_probe.cpp'),
                     str(ROOT / 'src/personalization/CrossInkBookSettings.cpp'), '-o', str(executable)], check=True)
     proc = subprocess.run([str(executable)], input=''.join(data.hex() + '\n' for data in records),

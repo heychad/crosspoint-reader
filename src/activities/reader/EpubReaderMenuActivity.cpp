@@ -55,7 +55,8 @@ struct TextControl {
   uint8_t step = 1;
 };
 constexpr TextControl TEXT_CONTROLS[] = {
-    {MA::LINE_SPACING, StrId::STR_LINE_SPACING, &CrossPointSettings::lineSpacing, LINE_SPACING_IDS, nullptr, 7},
+    {MA::LINE_SPACING, StrId::STR_LINE_SPACING, &CrossPointSettings::lineHeightPercent, nullptr, nullptr,
+     readerlinespacing::MAX_PERCENT - readerlinespacing::MIN_PERCENT + 1, readerlinespacing::MIN_PERCENT},
     {MA::WORD_SPACING, StrId::STR_WORD_SPACING, &CrossPointSettings::wordSpacing, WORD_SPACING, nullptr, 7, 50, 25},
     {MA::CHARACTER_SPACING, StrId::STR_CHARACTER_SPACING, &CrossPointSettings::characterSpacing, CHARACTER_SPACING,
      nullptr, 5},
@@ -472,17 +473,18 @@ bool EpubReaderMenuActivity::handleInlineTextSetting(MenuAction action) {
     return true;
   }
   if (!control->ids && !control->text) {
+    const int maximum = control->minimum + (control->count - 1) * control->step;
+    const auto format = action == MenuAction::LINE_SPACING ? StrId::STR_PERCENT_VALUE_FORMAT : StrId::STR_NONE_OPT;
     auto picker = makeUniqueNoThrow<IntervalSelectionActivity>(
-        renderer, mappedInput, "ReaderMargin", control->title, SETTINGS.*(control->field),
-        CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX, 1, 5, StrId::STR_NONE_OPT, true);
+        renderer, mappedInput, "ReaderLayoutValue", control->title, SETTINGS.*(control->field), control->minimum,
+        maximum, control->step, 5, format, true);
     if (!picker) {
-      LOG_ERR("MENU", "Could not allocate margin picker");
+      LOG_ERR("MENU", "Could not allocate layout picker");
       return true;
     }
-    startActivityForResult(std::move(picker), [this, control](const ActivityResult& result) {
+    startActivityForResult(std::move(picker), [this, control, maximum](const ActivityResult& result) {
       const auto* selected = std::get_if<IntervalResult>(&result.data);
-      if (!result.isCancelled && selected && selected->value >= CrossPointSettings::SCREEN_MARGIN_MIN &&
-          selected->value <= CrossPointSettings::SCREEN_MARGIN_MAX)
+      if (!result.isCancelled && selected && selected->value >= control->minimum && selected->value <= maximum)
         applyInlineTextSetting(control->field, static_cast<uint8_t>(selected->value));
     });
     return true;
@@ -511,8 +513,10 @@ void EpubReaderMenuActivity::updateInlineTextRow(MenuAction action, fui::ListIte
   const int index = std::clamp((static_cast<int>(SETTINGS.*(control->field)) - control->minimum) / control->step, 0,
                                static_cast<int>(control->count) - 1);
   if (!control->ids && !control->text) {
-    auto& label = marginLabels[action == MenuAction::VERTICAL_MARGIN ? 1 : 0];
-    snprintf(label, sizeof(label), "%u", control->minimum + index * control->step);
+    const bool percent = action == MenuAction::LINE_SPACING;
+    auto& label = layoutLabels[percent ? 2 : (action == MenuAction::VERTICAL_MARGIN ? 1 : 0)];
+    snprintf(label, sizeof(label), percent ? "%u%%" : "%u",
+             static_cast<unsigned>(control->minimum + index * control->step));
     item.value = label;
   } else {
     item.value = control->ids ? I18N.get(control->ids[index]) : control->text[index];

@@ -73,13 +73,16 @@ class DecodeTest(unittest.TestCase):
 
     def test_point_size_and_exact_line_height(self):
         result = preview.decode(record(10, mask=(1 << 1) | (1 << 2)))
-        self.assertEqual(result['preview'], {'fontSize': 18, 'lineHeight': 1})
+        self.assertEqual(result['preview'], {'fontSize': 18, 'lineHeightPercent': 110})
         self.assertEqual(result['firmware_import_excluded'], ['fontSize'])
         data = bytearray(record(10, mask=(1 << 1) | (1 << 2)))
-        data[6], data[7] = 3, 111  # Old font slot and non-native line height.
+        data[6], data[7] = 3, 111  # Obsolete font slot and an exact non-preset line height.
         result = preview.decode(bytes(data))
-        self.assertEqual(result['preview'], {})
-        self.assertEqual(result['unmapped'], ['readerFontPointSize', 'lineHeightPercent'])
+        self.assertEqual(result['preview'], {'lineHeightPercent': 111})
+        self.assertEqual(result['unmapped'], ['readerFontPointSize'])
+        for percent in (69, 201):
+            data[7] = percent
+            self.assertIn('lineHeightPercent', preview.decode(bytes(data))['unmapped'])
 
     def test_margin_axes_map_independently(self):
         result = preview.decode(record(10, mask=3 << 5))
@@ -167,8 +170,11 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual(preview.compare_current(result, None)['patch_for_missing_fields_only'], {})
         comparison = preview.compare_current(result, {'version': 1, 'overrides': {'fontSize': 22, 'orientation': 1}})
         self.assertEqual(comparison['fields'], {'fontSize': 'existing_value_preserved',
-                                               'lineHeight': 'missing_requires_manual_review', 'orientation': 'already_matching'})
+                                               'lineHeightPercent': 'missing_requires_manual_review', 'orientation': 'already_matching'})
         self.assertEqual(comparison['patch_for_missing_fields_only'], {})
+        legacy_current = {'version': 1, 'overrides': {'lineHeight': 1}}
+        self.assertEqual(preview.compare_current(result, legacy_current)['fields']['lineHeightPercent'],
+                         'already_matching')
         for invalid in ({'version': True, 'overrides': {}}, {'version': 1, 'overrides': []}):
             with self.assertRaises(ValueError):
                 preview.compare_current(result, invalid)

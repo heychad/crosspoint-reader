@@ -34,6 +34,8 @@ std::vector<Info> makeSettings(){
    Info info;info.key=pair.first;info.valuePtr=pair.second;info.values.resize(40);result.push_back(info);
  }
  Info power;power.key="shortPwrBtn";power.values.resize(7);power.valueSetter=[](uint8_t display){SETTINGS.shortPwrBtn=display==6?CrossPointSettings::PWR_QUICK_ACTIONS:CrossPointSettings::IGNORE;};result.push_back(power);
+ Info height; height.key="lineHeightPercent"; height.type=SettingType::VALUE;
+ height.valuePtr=&CrossPointSettings::lineHeightPercent; height.valueRange={70,200}; result.push_back(height);
  return result;
 }
 void apply(const char*json){JsonDocument doc;assert(!deserializeJson(doc,json));const auto settings=makeSettings();
@@ -53,10 +55,14 @@ int main(){
  apply(R"({"readerUpTap":21,"homeButtonTapAction":12})");assert(SETTINGS.readerUpTap==0 && SETTINGS.homeButtonTapAction==home);
  assert(SETTINGS.saves==7);
  SETTINGS.failSave=true;apply(R"({"readerDownHold":11})");assert(web.status==500&&SETTINGS.saves==8);
+ SETTINGS.failSave=false;
+ apply(R"({"lineHeight":4})");assert(SETTINGS.lineHeightPercent==145);
+ apply(R"({"lineHeight":1,"lineHeightPercent":123})");assert(SETTINGS.lineHeightPercent==123);
+ apply(R"({"lineHeight":7,"lineHeightPercent":201})");assert(SETTINGS.lineHeightPercent==123);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
  p=Path(directory);(p/'test.cpp').write_text(code)
  subprocess.run(['c++','-std=c++20','-I',str(root/'test/quick_actions/stubs'),'-I',str(root/'src'),'-I',sys.argv[1],str(p/'test.cpp'),'-o',str(p/'test')],check=True)
  subprocess.run([str(p/'test')],check=True)
-print('Web Quick Actions ownership and full-snapshot checks passed')
+print('Web Quick Actions ownership and line-height compatibility passed')

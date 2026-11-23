@@ -67,6 +67,7 @@
 #include "activities/settings/SettingsActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "activities/util/IntervalSelectionActivity.h"
 #include "clippings/ClippingText.h"
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
@@ -3462,7 +3463,7 @@ std::string EpubReaderActivity::textRowValue(int row) const {
     case 1:
       return std::to_string(SETTINGS.fontPointSize) + " pt";
     case 2:
-      return I18N.get(LINE_SPACING_IDS[SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT]);
+      return std::to_string(SETTINGS.lineHeightPercent) + "%";
     case 3:
       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
     default:
@@ -3478,8 +3479,7 @@ void EpubReaderActivity::applyTextSettingLive() {
   requestUpdate();
 }
 
-// Settings-style option pickers for the Text panel's enum rows. Every
-// selection applies immediately to the page under the sheet.
+// Text-panel pickers apply each confirmed selection to the page under the sheet.
 void EpubReaderActivity::showTextRowPopup(const int row) {
   switch (row) {
     case 1: {
@@ -3501,13 +3501,37 @@ void EpubReaderActivity::showTextRowPopup(const int row) {
       });
       break;
     }
-    case 2:
-      overlayPopup.show(StrId::STR_LINE_SPACING, LINE_SPACING_IDS, static_cast<int>(std::size(LINE_SPACING_IDS)),
-                        SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT, [this](int idx) {
-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
-                          applyTextSettingLive();
-                        });
-      break;
+    case 2: {
+      auto picker = makeUniqueNoThrow<IntervalSelectionActivity>(
+          renderer, mappedInput, "ReaderLineSpacing", StrId::STR_LINE_SPACING, SETTINGS.lineHeightPercent,
+          readerlinespacing::MIN_PERCENT, readerlinespacing::MAX_PERCENT, 1, 5, StrId::STR_PERCENT_VALUE_FORMAT, true);
+      if (!picker) {
+        LOG_ERR("READER", "Could not allocate line spacing picker");
+        return;
+      }
+      {
+        RenderLock lock;
+        settleOverlayRefresh();
+        discardOverlayPage();
+        mappedInput.resetHomeButtonInput();
+        overlay = Overlay::None;
+      }
+      startActivityForResult(std::move(picker), [this](const ActivityResult& result) {
+        {
+          RenderLock lock;
+          overlay = Overlay::Text;
+        }
+        const auto* selected = std::get_if<IntervalResult>(&result.data);
+        if (!result.isCancelled && selected && readerlinespacing::valid(selected->value) &&
+            SETTINGS.lineHeightPercent != selected->value) {
+          SETTINGS.lineHeightPercent = static_cast<uint8_t>(selected->value);
+          applyTextSettingLive();
+        } else {
+          requestUpdate();
+        }
+      });
+      return;
+    }
     case 3:
       overlayPopup.show(StrId::STR_PARA_ALIGNMENT, kAlignIds, static_cast<int>(std::size(kAlignIds)),
                         SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, [this](int idx) {
@@ -3882,7 +3906,7 @@ void EpubReaderActivity::handleOverlayInput() {
         SETTINGS.focusReadingEnabled = SETTINGS.focusReadingEnabled ? 0 : 1;
         applyTextSettingLive();
       } else {
-        // Enum rows open the Settings-style option picker.
+        // Open the selected text control.
         showTextRowPopup(panelIndex);
       }
     } else if (overlay == Overlay::Contents) {

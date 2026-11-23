@@ -444,7 +444,7 @@ TEST_F(BookSettings, CrossInkPreferencesImportBacksUpAndPreservesOtherSettings) 
   EXPECT_EQ(persisted["uiScale"].as<int>(), 0);
   EXPECT_EQ(persisted["trackReadingStats"].as<int>(), 0);
   EXPECT_EQ(persisted["readingIdleTimeThresholdUnits"].as<int>(), 12);
-  EXPECT_EQ(persisted["lineHeight"].as<int>(), 4);
+  EXPECT_EQ(persisted["lineHeightPercent"].as<int>(), 145);
   EXPECT_EQ(persisted["paragraphAlignment"].as<int>(), 3);
   EXPECT_EQ(persisted["embeddedStyle"].as<int>(), 0);
   EXPECT_EQ(persisted["hyphenationEnabled"].as<int>(), 1);
@@ -475,29 +475,31 @@ TEST_F(BookSettings, CrossInkPreferencesRejectInvalidAndPreserveExisting) {
 }
 
 TEST_F(BookSettings, CrossInkPreferencesImportExactLineHeights) {
-  constexpr uint8_t heights[] = {100, 110, 120, 130, 145, 160, 175};
-  for (uint8_t i = 0; i < sizeof(heights); ++i) {
+  for (const int percent : {69, 70, 111, 125, 145, 200, 201}) {
     JsonDocument source, current;
-    source["lineHeightPercent"] = heights[i];
+    source["lineHeightPercent"] = percent;
     current.to<JsonObject>();
-    ASSERT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
-    EXPECT_EQ(current["lineHeight"].as<uint8_t>(), i);
+    const bool valid = percent >= 70 && percent <= 200;
+    EXPECT_EQ(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false), valid);
+    if (valid)
+      EXPECT_EQ(current["lineHeightPercent"].as<int>(), percent);
+    else
+      EXPECT_TRUE(current["lineHeightPercent"].isUnbound());
   }
   JsonDocument source, current;
-  source["lineHeightPercent"] = 125;
-  current.to<JsonObject>();
-  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
-  EXPECT_TRUE(current["lineHeight"].isUnbound());
-  source["lineHeightPercent"] = 130;
-  current["lineSpacing"] = 1;
-  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
-  EXPECT_TRUE(current["lineHeight"].isUnbound());
-  EXPECT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
-  EXPECT_EQ(current["lineHeight"].as<uint8_t>(), 3);
-  EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
+  source["lineHeightPercent"] = 123;
+  for (const char* preset : {"lineHeight", "lineSpacing"}) {
+    current.clear();
+    current[preset] = 1;
+    EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
+    EXPECT_TRUE(current["lineHeightPercent"].isUnbound());
+    EXPECT_TRUE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
+    EXPECT_EQ(current["lineHeightPercent"].as<int>(), 123);
+    EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
+  }
   source["lineHeightPercent"] = 100;
   EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, false));
-  EXPECT_EQ(current["lineHeight"].as<uint8_t>(), 3);
+  EXPECT_EQ(current["lineHeightPercent"].as<int>(), 123);
   source["lineHeightPercent"] = "100";
   EXPECT_FALSE(crossinkimport::stagePreferences(source.as<JsonVariantConst>(), current, true));
 }
@@ -838,11 +840,11 @@ TEST(ReaderPreferenceScope, UneditedOverridesStayPinnedAcrossMatchingGlobalChang
   scope.beforeGlobalLoad(settings);
   EXPECT_EQ(settings.fontPointSize, 14);
   settings.fontPointSize = 18;
-  settings.lineSpacing = 5;
+  settings.lineHeightPercent = 160;
   scope.afterGlobalLoad(settings);
   auto saved = scope.capture(settings);
   EXPECT_NE(saved.mask, 0U);
-  EXPECT_EQ(settings.lineSpacing, 5);
+  EXPECT_EQ(settings.lineHeightPercent, 160);
   scope.beforeGlobalLoad(settings);
   settings.fontPointSize = 12;
   scope.afterGlobalLoad(settings);
@@ -877,6 +879,36 @@ TEST(ReaderPreferences, RoundTripAllFieldsAndFont) {
   ASSERT_TRUE(result.read(doc.as<JsonObjectConst>(), mask));
   EXPECT_EQ(mask, ReaderPreferences::ALL_FIELDS);
   EXPECT_EQ(result.difference(snapshot), 0U);
+}
+
+TEST(ReaderPreferences, PreservesLegacyLineHeightAndWritesRollbackPreset) {
+  constexpr uint32_t lineHeightBit = 1U << 1;
+  constexpr uint8_t heights[] = {100, 110, 120, 130, 145, 160, 175};
+  for (uint8_t preset = 0; preset < sizeof(heights); ++preset) {
+    JsonDocument old;
+    old["lineHeight"] = preset;
+    ReaderPreferences preferences;
+    uint32_t mask;
+    ASSERT_TRUE(preferences.read(old.as<JsonObjectConst>(), mask));
+    EXPECT_EQ(mask, lineHeightBit);
+    CrossPointSettings effective;
+    preferences.apply(effective, mask);
+    EXPECT_EQ(effective.lineHeightPercent, heights[preset]);
+  }
+  ReaderPreferences preferences;
+  preferences.values[1] = 123;
+  JsonDocument saved;
+  preferences.write(saved.to<JsonObject>(), lineHeightBit);
+  EXPECT_EQ(saved["lineHeightPercent"].as<int>(), 123);
+  EXPECT_EQ(saved["lineHeight"].as<int>(), 2);
+  uint32_t mask;
+  ReaderPreferences restored;
+  ASSERT_TRUE(restored.read(saved.as<JsonObjectConst>(), mask));
+  EXPECT_EQ(restored.values[1], 123);
+  EXPECT_EQ(mask, lineHeightBit);
+  preferences.write(saved.as<JsonObject>(), 0);
+  EXPECT_TRUE(saved["lineHeight"].isUnbound());
+  EXPECT_TRUE(saved["lineHeightPercent"].isUnbound());
 }
 
 TEST(ReaderPreferences, RejectsMalformedValuesAndOversizedFont) {
@@ -1216,7 +1248,7 @@ TEST_F(BookSettings, LegacyNamedFontLoadsWithSizeAndPreservesOriginalUntilEdited
   EXPECT_EQ(effective.fontPointSize, 18);
   ASSERT_TRUE(store.save(scope.capture(effective)));
   EXPECT_FALSE(Storage.exists(PATH));
-  effective.lineSpacing = 1;
+  effective.lineHeightPercent = 119;
   ASSERT_TRUE(store.save(scope.capture(effective)));
   ASSERT_TRUE(Storage.exists(PATH));
   BookReaderPreferences reopened;

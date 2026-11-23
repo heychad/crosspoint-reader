@@ -95,13 +95,24 @@
       "handling": "partial",
       "keys": [
         "characterSpacing",
-        "lineHeightPercent",
         "wordSpacing"
       ],
-      "behavior": "Only whole-pixel character spacing, exact native line-height presets, and default word spacing map. Other typography remains Later E6.",
+      "behavior": "Only whole-pixel character spacing and default word spacing map. Other typography remains Later E6.",
       "evidence": [
         "src/personalization/CrossInkPreferencesImport.h",
         "test/test_crossink_preferences.py"
+      ]
+    },
+    {
+      "handling": "mapped",
+      "keys": [
+        "lineHeightPercent"
+      ],
+      "behavior": "Import the exact saved line-height percentage from 70 to 200. Older native preset indices retain their previous layout.",
+      "evidence": [
+        "src/personalization/CrossInkPreferencesImport.h",
+        "src/personalization/CrossInkBookSettings.cpp",
+        "docs/downstream/BOOK_SETTINGS.md"
       ]
     },
     {

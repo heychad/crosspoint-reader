@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "CrossInkFontName.h"
+#include "ReaderLineSpacing.h"
 
 namespace crossinkimport {
 inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bool replaceExisting) {
@@ -140,18 +141,9 @@ inline bool stagePreferences(JsonVariantConst legacy, JsonDocument& proposed, bo
     }
   }
   const auto legacyHeight = legacy["lineHeightPercent"];
-  const auto currentHeight = proposed["lineHeight"];
-  const auto oldHeight = proposed["lineSpacing"];
-  if (legacyHeight.is<uint8_t>() && (replaceExisting || (currentHeight.isUnbound() && oldHeight.isUnbound()))) {
-    static constexpr uint8_t heights[] = {100, 110, 120, 130, 145, 160, 175};
-    for (uint8_t i = 0; i < sizeof(heights); ++i) {
-      if (legacyHeight.as<uint8_t>() != heights[i]) continue;
-      if (!currentHeight.is<uint8_t>() || currentHeight.as<uint8_t>() != i) {
-        proposed["lineHeight"] = i;
-        changed = true;
-      }
-      break;
-    }
+  if (legacyHeight.is<uint8_t>() && readerlinespacing::valid(legacyHeight.as<uint8_t>()) &&
+      (replaceExisting || (proposed["lineHeight"].isUnbound() && proposed["lineSpacing"].isUnbound()))) {
+    stageMapped("lineHeightPercent", legacyHeight.as<uint8_t>());
   }
   for (const char* key : {"screenMarginHorizontal", "screenMarginVertical"}) {
     auto value = legacy[key];
