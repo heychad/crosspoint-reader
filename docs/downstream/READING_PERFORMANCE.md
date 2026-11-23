@@ -67,6 +67,15 @@ The index bytes matched across both builds. Measure elapsed time on the X4 Pro
 after a card change. A fresh index or newly added EPUB still needs metadata
 extraction.
 
+## Loading Recents and other JSON stores
+
+The default JSON store loader now reads and checks the full file in one
+storage read. It keeps the 50,000-byte limit for Recents and other default
+stores. Oversized files and failed reads or closes stop before parsing. The
+existing reader uses one checked buffer and closes the file before JSON parsing.
+This adapts the [CrossInk RC3 store-read change](https://github.com/uxjulia/CrossInk/commit/22adfc7ae01e6995e2aa1d68d3ed17d0161500c7).
+Measure startup time on the X4 Pro.
+
 ## Finding metadata in EPUB archives
 
 EPUB package lookups read the ZIP directory through the existing 512-byte

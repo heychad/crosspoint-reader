@@ -1,5 +1,7 @@
 #pragma once
 #include <Arduino.h>
+
+#include <algorithm>
 #define HalStorage BaseHalStorage
 #define Storage BaseStorage
 #include "../../book_reading_stats_atomic/stubs/HalStorage.h"
@@ -23,9 +25,11 @@ class HalStorage : public BaseHalStorage {
     return BaseHalStorage::openFileForWrite(module, path, file);
   }
   String readFile(const char* path) {
-    std::string out;
-    readFileToString("TEST", path, 16384, out);
-    return String(out.c_str());
+    HalFile file;
+    if (!openFileForRead("TEST", path, file)) return {};
+    std::string prefix(std::min<size_t>(file.fileSize(), 50000), '\0');
+    if (file.read(prefix.data(), prefix.size()) != static_cast<int>(prefix.size())) return {};
+    return String(prefix.c_str());
   }
   bool readFileToString(const char* module, const std::string& path, size_t cap, std::string& out) {
     HalFile file;

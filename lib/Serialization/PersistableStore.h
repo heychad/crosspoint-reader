@@ -49,8 +49,8 @@ class PersistableStoreBase {
   // Serializes doc and writes it to path (ensures /.crosspoint exists). Logs on failure.
   static bool writeDocToFile(const char* path, const JsonDocument& doc);
 
-  // Reads path and parses it into doc. Returns false silently when the file
-  // does not exist (expected on first boot); logs on read/parse failure.
+  // Parses a complete read of path. A zero limit uses the default 50,000 bytes
+  // and returns false silently on first boot if the file does not exist.
   static bool readDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes = 0);
   enum class CheckedRead { Loaded, Malformed, Unavailable };
   static CheckedRead readCheckedDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes);

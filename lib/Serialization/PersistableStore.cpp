@@ -56,25 +56,16 @@ PersistableStoreBase::CheckedRead PersistableStoreBase::readCheckedDocFromFile(c
 }
 
 bool PersistableStoreBase::readDocFromFile(const char* path, JsonDocument& doc, size_t maxBytes) {
-  if (maxBytes != 0) {
-    HalFile file;
-    return Storage.openFileForRead("PERSIST", path, file) &&
-           readBoundedDoc(path, file, doc, maxBytes) == CheckedRead::Loaded;
+  constexpr size_t DEFAULT_STORE_MAX_BYTES = 50000;
+  const bool useDefaultLimit = maxBytes == 0;
+  if (useDefaultLimit && !Storage.exists(path)) return false;  // Expected on first boot.
+  HalFile file;
+  if (!Storage.openFileForRead("PERSIST", path, file)) return false;
+  const auto read = readBoundedDoc(path, file, doc, useDefaultLimit ? DEFAULT_STORE_MAX_BYTES : maxBytes);
+  if (useDefaultLimit && read != CheckedRead::Loaded) {
+    LOG_ERR("PERSIST", "Failed to load JSON from %s", path);
   }
-  if (!Storage.exists(path)) {
-    return false;  // Expected on first boot — not an error.
-  }
-  String json = Storage.readFile(path);
-  if (json.isEmpty()) {
-    LOG_ERR("PERSIST", "Failed to read %s (empty)", path);
-    return false;
-  }
-  auto error = deserializeJson(doc, json);
-  if (error) {
-    LOG_ERR("PERSIST", "JSON parse error in %s: %s", path, error.c_str());
-    return false;
-  }
-  return true;
+  return read == CheckedRead::Loaded;
 }
 
 namespace {

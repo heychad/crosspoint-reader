@@ -1350,6 +1350,36 @@ TEST_F(BookSettings, PreservesUnknownKeys) {
   EXPECT_EQ(doc["overrides"]["futureOption"].as<int>(), 42);
 }
 
+TEST_F(BookSettings, DefaultStoreReadRejectsOversizedJsonWithCompletePrefix) {
+  std::string original = R"({"books":[{"path":"/sample.epub"}]})";
+  original.resize(50000, ' ');
+  put(PATH, original);
+  JsonDocument doc;
+  ASSERT_TRUE(PersistableStoreBase::readDocFromFile(PATH, doc));
+  EXPECT_STREQ(doc["books"][0]["path"].as<const char*>(), "/sample.epub");
+
+  original += ' ';
+  put(PATH, original);
+  doc.clear();
+  doc["keep"] = 42;
+  EXPECT_FALSE(PersistableStoreBase::readDocFromFile(PATH, doc));
+  EXPECT_EQ(doc["keep"].as<int>(), 42);
+  EXPECT_TRUE(PersistableStoreBase::readDocFromFile(PATH, doc, 65536));
+}
+
+TEST_F(BookSettings, DefaultStoreReadRejectsFailedReadsAndFailedClose) {
+  put(PATH, R"({"books":[]})");
+  JsonDocument doc;
+  doc["keep"] = 42;
+  Storage.failNextReadFor(PATH);
+  EXPECT_FALSE(PersistableStoreBase::readDocFromFile(PATH, doc));
+  EXPECT_EQ(doc["keep"].as<int>(), 42);
+  Storage.failNextCloseFor(PATH);
+  EXPECT_FALSE(PersistableStoreBase::readDocFromFile(PATH, doc));
+  EXPECT_EQ(doc["keep"].as<int>(), 42);
+  EXPECT_TRUE(PersistableStoreBase::readDocFromFile(PATH, doc));
+}
+
 TEST_F(BookSettings, CorruptFutureAndOversizedFilesAreNeverOverwritten) {
   for (const auto& original : {std::string("broken"), std::string(R"({"version":2,"overrides":{}})"),
                                std::string(R"({"version":1,"overrides":{"fontSize":2}})"), std::string(4097, 'x')}) {
