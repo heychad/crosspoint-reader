@@ -11,7 +11,7 @@ add_executable(SavedItemsTest
 )
 target_include_directories(SavedItemsTest PRIVATE
   ../clipping_store/stubs ../library_builder/stubs
-  ${REPO_ROOT}/src ${REPO_ROOT}/lib/Serialization ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/src ${REPO_ROOT}/lib/Serialization ${REPO_ROOT}/lib/Utf8 ${REPO_ROOT}/lib/hal
   ${REPO_ROOT}/freeink-sdk/libs/network/CatalogList/include
   ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include
 )

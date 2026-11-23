@@ -1608,11 +1608,12 @@ void EpubReaderActivity::confirmBookmarkClear(bool retry) {
     {
       RenderLock lock;
       cleared = BookmarkFile::clearForBook(bookPath);
-      // A failed clear leaves native entries intact unless absence is confirmed.
-      if (cleared ||
-          Storage.lookupPath(BookmarkUtil::getBookmarkPath(bookPath).c_str()) == HalStorage::PathStatus::Missing) {
+      if (cleared) {
         cachedBookmarks.clear();
+        cachedBookmarksReadable = true;
         updateBookmarkFlag();
+      } else {
+        loadCachedBookmarks();
       }
     }
     if (cleared)
@@ -2697,8 +2698,7 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showBookmarkMessage) {
-    const char* message = bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED);
-    GUI.drawPopup(renderer, bookmarkReadFailed ? tr(STR_SAVED_ITEMS_ERROR) : message);
+    GUI.drawPopup(renderer, I18N.get(bookmarkMessage));
   }
 
   if (showDictionaryMessage) {
@@ -4338,11 +4338,10 @@ void EpubReaderActivity::loadCachedBookmarks() {
 
 void EpubReaderActivity::addBookmark() {
   if (!section || !epub) return;
-  bookmarkReadFailed = false;
   if (!cachedBookmarksReadable) {
     loadCachedBookmarks();
     if (!cachedBookmarksReadable) {
-      bookmarkReadFailed = true;
+      bookmarkMessage = StrId::STR_SAVED_ITEMS_ERROR;
       showBookmarkMessage = true;
       bookmarkMessageTime = millis();
       requestUpdate();
@@ -4361,16 +4360,22 @@ void EpubReaderActivity::addBookmark() {
   SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
   const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
 
-  const size_t bookmarkCountBeforeToggle = cachedBookmarks.size();
-  cachedBookmarks.erase(std::remove_if(cachedBookmarks.begin(), cachedBookmarks.end(),
-                                       [&](const BookmarkEntry& b) {
-                                         return bookmarkMatchesProgress(b, currentSpineIndex, currentPage, pageCount,
-                                                                        pageRange);
-                                       }),
-                        cachedBookmarks.end());
-  if (cachedBookmarks.size() != bookmarkCountBeforeToggle) {
-    bookmarkRemoved = true;
-    currentPageBookmarked = false;
+  const auto matches = [&](const BookmarkEntry& bookmark) {
+    return bookmarkMatchesProgress(bookmark, currentSpineIndex, currentPage, pageCount, pageRange);
+  };
+  bool saved;
+  if (std::any_of(cachedBookmarks.begin(), cachedBookmarks.end(), matches)) {
+    // Serialize the kept rows before changing the cache.
+    const BookmarkFile::Omit omit{[](const BookmarkEntry& bookmark, const void* context) {
+                                    return (*static_cast<const decltype(matches)*>(context))(bookmark);
+                                  },
+                                  &matches};
+    saved = BookmarkFile::save(epub->getPath(), cachedBookmarks, omit);
+    if (saved) {
+      cachedBookmarks.erase(std::remove_if(cachedBookmarks.begin(), cachedBookmarks.end(), matches),
+                            cachedBookmarks.end());
+      bookmarkMessage = StrId::STR_BOOKMARK_REMOVED;
+    }
   } else {
     std::string pageText;
     if (currentPage >= 0 && currentPage < pageCount) {
@@ -4392,13 +4397,23 @@ void EpubReaderActivity::addBookmark() {
       entry.visibleTextOffset = *offset;
       entry.hasVisibleTextOffset = true;
     }
-    cachedBookmarks.insert(cachedBookmarks.begin(), entry);
-    bookmarkRemoved = false;
-    currentPageBookmarked = true;
+    cachedBookmarks.insert(cachedBookmarks.begin(), std::move(entry));
+    saved = BookmarkFile::save(epub->getPath(), cachedBookmarks);
+    if (saved) {
+      bookmarkMessage = StrId::STR_BOOKMARK_ADDED;
+    } else {
+      cachedBookmarks.erase(cachedBookmarks.begin());
+    }
   }
 
-  if (!BookmarkFile::save(epub->getPath(), cachedBookmarks)) {
+  if (saved) {
+    updateBookmarkFlag();
+  } else {
     LOG_ERR("ERS", "Failed to save bookmarks");
+    loadCachedBookmarks();
+    bookmarkMessage = StrId::STR_BOOKMARK_SAVE_INCOMPLETE;
+    showBookmarkMessage = true;
+    bookmarkMessageTime = millis();
   }
   requestUpdate();
 }

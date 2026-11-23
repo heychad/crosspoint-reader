@@ -56,6 +56,9 @@ class PersistableStoreBase {
   // Caller validates the existing document. The writer locks storage and checks
   // recovery chains before retiring files; ambiguous aliases remain untouched.
   static bool writeDocToFileAtomic(const char* path, const JsonDocument& doc, size_t maxBytes);
+  // The explicit recovery names use the move-chain limit for larger documents.
+  static bool writeDocToFileAtomic(const char* path, const char* temporary, const char* backup, const JsonDocument& doc,
+                                   size_t maxBytes);
   // Checked move-reference update for state.json and recent.json only.
   static bool writeDocToFileForMove(const char* path, const JsonDocument& doc, bool finishPublishedOnly = false);
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)

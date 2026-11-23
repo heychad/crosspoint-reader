@@ -545,6 +545,15 @@ bool HalStorage::distinctSettingsChains(const char* first, const char* second) {
   return distinct && leftClosed && rightClosed;
 }
 
+bool HalStorage::moveChainEligible(const char* path) {
+  StorageLock lock;
+  if (!path || lookupPath(path) != PathStatus::Present) return false;
+  auto file = SDCard.open(path, O_RDONLY);
+  const bool eligible = file && moveFileHasCheckedChain(file);
+  const bool closed = !file || file.close();
+  return eligible && closed;
+}
+
 bool HalStorage::distinctMoveChains(const char* first, const char* second) {
   StorageLock lock;
   if (!first || !second || lookupPath(first) != PathStatus::Present || lookupPath(second) != PathStatus::Present)

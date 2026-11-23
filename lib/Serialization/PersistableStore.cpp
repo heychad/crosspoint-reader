@@ -75,34 +75,42 @@ FileMatch matchesFile(const char* path, const char* expected, size_t expectedSiz
 
 struct AtomicWrite {
   const char* primary;
-  std::string temporary;
-  std::string backup;
+  const char* temporary;
+  const char* backup;
   const char* bytes;
   size_t size;
-};
+  bool useMoveChains;
 
-bool renameChecked(const char* from, const char* to) {
-  return Storage.rename(from, to) && Storage.lookupPath(from) == HalStorage::PathStatus::Missing &&
-         Storage.lookupPath(to) == HalStorage::PathStatus::Present && Storage.settingsChainEligible(to);
-}
+  bool eligible(const char* path) const {
+    return useMoveChains ? Storage.moveChainEligible(path) : Storage.settingsChainEligible(path);
+  }
+
+  bool distinct(const char* first, const char* second) const {
+    return useMoveChains ? Storage.distinctMoveChains(first, second) : Storage.distinctSettingsChains(first, second);
+  }
+
+  bool renameChecked(const char* from, const char* to) const {
+    return Storage.rename(from, to) && Storage.lookupPath(from) == HalStorage::PathStatus::Missing && eligible(to);
+  }
+};
 
 bool writeAtomicLocked(void* raw) {
   const auto& c = *static_cast<const AtomicWrite*>(raw);
-  const char* paths[] = {c.primary, c.temporary.c_str(), c.backup.c_str()};
+  const char* paths[] = {c.primary, c.temporary, c.backup};
   bool present[3];
   for (unsigned i = 0; i < 3; ++i) {
     const auto state = Storage.lookupPath(paths[i]);
     if (state == HalStorage::PathStatus::Failed) return false;
     present[i] = state == HalStorage::PathStatus::Present;
-    if (present[i] && !Storage.settingsChainEligible(paths[i])) return false;
+    if (present[i] && !c.eligible(paths[i])) return false;
     for (unsigned j = 0; j < i; ++j)
-      if (present[i] && present[j] && !Storage.distinctSettingsChains(paths[i], paths[j])) return false;
+      if (present[i] && present[j] && !c.distinct(paths[i], paths[j])) return false;
   }
   // A failed rename can leave two names for one chain. Check every existing pair
   // before retiring a file, including when the primary already matches.
   if (!present[0] && (present[2] || present[1])) {
     const unsigned recovery = present[2] ? 2 : 1;
-    if (!renameChecked(paths[recovery], c.primary)) return false;
+    if (!c.renameChecked(paths[recovery], c.primary)) return false;
     present[0] = true;
     present[recovery] = false;
   }
@@ -114,13 +122,13 @@ bool writeAtomicLocked(void* raw) {
   const auto stagedMatch = present[1] ? matchesFile(paths[1], c.bytes, c.size) : FileMatch::Different;
   if (stagedMatch == FileMatch::Failed) return false;
   if (present[2]) {
-    if (!present[0] || !Storage.distinctSettingsChains(c.primary, paths[2]) || !Storage.remove(paths[2]) ||
+    if (!present[0] || !c.distinct(c.primary, paths[2]) || !Storage.remove(paths[2]) ||
         Storage.lookupPath(paths[2]) != HalStorage::PathStatus::Missing)
       return false;
   }
   const bool reuseStaged = stagedMatch == FileMatch::Equal;
   if (present[1] && !reuseStaged) {
-    if (!present[0] || !Storage.distinctSettingsChains(c.primary, paths[1]) || !Storage.remove(paths[1]) ||
+    if (!present[0] || !c.distinct(c.primary, paths[1]) || !Storage.remove(paths[1]) ||
         Storage.lookupPath(paths[1]) != HalStorage::PathStatus::Missing)
       return false;
   }
@@ -131,40 +139,49 @@ bool writeAtomicLocked(void* raw) {
     const bool synced = written && file.sync();
     const bool closed = file.close();
     if (!written || !synced || !closed || matchesFile(paths[1], c.bytes, c.size) != FileMatch::Equal ||
-        !Storage.settingsChainEligible(paths[1]))
+        !c.eligible(paths[1]))
       return false;
   }
   if (present[0]) {
-    if (!Storage.distinctSettingsChains(c.primary, paths[1]) || !renameChecked(c.primary, paths[2]) ||
-        !Storage.distinctSettingsChains(paths[2], paths[1]))
+    if (!c.distinct(c.primary, paths[1]) || !c.renameChecked(c.primary, paths[2]) || !c.distinct(paths[2], paths[1]))
       return false;
   }
-  if (!renameChecked(paths[1], c.primary)) {
+  if (!c.renameChecked(paths[1], c.primary)) {
     // Restore only when the failed publish left no destination or shared chain.
     if (present[0] && Storage.lookupPath(c.primary) == HalStorage::PathStatus::Missing &&
         Storage.lookupPath(paths[2]) == HalStorage::PathStatus::Present &&
-        Storage.lookupPath(paths[1]) == HalStorage::PathStatus::Present &&
-        Storage.distinctSettingsChains(paths[2], paths[1]))
-      renameChecked(paths[2], c.primary);
+        Storage.lookupPath(paths[1]) == HalStorage::PathStatus::Present && c.distinct(paths[2], paths[1]))
+      c.renameChecked(paths[2], c.primary);
     return false;
   }
   if (matchesFile(c.primary, c.bytes, c.size) != FileMatch::Equal) return false;
-  return !present[0] || (Storage.distinctSettingsChains(c.primary, paths[2]) && Storage.remove(paths[2]) &&
+  return !present[0] || (c.distinct(c.primary, paths[2]) && Storage.remove(paths[2]) &&
                          Storage.lookupPath(paths[2]) == HalStorage::PathStatus::Missing);
 }
-}  // namespace
-
-bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocument& doc, size_t maxBytes) {
+bool writeAtomicJson(AtomicWrite context, const JsonDocument& doc, size_t maxBytes) {
   const size_t expected = measureJson(doc);
   if (doc.overflowed() || expected == 0 || expected > maxBytes) return false;
   auto json = makeUniqueNoThrow<char[]>(expected + 1);
   if (!json) {
-    LOG_ERR("PERSIST", "Could not allocate %u bytes for %s", static_cast<unsigned>(expected + 1), path);
+    LOG_ERR("PERSIST", "Could not allocate %u bytes for %s", static_cast<unsigned>(expected + 1), context.primary);
     return false;
   }
   if (serializeJson(doc, json.get(), expected + 1) != expected) return false;
-  AtomicWrite context{path, std::string(path) + ".tmp", std::string(path) + ".bak", json.get(), expected};
+  context.bytes = json.get();
+  context.size = expected;
   return Storage.withStorageLock(writeAtomicLocked, &context);
+}
+}  // namespace
+
+bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocument& doc, size_t maxBytes) {
+  const auto temporary = std::string(path) + ".tmp";
+  const auto backup = std::string(path) + ".bak";
+  return writeAtomicJson({path, temporary.c_str(), backup.c_str(), nullptr, 0, false}, doc, maxBytes);
+}
+
+bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const char* temporary, const char* backup,
+                                                const JsonDocument& doc, size_t maxBytes) {
+  return writeAtomicJson({path, temporary, backup, nullptr, 0, true}, doc, maxBytes);
 }
 
 bool PersistableStoreBase::writeDocToFileForMove(const char* path, const JsonDocument& doc, bool finishPublishedOnly) {

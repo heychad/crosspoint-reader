@@ -103,7 +103,10 @@ uint8_t Candidates::kindsFor(std::string_view book) const {
   uint8_t kinds = 0;
   const auto path = [book](Root root) { return bookmove::rootPath(book, BookKind::Reflowable, root); };
   const auto& bookmarks = stores[0];
-  if (bookmarks.mightContain(path(Root::NativeBookmarks))) kinds |= BOOKMARKS;
+  const auto native = path(Root::NativeBookmarks);
+  if (bookmarks.mightContain(native) || bookmarks.mightContain(BookmarkUtil::nativeRecoveryPath(native, true)) ||
+      bookmarks.mightContain(BookmarkUtil::nativeRecoveryPath(native, false)))
+    kinds |= BOOKMARKS;
   for (const Root root : {Root::CrcBookmarks, Root::HashBookmarks}) {
     const auto name = path(root);
     if (bookmarks.mightContain(name) || bookmarks.mightContain(name + ".bookmark-edit.bak") ||

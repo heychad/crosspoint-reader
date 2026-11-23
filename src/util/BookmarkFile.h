@@ -13,7 +13,11 @@ enum class LoadResult { Loaded, Missing, Unavailable };
 LoadResult load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks);
 
 // Saves the bookmarks for bookPath, creating the bookmarks directory as needed.
-bool save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks);
+struct Omit {
+  bool (*matches)(const BookmarkEntry&, const void*) = nullptr;
+  const void* context = nullptr;
+};
+bool save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks, Omit omit = {});
 // Clear native and verified imported bookmarks. Failure can leave some files cleared.
 bool clearForBook(const std::string& bookPath);
 

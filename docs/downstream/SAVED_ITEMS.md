@@ -24,8 +24,13 @@ anchors. Source-less older clippings remain readable through those controls.
 
 An unreadable native bookmark file leaves cached bookmarks available. A toggle
 retries the read and reports an error if the file still cannot be loaded.
-Reopening the bookmark list retries its read. Only a confirmed missing file
-starts a new empty list. Recovery from an interrupted save remains pending.
+Reopening the bookmark list retries its read. Native saves check the staged
+JSON before replacing the current file. When the primary is missing, Saved
+Items and the reader look for the backup first, then a complete staged copy.
+An unreadable file or an uncertain lookup preserves the cached entries.
+The reader reports an incomplete save and reloads the available copy. Book
+moves and the confirmed Clear Bookmarks action preserve files when recovery
+names share disk clusters.
 
 CrossInk EPUB bookmark files in versions 2–5 appear as a separate kind. Their
 view preserves the binary files and supports opening saved locations. Paragraph
@@ -45,6 +50,13 @@ failures that the underlying directory iterator reports as end-of-directory
 cannot be distinguished from a complete walk.
 The clipping scanner duplicates the clipping record format and must be updated
 when that format changes.
+
+Native JSON keeps its 50,000-byte read limit, which saves now enforce as well.
+The writer uses the existing checked serialization buffer up to 50,001 bytes
+and up to two 2 KiB cluster lists while validating SD file ownership. These
+buffers are released when the save returns. Recovery names use `.tmp` and
+`.bak` appended to the JSON name. Names at the FAT length limit use `.jtmp`
+and `.jbak` in place of the JSON extension.
 
 ## Resource and lifecycle ownership
 

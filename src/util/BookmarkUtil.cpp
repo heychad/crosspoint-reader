@@ -1,5 +1,7 @@
 #include "BookmarkUtil.h"
 
+#include <CheckedStoragePath.h>
+
 #include <algorithm>
 #include <string>
 
@@ -16,6 +18,13 @@ std::string BookmarkUtil::getBookmarkPath(const std::string& bookPath) {
   }
   bookName += ".json";
   return getBookmarksDir() + bookName;
+}
+
+std::string BookmarkUtil::nativeRecoveryPath(const std::string& primary, bool backup) {
+  auto path = primary + (backup ? ".bak" : ".tmp");
+  if (validCheckedStorageComponent(std::string_view(path).substr(path.find_last_of('/') + 1))) return path;
+  // Replacing the five-character extension keeps a maximum-length name valid.
+  return primary.substr(0, primary.size() - 5) + (backup ? ".jbak" : ".jtmp");
 }
 
 std::string BookmarkUtil::sanitizeBookmarkSummary(std::string summary) {

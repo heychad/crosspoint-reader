@@ -120,8 +120,7 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
-  bool bookmarkRemoved = false;
-  bool bookmarkReadFailed = false;
+  StrId bookmarkMessage = StrId::STR_BOOKMARK_ADDED;
   bool cachedBookmarksReadable = false;
   std::vector<BookmarkEntry> cachedBookmarks;
   bool recentsEntryRemoved = false;

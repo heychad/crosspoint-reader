@@ -394,7 +394,7 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
                          str(ROOT / 'src/CrossPointState.cpp'), str(ROOT / 'src/RecentBooksStore.cpp'),
                          str(ROOT / 'src/network/sync/StoredReferenceGuard.cpp'),
                          str(ROOT / 'src/util/CrossInkBookmarks.cpp'),
-                         str(ROOT / 'src/util/BookmarkFile.cpp'), str(ROOT / 'src/util/BookmarkUtil.cpp'),
+                         str(ROOT / 'src/util/BookmarkFile.cpp'),
                          str(ROOT / 'src/util/SavedItems.cpp'),
                          str(ROOT / 'src/ClippingStore.cpp'), str(ROOT / 'lib/Utf8/Utf8.cpp'),
                          str(ROOT / 'freeink-sdk/libs/network/CatalogList/src/JsonListParser.cpp'),
@@ -430,12 +430,11 @@ inline MovedProgress readMovedProgress(const std::string& cache) {
                '-include', str(host_compat), '-I', str(stub_directory), *store_includes, '-I', str(ROOT / 'src'), '-I', str(ROOT / 'lib/Memory'), '-I', str(ROOT / 'lib/Serialization'), '-I', str(ROOT / 'test/book_reading_stats_atomic/stubs'), '-I', str(ROOT / 'src/activities/reader'), '-I', str(ROOT / 'lib/hal'), '-I', str(source),
                str(real_test_cpp), str(journal_cpp), str(ROOT / 'test/CompletionArchiveInventoryStub.cpp'), *probe_sources, str(ROOT / 'lib/Serialization/MoveReferenceSafeWrite.cpp'), str(ROOT / 'src/activities/reader/CompletionLibraryDirty.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionIntentIO.cpp'), str(ROOT / 'src/activities/reader/DeferredCompletionMoveRetirement.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveReferences.cpp'), str(ROOT / 'src/activities/reader/CompletionMoveFile.cpp'), str(ROOT / 'src/activities/reader/CompletionMovePlanIO.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkCopy.cpp'), str(ROOT / 'src/activities/reader/CrossInkBookmarkMove.cpp'), str(ROOT / 'src/activities/reader/StatsSafeReplace.cpp'), str(ROOT / 'src/activities/reader/ReadingStatsUtils.cpp'), *lease_sources, str(production_lookup), *map(str, cpp_files),
                '-o', str(executable)]
+    command.append(str(ROOT / 'src/util/BookmarkUtil.cpp'))
     if os.environ.get('SDFAT_BOOK_MOVES') == '1':
         command += ['-DSDFAT_BOOK_MOVES=1', str(ROOT / 'src/util/BookMoveStorage.cpp')]
         if os.environ.get('SDFAT_BOOK_DELETIONS') == '1':
             command += ['-DSDFAT_BOOK_DELETIONS=1', '-DFREEINK_DEVICE_X4PRO=1']
-        if not real_move_stores:
-            command.append(str(ROOT / 'src/util/BookmarkUtil.cpp'))
         if os.environ.get('SDFAT_BOOK_MOVE_REFERENCES') == '1':
             if not real_move_stores:
                 raise ValueError('Book move reference checks require the real stores')

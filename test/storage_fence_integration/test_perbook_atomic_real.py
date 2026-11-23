@@ -21,6 +21,7 @@ lookup_stub = 'PathStatus lookupPath(const char* path){auto file=SDCard.open(pat
 assert lookup_stub in code
 code = code.replace(lookup_stub, 'PathStatus lookupPath(const char*);bool withStorageLock(bool (*)(void*),void*);'
                     'bool settingsChainEligible(const char*);bool distinctSettingsChains(const char*,const char*);'
+                    'bool moveChainEligible(const char*);bool distinctMoveChains(const char*,const char*);'
                     'bool remove(const char*);bool rename(const char*,const char*);'
                     'bool exists(const char* p){return SDCard.exists(p);}'
                     'bool openFileForRead(const char*,const std::string& p,HalFile& out){out=openChecked(p.c_str(),O_RDONLY);return bool(out);}'
@@ -35,10 +36,15 @@ code += '\n'.join(hal.extract(signature) for signature in (
     'bool HalFile::isDirectory() const', 'uint64_t HalFile::fileSize64()', 'int HalFile::read(void*',
     'HalStorage::PathStatus HalStorage::lookupPath(', 'bool HalStorage::withStorageLock(',
     'bool HalStorage::settingsChainEligible(', 'bool HalStorage::distinctSettingsChains(',
+    'bool HalStorage::moveChainEligible(', 'bool HalStorage::distinctMoveChains(',
     'bool HalStorage::remove(', 'bool HalStorage::rename('))
 code += '''
 HalStorage& Storage=HalStorage::getInstance();
-class PersistableStoreBase {public:static bool writeDocToFileAtomic(const char*,const JsonDocument&,size_t);};
+class PersistableStoreBase {
+ public:
+  static bool writeDocToFileAtomic(const char*,const JsonDocument&,size_t);
+  static bool writeDocToFileAtomic(const char*,const char*,const char*,const JsonDocument&,size_t);
+};
 '''
 source_path = Path(os.environ.get('X4_ATOMIC_SOURCE', ROOT / 'lib/Serialization/PersistableStore.cpp'))
 source = source_path.read_text()
@@ -46,22 +52,42 @@ code += source[source.index('namespace {\nbool matchesFile') if 'namespace {\nbo
                else source.index('namespace {\nenum class FileMatch'):
                source.index('\nbool PersistableStoreBase::writeDocToFileForMove(')]
 code += r'''
-constexpr char PRIMARY[]="/.crosspoint/reader_prefs.json";
-constexpr char TEMP[]="/.crosspoint/reader_prefs.json.tmp";
-constexpr char BACKUP[]="/.crosspoint/reader_prefs.json.bak";
-std::string text(int value){return "{\"version\":1,\"overrides\":{\"fontSize\":"+std::to_string(value)+"},\"keep\":\""+std::string(2300,'k')+"\"}";}
+const char* PRIMARY="/.crosspoint/reader_prefs.json";
+const char* TEMP="/.crosspoint/reader_prefs.json.tmp";
+const char* BACKUP="/.crosspoint/reader_prefs.json.bak";
+bool bookmarks=false;
+std::string text(int value){
+ if(bookmarks)return "{\"bookmarks\":[{\"name\":\""+std::to_string(value)+"\",\"summary\":\""+std::string(37000,'k')+"\"}]}";
+ return "{\"version\":1,\"overrides\":{\"fontSize\":"+std::to_string(value)+"},\"keep\":\""+std::string(2300,'k')+"\"}";
+}
 void put(FsVolume& v,const char* p,const std::string& bytes){auto f=v.open(p,O_CREAT|O_EXCL|O_WRONLY);assert(f && f.write(bytes.data(),bytes.size())==bytes.size() && f.sync() && f.close());}
-std::string read(FsVolume& v,const char* p){auto f=v.open(p,O_RDONLY);if(!f)return "<missing>";std::string bytes(f.fileSize(),'\0');assert(f.read(bytes.data(),bytes.size())==static_cast<int>(bytes.size()) && f.close());return bytes;}
+std::string read(FsVolume& v,const char* p){
+ auto f=v.open(p,O_RDONLY);if(!f)return "<missing>";
+ std::string bytes(f.fileSize(),'\0');
+ const bool complete=f.read(bytes.data(),bytes.size())==static_cast<int>(bytes.size());
+ const bool closed=f.close();
+ return complete&&closed ? bytes : "<unreadable>";
+}
 void mount(FsVolume& v,Disk& d){d.failAt=-1;d.failReadAt=-1;d.dead=false;monitorFault=false;assert(v.begin(&d));SDCard.volume=&v;auto& storage=HalStorage::getInstance();storage.~HalStorage();new(&storage)HalStorage;}
 void unmount(FsVolume& v){SDCard.volume=nullptr;v.end();}
-bool save(int value){JsonDocument doc;const auto bytes=text(value);assert(!deserializeJson(doc,bytes));return PersistableStoreBase::writeDocToFileAtomic(PRIMARY,doc,4096);}
+bool save(int value){
+ JsonDocument doc;const auto bytes=text(value);assert(!deserializeJson(doc,bytes));
+ return bookmarks ? PersistableStoreBase::writeDocToFileAtomic(PRIMARY,TEMP,BACKUP,doc,50000)
+                  : PersistableStoreBase::writeDocToFileAtomic(PRIMARY,doc,4096);
+}
 void allocateAndCheck(FsVolume& v,Disk& d,const char* a,const char* b,const std::string& expected){
  put(v,"/later.bin",std::string(32768,'z'));unmount(v);mount(v,d);
  assert(read(v,a)==expected && read(v,b)==expected);
  assert(read(v,"/.crosspoint/progress.bin")=="reading position");
 }
 int main(int argc,char** argv){
- assert(argc==2);const bool exfat=std::string(argv[1])=="exfat";
+ assert(argc==3);const bool exfat=std::string(argv[1])=="exfat";
+ bookmarks=std::string(argv[2])=="bookmarks";
+ if(bookmarks){
+  PRIMARY="/.crosspoint/reader_bookmarks.json";
+  TEMP="/.crosspoint/reader_bookmarks.json.tmp";
+  BACKUP="/.crosspoint/reader_bookmarks.json.bak";
+ }
  Disk initial;uint8_t scratch[512];
  if(exfat){ExFatFormatter f;assert(f.format(&initial,scratch));}else{FatFormatter f;assert(f.format(&initial,scratch));}
  FsVolume v;mount(v,initial);assert(v.mkdir("/.crosspoint",true));put(v,"/.crosspoint/progress.bin","reading position");unmount(v);
@@ -100,10 +126,10 @@ int main(int argc,char** argv){
   assert(preserved && read(v,"/.crosspoint/progress.bin")=="reading position");unmount(v);
   if(!injected)break;
  }
- assert(readFailures>0);std::printf("%s read failures preserved preferences: %d\n",argv[1],readFailures);
+ assert(readFailures>0);std::printf("%s read failures preserved a complete file: %d\n",argv[1],readFailures);
  for(bool stop:{false,true}){
   int injections=0;
-  for(int fault=-1;fault<96;++fault){
+  for(int fault=-1;fault<(bookmarks?192:96);++fault){
    Disk d=baseline;mount(v,d);d.writes=0;d.failAt=fault;d.failStop=stop;
    const bool saved=save(18);const bool injected=d.injected;unmount(v);mount(v,d);
    bool preserved=false;for(auto p:{PRIMARY,TEMP,BACKUP}){const auto bytes=read(v,p);preserved|=bytes==text(16)||bytes==text(18);}
@@ -116,7 +142,7 @@ int main(int argc,char** argv){
    assert(preserved && read(v,"/.crosspoint/progress.bin")=="reading position");unmount(v);
    if(fault>=0&&!injected)break;
   }
-  assert(injections>0);std::printf("%s interrupted writes preserved a complete preference file: %d (stop=%d)\n",argv[1],injections,stop);
+  assert(injections>0);std::printf("%s interrupted writes preserved a complete file: %d (stop=%d)\n",argv[1],injections,stop);
  }
 }
 '''
@@ -134,11 +160,12 @@ def main():
                    '-I', str(ROOT / '.pio/libdeps/x4pro/ArduinoJson/src'), str(tmp / 'test.cpp'),
                    *map(str, hal.files), '-o', str(tmp / 'test')]
         subprocess.run(command, check=True)
-        for filesystem in ('fat', 'exfat'):
-            result = subprocess.run([str(tmp / 'test'), filesystem], capture_output=True, text=True)
-            print(result.stdout, end='')
-            if result.returncode or 'runtime error:' in result.stderr or 'ERROR: AddressSanitizer' in result.stderr:
-                raise RuntimeError(result.stderr + f'\nexit={result.returncode}')
+        for store in ('preferences', 'bookmarks'):
+            for filesystem in ('fat', 'exfat'):
+                result = subprocess.run([str(tmp / 'test'), filesystem, store], capture_output=True, text=True)
+                print(f'{store}: {result.stdout}', end='')
+                if result.returncode or 'runtime error:' in result.stderr or 'ERROR: AddressSanitizer' in result.stderr:
+                    raise RuntimeError(result.stderr + f'\nexit={result.returncode}')
 
 if __name__ == '__main__':
     main()

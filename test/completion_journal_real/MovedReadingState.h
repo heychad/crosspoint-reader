@@ -104,6 +104,40 @@ inline void checkNativeBookmarkReadRecovery() {
   assert(BookmarkFile::load(book, entries) == BookmarkFile::LoadResult::Missing && entries.empty());
 }
 
+inline void checkNativeBookmarkWriteRecovery() {
+  const auto book = "/" + std::string(250, 'N') + ".epub";
+  const auto primary = BookmarkUtil::getBookmarkPath(book);
+  const auto backup = BookmarkUtil::nativeRecoveryPath(primary, true);
+  const auto temporary = BookmarkUtil::nativeRecoveryPath(primary, false);
+  assert(backup.ends_with(".jbak") && temporary.ends_with(".jtmp"));
+  BookmarkEntry entry;
+  entry.name = "Before interruption";
+  entry.summary = std::string(190, 'x');
+  const std::vector<BookmarkEntry> saved(140, entry);
+  assert(BookmarkFile::save(book, saved));
+  auto file = Storage.open(primary.c_str(), O_RDONLY);
+  assert(file && file.fileSize() > 32768 && file.fileSize() <= 50000 && file.close());
+
+  // The canonical name can be missing after rotating the old copy or after
+  // staging the very first save. Both are visible through the catalog.
+  for (const auto* recoveredPath : {&backup, &temporary}) {
+    assert(Storage.rename(primary.c_str(), recoveredPath->c_str()));
+    std::vector<BookmarkEntry> recovered;
+    assert(BookmarkFile::load(book, recovered) == BookmarkFile::LoadResult::Loaded);
+    assert(recovered.size() == saved.size() && recovered.back().summary == entry.summary);
+    assert(Storage.lookupPath(primary.c_str()) == HalStorage::PathStatus::Missing);
+    uint8_t kinds = 0;
+    assert(saveditems::inspect(book, kinds) && kinds == saveditems::BOOKMARKS);
+    recovered[0].name = "After recovery";
+    assert(BookmarkFile::save(book, recovered));
+    assert(Storage.lookupPath(recoveredPath->c_str()) == HalStorage::PathStatus::Missing);
+    recovered.clear();
+    assert(BookmarkFile::load(book, recovered) == BookmarkFile::LoadResult::Loaded);
+    assert(recovered.size() == saved.size() && recovered.front().name == "After recovery");
+  }
+  assert(Storage.remove(primary.c_str()));
+}
+
 inline void checkSavedKinds(const std::string& book) {
   uint8_t kinds = 0;
   assert(saveditems::inspect(book, kinds));

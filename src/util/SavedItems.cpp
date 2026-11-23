@@ -5,16 +5,23 @@
 #include <Logging.h>
 #include <Memory.h>
 
-#include "BookmarkUtil.h"
+#include "BookmarkReadPath.h"
 #include "ClippingStore.h"
 #include "CrossInkBookmarks.h"
 
 namespace {
 // Keep one catalog batch responsive even for very large legacy bookmark files.
 constexpr uint16_t MAX_LEGACY_RECORDS_PER_BOOK = 8;
-bool hasBookmarks(const std::string& path, bool& present) {
-  present = false;
-  if (!Storage.exists(path.c_str())) return true;
+struct NativeScan {
+  std::string path;
+  bool present = false;
+};
+
+bool scanNativeBookmarks(void* raw) {
+  auto& [path, present] = *static_cast<NativeScan*>(raw);
+  const auto status = selectNativeBookmarkFile(path);
+  if (status == HalStorage::PathStatus::Missing) return true;
+  if (status != HalStorage::PathStatus::Present) return false;
   HalFile file = Storage.open(path.c_str());
   if (!file) return false;
   const std::string empty;
@@ -26,7 +33,7 @@ bool hasBookmarks(const std::string& path, bool& present) {
     return false;
   }
   parser->setCaptureBudget(0);
-  return parser->parse(
+  const bool parsed = parser->parse(
       [](void* ctx, char* buffer, size_t length) {
         auto& input = *static_cast<HalFile*>(ctx);
         if (!input.available()) return 0;
@@ -34,14 +41,18 @@ bool hasBookmarks(const std::string& path, bool& present) {
         return bytes > 0 ? bytes : -1;
       },
       &file);
+  return file.close() && parsed;
 }
 }  // namespace
 
 bool saveditems::inspect(const std::string& bookPath, uint8_t& kinds, const uint8_t candidates) {
   kinds = 0;
-  bool bookmarks = false;
-  const bool readable = !(candidates & BOOKMARKS) || hasBookmarks(BookmarkUtil::getBookmarkPath(bookPath), bookmarks);
-  if (bookmarks) kinds |= BOOKMARKS;
+  bool readable = true;
+  if (candidates & BOOKMARKS) {
+    NativeScan native{BookmarkUtil::getBookmarkPath(bookPath)};
+    readable = Storage.withStorageLock(scanNativeBookmarks, &native);
+    if (native.present) kinds |= BOOKMARKS;
+  }
   CrossInkBookmarks legacy;
   if ((candidates & CROSSINK_BOOKMARKS) && legacy.open(bookPath) && legacy.count() > 0) kinds |= CROSSINK_BOOKMARKS;
   bool legacyReadable = !legacy.unreadable() && legacy.count() <= MAX_LEGACY_RECORDS_PER_BOOK;

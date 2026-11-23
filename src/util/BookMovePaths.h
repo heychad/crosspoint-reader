@@ -108,8 +108,16 @@ inline bool itemPaths(std::string_view from, std::string_view to, BookKind kind,
                       std::string& target) {
   if (!validMovePath(from) || !validMovePath(to) || index >= ENTRIES.size()) return false;
   const auto& entry = ENTRIES[index];
-  source = rootPath(from, kind, entry.root) + entry.suffix;
-  target = rootPath(to, kind, entry.root) + entry.suffix;
+  source = rootPath(from, kind, entry.root);
+  target = rootPath(to, kind, entry.root);
+  if (entry.root == Root::NativeBookmarks && *entry.suffix) {
+    const bool backup = std::string_view(entry.suffix) == ".bak";
+    source = BookmarkUtil::nativeRecoveryPath(source, backup);
+    target = BookmarkUtil::nativeRecoveryPath(target, backup);
+  } else {
+    source += entry.suffix;
+    target += entry.suffix;
+  }
   return true;
 }
 }  // namespace bookmove

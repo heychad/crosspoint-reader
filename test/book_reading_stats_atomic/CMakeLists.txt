@@ -48,6 +48,7 @@ add_executable(BookReadingStatsAtomicTest
   ${REPO_ROOT}/src/activities/reader/DeferredCompletionMoveRetirement.cpp
   ${REPO_ROOT}/lib/Serialization/MoveReferenceSafeWrite.cpp
   ${REPO_ROOT}/src/activities/reader/CompletionMovePlanIO.cpp
+  ${REPO_ROOT}/src/util/BookmarkUtil.cpp
   ${REPO_ROOT}/src/activities/reader/CrossInkBookmarkCopy.cpp
   ${REPO_ROOT}/src/activities/reader/CompletionMoveFile.cpp
   ${REPO_ROOT}/src/activities/reader/CrossInkBookmarkMove.cpp

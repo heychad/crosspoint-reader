@@ -171,7 +171,8 @@ void EpubReaderBookmarksActivity::startRename() {
     if (!BookmarkFile::save(epubPath, bookmarks)) {
       LOG_ERR("EPB", "Failed to save bookmarks after rename");
       bookmarks[renameIndex].name = std::move(previousName);
-      rebuildBookmarkRowItems();
+      recoverAfterSaveFailure();
+      return;
     }
     requestUpdate();
   });
@@ -219,13 +220,17 @@ void EpubReaderBookmarksActivity::swipeDelete(const int index) {
 
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
   if (!bookmarksReadable || nav.selected < 0 || nav.selected >= listCount()) return;
-  bookmarks.erase(bookmarks.begin() + nav.selected);
+  const int index = nav.selected;
+  auto removed = std::move(bookmarks[index]);
+  bookmarks.erase(bookmarks.begin() + index);
   // Deleting shifts every later bookmark's index, so the cached subtitles and
-  // actionValues must be re-derived, not just trimmed — and before the SD
-  // save, so the render task never sees rows aliasing the erased storage.
+  // actionValues must be re-derived before the SD save.
   rebuildBookmarkRowItems();
   if (!BookmarkFile::save(epubPath, bookmarks)) {
     LOG_ERR("EPB", "Failed to save bookmarks after delete");
+    bookmarks.insert(bookmarks.begin() + index, std::move(removed));
+    recoverAfterSaveFailure();
+    return;
   }
 
   // Move selector up if we deleted the last item
@@ -242,6 +247,16 @@ void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
   }
 
   nav.follow(listCount());
+  requestUpdate(true);
+}
+
+void EpubReaderBookmarksActivity::recoverAfterSaveFailure() {
+  bookmarksReadable = BookmarkFile::load(epubPath, bookmarks) != BookmarkFile::LoadResult::Unavailable;
+  nav.selected = std::clamp(nav.selected.load(), 0, std::max(0, listCount() - 1));
+  nav.follow(listCount());
+  rebuildBookmarkRowItems();
+  const char* options[] = {tr(STR_OK_BUTTON)};
+  confirmPopup.showMessage(tr(STR_BOOKMARKS), tr(STR_BOOKMARK_SAVE_INCOMPLETE), options, 1, 0, [](int) {});
   requestUpdate(true);
 }
 

@@ -190,6 +190,12 @@ class HalStorage {
     const bool ac = a.close(), bc = b.close();
     return distinct && ac && bc;
   }
+  bool moveChainEligible(const char* path) {
+    FsBaseFile file;
+    if (!file.open(path, O_RDONLY)) return false;
+    const bool eligible = moveFileHasCheckedChain(file);
+    return file.close() && eligible;
+  }
 
  private:
   FsVolume* volume_ = nullptr;

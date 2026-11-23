@@ -200,6 +200,10 @@ Result preflight(Work& work) {
     for (size_t j = 0; j < i; ++j) {
       if (!itemPaths(work.from, work.to, work.kind, j, otherFrom, otherTo)) return Result::Invalid;
       if (from == otherTo || to == otherFrom || from == otherFrom || to == otherTo) return Result::Conflict;
+      if (ENTRIES[i].root == Root::NativeBookmarks && ENTRIES[j].root == Root::NativeBookmarks &&
+          work.identities[i].kind != EntryKind::Missing && work.identities[j].kind != EntryKind::Missing &&
+          !Storage.distinctMoveChains(from.c_str(), otherFrom.c_str()))
+        return Result::Conflict;
     }
   }
   return work.identities[0].kind == EntryKind::File ? Result::Moved : Result::Conflict;

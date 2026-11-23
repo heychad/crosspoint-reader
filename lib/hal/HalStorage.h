@@ -125,6 +125,7 @@ class HalStorage {
   bool settingsChainEligible(const char* path);
   bool distinctSettingsChains(const char* first, const char* second);
   // Distinct entries and independent bounded chains, including empty files.
+  bool moveChainEligible(const char* path);
   bool distinctMoveChains(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);

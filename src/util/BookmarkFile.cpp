@@ -5,21 +5,21 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 
-#include "BookmarkUtil.h"
+#include "BookmarkReadPath.h"
 
 namespace {
 // Preserve the SD card reader's existing size limit while checking for short reads.
 constexpr size_t MAX_READ_BYTES = 50000;
 
 struct BookmarkLoad {
-  const std::string& path;
+  std::string path;
   std::vector<BookmarkEntry>& entries;
   BookmarkFile::LoadResult result = BookmarkFile::LoadResult::Unavailable;
 };
 
 bool readBookmarks(void* raw) {
   auto& load = *static_cast<BookmarkLoad*>(raw);
-  const auto status = Storage.lookupPath(load.path.c_str());
+  const auto status = selectNativeBookmarkFile(load.path);
   if (status == HalStorage::PathStatus::Missing) {
     load.entries.clear();
     load.result = BookmarkFile::LoadResult::Missing;
@@ -63,23 +63,19 @@ bool readBookmarks(void* raw) {
 }  // namespace
 
 BookmarkFile::LoadResult BookmarkFile::load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmarks) {
-  const std::string path = BookmarkUtil::getBookmarkPath(bookPath);
-  BookmarkLoad job{path, bookmarks};
+  BookmarkLoad job{BookmarkUtil::getBookmarkPath(bookPath), bookmarks};
   return Storage.withStorageLock(readBookmarks, &job) ? job.result : LoadResult::Unavailable;
 }
 
-bool BookmarkFile::save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks) {
+bool BookmarkFile::save(const std::string& bookPath, const std::vector<BookmarkEntry>& bookmarks, Omit omit) {
+  JsonDocument doc;
+  JsonArray arr = doc["bookmarks"].to<JsonArray>();
   for (const auto& bookmark : bookmarks) {
+    if (omit.matches && omit.matches(bookmark, omit.context)) continue;
     if (bookmark.name.size() > BookmarkEntry::MAX_NAME_LENGTH) {
       LOG_ERR("BKM", "Bookmark name exceeds %zu bytes", BookmarkEntry::MAX_NAME_LENGTH);
       return false;
     }
-  }
-
-  JsonDocument doc;
-  JsonArray arr = doc["bookmarks"].to<JsonArray>();
-  LOG_DBG("BKM", "Saving %zu bookmarks to file", bookmarks.size());
-  for (const auto& bookmark : bookmarks) {
     JsonObject obj = arr.add<JsonObject>();
     obj["xpath"] = bookmark.xpath;
     obj["percentage"] = bookmark.percentage;
@@ -95,8 +91,10 @@ bool BookmarkFile::save(const std::string& bookPath, const std::vector<BookmarkE
     }
   }
 
-  // writeDocToFile ensures /.crosspoint; the bookmarks subdirectory is ours.
-  Storage.mkdir(BookmarkUtil::getBookmarksDir().c_str());
+  Storage.mkdir(BookmarkUtil::getBookmarksDir().c_str(), true);
   const std::string path = BookmarkUtil::getBookmarkPath(bookPath);
-  return PersistableStoreBase::writeDocToFile(path.c_str(), doc);
+  const auto temporary = BookmarkUtil::nativeRecoveryPath(path, false);
+  const auto backup = BookmarkUtil::nativeRecoveryPath(path, true);
+  return PersistableStoreBase::writeDocToFileAtomic(path.c_str(), temporary.c_str(), backup.c_str(), doc,
+                                                    MAX_READ_BYTES);
 }

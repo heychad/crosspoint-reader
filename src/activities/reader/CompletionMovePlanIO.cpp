@@ -14,11 +14,13 @@
 #include "CrossInkBookmarkMove.h"
 #include "StatsSessionLease.h"
 #include "network/sync/ReferencePath.h"
+#include "util/BookmarkUtil.h"
 
 namespace readingstats::completionmove {
 namespace {
 namespace cj = completionjournal;
 using Seal = std::array<uint8_t, 16>;
+constexpr size_t NATIVE_BOOKMARK_BEGIN = 8;
 
 void pathFor(unsigned slot, const char* prefix, char (&path)[64]) {
   snprintf(path, sizeof(path), "/.completion-journal/%s%02u", prefix, slot);
@@ -213,6 +215,17 @@ bool handleLocked(void* raw) {
         context.result = PlanResult::Conflict;
         return true;
       }
+      if (oldStatus == FileResult::Ready && i >= NATIVE_BOOKMARK_BEGIN && i < MOVED_FILE_COUNT) {
+        for (size_t j = NATIVE_BOOKMARK_BEGIN; j < i; ++j) {
+          if (!(*identities)[j].present) continue;
+          std::string previousSource, previousTarget;
+          if (!itemPaths(source, destination, j, previousSource, previousTarget) ||
+              !Storage.distinctMoveChains(oldPath.c_str(), previousSource.c_str())) {
+            context.result = PlanResult::Conflict;
+            return true;
+          }
+        }
+      }
       if (i >= STATE_FILE_END && i < LEGACY_BOOKMARK_END && oldStatus == FileResult::Ready) {
         HalFile file;
         if (!Storage.openFileForRead("BKM", oldPath, file)) return true;
@@ -362,7 +375,7 @@ bool itemPaths(std::string_view from, std::string_view to, size_t index, std::st
     static constexpr const char* suffixes[] = {"", ".key", ".rights"};
     source = std::string(from) + suffixes[index];
     target = std::string(to) + suffixes[index];
-  } else if (index < 8) {
+  } else if (index < NATIVE_BOOKMARK_BEGIN) {
     static constexpr const char* suffixes[] = {"", ".bak", ".tmp", ".deleted", ".migrate.bak"};
     const auto path = [](std::string_view book) {
       return std::string("/.crosspoint/clippings/epub_") + std::to_string(std::hash<std::string>{}(std::string(book))) +
@@ -371,17 +384,14 @@ bool itemPaths(std::string_view from, std::string_view to, size_t index, std::st
     source = path(from) + suffixes[index - 3];
     target = path(to) + suffixes[index - 3];
   } else if (index < MOVED_FILE_COUNT) {
-    static constexpr const char* suffixes[] = {"", ".tmp", ".bak"};
-    const auto path = [](std::string_view book) {
-      std::string name(book.substr(1));
-      std::replace(name.begin(), name.end(), '/', '_');
-      std::replace(name.begin(), name.end(), '\\', '_');
-      const auto dot = name.find_last_of('.');
-      if (dot != std::string::npos) name.erase(dot);
-      return std::string("/.crosspoint/bookmarks/") + name + ".json";
+    const auto path = [index](std::string_view book) {
+      const auto primary = BookmarkUtil::getBookmarkPath(std::string(book));
+      return index == NATIVE_BOOKMARK_BEGIN
+                 ? primary
+                 : BookmarkUtil::nativeRecoveryPath(primary, index == NATIVE_BOOKMARK_BEGIN + 2);
     };
-    source = path(from) + suffixes[index - 8];
-    target = path(to) + suffixes[index - 8];
+    source = path(from);
+    target = path(to);
   } else if (index < STATE_FILE_END || index >= LEGACY_BOOKMARK_END) {
     // Generated chapter/image cache can be rebuilt. These files contain
     // persistent reader state and must survive the path change.

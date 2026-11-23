@@ -278,6 +278,10 @@ class HalStorage {
     return openFileForWrite(module, path.c_str(), file);
   }
   bool withStorageLock(bool (*operation)(void*), void* context) { return operation(context); }
+  bool distinctMoveChains(const char* first, const char* second) const {
+    const auto a = fake::files.find(first), b = fake::files.find(second);
+    return a != fake::files.end() && b != fake::files.end() && a->second != b->second;
+  }
   bool remove(const char* path) {
     if (fake::failRemovePath == path) {
       fake::failRemovePath.clear();

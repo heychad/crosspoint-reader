@@ -173,6 +173,7 @@ class HalStorage {
   void failSettingsIdentity() { failSettingsIdentity_ = true; }
   bool settingsSingleClusterEligible(const char* path) const { return !failSettingsEligibility_ && exists(path); }
   bool settingsChainEligible(const char* path) const { return settingsSingleClusterEligible(path); }
+  bool moveChainEligible(const char* path) const { return settingsChainEligible(path); }
   bool distinctSettingsChains(const char* first, const char* second) const {
     return distinctSettingsClusters(first, second);
   }
