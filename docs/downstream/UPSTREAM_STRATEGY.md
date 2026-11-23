@@ -51,6 +51,11 @@ headers leave the container depth in place. Buffered and streaming reads
 still validate every page. The probe adds at most one four-byte read and
 no allocation.
 
+[RC3 excludes blocking activity time from inactivity](https://github.com/uxjulia/CrossInk/commit/0c866e7b5ddd7ae021303b41d586402ff83b75ae).
+The fork applies the same adjustment to its auto-sleep and CPU idle timers.
+Time already spent idle still counts. Host checks cover long dispatches, an
+ordinary idle tick, and timer rollover.
+
 Review new releases at integration milestones. Pin the selected tag and SDK,
 review its changes, and test on a development branch. Promote an RC only after
 our relevant checks and device smoke test; installing on the reader remains a

@@ -1,4 +1,4 @@
-"""Exercise real manager transitions with stale input and exclusive USB storage."""
+"""Exercise sleep transitions and the main loop's inactivity clock."""
 import os
 from pathlib import Path
 import subprocess
@@ -30,9 +30,15 @@ methods = [method(signature) for signature in (
 if 'void ActivityManager::processPendingActivities()' in source:
     methods.append(method('void ActivityManager::processPendingActivities()'))
 
+main_source = (root / 'src/main.cpp').read_text()
+dispatch_start = main_source.index('  const unsigned long activityStartTime = millis();')
+dispatch_end = main_source.index('\n\n  const unsigned long loopDuration', dispatch_start)
+dispatch = main_source[dispatch_start:dispatch_end]
+
 program = r'''
 #include <atomic>
 #include <cassert>
+#include <climits>
 #include <cstdio>
 #include <cstdint>
 #include <functional>
@@ -132,7 +138,24 @@ struct ActivityManager {
   void pushActivity(std::unique_ptr<Activity>&&);void popActivity();
 };
 ''' + '\n'.join(methods) + r'''
+
+unsigned long idleAfterDispatch(unsigned long lastActivityTime, unsigned long now, unsigned long busyMs) {
+  const auto millis = [&] { return now; };
+  struct SlowActivityManager {
+    unsigned long& clock;
+    unsigned long duration;
+    void loop() { clock += duration; }
+  } activityManager{now, busyMs};
+''' + dispatch + r'''
+  return millis() - lastActivityTime;
+}
+
 int main(){
+  assert(idleAfterDispatch(100, 100, 75000) == 0);
+  assert(idleAfterDispatch(100, 60099, 2000) == 59999);
+  assert(idleAfterDispatch(100, 59999, 0) == 59899);
+  assert(idleAfterDispatch(ULONG_MAX - 400, ULONG_MAX - 100, 1000) == 300);
+
   for(bool locked:{false,true})for(bool suppressed:{false,true}){
     metrics={};bleturner::ready=false;bleturner::polls=0;
     ActivityManager manager;manager.currentActivity=std::make_unique<ReaderActivity>();
@@ -198,4 +221,4 @@ with tempfile.TemporaryDirectory() as directory:
                         *(['-DCROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY=1'] if overlay else []),
                         str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)
-print('Sleep skips stale input, preserves reader exit and overlay, and respects exclusive USB storage')
+print('Sleep skips stale input, respects exclusive USB storage, and excludes activity dispatch time')
