@@ -12,9 +12,11 @@ physical reader. Keep reading positions and protected-book support intact.
 
 - First open took more than 30 seconds; Chad clarified that this was only the
   first open. Measure first and repeated opens separately before changing caches.
-- Opening a book's saved content briefly paints the reading page before showing
-  its clipping list. The current `pendingSavedView` route waits for `pageRendered`.
-  Remove that visual transition without changing reading position or tracking.
+- The Saved Items route now opens the saved list as soon as the book loads.
+  The first reader frame waits until the user selects a passage or returns
+  from the list. Reader initialization still starts tracking and records the
+  book in Recents. Host checks cover the handoff and fallback paths. Device
+  confirmation remains.
 - Book → clipping list → clipping actions is the current navigation. Keep the
   grouped model unless its replacement is explicitly scoped.
 

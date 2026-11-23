@@ -94,8 +94,10 @@ class EpubReaderActivity final : public ReaderActivity {
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
   std::optional<uint16_t> pendingParagraphJump;
+  // Set before the reader is published. Clear under RenderLock after the child returns.
   std::optional<SavedItemKind> pendingSavedView;
   void openSavedView(SavedItemKind kind);
+  void resumeFromSavedView();
   bool pendingScreenshot = false;
   bool pendingSyncSaveError = false;
   std::atomic<bool> pendingBookSettingsSaveError{false};
@@ -271,7 +273,6 @@ class EpubReaderActivity final : public ReaderActivity {
   void startClipSelection(int initialX = -1, int initialY = -1,
                           ClipSelectionActivity::Mode mode = ClipSelectionActivity::Mode::Clip);
   int clippingAtPoint(const Page& page, int x, int y) const;
-  void openClippings();
   void applyProgressChange(const ProgressChangeResult& progress);
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
@@ -331,6 +332,7 @@ class EpubReaderActivity final : public ReaderActivity {
   ~EpubReaderActivity() override;
 
   void setInitialSavedView(SavedItemKind kind) { pendingSavedView = kind; }
+  void onEnter() override;
   void onExit() override;
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
   void onUserInput() override { prefetchInputSequence.fetch_add(1, std::memory_order_relaxed); }

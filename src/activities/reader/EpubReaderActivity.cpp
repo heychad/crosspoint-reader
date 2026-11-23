@@ -472,6 +472,11 @@ void EpubReaderActivity::resetBookReaderSettings() {
   requestUpdate();
 }
 
+void EpubReaderActivity::onEnter() {
+  ReaderActivity::onEnter();
+  if (epub && pendingSavedView) openSavedView(*pendingSavedView);
+}
+
 bool EpubReaderActivity::loadBook() {
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
@@ -910,45 +915,36 @@ void EpubReaderActivity::openSavedView(const SavedItemKind kind) {
       list = makeUniqueNoThrow<CrossInkBookmarksActivity>(renderer, mappedInput, epub->getPath());
       break;
     case SavedItemKind::Clippings:
-      openClippings();
-      return;
+      if (!CLIPPINGS.hasClippings()) {
+        resumeFromSavedView();
+        return;
+      }
+      list = makeUniqueNoThrow<EpubReaderClippingListActivity>(renderer, mappedInput);
+      break;
   }
   if (!list) {
-    LOG_ERR("ERS", "OOM: saved bookmarks activity");
-    requestUpdate();
+    LOG_ERR("ERS", "OOM: saved content activity");
+    resumeFromSavedView();
     return;
   }
-  startActivityForResult(std::move(list), [this](const ActivityResult& result) {
-    loadCachedBookmarks();
+  if (pendingSavedView) rememberBook();
+  startActivityForResult(std::move(list), [this, kind](const ActivityResult& result) {
+    if (kind != SavedItemKind::Clippings) loadCachedBookmarks();
     if (!result.isCancelled) {
       if (const auto* progress = std::get_if<ProgressChangeResult>(&result.data)) {
         applyProgressChange(*progress);
-        return;
       }
     }
-    requestUpdate();
+    resumeFromSavedView();
   });
 }
 
-void EpubReaderActivity::openClippings() {
-  if (!CLIPPINGS.hasClippings()) {
-    requestUpdate();
-    return;
+void EpubReaderActivity::resumeFromSavedView() {
+  if (pendingSavedView) {
+    RenderLock lock(*this);
+    pendingSavedView.reset();
   }
-  auto list = makeUniqueNoThrow<EpubReaderClippingListActivity>(renderer, mappedInput);
-  if (!list) {
-    LOG_ERR("CLIP", "OOM: clipping list");
-    return;
-  }
-  startActivityForResult(std::move(list), [this](const ActivityResult& result) {
-    if (!result.isCancelled) {
-      if (const auto* progress = std::get_if<ProgressChangeResult>(&result.data)) {
-        applyProgressChange(*progress);
-        return;
-      }
-    }
-    requestUpdate();
-  });
+  requestUpdate();
 }
 
 ReaderPageLayout EpubReaderActivity::readerPageLayout() const {
@@ -978,13 +974,6 @@ void EpubReaderActivity::loop() {
 #if defined(CROSSPOINT_EXPERIMENTAL_COMPLETION) && defined(CROSSPOINT_EXPERIMENTAL_COMPLETION_PROMPT)
   if (showQueuedCompletionPrompt()) return;
 #endif
-
-  if (pendingSavedView && pageRendered.load(std::memory_order_acquire)) {
-    const auto view = *pendingSavedView;
-    pendingSavedView.reset();
-    openSavedView(view);
-    return;
-  }
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
   // is on screen; once the build tick below has finished the chapter, no parser is left alive and
@@ -1947,7 +1936,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
     case EpubReaderMenuActivity::MenuAction::VIEW_CLIPPINGS: {
-      openClippings();
+      openSavedView(SavedItemKind::Clippings);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::DELETE_BOOKMARKS:
@@ -2264,6 +2253,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     loadFailurePopup.processRender(renderer, mappedInput);
     return;
   }
+  if (pendingSavedView) return;
   ReaderActivity::render(std::move(lock));
 }
 

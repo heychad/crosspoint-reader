@@ -87,6 +87,7 @@ class ReaderActivity : public Activity {
     ++renderedPageGeneration;
     pageRendered.store(true, std::memory_order_release);
   }
+  void rememberBook();
   void rememberBookOnceRendered();
 
   explicit ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,

@@ -109,7 +109,11 @@ void ReaderActivity::onEnter() {
 }
 
 void ReaderActivity::rememberBookOnceRendered() {
-  if (bookRemembered || !pageRendered.load(std::memory_order_acquire)) return;
+  if (!bookRemembered && pageRendered.load(std::memory_order_acquire)) rememberBook();
+}
+
+void ReaderActivity::rememberBook() {
+  if (bookRemembered) return;
   bookRemembered = true;
   APP_STATE.openEpubPath = bookPath;
   APP_STATE.saveToFile();
