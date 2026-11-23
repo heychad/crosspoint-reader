@@ -989,6 +989,29 @@ TEST_F(ChapterBlockDecorationTest, FloatedLeadingSpanBecomesDropCap) {
   EXPECT_STREQ(static_cast<const PageLine*>(lines[0])->getBlock()->wordText(0), "he");
 }
 
+TEST_F(ChapterBlockDecorationTest, NestedStyleKeepsOuterDropCapSizeAndUsesInitialWeight) {
+  open("p", nullptr);
+  open("span", "font-size: 1.5em");
+  open("span", "font-size: 3em; font-weight: bold");
+  text("H");
+  EXPECT_EQ(parser.dropCap.lines, 2);
+  EXPECT_TRUE(parser.dropCap.bold);
+  close("span");
+  EXPECT_GE(parser.dropCap.spanDepth, 0);
+  close("span");
+  text("ello " + words(40));
+  close("p");
+
+  const auto caps = elementsWithTag(TAG_PageDropCap);
+  ASSERT_EQ(caps.size(), 1u);
+  EXPECT_STREQ(static_cast<const PageDropCap*>(caps[0])->getText(), "H");
+  const auto lines = elementsWithTag(TAG_PageLine);
+  ASSERT_FALSE(lines.empty());
+  const auto& first = *static_cast<const PageLine*>(lines[0])->getBlock();
+  EXPECT_STREQ(first.wordText(0), "ello");
+  EXPECT_EQ(first.wordStyle(0), EpdFontFamily::REGULAR);
+}
+
 TEST_F(ChapterTightSpacingTest, TightDropCapMovesWithAllSpannedLines) {
   open("p", nullptr);
   text("Before");
@@ -1162,16 +1185,20 @@ TEST_F(ChapterBlockDecorationTest, FirstLetterRuleCapturesQuoteAndLetter) {
   {
     HalFile output;
     ASSERT_TRUE(output.open(cssPath.c_str(), "wb"));
-    const std::string css = "p.opening::first-letter { initial-letter: 2; }";
+    const std::string css = "p.Opening::first-letter { initial-letter: 2; font-weight: bold; }";
     output.write(css.data(), css.size());
   }
   HalFile input;
   ASSERT_TRUE(input.open(cssPath.c_str(), "rb"));
   ASSERT_EQ(cssParser.loadFromStream(input), CssParser::ParseResult::Complete);
 
-  const XML_Char* attributes[] = {"class", "opening", nullptr};
+  const XML_Char* attributes[] = {"class", "OPENING", nullptr};
   ChapterHtmlSlimParser::startElement(&parser, "p", attributes);
+  open("span", "font-size: 3em");
   text("\xe2\x80\x9cIt was " + words(40));
+  EXPECT_EQ(parser.dropCap.lines, 2);
+  EXPECT_TRUE(parser.dropCap.bold);
+  close("span");
   close("p");
   open("p", nullptr);
   text("Next paragraph");

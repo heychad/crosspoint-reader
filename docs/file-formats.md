@@ -90,6 +90,16 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 82
+
+Completed and partial section caches rebuild for corrected EPUB drop caps.
+The binary header and page format are unchanged. An explicit `::first-letter`
+rule takes precedence over an oversized opening span. Span-based drop caps
+use the opening character's effective weight, including nested emphasis.
+Layout signatures advance to version 3, so older page-only highlights stop
+matching. Saved reading positions, clipping text, and portable source offsets
+remain in their existing files.
+
 ### Version 81
 
 The header adds one byte, `paragraphIndentMode`, after `paragraphIndentSpaces`:

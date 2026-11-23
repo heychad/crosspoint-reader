@@ -2334,16 +2334,14 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       self->inlineSize.valid = true;
       self->inlineSize.open = true;
     }
-    // A floated or oversized span opening a paragraph is a hand-made drop cap.
-    if (self->tableDepth == 0 && self->dropCap.length == 0 && self->dropCap.spanDepth < 0 &&
-        self->partWordBufferIndex == 0 && self->currentTextBlock && self->currentTextBlock->isEmpty()) {
+    // An explicit ::first-letter rule owns the initial before any leading span.
+    if (self->tableDepth == 0 && !self->dropCap.firstLetterPending && self->dropCap.length == 0 &&
+        self->dropCap.spanDepth < 0 && self->partWordBufferIndex == 0 && self->currentTextBlock &&
+        self->currentTextBlock->isEmpty()) {
       const uint8_t lines = dropCapLines(cssStyle);
       if (lines > 0) {
         self->dropCap.spanDepth = self->depth;
         self->dropCap.lines = lines;
-        self->dropCap.firstLetterPending = false;
-        self->dropCap.bold =
-            self->effectiveBold || (cssStyle.hasFontWeight() && cssStyle.fontWeight == CssFontWeight::Bold);
       }
     }
     // Handle span and other inline elements for CSS styling.
@@ -2506,6 +2504,9 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       } else {
         const auto lead = static_cast<uint8_t>(s[i]);
         const int codepointLength = std::min(len - i, lead < 0x80 ? 1 : (lead < 0xE0 ? 2 : (lead < 0xF0 ? 3 : 4)));
+        if (capturingSpan && self->dropCap.length == 0) {
+          self->dropCap.bold = self->effectiveBold;
+        }
         if (self->captureDropCapCodepoint(s + i, codepointLength)) {
           i += codepointLength - 1;
           continue;
