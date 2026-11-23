@@ -30,6 +30,7 @@
 #include "components/icons/opdsIcons.h"
 #include "network/HttpDownloader.h"
 #include "network/LcpDevice.h"
+#include "network/ProtectedPaths.h"
 #include "util/BookCacheUtils.h"
 #include "util/OpdsFeedError.h"
 #include "util/OpdsFilename.h"
@@ -484,7 +485,7 @@ std::string OpdsBookBrowserActivity::downloadDestination(const OpdsEntry& book) 
   // opdsDownloadFolder is already a null-terminated char[64]; use it directly —
   // no std::string copy. exists()/mkdir() take const char*.
   const char* folder = SETTINGS.opdsDownloadFolder;  // "" => SD root
-  bool haveFolder = folder[0] != '\0';
+  bool haveFolder = folder[0] != '\0' && !protectedpaths::isSensitivePath(folder, protectedpaths::PathAccess::Write);
   if (haveFolder && !Storage.exists(folder) && !Storage.mkdir(folder)) {
     // exists()-guard first: mkdir's return-on-existing is unconfirmed, and every
     // existing caller checks exists() before mkdir. On real failure, fall back

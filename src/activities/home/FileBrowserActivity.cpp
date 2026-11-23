@@ -20,6 +20,7 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "network/ProtectedPaths.h"
 #include "util/BookCacheUtils.h"
 #include "util/BookMove.h"
 #include "util/BookmarkUtil.h"
@@ -213,6 +214,7 @@ void FileBrowserActivity::onExit() {
 // To avoid traversing directories twice (once for cache clearing, once for deletion),
 // we do both in one pass here, instead of using Storage.removeDir
 bool FileBrowserActivity::removeDirFile(const std::string& fullPath) {
+  if (protectedpaths::isBookDeletionPath(fullPath.c_str(), protectedpaths::PathAccess::Remove)) return false;
   auto file = Storage.open(fullPath.c_str());
   if (!file) {
     LOG_ERR("FileBrowser", "Failed to open for metadata clearing: %s", fullPath.c_str());
@@ -221,7 +223,7 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath) {
 
   if (!file.isDirectory()) {
     file.close();
-    return removeBookFile(fullPath);
+    return removeBookFileWithReceipt(fullPath);
   }
   file.close();
 
@@ -483,6 +485,10 @@ void FileBrowserActivity::renameSelectedFile(const std::string& oldPath, const s
 
   const std::string parentPath = FsHelpers::extractFolderPath(oldPath);
   const std::string newPath = (parentPath == "/" ? parentPath : parentPath + "/") + newEntry;
+  if (protectedpaths::isBookDeletionPath(oldPath.c_str(), protectedpaths::PathAccess::Remove) ||
+      protectedpaths::isBookDeletionPath(newPath.c_str())) {
+    return;
+  }
   if (Storage.exists(newPath.c_str())) {
     LOG_ERR("FileBrowser", "Rename target already exists: %s", newPath.c_str());
     return;

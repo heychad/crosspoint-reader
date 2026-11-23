@@ -50,6 +50,8 @@ program = r'''
 #include <memory>
 #include <vector>
 #include "network/BookMoveWeb.h"
+#define FREEINK_DEVICE_X4PRO 1
+#include "network/ProtectedPaths.h"
 #define LOG_DBG(...) ((void)0)
 #define LOG_ERR(...) ((void)0)
 namespace bookmove {
@@ -75,7 +77,6 @@ struct FakeStorage {
 using HalStorage=FakeStorage;
 String normalizeWebPath(const String& p){return p;}
 bool isProtectedItemName(const String& p){return p.starts_with('.');}
-namespace protectedpaths {bool isSensitivePath(const char*){return false;}}
 void clearBookCache(const std::string&){++cacheClears;}
 bool removeBookFile(const std::string&){++removals;return true;}
 struct ClippingStore{static bool moveBook(const std::string&,const std::string&){++plainMoves;return true;}};
@@ -105,6 +106,14 @@ int main(){
  }
  reset();CrossPointWebServer web;web.server->params={{"path","/old.epub"},{"dest","/Books"}};
  wsUploadInProgress=true;web.handleMove();assert(web.server->code==423&&bookmove::calls==0);
+ const String queue="/zDev/Library deletions";
+ reset();Storage.paths[queue]=true;web.server->params={{"path","/old.epub"},{"dest",queue}};
+ web.handleMove();assert(web.server->code==403&&bookmove::calls==0&&plainMoves==0);
+ reset();const String held=queue+"/record.epub.held";Storage.paths[held]=false;
+ web.server->params={{"path",held},{"name","changed.held"}};
+ web.handleRename();assert(web.server->code==403&&bookmove::calls==0&&plainMoves==0);
+ reset();WebDAVHandler guarded;WebServer protectedTransport;guarded.dest=queue+"/old.epub";
+ guarded.handleMove(protectedTransport);assert(protectedTransport.code==403&&bookmove::calls==0&&removals==0);
  for(bool overwrite:{false,true}){
   reset();WebDAVHandler dav;WebServer transport;dav.overwrite=overwrite;
   Storage.paths[dav.dest]=false;dav.handleMove(transport);

@@ -1,4 +1,5 @@
 add_executable(ProtectedPathsTest ProtectedPathsTest.cpp)
+target_compile_definitions(ProtectedPathsTest PRIVATE FREEINK_DEVICE_X4PRO=1)
 
 target_include_directories(ProtectedPathsTest PRIVATE
   ${REPO_ROOT}/src

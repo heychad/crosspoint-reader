@@ -1042,6 +1042,21 @@ void CrossPointWebServer::begin() {
   // Move file endpoint
   server->on("/move", HTTP_POST, [this] { handleMove(); });
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  server->on("/api/book-deletions/check", HTTP_GET, [this] {
+    const String held = server->arg("path");
+    const String previous = server->arg("previous");
+    const bool ready = held == normalizeWebPath(held) &&
+                       (previous.isEmpty() || previous == normalizeWebPath(previous)) &&
+                       bookDeletionReceiptReady(held.c_str(), previous.c_str());
+    server->send(200, "application/json", ready ? "{\"ready\":true}" : "{\"ready\":false}");
+  });
+  server->on("/api/book-deletions/acknowledge", HTTP_POST, [this] {
+    const String held = server->arg("path");
+    const bool removed = held == normalizeWebPath(held) && acknowledgeBookDeletion(held.c_str());
+    server->send(removed ? 200 : 409, "application/json", removed ? "{\"removed\":true}" : "{\"removed\":false}");
+  });
+#endif
   // Delete file/folder endpoint
   server->on("/delete", HTTP_POST, [this] { handleDelete(); });
 
@@ -1369,6 +1384,7 @@ void CrossPointWebServer::handleStatus() const {
   doc["bookMoveRecoveryPending"] = bookmove::pending();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   doc["fileChecksumApiVersion"] = 1;
+  doc["bookDeletionApiVersion"] = 1;
 #endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
     CROSSPOINT_EXPERIMENTAL_STAGE
@@ -1868,7 +1884,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     String filePath = state.path;
     if (!filePath.endsWith("/")) filePath += "/";
     filePath += state.fileName;
-    if (protectedpaths::isSensitivePath(filePath.c_str())) {
+    if (protectedpaths::isSensitivePath(filePath.c_str(), protectedpaths::PathAccess::Write)) {
       state.error = "Cannot write protected items";
       return;
     }
@@ -2056,6 +2072,11 @@ void CrossPointWebServer::handleCreateFolder() const {
   if (!folderPath.endsWith("/")) folderPath += "/";
   folderPath += folderName;
 
+  if (protectedpaths::isSensitivePath(folderPath.c_str(), protectedpaths::PathAccess::Write)) {
+    server->send(403, "text/plain", "Cannot create protected item");
+    return;
+  }
+
   LOG_DBG("WEB", "Creating folder: %s", folderPath.c_str());
 
   // Check if already exists
@@ -2136,7 +2157,8 @@ void CrossPointWebServer::handleRename() const {
     newPath += "/";
   }
   newPath += newName;
-  if (protectedpaths::isSensitivePath(itemPath.c_str()) || protectedpaths::isSensitivePath(newPath.c_str())) {
+  if (protectedpaths::isSensitivePath(itemPath.c_str(), protectedpaths::PathAccess::Remove) ||
+      protectedpaths::isSensitivePath(newPath.c_str(), protectedpaths::PathAccess::Write)) {
     file.close();
     server->send(403, "text/plain", "Cannot move protected item");
     return;
@@ -2236,7 +2258,8 @@ void CrossPointWebServer::handleMove() const {
     newPath += "/";
   }
   newPath += itemName;
-  if (protectedpaths::isSensitivePath(itemPath.c_str()) || protectedpaths::isSensitivePath(newPath.c_str())) {
+  if (protectedpaths::isSensitivePath(itemPath.c_str(), protectedpaths::PathAccess::Remove) ||
+      protectedpaths::isSensitivePath(newPath.c_str(), protectedpaths::PathAccess::Write)) {
     file.close();
     server->send(403, "text/plain", "Cannot move protected item");
     return;
@@ -2328,7 +2351,7 @@ void CrossPointWebServer::handleDelete() const {
     const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
 
     // Credential stores are protected. Hidden (dot-named) items can be deleted.
-    if (protectedpaths::isSensitivePath(itemPath.c_str())) {
+    if (protectedpaths::isSensitivePath(itemPath.c_str(), protectedpaths::PathAccess::Remove)) {
       failedItems += itemPath + " (protected file); ";
       allSuccess = false;
       continue;
@@ -2373,7 +2396,7 @@ void CrossPointWebServer::handleDelete() const {
     } else {
       // It's a file (or couldn't open as dir) — remove file
       if (f) f.close();
-      success = removeBookFile(itemPath.c_str());
+      success = removeBookFileWithReceipt(itemPath.c_str());
     }
 
     if (!success) {
@@ -3930,7 +3953,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           String filePath = wsUploadPath;
           if (!filePath.endsWith("/")) filePath += "/";
           filePath += wsUploadFileName;
-          if (protectedpaths::isSensitivePath(filePath.c_str())) {
+          if (protectedpaths::isSensitivePath(filePath.c_str(), protectedpaths::PathAccess::Write)) {
             wsServer->sendTXT(num, "ERROR:Cannot write protected items");
             return;
           }

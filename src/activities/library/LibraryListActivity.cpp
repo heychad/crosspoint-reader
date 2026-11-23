@@ -633,8 +633,11 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
       RenderLock lock(*this);
       if (accepted) {
         LOG_DBG("LIB", "deleting %s", path.c_str());
-        if (!removeBookFile(path)) LOG_ERR("LIB", "cannot delete %s", path.c_str());
-        if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
+        if (removeBookFileWithReceipt(path)) {
+          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
+        } else {
+          LOG_ERR("LIB", "cannot delete %s", path.c_str());
+        }
         GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
         rebuildIndex();
       }

@@ -4,6 +4,7 @@
 
 using protectedpaths::isPluginPath;
 using protectedpaths::isSensitivePath;
+using protectedpaths::PathAccess;
 
 TEST(ProtectedPaths, CredentialStoresAreSensitive) {
   EXPECT_TRUE(isSensitivePath("/.crosspoint/wifi.json"));
@@ -46,4 +47,25 @@ TEST(ProtectedPaths, PluginPathRules) {
   EXPECT_FALSE(isPluginPath("/"));
   EXPECT_TRUE(isPluginPath("/.crosspoint/month-wallpaper.json"));
   EXPECT_TRUE(isPluginPath("/Books/new.epub"));
+}
+
+TEST(ProtectedPaths, DeletionQueueAllowsHostReadsAndBlocksGeneralWrites) {
+  const char* queue = "/zDev/Library deletions";
+  const char* payload = "/ZDEV/ Library Deletions. /event/Books/title.epub.held";
+  EXPECT_FALSE(isSensitivePath(queue));
+  EXPECT_FALSE(isSensitivePath(payload));
+  EXPECT_TRUE(isSensitivePath(queue, PathAccess::Write));
+  EXPECT_TRUE(isSensitivePath(payload, PathAccess::Write));
+  EXPECT_TRUE(isSensitivePath("/zDev/foo/.././Library deletions/event/.committed", PathAccess::Remove));
+  EXPECT_TRUE(isSensitivePath("/zDev/LIBRAR~1/event/Books/title.epub.held", PathAccess::Write));
+  EXPECT_FALSE(isPluginPath(payload));
+}
+
+TEST(ProtectedPaths, DevelopmentFolderKeepsOrdinaryFilesButCannotBeRemovedWithTheQueue) {
+  EXPECT_FALSE(isSensitivePath("/zDev", PathAccess::Write));
+  EXPECT_TRUE(isSensitivePath("/ZDEV. ", PathAccess::Remove));
+  EXPECT_TRUE(protectedpaths::isBookDeletionPath("/zDev", PathAccess::Remove));
+  EXPECT_FALSE(isSensitivePath("/zDev/DEL63.BIN", PathAccess::Write));
+  EXPECT_FALSE(isSensitivePath("/zDev/Library deletions backup/book.epub", PathAccess::Write));
+  EXPECT_FALSE(isSensitivePath("/Books/Library deletions/book.epub", PathAccess::Remove));
 }

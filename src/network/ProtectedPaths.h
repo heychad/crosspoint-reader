@@ -4,6 +4,7 @@
 #include <strings.h>
 
 #include <string>
+#include <string_view>
 
 // Credential stores no web request (file manager, plugin endpoints) or plugin
 // manifest may read or write: their passwords are obfuscated with a device
@@ -11,6 +12,10 @@
 // WifiCredentialStore, OpdsServerStore and KOReaderCredentialStore. Prefix
 // match, so the stores' temp/backup siblings are covered too.
 namespace protectedpaths {
+
+inline constexpr std::string_view DEVELOPMENT_ROOT = "/zDev";
+inline constexpr std::string_view BOOK_DELETION_QUEUE = "/zDev/Library deletions";
+enum class PathAccess { Read, Write, Remove };
 
 inline constexpr const char* SENSITIVE_FILES[] = {"/.crosspoint/wifi.json", "/.crosspoint/opds.json",
                                                   "/.crosspoint/koreader.json"};
@@ -26,7 +31,7 @@ inline bool isShortAlias(const char* first, const char* last) {
   return base <= 8 && ext <= 3;
 }
 
-inline bool isSensitivePath(const char* path) {
+inline std::string canonicalStoragePath(const char* path, bool& shortAlias) {
   // Canonicalise first ("//", "/./" and ".." would otherwise dodge the prefix
   // match while still opening the same file).
   std::string canon;
@@ -48,7 +53,7 @@ inline bool isSensitivePath(const char* path) {
       while (first < last && *first == ' ') first++;
       while (last > first && (last[-1] == '.' || last[-1] == ' ')) last--;
       // The stores sit two levels deep; an alias further down cannot reach one.
-      if (depth < 2 && isShortAlias(first, last)) return true;
+      if (depth < 2 && isShortAlias(first, last)) shortAlias = true;
       if (first < last) {
         canon += '/';
         canon.append(first, static_cast<size_t>(last - first));
@@ -57,6 +62,44 @@ inline bool isSensitivePath(const char* path) {
     }
     seg += len;
   }
+  return canon;
+}
+
+inline bool isCanonicalBookDeletionPath(std::string_view path, PathAccess access) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (access == PathAccess::Read) return false;
+  if (access == PathAccess::Remove &&
+      (path.empty() || (path.size() == DEVELOPMENT_ROOT.size() &&
+                        strncasecmp(path.data(), DEVELOPMENT_ROOT.data(), DEVELOPMENT_ROOT.size()) == 0))) {
+    return true;
+  }
+  return path.size() >= BOOK_DELETION_QUEUE.size() &&
+         strncasecmp(path.data(), BOOK_DELETION_QUEUE.data(), BOOK_DELETION_QUEUE.size()) == 0 &&
+         (path.size() == BOOK_DELETION_QUEUE.size() || path[BOOK_DELETION_QUEUE.size()] == '/');
+#else
+  (void)path;
+  (void)access;
+  return false;
+#endif
+}
+
+inline bool isBookDeletionPath(const char* path, PathAccess access = PathAccess::Write) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  bool shortAlias = false;
+  const auto canon = canonicalStoragePath(path, shortAlias);
+  // Callers that expose alias spellings also apply the general protection check.
+  return isCanonicalBookDeletionPath(canon, access);
+#else
+  (void)path;
+  (void)access;
+  return false;
+#endif
+}
+
+inline bool isSensitivePath(const char* path, PathAccess access = PathAccess::Read) {
+  bool shortAlias = false;
+  const auto canon = canonicalStoragePath(path, shortAlias);
+  if (shortAlias || isCanonicalBookDeletionPath(canon, access)) return true;
   for (const char* file : SENSITIVE_FILES) {
     // FAT names are case-insensitive.
     if (strncasecmp(canon.c_str(), file, strlen(file)) == 0) return true;
@@ -67,7 +110,8 @@ inline bool isSensitivePath(const char* path) {
 // A plugin-supplied path (web request or device.json): absolute, no parent
 // refs, not a credential store.
 inline bool isPluginPath(const std::string& p) {
-  return p.size() > 1 && p[0] == '/' && p.find("..") == std::string::npos && !isSensitivePath(p.c_str());
+  return p.size() > 1 && p[0] == '/' && p.find("..") == std::string::npos &&
+         !isSensitivePath(p.c_str(), PathAccess::Write);
 }
 
 }  // namespace protectedpaths

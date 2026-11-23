@@ -11,3 +11,9 @@ bool isBookCacheDirectoryName(const char* name);
 
 // Delete a local book and its local clipping state after the file is removed.
 bool removeBookFile(const std::string& path);
+
+// Explicit file deletion may stage an EPUB for host-side deletion sync.
+bool removeBookFileWithReceipt(const std::string& path);
+// Check that a staged EPUB has a completed rename and the old path is absent.
+bool bookDeletionReceiptReady(const std::string& held, const std::string& previous);
+bool acknowledgeBookDeletion(const std::string& held);

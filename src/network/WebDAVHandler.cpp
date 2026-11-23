@@ -7,6 +7,7 @@
 
 #include "BookMoveWeb.h"
 #include "ClippingStore.h"
+#include "ProtectedPaths.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -49,8 +50,10 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
   (void)uri;
   if (raw.status == RAW_START) {
     _putPath = getRequestPath(server);
-    if (isProtectedPath(_putPath)) {
+    if (isProtectedPath(_putPath) ||
+        protectedpaths::isSensitivePath(_putPath.c_str(), protectedpaths::PathAccess::Write)) {
       _putOk = false;
+      _putPath = "";
       return;
     }
 
@@ -110,8 +113,10 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
 
   } else if (raw.status == RAW_ABORTED) {
     if (_putFile) _putFile.close();
-    String tempPath = _putPath + ".davtmp";
-    Storage.remove(tempPath.c_str());
+    if (!_putPath.isEmpty()) {
+      String tempPath = _putPath + ".davtmp";
+      Storage.remove(tempPath.c_str());
+    }
     _putOk = false;
   }
 }
@@ -391,7 +396,7 @@ void WebDAVHandler::handlePut(WebServer& s) {
   String path = getRequestPath(s);
   LOG_DBG("DAV", "PUT %s", path.c_str());
 
-  if (isProtectedPath(path)) {
+  if (isProtectedPath(path) || protectedpaths::isSensitivePath(path.c_str(), protectedpaths::PathAccess::Write)) {
     s.send(403, "text/plain", "Forbidden");
     return;
   }
@@ -419,7 +424,7 @@ void WebDAVHandler::handleDelete(WebServer& s) {
     return;
   }
 
-  if (isProtectedPath(path)) {
+  if (isProtectedPath(path) || protectedpaths::isSensitivePath(path.c_str(), protectedpaths::PathAccess::Remove)) {
     s.send(403, "text/plain", "Forbidden");
     return;
   }
@@ -466,7 +471,7 @@ void WebDAVHandler::handleMkcol(WebServer& s) {
   String path = getRequestPath(s);
   LOG_DBG("DAV", "MKCOL %s", path.c_str());
 
-  if (isProtectedPath(path)) {
+  if (isProtectedPath(path) || protectedpaths::isSensitivePath(path.c_str(), protectedpaths::PathAccess::Write)) {
     s.send(403, "text/plain", "Forbidden");
     return;
   }
@@ -514,7 +519,9 @@ void WebDAVHandler::handleMove(WebServer& s) {
     return;
   }
 
-  if (isProtectedPath(srcPath) || isProtectedPath(dstPath)) {
+  if (isProtectedPath(srcPath) || isProtectedPath(dstPath) ||
+      protectedpaths::isSensitivePath(srcPath.c_str(), protectedpaths::PathAccess::Remove) ||
+      protectedpaths::isSensitivePath(dstPath.c_str(), protectedpaths::PathAccess::Write)) {
     s.send(403, "text/plain", "Forbidden");
     return;
   }
@@ -605,7 +612,8 @@ void WebDAVHandler::handleCopy(WebServer& s) {
 
   LOG_DBG("DAV", "COPY %s -> %s (overwrite=%d)", srcPath.c_str(), dstPath.c_str(), overwrite);
 
-  if (isProtectedPath(srcPath) || isProtectedPath(dstPath)) {
+  if (isProtectedPath(srcPath) || isProtectedPath(dstPath) ||
+      protectedpaths::isSensitivePath(dstPath.c_str(), protectedpaths::PathAccess::Write)) {
     s.send(403, "text/plain", "Forbidden");
     return;
   }

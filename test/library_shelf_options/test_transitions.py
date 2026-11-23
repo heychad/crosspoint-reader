@@ -46,13 +46,15 @@ struct Index {
 };
 namespace library {const char* libraryIndexPath(){return "index";}}
 struct RecentStore {
- bool removeByPath(const std::string&){assert(locked);return false;}
+ int removals=0;
+ bool removeByPath(const std::string&){assert(locked);++removals;return false;}
  void saveToFile(){assert(locked);}
 } RECENT_BOOKS;
 struct Gui {void drawPopup(int&,const char*){assert(locked);}} GUI;
 struct Nav {int selected=1;bool followOnBuild=false;};
 struct LibraryListActivity {
  Index index;int renderer=0,mappedInput=0,starts=0,releases=0,updates=0,deletions=0;Nav nav;
+ bool deleteOk=true;
  std::function<void(const ActivityResult&)> callback;
  void swallowHeldReleases(){++releases;}
  void startActivityForResult(std::unique_ptr<ConfirmationActivity> screen,std::function<void(const ActivityResult&)> cb){
@@ -60,7 +62,7 @@ struct LibraryListActivity {
  }
  void promptDeleteBookByPath(const std::string&,const std::string&);
  void promptRemoveRecentBook(const std::string&,const std::string&);
- bool removeBookFile(const std::string&){assert(locked);++deletions;return true;}
+ bool removeBookFileWithReceipt(const std::string&){assert(locked);++deletions;return deleteOk;}
  void rebuildIndex(){assert(locked);}
  void resetAfterRebuild(){assert(locked);}
  void resolvePinned(){assert(locked);}
@@ -84,7 +86,9 @@ int main(){
  LibraryListActivity d;d.promptDeleteBookByPath("/d.epub","D");bookmove::blocked=true;
  d.callback({false});assert(d.deletions==0&&d.index.opened&&!locked);
  bookmove::blocked=false;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});assert(d.deletions==1);
-
+ assert(RECENT_BOOKS.removals==1);
+ d.deleteOk=false;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});
+ assert(d.deletions==2&&RECENT_BOOKS.removals==1&&d.index.opened&&!locked);
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:
