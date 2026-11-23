@@ -1,12 +1,9 @@
 # Next X4 Pro device test
 
-Install the reviewed test70 image from `zDev/READER70.BIN` directly from
-test62. Test70 includes test65's changes, and the SD updater can install the
-application image in one step. Confirm the current book resumes. Use the
-packet's five-minute check for grayscale images, exact spacing, File Browser
-statistics, and Saved Items. Then check Drive deletion and restore with one
-disposable synced EPUB on test70. The longer checklist below is for later
-regression sessions.
+From test62, install **Settings → System → SD Card Firmware Update → zDev →
+READER70.BIN**. Keep the reader powered through restart. **About** should show
+`2.0.0-chad.3-test70-reader-batch-x4pro`. This direct update supersedes the
+test70 packet's earlier test65 prerequisite.
 
 ## Before installing
 
@@ -29,7 +26,30 @@ regression sessions.
   position, or behaves unexpectedly, stop and preserve the backup before trying
   another update or restoring files.
 
-## First checks
+## Five-minute test70 check
+
+1. Reopen your current book and confirm it resumes at the expected passage.
+   Turn a page with a button and another with touch.
+2. Open **zDev → Reader Polish Check.epub**. Check its three grayscale
+   illustrations and **Text → Line spacing** at **123%**. In chapter two,
+   change spacing to **137%**, close and reopen, then check the brass-key
+   passage and the saved spacing.
+3. In File Browser, hold **Reader Polish Check.epub** and open **Reading
+   statistics**. Toggle **Per-book tracking setting**, then restore it.
+   Back should return to the folder. Open **Home → Saved Items → Saved
+   Items Check → CrossInk bookmarks → First passage** and confirm it opens
+   the saved passage.
+
+If you notice a problem, note the book and action. To capture a performance
+baseline, save a clip in the test EPUB and try turning the page. Compare the
+same text page turns with **Text Anti-Aliasing** on and off, then restore your
+setting. Record any extra refresh, wait before a turn, or visible text shift.
+The clip refresh fix and later render changes are on the development branch.
+
+Run the Drive deletion and restore check on test70 separately, using one
+disposable synced EPUB.
+
+## Reader controls and display regression
 
 1. Reopen an in-progress book and confirm the passage, page turns, touch, and
    frontlight. Close and reopen it once. Check that the position still matches.

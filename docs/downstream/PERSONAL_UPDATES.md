@@ -235,6 +235,21 @@ Real firmware TLS and installation still need a device test.
 Image SHA-256
 `a295ee664f088073a948719a7ef9667b826dfcc22c98d1b50f172d10296a86fd`.
 
+### Post-test70 integration check
+
+The same preview build from `c06f2d12` produced a 5,815,776-byte image.
+The firmware checker verified its board, version, and slot size. Espressif's
+image tool verified its checksum and validation hash. The host test starting
+from test70 accepted the exact image
+and selected the simulated boot slot. A one-byte change made it abort before
+finalization or boot selection. All 2,559 enabled cumulative host checks
+passed. The compiled-image test ran separately with the preview artifact.
+
+Image SHA-256
+`ac62c87b6e88f1636ffe22036aad458ce2f5e8399d56ecef975bd5ebf8d85a5a`.
+This preview is for local checks. Device installation and live TLS remain
+open. The next physical check is the [test70 handoff](NEXT_DEVICE_QA.md).
+
 ## Verification boundary
 
 The host harness executes the production setters, connection setup, and retry
