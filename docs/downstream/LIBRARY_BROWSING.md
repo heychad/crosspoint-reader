@@ -92,9 +92,10 @@ validation remain.
 
 Show EPUB, XTC, TXT and Markdown independently. XTC includes `.xtc` and `.xtch`.
 Markdown uses the reader's `.md` support. Hide finished books removes entries
-whose saved statistics identify them as completed. An unavailable or damaged
-statistics record remains visible. Search combines with the selected filters.
-Turning a format back on makes matching books visible again.
+whose saved statistics identify them as completed. Completion checks are
+read-only. Books with unavailable or damaged statistics or pending recovery
+stay visible. Search combines with the selected filters. Turning a format back
+on makes matching books visible again.
 
 Recent books use the same visibility rules as indexed books. A visible pin
 retains its recent-store identity, and its duplicate in the indexed list is
@@ -128,6 +129,9 @@ A 4096-folder index then needs at most 32 folder-header reads per path. The
 full 16-bit folder-count range remains supported with a larger stride. The
 lookup belongs to one open index generation and is released at scan exit.
 Plain search avoids full paths, and format-only filtering reads filenames.
+With Hide finished enabled, only books that pass search and format filtering
+need a completion check. The scan builds the folder lookup at the first match.
+Recently opened also checks completion only for matches.
 
 Filtering runs under the owning Library render lock, yields during long
 scans, and closes published row routing before rebuilding the model. An

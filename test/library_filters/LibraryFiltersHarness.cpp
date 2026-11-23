@@ -71,7 +71,9 @@ std::vector<Book> books = {{"/alpha.epub", "alpha", "first", false},       {"/be
                            {"/gamma.txt", "gamma", "third", std::nullopt}, {"/delta.md", "delta", "fourth", false},
                            {"/epsilon.md", "epsilon", "fifth", true},      {"/zeta.EPUB", "zeta", "sixth", false}};
 namespace readingstats {
+size_t completionReads = 0;
 std::optional<bool> bookCompletion(const std::string& path) {
+  ++completionReads;
   for (const auto& book : books)
     if (book.path == path) return book.completed;
   return false;
@@ -398,7 +400,6 @@ struct LibraryListActivity {
   void resolvePinned();
   void refreshOverlap();
   bool filtersActive() const;
-  bool matchesFilters(const std::string&) const;
   bool matchesFormat(const std::string&) const;
   void applyFilter();
   int bookRowCount() const;
@@ -469,9 +470,21 @@ int main() {
   assert(view.bookRowCount() == 2 && view.pinnedCount() == 1 && view.pinnedStoreIndices[0] == 2);
   assert((view.visible() == std::vector<std::string>{"/delta.md", "/gamma.txt"}));
   view.query = "third";
+  readingstats::completionReads = 0;
+  const int priorPathReads = view.index.pathReads;
   view.applyFilter();
   view.refreshOverlap();
   assert(view.pinnedCount() == 0 && view.bookRowCount() == 1 && view.visible()[0] == "/gamma.txt");
+  assert(readingstats::completionReads == 1 && view.index.pathReads == priorPathReads + 1);
+  const int priorLookupBuilds = view.index.lookupBuilds;
+  view.query = "no match";
+  view.index.lookupFails = true;
+  readingstats::completionReads = 0;
+  view.applyFilter();
+  assert(!view.filterFailed && view.bookRowCount() == 0);
+  assert(readingstats::completionReads == 0 && view.index.lookupBuilds == priorLookupBuilds);
+  view.index.lookupFails = false;
+  view.query = "third";
   view.sortOrder = library::SortOrder::RecentAsc;
   view.applyFilter();
   view.refreshOverlap();
@@ -738,6 +751,11 @@ int main() {
   SETTINGS.libraryHideFinishedBooks = true;
   history.applyFilter();
   assert(history.bookRowCount() == 3);
+  readingstats::completionReads = 0;
+  history.query = "delta";
+  history.applyFilter();
+  assert(history.bookRowCount() == 1 && history.visible()[0] == "/delta.md");
+  assert(readingstats::completionReads == 1);
   SETTINGS.libraryHideFinishedBooks = false;
   // Bound query scratch without truncating or rewriting the resident metadata.
   const auto originalTitle = RECENT_BOOKS.entries[0].title;

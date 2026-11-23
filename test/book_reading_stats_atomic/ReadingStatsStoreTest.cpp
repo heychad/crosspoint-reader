@@ -349,6 +349,26 @@ TEST_F(ReadingStatsStoreTest, CompletionFilterKeepsMissingAndUnreadableBooksUnkn
   EXPECT_FALSE(readingstats::bookCompletion(BOOK).has_value());
 }
 
+TEST_F(ReadingStatsStoreTest, CompletionFilterKeepsRecoveryFilesInPlace) {
+  HalFile book;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", BOOK, book));
+  ASSERT_TRUE(book.close());
+  const std::string cache = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(BOOK));
+  const std::string directory = readingstats::bookDirectory(cache);
+  const auto primary = directory + "/stats_v5.bin";
+  BookReadingStats stats;
+  stats.isCompleted = true;
+  for (const auto* suffix : {".tmp", ".bak"}) {
+    ASSERT_TRUE(stats.save(directory));
+    const auto recovery = primary + suffix;
+    ASSERT_TRUE(Storage.rename(primary.c_str(), recovery.c_str()));
+    EXPECT_EQ(readingstats::bookCompletion(BOOK), std::nullopt);
+    EXPECT_FALSE(Storage.exists(primary.c_str()));
+    EXPECT_TRUE(Storage.exists(recovery.c_str()));
+    ASSERT_TRUE(Storage.remove(recovery.c_str()));
+  }
+}
+
 TEST_F(ReadingStatsStoreTest, ClearCachePreservesReaderPreferencesAndRecoveryFiles) {
   for (const auto* name : {"/reader_settings.bin", "/reader_settings.bin.bak", "/reader_prefs.json",
                            "/reader_prefs.json.tmp", "/book.bin"}) {

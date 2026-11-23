@@ -52,7 +52,7 @@ the follow-up install. Both physical checks remain pending.
 | A4 Five-slot Quick Actions | Built; the reader menu and toolbar More panel now provide direct access as well as shortcut triggers. Hardware checks remain. |
 | A5 Per-book reading layout | Built for native reader layouts, including independent 5–150-pixel horizontal/vertical margins, exact 70–200% line spacing, sliders, preview, persistence, reset, and compatible binary imports. Old common-margin saves initialize both axes. Unsupported migration fields remain under G3; device acceptance remains. |
 | A9 Extra actions and legacy mappings | Built for the selected X4 Pro scope. The tagged RC catalog audit covers power, side, chord, Home, Quick Actions slots, and gesture mappings. Includes Home/Reader, chapter selection, rotation, network entry, and distinct power sleep/wake modes. Invoked experimental features keep their own gates; device checks remain. |
-| B1 Format and finished-book filters | Built; completion data that cannot be read stays visible. |
+| B1 Format and finished-book filters | Built. Search checks completion only for matches. The completion check is read-only and keeps books with unreadable or pending recovery data visible. |
 | B2 Compact rows and filenames | Built. |
 | B3 Browse by genre and series | Built from EPUB metadata; hardware checks remain. |
 | B4 Recent-books cover grid | Built; hardware checks remain. An optional Title shelf grid is also available independently. |

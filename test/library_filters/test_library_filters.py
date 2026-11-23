@@ -27,7 +27,7 @@ for signature in ('bool LibraryListActivity::historyView(', 'void LibraryListAct
                   'bool LibraryListActivity::recentTextViews(', 'bool LibraryListActivity::recentTextFor(',
                   'bool LibraryListActivity::rowTextFor(', 'int LibraryListActivity::pinnedCount(', 'void LibraryListActivity::resolvePinned(',
                   'void LibraryListActivity::refreshOverlap(', 'bool LibraryListActivity::filtersActive(',
-                  'bool LibraryListActivity::matchesFilters(', 'bool LibraryListActivity::matchesFormat(',
+                  'bool LibraryListActivity::matchesFormat(',
                   'void LibraryListActivity::applyFilter(', 'bool LibraryListActivity::rowMetadataFor(',
                   'bool LibraryListActivity::buildGroupStarts(', 'void LibraryListActivity::formatMetadataHeading(',
                   'void LibraryListActivity::formatAuthorHeading(',

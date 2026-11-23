@@ -165,7 +165,6 @@ class LibraryListActivity final : public UiTabListActivity {
   // index or the store changes.
   void resolvePinned();
   bool filtersActive() const;
-  bool matchesFilters(const std::string& path) const;
   bool matchesFormat(const std::string& path) const;
   // Direction-space translation of the matched rows. Call on sort toggles.
   void refreshOverlap();

@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -231,7 +232,8 @@ void LibraryListActivity::resolvePinned() {
   const std::string needle = historyView() ? library::fold(query) : std::string();
   if (historyView()) filterFailed = false;
   for (size_t i = 0; i < count; ++i) {
-    if (!matchesFilters(books[i].path)) continue;
+    const auto& path = books[i].path;
+    if (!matchesFormat(path)) continue;
     if (!needle.empty()) {
       std::string_view title, author;
       if (!recentTextViews(i, title, author)) continue;
@@ -246,6 +248,7 @@ void LibraryListActivity::resolvePinned() {
       library::foldInto(metadataKeyScratch, seriesScratch);
       if (!library::matchesQuery(seriesScratch, needle)) continue;
     }
+    if (SETTINGS.libraryHideFinishedBooks && readingstats::bookCompletion(path).value_or(false)) continue;
     pinnedStoreIndices[pinnedTotal] = static_cast<uint8_t>(i);
     pinnedAscRows[pinnedTotal++] = 0xFFFF;
   }
@@ -914,11 +917,6 @@ bool LibraryListActivity::matchesFormat(const std::string& path) const {
          (SETTINGS.libraryShowMarkdown && FsHelpers::hasMarkdownExtension(path));
 }
 
-bool LibraryListActivity::matchesFilters(const std::string& path) const {
-  return matchesFormat(path) &&
-         (!SETTINGS.libraryHideFinishedBooks || !readingstats::bookCompletion(path).value_or(false));
-}
-
 // Reuse one bounded row-position array. Storage failures never publish a partial view.
 void LibraryListActivity::applyFilter() {
   groupsCollapsed = false;
@@ -945,18 +943,21 @@ void LibraryListActivity::applyFilter() {
   }
 
   library::LibraryIndexFile::PathLookup paths;
-  if (SETTINGS.libraryHideFinishedBooks) {
-    paths = index.preparePathLookup();
-    if (!paths) {
-      filterFailed = true;
-      return;
-    }
-  }
   const bool selectFormats = !SETTINGS.libraryShowEpub || !SETTINGS.libraryShowXtc || !SETTINGS.libraryShowTxt ||
                              !SETTINGS.libraryShowMarkdown;
   uint16_t matchCount = 0;
   std::string path;
-  std::string author;
+  std::string field;
+  const auto matchesSearch = [&](const library::ClixRecord& record) -> std::optional<bool> {
+    if (library::matchesQuery(std::string_view(record.fold, record.foldLen), needle)) return true;
+    field.clear();
+    if (!index.readAuthor(record, field) && index.ioFailed()) return std::nullopt;
+    if (library::matchesQuery(library::fold(field), needle)) return true;
+    if (!index.readSeries(record, field)) return std::nullopt;
+    if (library::matchesQuery(library::fold(field), needle)) return true;
+    if (!index.readGenre(record, field)) return std::nullopt;
+    return library::matchesQuery(library::fold(field), needle);
+  };
   for (int row = 0; row < total; row++) {
     if ((row & 31) == 0) delay(1);
     const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
@@ -972,39 +973,21 @@ void LibraryListActivity::applyFilter() {
       }
       if (!matchesFormat(path)) continue;
     }
+    const auto match = matchesSearch(record);
+    if (!match.has_value()) {
+      filterFailed = true;
+      return;
+    }
+    if (!*match) continue;
     if (SETTINGS.libraryHideFinishedBooks) {
-      if (!index.readPath(record, path, paths)) {
+      if (!paths) paths = index.preparePathLookup();
+      if (!paths || !index.readPath(record, path, paths)) {
         filterFailed = true;
         return;
       }
       if (readingstats::bookCompletion(path).value_or(false)) continue;
     }
-    if (query.empty() || library::matchesQuery(std::string_view(record.fold, record.foldLen), needle)) {
-      matches[matchCount++] = static_cast<uint16_t>(row);
-      continue;
-    }
-    author.clear();
-    if (!index.readAuthor(record, author) && index.ioFailed()) {
-      filterFailed = true;
-      return;
-    }
-    if (library::matchesQuery(library::fold(author), needle)) {
-      matches[matchCount++] = static_cast<uint16_t>(row);
-      continue;
-    }
-    if (!index.readSeries(record, author)) {
-      filterFailed = true;
-      return;
-    }
-    if (library::matchesQuery(library::fold(author), needle)) {
-      matches[matchCount++] = static_cast<uint16_t>(row);
-      continue;
-    }
-    if (!index.readGenre(record, author)) {
-      filterFailed = true;
-      return;
-    }
-    if (library::matchesQuery(library::fold(author), needle)) matches[matchCount++] = static_cast<uint16_t>(row);
+    matches[matchCount++] = static_cast<uint16_t>(row);
   }
   filtered = std::move(matches);
   filteredCount = matchCount;
