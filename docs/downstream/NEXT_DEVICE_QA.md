@@ -1,14 +1,13 @@
 # Next X4 Pro device test
 
-The reported clipping checks passed on clipfix2. The next candidate is tracked
-in [the combined review record](CUMULATIVE_CANDIDATE.md). Its distinct version,
-hashes, backup, and review must be ready before installation.
-Use a five-minute smoke test for the first feedback loop. The longer checklist
-below is a menu for later sessions, not one assignment.
+Install test65 from `zDev/RC365.BIN` for the next device check. Confirm the
+current book resumes, then test the Drive delete-and-restore path with one
+disposable synced EPUB.
 
-Use the latest reviewed, hash-verified local candidate and its matching source
-packet. Work through the checks one at a time. Nothing in this plan has been
-run on the device yet.
+The follow-up is the reviewed test69 packet, `POLISH69.BIN`. Its local README
+has a five-minute check for saved passages, exact spacing, grayscale images,
+and Saved Items. Stage and verify that packet after test65 passes. The longer
+checklist below is for later regression sessions.
 
 ## Before installing
 

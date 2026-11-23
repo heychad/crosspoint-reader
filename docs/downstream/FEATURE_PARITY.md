@@ -32,12 +32,17 @@ rollback were verified by SHA-256. Installation and the disposable EPUB
 delete-and-restore test remain pending. Earlier cumulative reviews are in
 [the test59 candidate record](CUMULATIVE_CANDIDATE.md).
 
-Test68 at `0a8a1bb0` is the follow-up device build after test65. It includes the
-test67 Saved Items startup fix, CrossInk reading-history imports, image and
-grayscale rendering, native bookmark recovery, and individual imported
-bookmark deletion. Both X4 Pro profiles, 2,524 host checks, and independent
-review passed. The local `SAVED68.BIN` package includes a disposable EPUB with
-three imported bookmarks. Device installation and checks remain pending.
+Test68 at `0a8a1bb0` packaged the test67 Saved Items startup fix, CrossInk
+reading-history imports, image and grayscale rendering, native bookmark
+recovery, and individual imported bookmark deletion.
+
+Test69 at `24bdb7d1` combines that package with exact line spacing, RC3 book
+settings, render timing, and lower SD read volume for illustrated pages and
+EPUB metadata. The two X4 Pro builds, all 2,531 enabled host checks, four
+review axes, and firmware and fixture checksums passed. The local
+`POLISH69.BIN` packet has two disposable EPUBs and test65 rollback.
+Test65 still comes first for the Drive delete-and-restore check. Test69 is
+the follow-up install. Both physical checks remain pending.
 
 | Choice | Current state |
 | --- | --- |
