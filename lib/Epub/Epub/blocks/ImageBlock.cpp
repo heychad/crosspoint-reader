@@ -48,6 +48,7 @@ bool readValidCacheHeader(HalFile& cacheFile, const int expectedWidth, const int
   if (cacheFile.read(&cachedWidth, 2) != 2 || cacheFile.read(&cachedHeight, 2) != 2) {
     return false;
   }
+  if (cachedWidth == 0 || cachedHeight == 0) return false;
 
   const int widthDiff = abs(cachedWidth - expectedWidth);
   const int heightDiff = abs(cachedHeight - expectedHeight);
@@ -92,9 +93,8 @@ void rememberImageFailure(const std::string& path) {
 // The tiled grayscale flow re-renders an image page once for the BW
 // double-refresh and again for every band of both gray planes, and each pass
 // re-read the whole .pxc off SD (~100 ms for a full-page image, ~13 passes).
-// Column clipping cannot reduce the SD traffic: the row stride (~100 B) is
-// smaller than an SD sector, so every sector is touched regardless of the band
-// window. Instead the first pass loads the payload into RAM and later passes
+// Portrait bands clip columns, so streaming still touches every row.
+// The first pass loads the payload into RAM and later passes
 // render from it. The X4 Pro uses PSRAM; without it the original heap-gated
 // chunks remain available. A failed cache fill falls back to streaming. The
 // reader releases the slot at the end of the page render.
@@ -181,6 +181,17 @@ bool loadPxcSlot(uint64_t cacheHash, HalFile& cacheFile, uint16_t cachedWidth, u
   return true;
 }
 
+void renderPackedRow(DirectPixelWriter& writer, const uint8_t* pixels, int x, int y, int width) {
+  writer.beginRow(y);
+  int first, last;
+  writer.bandColRange(x, width, first, last);
+  for (int col = first; col < last; col++) {
+    const int bitShift = 6 - (col & 3) * 2;
+    const uint8_t level = (pixels[col >> 2] >> bitShift) & 0x03;
+    writer.writePixel(x + col, level);
+  }
+}
+
 void renderRowsFromPxcSlot(GfxRenderer& renderer, int x, int y) {
   const int bytesPerRow = (pxcSlotWidth + 3) / 4;
   uint8_t tempRow[PXC_MAX_BYTES_PER_ROW];
@@ -188,17 +199,10 @@ void renderRowsFromPxcSlot(GfxRenderer& renderer, int x, int y) {
   DirectPixelWriter pw;
   pw.init(renderer);
 
-  for (int row = 0; row < pxcSlotHeight; row++) {
-    const uint8_t* rowBuffer = pxcRowPtr((size_t)row * bytesPerRow, bytesPerRow, tempRow);
-    pw.beginRow(y + row);
-    int colStart, colEnd;
-    pw.bandColRange(x, pxcSlotWidth, colStart, colEnd);
-    for (int col = colStart; col < colEnd; col++) {
-      const int byteIdx = col >> 2;            // col / 4
-      const int bitShift = 6 - (col & 3) * 2;  // MSB first within byte
-      const uint8_t pixelValue = (rowBuffer[byteIdx] >> bitShift) & 0x03;
-      pw.writePixel(x + col, pixelValue);
-    }
+  const auto [first, last] = pw.bandRowRange(y, pxcSlotHeight);
+  for (int row = first; row < last; row++) {
+    const auto* pixels = pxcRowPtr(static_cast<size_t>(row) * bytesPerRow, bytesPerRow, tempRow);
+    renderPackedRow(pw, pixels, x, y + row, pxcSlotWidth);
   }
 }
 
@@ -246,10 +250,15 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
     return true;
   }
 
-  // Streaming fallback (slot didn't fit). A failed slot load may have consumed
-  // part of the payload; rewind to just past the header.
-  if (!cacheFile.seek(4)) {
-    LOG_ERR("IMG", "Could not rewind pixel cache");
+  DirectPixelWriter pw;
+  pw.init(renderer);
+  const auto [first, last] = pw.bandRowRange(y, cachedHeight);
+  if (first == last) return true;
+
+  // A failed RAM fill may have advanced the file. Seek to the first row the
+  // current pass uses, leaving other landscape strips unread.
+  if (!cacheFile.seek(4 + static_cast<size_t>(first) * bytesPerRow)) {
+    LOG_ERR("IMG", "Could not seek to pixel cache row %d", first);
     return false;
   }
 
@@ -257,57 +266,32 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
   // cachedHeight (~728) tiny reads through the storage mutex + SdFat; batching
   // rows into a ~4KB buffer cuts that to ~20 reads per pass without holding the
   // whole image.
-  int rowsPerRead = 4096 / bytesPerRow;
-  if (rowsPerRead < 1) rowsPerRead = 1;
-  if (rowsPerRead > cachedHeight) rowsPerRead = cachedHeight;
-  uint8_t* readBuffer = (uint8_t*)malloc((size_t)rowsPerRead * bytesPerRow);
+  int rowsPerRead = std::clamp(4096 / bytesPerRow, 1, last - first);
+  auto readBuffer = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(rowsPerRead) * bytesPerRow);
   if (!readBuffer) {
     // Fall back to a single-row buffer under memory pressure.
     rowsPerRead = 1;
-    readBuffer = (uint8_t*)malloc(bytesPerRow);
+    readBuffer = makeUniqueNoThrow<uint8_t[]>(bytesPerRow);
   }
   if (!readBuffer) {
     LOG_ERR("IMG", "Failed to allocate row buffer");
     return false;
   }
 
-  DirectPixelWriter pw;
-  pw.init(renderer);
-
-  int rowsInBuffer = 0;
-  int bufferRow = 0;
-  for (int row = 0; row < cachedHeight; row++) {
-    if (bufferRow >= rowsInBuffer) {
-      const int toRead = (cachedHeight - row < rowsPerRead) ? (cachedHeight - row) : rowsPerRead;
-      const size_t bytes = (size_t)toRead * bytesPerRow;
-      if (cacheFile.read(readBuffer, bytes) != static_cast<int>(bytes)) {
-        LOG_ERR("IMG", "Cache read error at row %d", row);
-        free(readBuffer);
-        return false;
-      }
-      rowsInBuffer = toRead;
-      bufferRow = 0;
+  for (int row = first; row < last;) {
+    const int count = std::min(last - row, rowsPerRead);
+    const size_t bytes = static_cast<size_t>(count) * bytesPerRow;
+    if (cacheFile.read(readBuffer.get(), bytes) != static_cast<int>(bytes)) {
+      LOG_ERR("IMG", "Cache read error at row %d", row);
+      return false;
     }
-
-    const uint8_t* rowBuffer = readBuffer + (size_t)bufferRow * bytesPerRow;
-    bufferRow++;
-
-    const int destY = y + row;
-    pw.beginRow(destY);
-    // On a grayscale strip pass only a narrow column window of the image is in
-    // the active band; skip the rest instead of unpacking+clipping every pixel.
-    int colStart, colEnd;
-    pw.bandColRange(x, cachedWidth, colStart, colEnd);
-    for (int col = colStart; col < colEnd; col++) {
-      const int byteIdx = col >> 2;            // col / 4
-      const int bitShift = 6 - (col & 3) * 2;  // MSB first within byte
-      uint8_t pixelValue = (rowBuffer[byteIdx] >> bitShift) & 0x03;
-
-      pw.writePixel(x + col, pixelValue);
+    for (int i = 0; i < count; i++) {
+      const auto* pixels = readBuffer.get() + static_cast<size_t>(i) * bytesPerRow;
+      renderPackedRow(pw, pixels, x, y + row + i, cachedWidth);
     }
+    row += count;
   }
 
-  free(readBuffer);
   LOG_DBG("IMG", "Cache render complete");
   return true;
 }

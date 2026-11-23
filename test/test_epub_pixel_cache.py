@@ -92,10 +92,32 @@ struct {
 """
 
 TEST = r"""
+void makePackedImage(int width, int height) {
+  HalFile::contents.resize(4 + static_cast<size_t>((width + 3) / 4) * height);
+  HalFile::contents[0] = width & 0xff;
+  HalFile::contents[1] = width >> 8;
+  HalFile::contents[2] = height & 0xff;
+  HalFile::contents[3] = height >> 8;
+  for (size_t i = 4; i < HalFile::contents.size(); ++i) HalFile::contents[i] = (i ^ (i >> 5)) & 0xff;
+}
+
+// Paint every source pixel and let the writer's ordinary clipping choose
+// the visible ones. This reference does not use the optimized row/column ranges.
+void paintReference(GfxRenderer& renderer, int x, int y, int width, int height) {
+  DirectPixelWriter writer;
+  writer.init(renderer);
+  for (int row = 0; row < height; ++row) {
+    writer.beginRow(y + row);
+    const auto* pixels = HalFile::contents.data() + 4 + row * ((width + 3) / 4);
+    for (int col = 0; col < width; ++col) {
+      const uint8_t pixel = (pixels[col / 4] >> (6 - (col % 4) * 2)) & 3;
+      writer.writePixel(x + col, pixel);
+    }
+  }
+}
+
 int main() {
   constexpr size_t PAYLOAD = 96000;
-  HalFile::contents.resize(PAYLOAD + 4);
-  for (size_t i = 4; i < HalFile::contents.size(); ++i) HalFile::contents[i] = (i ^ (i >> 5)) & 0xff;
   GfxRenderer renderer;
   for (const auto orientation : {GfxRenderer::Portrait, GfxRenderer::PortraitInverted,
                                  GfxRenderer::LandscapeClockwise, GfxRenderer::LandscapeCounterClockwise}) {
@@ -103,20 +125,21 @@ int main() {
     const bool portrait = orientation == GfxRenderer::Portrait || orientation == GfxRenderer::PortraitInverted;
     const int width = portrait ? 480 : 800;
     const int height = portrait ? 800 : 480;
-    HalFile::contents[0] = width & 0xff;
-    HalFile::contents[1] = width >> 8;
-    HalFile::contents[2] = height & 0xff;
-    HalFile::contents[3] = height >> 8;
+    makePackedImage(width, height);
     for (const auto mode : {GfxRenderer::BW, GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
       renderer.mode = mode;
       renderer.origin = mode == GfxRenderer::BW ? 0 : 83;
       renderer.rows = mode == GfxRenderer::BW ? 480 : 80;
+      const size_t streamed = portrait ? PAYLOAD : static_cast<size_t>(renderer.rows) * (width / 4);
+      renderer.framebuffer.fill(0x5a);
+      paintReference(renderer, 0, 0, width, height);
+      const auto expected = renderer.framebuffer;
       renderer.framebuffer.fill(0x5a);
       HalMemory::present = true;
       HalFile::bytesRead = 0;
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
       assert(HalFile::bytesRead == PAYLOAD + 4 && pxcPsram && !pxcChunks[0]);
-      const auto expected = renderer.framebuffer;
+      assert(renderer.framebuffer == expected);
       renderer.framebuffer.fill(0x5a);
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
       assert(HalFile::bytesRead == PAYLOAD + 4 && renderer.framebuffer == expected);
@@ -126,7 +149,7 @@ int main() {
       HalMemory::present = false;
       renderer.framebuffer.fill(0x5a);
       assert(renderFromCache(renderer, "/book/image.pxc", 0, 0, width, height));
-      assert(HalFile::bytesRead == 2 * (PAYLOAD + 4) && renderer.framebuffer == expected);
+      assert(HalFile::bytesRead == PAYLOAD + 4 + streamed + 4 && renderer.framebuffer == expected);
       assert(!pxcChunks[0]);
 
       ESP.internal = 256000;
@@ -150,6 +173,35 @@ int main() {
       HalFile::failSeek = false;
     }
   }
+
+  // A smaller image touches only the edge of these landscape strips.
+  HalMemory::present = false;
+  makePackedImage(320, 53);
+  renderer.rows = 40;
+  renderer.mode = GfxRenderer::GRAYSCALE_MSB;
+  for (const auto orientation : {GfxRenderer::LandscapeClockwise, GfxRenderer::LandscapeCounterClockwise}) {
+    renderer.orientation = orientation;
+    const bool clockwise = orientation == GfxRenderer::LandscapeClockwise;
+    renderer.origin = clockwise ? 369 : 139;
+    renderer.framebuffer.fill(0x5a);
+    paintReference(renderer, 17, 99, 320, 53);
+    const auto expected = renderer.framebuffer;
+    renderer.framebuffer.fill(0x5a);
+    HalFile::bytesRead = 0;
+    assert(renderFromCache(renderer, "/book/small.pxc", 17, 99, 320, 53));
+    assert(HalFile::bytesRead == 4 + (clockwise ? 12 : 13) * 80);
+    assert(renderer.framebuffer == expected);
+
+    renderer.origin = 0;
+    HalFile::bytesRead = 0;
+    HalFile::failSeek = true;
+    assert(renderFromCache(renderer, "/book/small.pxc", 17, 99, 320, 53));
+    assert(HalFile::bytesRead == 4 && renderer.framebuffer == expected);
+    HalFile::failSeek = false;
+  }
+
+  makePackedImage(0, 1);
+  assert(!renderFromCache(renderer, "/book/invalid.pxc", 17, 99, 1, 1));
 }
 """
 

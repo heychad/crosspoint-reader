@@ -37,6 +37,11 @@ For a device comparison, go back and forward between cached illustrated
 pages with the same orientation, refresh settings, and book layout.
 Serial logs identify whether PSRAM was used and report render timing.
 
+When landscape grayscale falls back to SD streaming, each strip reads
+only the image rows it draws. In the host fixture, an 80-row strip of an
+800 × 480 image reads 16,004 bytes, including the header, compared with
+96,004 bytes for a full pass. Portrait strips still need every row.
+
 ## Chapter indexing
 
 Chapter indexing controls when pages are built, separately from the rendering

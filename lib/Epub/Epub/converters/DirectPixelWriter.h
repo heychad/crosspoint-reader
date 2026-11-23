@@ -5,7 +5,9 @@
 #include <HalDisplay.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <cassert>
+#include <utility>
 
 // Direct framebuffer writer that eliminates per-pixel overhead from the image
 // rendering hot path.  Pre-computes orientation transform as linear coefficients
@@ -106,6 +108,15 @@ struct DirectPixelWriter {
     rowLogicalY = logicalY;
     rowPhyXBase = phyXBase + logicalY * phyXStepY;
     rowPhyYBase = phyYBase + logicalY * phyYStepY;
+  }
+
+  // In landscape each physical band covers whole logical rows. In portrait it
+  // clips columns instead, so the image still needs every row.
+  std::pair<int, int> bandRowRange(int yBase, int height) const {
+    if (phyYStepY == 0) return {0, height};
+    const int first = phyYStepY > 0 ? originY - phyYBase : phyYBase - (originY + clipRows - 1);
+    const int offset = first - yBase;
+    return {std::clamp(offset, 0, height), std::clamp(offset + clipRows, 0, height)};
   }
 
   // For the current row (set via beginRow), narrow [colStart, colEnd) to the
