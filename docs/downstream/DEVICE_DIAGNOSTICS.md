@@ -26,3 +26,14 @@ actually needed a build.
 Recording starts off after boot. The recorder uses at most 208 bytes of RAM
 and writes no SD files. Display fit and timing on the physical X4 Pro remain
 unverified.
+
+## SD firmware update failures
+
+The SD updater shows the same error code as the serial log. For example,
+`WRONG_BOARD` identifies an image for another board, `BAD_SHA` a failed image
+hash check, and `WRITE_FAIL` a failed write to the update slot. The updater
+uses the same codes before confirmation and during installation. This adapts
+the [CrossInk RC3 diagnostic](https://github.com/uxjulia/CrossInk/commit/35da2c236de450ce095daa3ae5f85c9844fed83f).
+
+For a device check, select a separate one-byte `.BIN` in `zDev`. The updater
+should show `TOO_SMALL` before confirmation. Back should leave the failure screen.

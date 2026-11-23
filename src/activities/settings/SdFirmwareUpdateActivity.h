@@ -3,6 +3,7 @@
 #include <string>
 
 #include "activities/Activity.h"
+#include "network/FirmwareFlasher.h"
 
 /**
  * SD-card based firmware update activity.
@@ -45,11 +46,12 @@ class SdFirmwareUpdateActivity : public Activity {
   size_t firmwareSize = 0;
   size_t writtenBytes = 0;
   unsigned int lastRenderedPercent = 101;
-  std::string errorMessage;
+  firmware_flash::Result failure = firmware_flash::Result::OK;
 
   void launchPicker();
   void onPickerResult(const ActivityResult& result);
-  bool validateFirmware();
+  firmware_flash::Result validateFirmware();
+  void showFailure(firmware_flash::Result result);
   void promptConfirmation();
   void onConfirmationResult(const ActivityResult& result);
   void performUpdate();

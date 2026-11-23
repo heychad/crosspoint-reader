@@ -12,7 +12,41 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "network/FirmwareFlasher.h"
+
+namespace {
+using firmware_flash::Result;
+
+const char* failureMessage(Result result) {
+  switch (result) {
+    case Result::OPEN_FAIL:
+      return tr(STR_FIRMWARE_FILE_OPEN_FAILED);
+    case Result::TOO_SMALL:
+      return tr(STR_FIRMWARE_TOO_SMALL);
+    case Result::TOO_LARGE:
+      return tr(STR_FIRMWARE_TOO_LARGE);
+    case Result::BAD_CHIP:
+    case Result::WRONG_BOARD:
+      return tr(STR_FIRMWARE_WRONG_DEVICE);
+    case Result::BAD_MAGIC:
+    case Result::BAD_SEGMENTS:
+    case Result::BAD_CHECKSUM:
+    case Result::BAD_SHA:
+    case Result::BAD_SIZE:
+      return tr(STR_INVALID_FIRMWARE);
+    case Result::OOM:
+      return tr(STR_MEMORY_ERROR);
+    case Result::ERASE_FAIL:
+    case Result::WRITE_FAIL:
+    case Result::OTADATA_FAIL:
+      return tr(STR_FIRMWARE_WRITE_FAILED);
+    case Result::OK:
+    case Result::NO_PARTITION:
+    case Result::READ_FAIL:
+      return nullptr;
+  }
+  return nullptr;
+}
+}  // namespace
 
 void SdFirmwareUpdateActivity::onEnter() {
   Activity::onEnter();
@@ -55,21 +89,20 @@ void SdFirmwareUpdateActivity::onPickerResult(const ActivityResult& result) {
   }
   requestUpdateAndWait();
 
-  if (!validateFirmware()) {
-    RenderLock lock(*this);
-    state = State::FAILED;
-    requestUpdate();
+  const auto resultCode = validateFirmware();
+  if (resultCode != Result::OK) {
+    LOG_ERR("FW", "image validation failed: %s", firmware_flash::resultName(resultCode));
+    showFailure(resultCode);
     return;
   }
 
   promptConfirmation();
 }
 
-bool SdFirmwareUpdateActivity::validateFirmware() {
+Result SdFirmwareUpdateActivity::validateFirmware() {
   HalFile file;
   if (!Storage.openFileForRead("FW", firmwarePath.c_str(), file) || !file) {
-    errorMessage = tr(STR_FIRMWARE_FILE_OPEN_FAILED);
-    return false;
+    return Result::OPEN_FAIL;
   }
   firmwareSize = file.fileSize();
   file.close();
@@ -79,38 +112,26 @@ bool SdFirmwareUpdateActivity::validateFirmware() {
   // size, which had the side effect of erasing partition state and was wasted
   // work since we only need the size bound for validation here.
   const esp_partition_t* dest = esp_ota_get_next_update_partition(nullptr);
-  if (!dest) {
-    LOG_ERR("FW", "no next-update partition available");
-    errorMessage = tr(STR_INVALID_FIRMWARE);
-    return false;
-  }
+  if (!dest) return Result::NO_PARTITION;
   const size_t partitionLimit = dest->size;
   if (firmwareSize > partitionLimit) {
     LOG_ERR("FW", "firmware (%u bytes) exceeds partition (%u bytes)", static_cast<unsigned>(firmwareSize),
             static_cast<unsigned>(partitionLimit));
-    errorMessage = tr(STR_FIRMWARE_TOO_LARGE);
-    return false;
+    return Result::TOO_LARGE;
   }
 
   // Run the same end-to-end integrity check (header / segment table / XOR checksum / SHA256
   // trailer) that the shared firmware-flasher applies right before raw-writing otadata. This
   // catches truncated or corrupted .bin files at confirmation time, before the user ever sees
   // the "Updating…" progress bar.
-  const auto vr = firmware_flash::validateImageFile(firmwarePath.c_str(), partitionLimit);
-  if (vr != firmware_flash::Result::OK) {
-    LOG_ERR("FW", "image validation failed: %s", firmware_flash::resultName(vr));
-    if (vr == firmware_flash::Result::TOO_LARGE) {
-      errorMessage = tr(STR_FIRMWARE_TOO_LARGE);
-    } else if (vr == firmware_flash::Result::TOO_SMALL) {
-      errorMessage = tr(STR_FIRMWARE_TOO_SMALL);
-    } else if (vr == firmware_flash::Result::BAD_CHIP || vr == firmware_flash::Result::WRONG_BOARD) {
-      errorMessage = tr(STR_FIRMWARE_WRONG_DEVICE);
-    } else {
-      errorMessage = tr(STR_INVALID_FIRMWARE);
-    }
-    return false;
-  }
-  return true;
+  return firmware_flash::validateImageFile(firmwarePath.c_str(), partitionLimit);
+}
+
+void SdFirmwareUpdateActivity::showFailure(Result result) {
+  RenderLock lock(*this);
+  failure = result;
+  state = State::FAILED;
+  requestUpdate();
 }
 
 void SdFirmwareUpdateActivity::promptConfirmation() {
@@ -167,17 +188,9 @@ void SdFirmwareUpdateActivity::performUpdate() {
   // for callers (e.g. an OTA staging path) where the same byte stream was
   // just hashed and there's no removable-media gap.
   const auto result = firmware_flash::flashFromSdPath(firmwarePath.c_str(), progressCb, this);
-  if (result != firmware_flash::Result::OK) {
+  if (result != Result::OK) {
     LOG_ERR("FW", "flash failed: %s", firmware_flash::resultName(result));
-    // BAD_CHIP / WRONG_BOARD here is the TOCTOU re-validation catching a
-    // wrong-device image the pre-confirmation pass missed (e.g. the SD card
-    // was swapped).
-    errorMessage = result == firmware_flash::Result::BAD_CHIP || result == firmware_flash::Result::WRONG_BOARD
-                       ? tr(STR_FIRMWARE_WRONG_DEVICE)
-                       : tr(STR_FIRMWARE_WRITE_FAILED);
-    RenderLock lock(*this);
-    state = State::FAILED;
-    requestUpdate();
+    showFailure(result);
     return;
   }
 
@@ -251,10 +264,22 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     UITheme::drawCenteredWrappedText(renderer, hintBounds, UI_10_FONT_ID, tr(STR_RESTARTING_HINT), 3, true,
                                      EpdFontFamily::REGULAR, UITheme::TextVerticalAlignment::TOP);
   } else if (state == State::FAILED) {
-    renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
-    if (!errorMessage.empty()) {
-      renderer.drawCenteredText(UI_10_FONT_ID, top + lineHeight + metrics.verticalSpacing, errorMessage.c_str());
+    const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true);
+    const char* message = failureMessage(failure);
+    constexpr int MAX_MESSAGE_LINES = 2;
+    const int messageHeight = message ? MAX_MESSAGE_LINES * lineHeight : 0;
+    const int blockHeight = 2 * lineHeight + messageHeight + 2 * metrics.verticalSpacing;
+    const int titleY = safe.y + (safe.height - blockHeight) / 2;
+    UITheme::drawCenteredText(renderer, safe, UI_10_FONT_ID, titleY, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
+    const int messageY = titleY + lineHeight + metrics.verticalSpacing;
+    if (message) {
+      const Rect bounds{safe.x + metrics.contentSidePadding, messageY, safe.width - 2 * metrics.contentSidePadding,
+                        messageHeight};
+      UITheme::drawCenteredWrappedText(renderer, bounds, UI_10_FONT_ID, message, MAX_MESSAGE_LINES);
     }
+    // The on-screen code matches the serial log in every language.
+    const int codeY = messageY + messageHeight + (message ? metrics.verticalSpacing : 0);
+    UITheme::drawCenteredText(renderer, safe, UI_10_FONT_ID, codeY, firmware_flash::resultName(failure));
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {
