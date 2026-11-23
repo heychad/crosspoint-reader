@@ -147,6 +147,7 @@ void FontCacheManager::recordText(const char* text, int fontId, EpdFontFamily::S
     if (codepoint == 0) break;
     // Small caps draw lowercase letters with their uppercase glyphs.
     if (style & EpdFontFamily::SMALL_CAPS) codepoint = utf8SmallCapsUpper(codepoint);
+    if (scanGroupUses_[group] != UINT16_MAX) ++scanGroupUses_[group];
 
     const uint32_t packed = (static_cast<uint32_t>(fontSlot) << SCAN_FONT_SHIFT) |
                             (static_cast<uint32_t>(resolvedStyle) << SCAN_STYLE_SHIFT) | codepoint;
@@ -183,23 +184,74 @@ FontCacheManager::PrewarmScope::PrewarmScope(FontCacheManager& manager) : manage
   manager_->scanFontCount_ = 0;
   manager_->scanOverflowWarned_ = false;
   memset(manager_->scanGroupCounts_, 0, sizeof(manager_->scanGroupCounts_));
+  memset(manager_->scanGroupUses_, 0, sizeof(manager_->scanGroupUses_));
 }
 
 void FontCacheManager::PrewarmScope::endScanAndPrewarm() {
   manager_->scanMode_ = ScanMode::None;
   if (manager_->scanCodepointCount_ == 0) return;
 
-  std::sort(manager_->scanCodepoints_, manager_->scanCodepoints_ + manager_->scanCodepointCount_);
+  // Keep SD/vector prewarm in place while ordering the compressed styles
+  // that compete for the decompressor's page slots.
+  uint8_t groupOrder[SCAN_GROUP_COUNT];
+  uint8_t compressed[SCAN_GROUP_COUNT];
+  static_assert(SCAN_GROUP_COUNT <= 16);
+  uint16_t compressedMask = 0;
+  uint8_t compressedCount = 0;
+  const bool canExceedSlots =
+      manager_->fontDecompressor_ && manager_->scanFontCount_ * 4 > FontDecompressor::MAX_PAGE_SLOTS;
+  for (uint8_t group = 0; group < SCAN_GROUP_COUNT; ++group) {
+    groupOrder[group] = group;
+    if (!canExceedSlots || !manager_->scanGroupCounts_[group]) continue;
+    const int fontId = manager_->scanFontIds_[group / 4];
+#if CROSSPOINT_VECTOR_FONTS
+    const auto ttf = manager_->ttfFonts_.find(fontId);
+    if (ttf != manager_->ttfFonts_.end() && ttf->second) continue;
+#endif
+    if (manager_->sdCardFonts_.count(fontId)) continue;
+    const auto font = manager_->fontMap_.find(fontId);
+    if (font == manager_->fontMap_.end()) continue;
+    const auto* data = font->second.getData(static_cast<EpdFontFamily::Style>(group & 3));
+    if (!data || !data->groups) continue;
+    compressed[compressedCount++] = group;
+    compressedMask |= 1U << group;
+  }
+  auto* const begin = manager_->scanCodepoints_;
+  auto* const end = begin + manager_->scanCodepointCount_;
+  if (compressedCount > FontDecompressor::MAX_PAGE_SLOTS) {
+    // Groups are consumed backwards. Equal usage favors the first scanned
+    // font, then regular style.
+    std::sort(compressed, compressed + compressedCount, [&](uint8_t a, uint8_t b) {
+      if (manager_->scanGroupUses_[a] != manager_->scanGroupUses_[b])
+        return manager_->scanGroupUses_[a] < manager_->scanGroupUses_[b];
+      return a > b;
+    });
+    uint8_t next = 0;
+    uint8_t rank[SCAN_GROUP_COUNT];
+    for (uint8_t group = 0; group < SCAN_GROUP_COUNT; ++group) {
+      if (compressedMask & (1U << group)) groupOrder[group] = compressed[next++];
+      rank[groupOrder[group]] = group;
+    }
+    std::sort(begin, end, [&](uint32_t a, uint32_t b) {
+      const uint32_t groupA = a >> SCAN_STYLE_SHIFT, groupB = b >> SCAN_STYLE_SHIFT;
+      return groupA == groupB ? a < b : rank[groupA] < rank[groupB];
+    });
+  } else {
+    std::sort(begin, end);
+  }
 
-  uint16_t groupStarts[SCAN_GROUP_COUNT] = {};
-  for (uint8_t group = 1; group < SCAN_GROUP_COUNT; group++) {
-    groupStarts[group] = groupStarts[group - 1] + manager_->scanGroupCounts_[group - 1];
+  uint16_t groupStarts[SCAN_GROUP_COUNT];
+  uint16_t offset = 0;
+  for (const uint8_t group : groupOrder) {
+    groupStarts[group] = offset;
+    offset += manager_->scanGroupCounts_[group];
   }
 
   // Each packed entry provides four bytes, enough for one UTF-8 codepoint.
-  // Encoding high groups first means a terminator can overwrite only a group
+  // Encoding from the end means a terminator can overwrite only a group
   // that has already been prewarmed; unread lower groups remain intact.
-  for (int group = SCAN_GROUP_COUNT - 1; group >= 0; group--) {
+  for (int position = SCAN_GROUP_COUNT - 1; position >= 0; --position) {
+    const uint8_t group = groupOrder[position];
     const uint16_t groupCount = manager_->scanGroupCounts_[group];
     if (groupCount == 0) continue;
 
@@ -212,8 +264,8 @@ void FontCacheManager::PrewarmScope::endScanAndPrewarm() {
     }
     *output = '\0';
 
-    const uint8_t fontSlot = static_cast<uint8_t>(group) / 4;
-    const uint8_t style = static_cast<uint8_t>(group) & 0x03;
+    const uint8_t fontSlot = group / 4;
+    const uint8_t style = group & 0x03;
     // This group is the complete glyph set for one font/style in this render.
     manager_->prewarmCache(manager_->scanFontIds_[fontSlot], utf8Text, 1 << style, /*accumulate=*/false);
   }

@@ -139,6 +139,56 @@ TEST(FontCacheManagerTest, PrewarmScopePreservesUniqueMultibyteCodepoints) {
   EXPECT_STREQ("\xC3\xA9\xE4\xB8\xAD\xF0\x9F\x98\x80", font.prewarmCalls[0].text);
 }
 
+TEST(FontCacheManagerTest, PrewarmScopePrioritizesFrequentCompressedStylesUnderSlotPressure) {
+  EpdFontData styles[12];
+  for (auto& font : styles) font.groups = reinterpret_cast<const void*>(1);
+  const std::map<int, EpdFontFamily> builtinFonts{
+      {5, EpdFontFamily(&styles[0], &styles[1], &styles[2], &styles[3])},
+      {20, EpdFontFamily(&styles[4], &styles[5], &styles[6], &styles[7])},
+      {30, EpdFontFamily(&styles[8], &styles[9], &styles[10], &styles[11])},
+  };
+  SdCardFont sdFont;
+  const std::map<int, SdCardFont*> sdFonts{{11, &sdFont}};
+  FontDecompressor decompressor;
+  int order = 0;
+  decompressor.order = &order;
+  sdFont.order = &order;
+  FontCacheManager manager(builtinFonts, sdFonts, kNoTtfFonts);
+  manager.setFontDecompressor(&decompressor);
+
+  heapAllocationCount = 0;
+  countHeapAllocations = true;
+  auto scope = manager.createPrewarmScope();
+  manager.recordText("AAAAAAAA", 5, EpdFontFamily::REGULAR);
+  manager.recordText("sd", 11, EpdFontFamily::REGULAR);
+  for (int fontId : {5, 20, 30}) {
+    for (auto style :
+         {EpdFontFamily::REGULAR, EpdFontFamily::BOLD, EpdFontFamily::ITALIC, EpdFontFamily::BOLD_ITALIC}) {
+      manager.recordText("a", fontId, style);
+    }
+  }
+  manager.recordText("bb", 5, EpdFontFamily::BOLD);
+  manager.recordText("\xF0\x9F\x98\x80\xF0\x9F\x98\x80\xF0\x9F\x98\x80", 30, EpdFontFamily::ITALIC);
+  scope.endScanAndPrewarm();
+  countHeapAllocations = false;
+
+  EXPECT_EQ(heapAllocationCount, 0u);
+  ASSERT_EQ(decompressor.prewarmCallCount, 12);
+  const int admittedStyles[] = {0, 10, 1, 2, 3, 4, 5, 6};
+  for (int i = 0; i < FontDecompressor::MAX_PAGE_SLOTS; ++i) {
+    EXPECT_TRUE(decompressor.prewarmCalls[i].admitted);
+    EXPECT_EQ(decompressor.prewarmCalls[i].fontData, &styles[admittedStyles[i]]);
+  }
+  for (int i = FontDecompressor::MAX_PAGE_SLOTS; i < decompressor.prewarmCallCount; ++i) {
+    EXPECT_FALSE(decompressor.prewarmCalls[i].admitted);
+  }
+  EXPECT_STREQ("Aa", decompressor.prewarmCalls[0].text);
+  EXPECT_STREQ("a\xF0\x9F\x98\x80", decompressor.prewarmCalls[1].text);
+  ASSERT_EQ(sdFont.prewarmCallCount, 1);
+  EXPECT_STREQ("ds", sdFont.prewarmCalls[0].text);
+  EXPECT_EQ(sdFont.prewarmPosition, 8);
+}
+
 TEST(FontCacheManagerTest, PrewarmScanDoesNotAllocateHeapMemory) {
   SdCardFont font;
   const std::map<int, EpdFontFamily> noBuiltinFonts;

@@ -47,6 +47,22 @@ previous renderer matched pixels and character advances in 13,448 cases,
 including all four orientations and full and partial grayscale buffers.
 Measure page-turn time on the X4 Pro before reporting a speed change.
 
+## Choosing which font styles to cache
+
+When an EPUB page uses more compressed font styles than the eight available
+slots, the reader tries to prewarm the most-used styles first. Repeated glyphs
+count toward that choice, while each style still stores each glyph only once.
+Less-used styles can still draw through the existing on-demand cache.
+The ordering preserves SD and vector font positions. It uses 32 bytes of
+counters and sorts the existing packed glyph buffer without heap allocation.
+This adapts the [CrossInk RC3 font prewarm change](https://github.com/uxjulia/CrossInk/commit/4eaf212e77def4bc1a6e9c322ee3f556b09800cb).
+
+A host fixture with twelve compressed styles and an SD font checks the
+eight admitted slots, equal-use ordering, mixed-font order, and multibyte
+glyphs. In that fixture, the admitted styles cover 21 of 25 glyph uses,
+up from 11 with the previous ordering. Measure render time and memory
+headroom on a mixed-style page on the X4 Pro.
+
 ## Saved Items feedback, November 12
 
 - First open took more than 30 seconds. Saved Items now scans the bookmark and
