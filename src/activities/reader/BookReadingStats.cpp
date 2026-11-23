@@ -285,8 +285,9 @@ struct CrossInkFormat {
   size_t size;
 };
 // Tagged RC3 appends a pace fraction in v6 and a counter ID in v7. Native
-// statistics retain their v5 format. The original CrossInk bytes stay on card.
+// statistics retain their v5 format. A zero version denotes the raw v1–v3 family.
 constexpr std::array<CrossInkFormat, 4> CROSSINK_FORMATS{{{7, 91}, {6, 75}, {5, 73}, {4, 69}}};
+constexpr CrossInkFormat CROSSINK_LEGACY{0, 0};
 constexpr size_t CROSSINK_SLOT_TRAILER = 8;
 static_assert(STATS_FILE_VERSION == 5 && STATS_FILE_SIZE == 73);
 
@@ -305,11 +306,14 @@ CrossInkSlot readCrossInkSlot(const std::string& path, CrossInkFormat format, Bo
 
   std::array<uint8_t, CROSSINK_FORMATS.front().size + CROSSINK_SLOT_TRAILER> bytes{};
   const size_t size = file.fileSize();
-  const bool framed = size == format.size + CROSSINK_SLOT_TRAILER;
-  const bool validSize = !file.isDirectory() && (framed || size == format.size);
+  const bool legacy = format.version == CROSSINK_LEGACY.version;
+  const bool framed = !legacy && size == format.size + CROSSINK_SLOT_TRAILER;
+  const bool rawSize = legacy ? size == STATS_FILE_SIZE_V1 || size == STATS_FILE_SIZE_V2 || size == STATS_FILE_SIZE_V3
+                              : size == format.size;
+  const bool validSize = !file.isDirectory() && (framed || rawSize);
   const bool ok = !validSize || file.read(bytes.data(), size) == static_cast<int>(size);
   if (!file.close() || !ok) return {CrossInkSlotState::Unreadable};
-  if (!validSize || bytes[0] != format.version) return {CrossInkSlotState::Invalid};
+  if (!validSize || (!legacy && bytes[0] != format.version)) return {CrossInkSlotState::Invalid};
 
   uint32_t sequence = 0;
   if (framed) {
@@ -320,7 +324,7 @@ CrossInkSlot readCrossInkSlot(const std::string& path, CrossInkFormat format, Bo
   }
 
   uint16_t fraction = 0;
-  size_t decodedSize = format.size;
+  size_t decodedSize = framed ? format.size : size;
   if (format.version >= 6) {
     fraction = readLe16(bytes.data(), STATS_FILE_SIZE);
     if (fraction >= 1000 || (readLe16(bytes.data(), 12) == UINT16_MAX && fraction != 0))
@@ -337,8 +341,17 @@ bool readCrossInkFamily(const std::string& path, CrossInkFormat format, BookRead
   const auto primary = readCrossInkSlot(path, format, stats);
   BookReadingStats secondary;
   const auto backup = readCrossInkSlot(path + ".bak", format, secondary);
-  const bool unreadable =
-      primary.state == CrossInkSlotState::Unreadable || backup.state == CrossInkSlotState::Unreadable;
+  bool unreadable = primary.state == CrossInkSlotState::Unreadable || backup.state == CrossInkSlotState::Unreadable;
+  // A legacy save stages the newest raw record before rotating the primary.
+  // When no primary or checksummed backup is usable, try it before a raw backup.
+  if (!primary.valid() && backup.state != CrossInkSlotState::Checksummed && !unreadable) {
+    const auto temporary = readCrossInkSlot(path + ".tmp", format, stats);
+    if (temporary.valid()) return true;
+    if (primary.state == CrossInkSlotState::Missing && backup.state == CrossInkSlotState::Missing &&
+        temporary.state == CrossInkSlotState::Missing)
+      return false;
+    unreadable = temporary.state == CrossInkSlotState::Unreadable;
+  }
   if (primary.valid() || backup.valid()) {
     const uint32_t distance = backup.sequence - primary.sequence;
     const bool backupNewer = backup.state == CrossInkSlotState::Checksummed &&
@@ -346,13 +359,6 @@ bool readCrossInkFamily(const std::string& path, CrossInkFormat format, BookRead
     if (backup.valid() && (!primary.valid() || backupNewer)) stats = secondary;
     stats.writable = !unreadable;
     return true;
-  }
-  if (!unreadable) {
-    const auto temporary = readCrossInkSlot(path + ".tmp", format, stats);
-    if (temporary.valid()) return true;
-    if (primary.state == CrossInkSlotState::Missing && backup.state == CrossInkSlotState::Missing &&
-        temporary.state == CrossInkSlotState::Missing)
-      return false;
   }
   stats.writable = false;
   return true;
@@ -386,6 +392,7 @@ bool loadCrossInkLocked(void* input) {
       return true;
     }
   }
+  request.found = readCrossInkFamily(request.path + "/stats_" + identity + ".bin", CROSSINK_LEGACY, request.result);
   return true;
 }
 

@@ -2,7 +2,7 @@
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
 #include <HalMemory.h>
 #endif
 #include <Logging.h>
@@ -108,7 +108,7 @@ constexpr size_t PXC_MAX_ALLOC_RESERVE = 8 * 1024;
 constexpr int PXC_MAX_BYTES_PER_ROW = 208;
 
 std::unique_ptr<uint8_t[]> pxcChunks[PXC_MAX_CHUNKS];
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
 HalMemory::PsramBuffer pxcPsram;
 #endif
 uint64_t pxcSlotHash = 0;
@@ -117,7 +117,7 @@ uint16_t pxcSlotHeight = 0;
 
 void releasePxcSlot() {
   for (auto& chunk : pxcChunks) chunk.reset();
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
   pxcPsram.reset();
 #endif
   pxcSlotHash = 0;
@@ -126,7 +126,7 @@ void releasePxcSlot() {
 }
 
 const uint8_t* pxcRowPtr(size_t rowStart, int bytesPerRow, uint8_t* tempRow) {
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
   if (pxcPsram) return pxcPsram.get() + rowStart;
 #endif
   const size_t chunk = rowStart >> PXC_CHUNK_SHIFT;
@@ -152,13 +152,13 @@ bool loadPxcSlot(uint64_t cacheHash, HalFile& cacheFile, uint16_t cachedWidth, u
   if (chunkCount == 0 || chunkCount > PXC_MAX_CHUNKS) {
     return false;
   }
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
   pxcPsram = HalMemory::allocatePsram(remaining);
 #endif
   for (size_t i = 0; i < chunkCount; i++) {
     const size_t want = remaining < PXC_CHUNK_SIZE ? remaining : PXC_CHUNK_SIZE;
     uint8_t* destination = nullptr;
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
     if (pxcPsram) destination = pxcPsram.get() + i * PXC_CHUNK_SIZE;
 #endif
     if (!destination) {
@@ -240,7 +240,7 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
   // images take the streaming path below, unchanged from pre-cache behavior.
   if (pxcSlotHash == 0 && loadPxcSlot(cacheHash, cacheFile, cachedWidth, cachedHeight, bytesPerRow)) {
     renderRowsFromPxcSlot(renderer, x, y);
-#if defined(FREEINK_DEVICE_X4PRO)
+#if FREEINK_DEVICE_X4PRO
     if (pxcPsram) {
       LOG_DBG("IMG", "Cache render complete (%u bytes in PSRAM)", static_cast<unsigned>(bytesPerRow * cachedHeight));
       return true;

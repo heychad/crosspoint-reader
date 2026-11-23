@@ -109,6 +109,49 @@ TEST_F(ReadingStatsStoreTest, ReadsNewestQualifiedCrossInkSlotAndKeepsNativeRese
   EXPECT_EQ(stored, backup);
 }
 
+TEST_F(ReadingStatsStoreTest, ReadsQualifiedUnversionedHistoryAfterCrossInkRenamesIt) {
+  const auto source = legacyDirectory() + "/stats_crossink-001122334455.bin";
+  const std::vector<uint8_t> v3{3, 2, 0, 0x84, 0x03, 0, 0, 12, 0, 0, 0, 1, 7, 0, 5, 0};
+  const size_t lengths[] = {11, 12, 16};
+  bool enabled = false;
+  for (size_t i = 0; i < std::size(lengths); ++i) {
+    std::vector<uint8_t> payload(v3.begin(), v3.begin() + lengths[i]);
+    payload[0] = i + 1;
+    writeBytes(source, payload);
+    bool found = false;
+    const auto stats = readingstats::loadBook(CACHE, BOOK, enabled, &found);
+    EXPECT_TRUE(found);
+    EXPECT_TRUE(stats.writable);
+    EXPECT_EQ(stats.totalReadingSeconds, 900U);
+    EXPECT_EQ(stats.totalPagesTurned, 12U);
+    EXPECT_EQ(stats.isCompleted, i > 0);
+    EXPECT_EQ(stats.avgSecondsPerForwardPage, i == 2 ? 7U : 0U);
+  }
+  ASSERT_TRUE(Storage.exists(source.c_str()));
+}
+
+TEST_F(ReadingStatsStoreTest, ReadsCompleteRawCrossInkTempBeforeOldRawBackup) {
+  const auto source = legacyDirectory() + "/stats_v5_crossink-001122334455.bin";
+  BookReadingStats stats;
+  stats.totalReadingSeconds = 600;
+  std::vector<uint8_t> sourceBytes(BookReadingStats::CURRENT_FILE_SIZE);
+  ASSERT_TRUE(stats.encode(sourceBytes.data(), sourceBytes.size()));
+  writeBytes(source + ".bak", sourceBytes);
+  stats.totalReadingSeconds = 900;
+  ASSERT_TRUE(stats.encode(sourceBytes.data(), sourceBytes.size()));
+  writeBytes(source + ".tmp", sourceBytes);
+  bool enabled = false;
+  const auto recovered = readingstats::loadBook(CACHE, BOOK, enabled);
+  EXPECT_TRUE(recovered.writable);
+  EXPECT_EQ(recovered.totalReadingSeconds, 900U);
+  EXPECT_FALSE(Storage.exists(source.c_str()));
+
+  Storage.failNextReadFor(source + ".tmp");
+  const auto guarded = readingstats::loadBook(CACHE, BOOK, enabled);
+  EXPECT_FALSE(guarded.writable);
+  EXPECT_EQ(guarded.totalReadingSeconds, 600U);
+}
+
 TEST_F(ReadingStatsStoreTest, ImportsQualifiedVersionSixAndKeepsQualifiedHistoryDuringCacheClear) {
   const std::string legacy = legacyDirectory();
   const std::string source = legacy + "/stats_v6_crossink-001122334455.bin";

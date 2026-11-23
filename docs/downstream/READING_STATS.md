@@ -51,8 +51,10 @@ card. Foreign-device files and an existing native history or reset stay
 separate. An interrupted CrossInk recovery or an uncertain read blocks import.
 
 The legacy cache reader also accepts device-qualified CrossInk book
-statistics v4–v7 for the current reader's hardware ID. It reads complete raw
-payloads and verifies the sequence and CRC of two-slot saves. A recognized
+statistics v1–v7 for the current reader's hardware ID. It reads complete raw
+payloads and verifies the sequence and CRC of two-slot saves. A complete raw
+temporary file takes priority over a raw backup when neither the primary nor
+a checksummed backup is usable. A recognized
 damaged family without a valid recovery copy blocks a native save. Existing
 native history, including an intentional reset, takes priority in the native
 statistics directory. Version 6 and 7 pace values round to the nearest second

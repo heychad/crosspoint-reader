@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.sha }}
           submodules: recursive
 
       - name: Validate release version
@@ -88,6 +88,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           image=".pio/build/$PIO_ENV/firmware.bin"
           asset="crosspoint-${RELEASE_TAG}-x4pro.bin"
           checksum="$(python3 scripts/check_x4pro_firmware.py "$image" "$RELEASE_TAG")"

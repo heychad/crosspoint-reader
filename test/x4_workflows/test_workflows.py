@@ -40,6 +40,7 @@ assert 'pio check -e x4pro' in ci
 assert 'python3 scripts/gen_i18n.py' in ci
 assert 'ctest --test-dir build/test --output-on-failure -j 1' in ci
 assert 'if: ${{ !github.event.release.prerelease }}' in release
+assert 'ref: ${{ github.sha }}' in release
 config = configparser.ConfigParser(interpolation=None)
 config.read(ROOT / 'platformio.ini')
 feature_section = '${x4pro_personal_features.build_flags}'
@@ -145,13 +146,15 @@ esac
     stable_asset = root / 'crosspoint-2.0.0-chad.4-x4pro.bin'
     stable_image = image.replace((version + '-x4pro').encode(), b'2.0.0-chad.4')
     github_output = root / 'github-output'
-    stable_env = {'PIO_ENV': stable_profile, 'GITHUB_OUTPUT': str(github_output)}
+    stable_env = candidate_env | {'PIO_ENV': stable_profile, 'GITHUB_OUTPUT': str(github_output)}
     for invalid_stable in (image, stable_image.replace(b'2.0.0-chad.4', b'12.0.0-chad.4'),
                            stable_image.replace(board, b'CROSSPOINT-BOARD-V1:x4;')):
         stable_firmware.write_bytes(invalid_stable)
         assert run(prepare_release, **stable_env).returncode != 0
         assert not stable_asset.exists() and not github_output.exists()
     stable_firmware.write_bytes(stable_image)
+    assert run(prepare_release, **(stable_env | {'GITHUB_SHA': sdk})).returncode != 0
+    assert not stable_asset.exists() and not github_output.exists()
     assert run(prepare_release, **stable_env).returncode == 0
     assert stable_asset.read_bytes() == stable_image
     assert github_output.read_text() == f'name={stable_asset.name}\n'

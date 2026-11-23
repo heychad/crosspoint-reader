@@ -2998,7 +2998,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     HalMemory::PsramBuffer lsbPsram, msbPsram;
 #if FREEINK_DEVICE_X4PRO
     // The SSD1677's synchronous SPI write accepts this aligned PSRAM plane.
-    // The second plane is useful only while the B/W refresh is still running.
+    // Reserve a second plane for the async-capable text path.
     constexpr size_t X4_PRO_PLANE_BYTES = 800 * 480 / 8;
     if (display.getController() == HalDisplay::Controller::SSD1677 && planeBytes == X4_PRO_PLANE_BYTES) {
       lsbPsram = HalMemory::allocatePsram(planeBytes);
