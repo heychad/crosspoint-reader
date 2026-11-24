@@ -11,7 +11,7 @@ Source revisions:
 - CrossPoint stable base: `42d58daaabcf469a2e5e1ba871714fb9dcf51d29` (2.0.0).
 - This candidate excludes CrossPoint development merge `6bea3810`; the original branch preserves it.
 - Original CrossInk reference: `9914146eeae7b46b300f475a16c32426fc02ec1f` (v1.6.1).
-- CrossInk RC reference: `959e3d1575cf1cf49475c4c4546e49adadf4d477` (v2.0.0-rc2). Earlier RC `b8feaec4d` and development comparison `1990a78f2` remain historical evidence.
+- CrossInk RC comparison: `0b939f41ec22c0d647a5c65ec5126141cbe7e565` (v2.0.0-rc3). The preceding settings inventory used `959e3d1575cf1cf49475c4c4546e49adadf4d477` (RC2).
 - FreeInk SDK: `5e94fe7480f019c89fbf691aef87523eb1b46704` (CrossPoint 2.0.0 stable pin).
 
 CrossInk RC2 was released November 12. Selected behavior and the 157-key settings
@@ -23,13 +23,11 @@ using CrossPoint 2.0.0 and its existing SDK pin.
 
 The table records local implementation and feature-specific evidence. Chad
 confirmed clipping and Saved Items on clipfix2, and progress, bookmarks, and
-clippings across a move on [test62](STATEFUL_BOOK_MOVES.md). On November 23 the
-reader still reported test62. Test65 at `2b42d6dd` combines the reviewed
+clippings across a move on [test62](STATEFUL_BOOK_MOVES.md). Test65 at `2b42d6dd` combines the reviewed
 test64 deletion flow with the CrossInk RC3 navigation and WebDAV fixes.
 Both X4 Pro builds, all 2,471 host checks, and the targeted reviews passed.
 The card copy at `zDev/RC365.BIN`, the navigation test EPUB, and the test62
-rollback were verified by SHA-256. Installation and the disposable EPUB
-delete-and-restore test remain pending. Earlier cumulative reviews are in
+rollback were verified by SHA-256. The reader later moved directly from test62 to test70. Earlier cumulative reviews are in
 [the test59 candidate record](CUMULATIVE_CANDIDATE.md).
 
 Test68 at `0a8a1bb0` packaged the test67 Saved Items startup fix, CrossInk
@@ -52,8 +50,14 @@ must finish or recover before rollback. Chad asked to test the cumulative
 test70 build directly from test62. The card image, rollback and four fixture
 files match the package hashes. A Wi-Fi snapshot verified 488 readable state
 files before staging. It excludes protected credentials, hidden filenames,
-and generated per-book caches. Run the pending Drive deletion and restore
-check on test70 with a disposable synced EPUB.
+and generated per-book caches.
+
+The X4 Pro reported test70 over Wi-Fi. The library completed its reader check
+with zero deletion events. The disposable-book deletion and restore remain open.
+Test71, its test70 rollback, and the divider and clipping fixture were verified
+on the card after a fresh backup of 494 readable state files. The
+[next device check](NEXT_DEVICE_QA.md#test71-on-the-x4-pro) covers reading
+position, clip saving, and the first page turn after saving.
 
 The test70 release check verified the pins against GitHub Releases and Git tags.
 See [CrossPoint 2.0.0](https://github.com/crosspoint-reader/crosspoint-reader/releases/tag/2.0.0)
@@ -86,7 +90,7 @@ and [CrossInk RC3](https://github.com/uxjulia/CrossInk/releases/tag/v2.0.0-rc3).
 | E4 Small/large UI scale | Built; display fit needs hardware checks. |
 | G1 Rendering controls and recovery | Manual Default, Balanced, and Light profiles built. Known chapter-build memory failures retry progressively with simpler profiles, then without embedded styling or focus mode, for the current session. Disabling styles can reveal text hidden by the publisher's CSS. The last known text offset is preserved when available. Other failures do not trigger this retry. The fork also adapts the [CrossInk RC3 drop-cap fix](https://github.com/uxjulia/CrossInk/commit/638eeb2acd9bcb8ccd8065411e2caa9a36747670) to preserve explicit first-letter rules and nested weight. Software checks pass. Device behavior remains unverified. |
 | G2 Silent next-chapter prefetch | Core built behind the experimental flag. The existing render task prepares the next section after 400 ms idle near a section boundary, with input/radio cancellation, separate internal/default heap guards, task yielding, and a cooperative five-second work budget. Under memory pressure, the background builder can free rebuildable image and font caches once and recheck its limits. The active SD font keeps its caches. Existing partial-cache cleanup preserves useful work without moving the reader or changing settings. Seven focused checks, three sanitizer harnesses, and default/eleven-flag X4 Pro builds pass. See [prefetch](CHAPTER_PREFETCH.md). Runtime resource/latency measurements and device validation remain. |
-| G3 Complete old-settings migration | Selected mapping core built. The [157-key RC2 inventory](RC2_SETTINGS_INVENTORY.json) classifies global, control, bar, and Library settings. The book importer reads versions 1–16, including compatible overrides from RC3. All seven Library sorts, named SD fonts, Safe Mode, margins, clock format, XTC placements, touch enable, and Book/Force paragraph indents have native mappings and checks. Existing native ownership and source files remain protected. Font/spacing limits, Later/Skip choices, retained native service configuration, and inputs absent from X4 Pro remain explicit. The combined profile passes local integration checks; device validation remains. |
+| G3 Complete old-settings migration | Selected mapping core built. The [157-key RC2 inventory](RC2_SETTINGS_INVENTORY.json) and [three RC3 additions](RC3_SETTINGS_DELTA.json) classify 160 catalog and save keys. The book importer reads versions 1–16, including compatible overrides from RC3. All seven Library sorts, named SD fonts, Safe Mode, margins, clock format, XTC placements, touch enable, and Book/Force paragraph indents have native mappings and checks. Existing native ownership and source files remain protected. Font/spacing limits, Later/Skip choices, retained native service configuration, and inputs absent from X4 Pro remain explicit. The combined profile passes local integration checks; device validation remains. |
 | G4 Personal automatic update channel | Core built behind `CROSSPOINT_EXPERIMENTAL_PERSONAL_UPDATES`. Fork release/version rules, checked SDK CA/hostname setup, fixed public roots, clock checks, restricted HTTPS redirects, bounded exact-asset metadata, and streamed length/SHA-256/header/chip/board verification are implemented. A verified 404 means no update. All 43 focused checks and both sanitizers pass; default and twelve-flag X4 Pro builds pass. Host pinned-root connections and rejection checks pass. Real firmware TLS, runtime resources, and physical update/failure tests remain; the standard profile keeps updates disabled. See [personal updates](PERSONAL_UPDATES.md). |
 | G5 Optional developer diagnostics | Built for X4 Pro. Device Diagnostics shows RAM and PSRAM and can record bounded EPUB render timing for text, illustrations, and indexing. Recording is off at boot. Display fit and timing need hardware checks. See [device diagnostics](DEVICE_DIAGNOSTICS.md). |
 
