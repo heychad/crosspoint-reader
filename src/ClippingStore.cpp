@@ -192,17 +192,7 @@ bool moveTreeStores(const std::string& from, const std::string& to, const MovePh
   }
   return true;
 }
-}  // namespace
-
-ClippingStore ClippingStore::instance;
-
-bool ClippingStore::countForBook(const std::string& bookPath, uint16_t& count) {
-  count = 0;
-  std::string path = storeFilePathForBook(bookPath, "epub");
-  if (!Storage.exists(path.c_str())) {
-    path += ".bak";
-    if (!Storage.exists(path.c_str())) return true;
-  }
+bool readClippingCount(const std::string& path, uint16_t& count) {
   HalFile file = Storage.open(path.c_str());
   uint8_t version = 0;
   uint16_t storedCount = 0;
@@ -232,8 +222,23 @@ bool ClippingStore::countForBook(const std::string& bookPath, uint16_t& count) {
     }
     if (!skip(length)) return false;
   }
+  if (!file.close()) return false;
   count = storedCount;
   return true;
+}
+}  // namespace
+
+ClippingStore ClippingStore::instance;
+
+bool ClippingStore::countForBook(const std::string& bookPath, uint16_t& count) {
+  using Status = HalStorage::PathStatus;
+  count = 0;
+  const auto path = storeFilePathForBook(bookPath, "epub");
+  const auto status = Storage.lookupPath(path.c_str());
+  if (status == Status::Present && readClippingCount(path, count)) return true;
+  const auto backupPath = path + ".bak";
+  if (status == Status::Missing && Storage.lookupPath(backupPath.c_str()) == Status::Missing) return true;
+  return readClippingCount(backupPath, count);
 }
 
 bool ClippingStore::loadForBook(const std::string& filePath, const std::string& title, const std::string& author,
@@ -243,6 +248,7 @@ bool ClippingStore::loadForBook(const std::string& filePath, const std::string& 
   for (auto& block : clippingBlocks) block.reset();
   clippingSize = clippingCapacity = 0;
   storeFilePath.clear();
+  readOnlyBackup = false;
   if (bookType != "epub" || filePath.empty()) {
     LOG_ERR("CLIP", "Invalid clipping book type or path: %s", bookType.c_str());
     return false;
@@ -254,13 +260,21 @@ bool ClippingStore::loadForBook(const std::string& filePath, const std::string& 
 
   storeFilePath = storeFilePathForBook(filePath, bookType);
   const auto status = recoverStoreIfMissing(storeFilePath);
-  if (status == HalStorage::PathStatus::Failed) return false;
   hasCommittedStore = status == HalStorage::PathStatus::Present;
-  if (!hasCommittedStore) {
+  if (status == HalStorage::PathStatus::Missing) {
     loaded = true;
     return true;
   }
-  loaded = readFromFile();
+  loaded = hasCommittedStore && readFromFile();
+  if (!loaded) {
+    // An interrupted rename can leave a zero-byte primary or an unreadable
+    // directory entry. Keep both survivors and read the previous copy in place.
+    storeFilePath += ".bak";
+    readOnlyBackup = true;
+    bookTitle = title;
+    bookAuthor = author;
+    loaded = readFromFile();
+  }
   if (!loaded) {
     for (auto& block : clippingBlocks) block.reset();
     clippingSize = clippingCapacity = 0;
@@ -292,7 +306,7 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
     return AddResult::LimitReached;
   }
 
-  if (!loaded || text.size() > CLIPPING_TEXT_MAX || !reserveClippings(clippingSize + 1)) {
+  if (!canEdit() || text.size() > CLIPPING_TEXT_MAX || !reserveClippings(clippingSize + 1)) {
     LOG_ERR("CLIP", "Cannot add clipping: invalid store, text length, or allocation failure");
     return AddResult::SaveFailed;
   }
@@ -323,7 +337,7 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
 }
 
 bool ClippingStore::removeClippingAt(const size_t index) {
-  if (!loaded || index >= clippingSize) return false;
+  if (!canEdit() || index >= clippingSize) return false;
   if (clippingRef(index).id[0]) {
     HalFile journal = Storage.open((storeFilePath + ".deleted").c_str(), O_WRONLY | O_CREAT | O_APPEND);
     if (!journal || !truncateDeletionTail(journal)) {
@@ -354,7 +368,7 @@ bool ClippingStore::removeClippingAt(const size_t index) {
 }
 
 const Clipping* ClippingStore::clippingAt(const size_t index) const {
-  if (index >= clippingSize) return nullptr;
+  if (index >= clippingCount()) return nullptr;
   return &clippingBlocks[index / CLIPPINGS_PER_BLOCK][index % CLIPPINGS_PER_BLOCK];
 }
 
@@ -387,6 +401,7 @@ bool ClippingStore::readClippingText(const size_t index, std::string& out) const
 
 bool ClippingStore::readClippingText(const Clipping& clipping, std::string& out) const {
   out.clear();
+  if (!loaded) return false;
   if (clipping.textLength == 0) return true;
   if (storeFilePath.empty()) return false;
 
@@ -409,7 +424,7 @@ bool ClippingStore::readClippingText(const Clipping& clipping, std::string& out)
 }
 
 bool ClippingStore::saveToFile() {
-  if (!loaded) return false;
+  if (!canEdit()) return false;
   if (!dirty) return true;
   if (writeToFile()) {
     dirty = false;
@@ -419,6 +434,7 @@ bool ClippingStore::saveToFile() {
 }
 
 bool ClippingStore::prepareSync() {
+  if (!canEdit()) return false;
   for (size_t index = 0; index < clippingSize; ++index) {
     Clipping& clipping = clippingRef(index);
     if (clipping.id[0]) continue;
@@ -436,6 +452,7 @@ bool ClippingStore::prepareSync() {
 }
 
 bool ClippingStore::finishUploads() {
+  if (!canEdit()) return false;
   for (size_t index = 0; index < clippingSize; ++index) {
     Clipping& clipping = clippingRef(index);
     if (!clipping.pendingUpload) continue;
@@ -447,6 +464,7 @@ bool ClippingStore::finishUploads() {
 
 bool ClippingStore::nextDeletion(uint32_t& offset, char (&id)[65]) const {
   id[0] = '\0';
+  if (!canEdit()) return false;
   const std::string path = storeFilePath + ".deleted";
   if (!Storage.exists(path.c_str())) return true;
   HalFile journal = Storage.open(path.c_str(), O_RDWR);
@@ -471,6 +489,7 @@ bool ClippingStore::nextDeletion(uint32_t& offset, char (&id)[65]) const {
 }
 
 bool ClippingStore::finishDeletions() {
+  if (!canEdit()) return false;
   const std::string path = storeFilePath + ".deleted";
   if (!Storage.exists(path.c_str()) || Storage.remove(path.c_str())) return true;
   LOG_ERR("CLIP", "Failed to clear acknowledged deletions");
@@ -478,7 +497,7 @@ bool ClippingStore::finishDeletions() {
 }
 
 bool ClippingStore::applyRemote(const Clipping& clipping, const std::string& text, const bool deleted) {
-  if (!loaded || (!deleted && text.size() > CLIPPING_TEXT_MAX)) return false;
+  if (!canEdit() || (!deleted && text.size() > CLIPPING_TEXT_MAX)) return false;
   size_t index = 0;
   while (index < clippingSize && strcmp(clippingRef(index).id, clipping.id) != 0) ++index;
   if (index == clippingSize) {
@@ -614,11 +633,11 @@ bool ClippingStore::readFromFile() {
     clippingRef(clippingSize++) = clipping;
   }
 
-  return true;
+  return f.close();
 }
 
 bool ClippingStore::writeToFile(const std::string* replacementText, const size_t replacementIndex) {
-  if (!loaded || storeFilePath.empty() || bookTitle.size() > HEADER_STRING_MAX ||
+  if (!canEdit() || storeFilePath.empty() || bookTitle.size() > HEADER_STRING_MAX ||
       bookAuthor.size() > HEADER_STRING_MAX || bookFilePath.size() > HEADER_STRING_MAX ||
       clippingSize > CLIPPING_MAX_PER_BOOK || (replacementText && replacementText->size() > CLIPPING_TEXT_MAX)) {
     LOG_ERR("CLIP", "Refusing to write invalid or incompletely loaded clipping store");
@@ -710,11 +729,13 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
 
   if (hasCommittedStore && !Storage.rename(storeFilePath.c_str(), backupPath.c_str())) {
     LOG_ERR("CLIP", "Failed to back up clipping file: %s", storeFilePath.c_str());
+    loaded = false;
     return false;
   }
   if (!Storage.rename(tmpPath.c_str(), storeFilePath.c_str())) {
     LOG_ERR("CLIP", "Failed to replace clipping file: %s", storeFilePath.c_str());
-    if (hasCommittedStore) recoverStoreIfMissing(storeFilePath);
+    // The new name may already exist. Discard cached offsets until a fresh load.
+    loaded = false;
     return false;
   }
   if (hasCommittedStore) {

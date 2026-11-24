@@ -68,8 +68,8 @@ class ClippingStore {
   bool nextDeletion(uint32_t& offset, char (&id)[65]) const;
   bool finishDeletions();
 
-  bool hasClippings() const { return clippingSize != 0; }
-  size_t clippingCount() const { return clippingSize; }
+  bool hasClippings() const { return clippingCount() != 0; }
+  size_t clippingCount() const { return loaded ? clippingSize : 0; }
   const Clipping* clippingAt(size_t index) const;
   bool readClippingPreview(size_t index, char* out, size_t outSize, size_t& outLength) const;
   bool readClippingText(size_t index, std::string& out) const;
@@ -94,6 +94,8 @@ class ClippingStore {
   size_t clippingCapacity = 0;
   bool loaded = false;
   bool hasCommittedStore = false;
+  bool readOnlyBackup = false;
+  bool canEdit() const { return loaded && !readOnlyBackup; }
   std::string bookFilePath;
   std::string bookTitle;
   std::string bookAuthor;

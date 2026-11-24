@@ -2960,7 +2960,13 @@ void rolloverFaults(bool exfat, bool failStop) {
 #if defined(SDFAT_BOOK_MOVES)
 #include "BookMoveRealTest.h"
 #endif
+#if defined(SDFAT_BOOK_MOVE_REFERENCES)
+#include "ClippingSaveRecovery.h"
+#endif
 int main() {
+#if defined(SDFAT_BOOK_MOVE_REFERENCES)
+  for (bool exfat : {false, true}) clippingrecoverytest::run(exfat);
+#endif
 #if defined(SDFAT_BOOK_MOVES)
   return bookMoveTests();
 #endif

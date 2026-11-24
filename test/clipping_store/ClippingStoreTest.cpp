@@ -213,6 +213,43 @@ TEST(ClippingStore, FailedSyncOrClosePreservesCommittedClippingsForRetry) {
   }
 }
 
+TEST(ClippingStore, FailedPromotionRequiresFreshOffsetsAndKeepsTheBackupReadable) {
+  for (bool installed : {false, true}) {
+    fake::reset();
+    ClippingStore store;
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(add(store, "first"), Result::Added);
+    ASSERT_EQ(add(store, "longer second selection"), Result::Added);
+    const auto path = storePath();
+    const auto original = fake::files.at(path)->bytes;
+    const Clipping oldLocation = *store.clippingAt(1);
+    (installed ? fake::failRenameAfterMoving : fake::failRenameAfterCreating) = path;
+    ASSERT_FALSE(store.removeClippingAt(0));
+    std::string text;
+    EXPECT_FALSE(store.readClippingText(oldLocation, text));
+    EXPECT_EQ(store.clippingCount(), 0u);
+    EXPECT_EQ(add(store), Result::SaveFailed);
+    EXPECT_FALSE(store.prepareSync());
+    EXPECT_EQ(fake::files.at(path + ".bak")->bytes, original);
+    store.unload();
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    EXPECT_EQ(store.clippingCount(), installed ? 1u : 2u);
+    uint16_t count = 0;
+    EXPECT_TRUE(ClippingStore::countForBook("/book.epub", count));
+    EXPECT_EQ(count, store.clippingCount());
+    ASSERT_TRUE(store.readClippingText(installed ? 0 : 1, text));
+    EXPECT_EQ(text, "longer second selection");
+    if (installed) {
+      EXPECT_EQ(add(store, "third"), Result::Added);
+    } else {
+      EXPECT_EQ(add(store, "third"), Result::SaveFailed);
+      EXPECT_FALSE(store.removeClippingAt(0));
+      EXPECT_FALSE(store.finishDeletions());
+      EXPECT_EQ(fake::files.at(path + ".bak")->bytes, original);
+    }
+  }
+}
+
 TEST(ClippingStore, RewritingMixedLengthClipsFallsBackWhenSectorBufferIsUnavailable) {
   for (const bool failBuffer : {false, true}) {
     fake::reset();

@@ -26,6 +26,7 @@ inline int shortWrite = -1;
 inline int failTruncate = -1;
 inline int failSync = -1;
 inline int failRename = -1;
+inline std::string failRenameAfterCreating, failRenameAfterMoving;
 inline int failAlloc = -1;
 inline bool failDirectorySeek = false;
 inline std::string failRemovePath;
@@ -64,6 +65,8 @@ inline void reset() {
   failTruncate = -1;
   failSync = -1;
   failRename = -1;
+  failRenameAfterCreating.clear();
+  failRenameAfterMoving.clear();
   failAlloc = -1;
   failDirectorySeek = false;
   failRemovePath.clear();
@@ -295,6 +298,11 @@ class HalStorage {
   }
   bool rename(const char* from, const char* to) {
     if (fake::fail(fake::failRename) || !exists(from) || exists(to)) return false;
+    if (fake::failRenameAfterCreating == to) {
+      fake::add(to, "");
+      fake::failRenameAfterCreating.clear();
+      return false;
+    }
     std::vector<std::pair<std::string, std::shared_ptr<fake::Node>>> moved;
     moved.reserve(fake::files.size());
     const std::string prefix = std::string(from) + "/";
@@ -306,6 +314,10 @@ class HalStorage {
         ++it;
     }
     for (auto& [path, node] : moved) fake::files[path] = std::move(node);
+    if (fake::failRenameAfterMoving == to) {
+      fake::failRenameAfterMoving.clear();
+      return false;
+    }
     return true;
   }
 };
