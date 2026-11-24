@@ -108,8 +108,11 @@ At the next integration milestone, run:
 python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc3 --crossink-base refs/tags/v2.0.0-rc2
 ```
 
-Inspect newly reported changes, prioritize fixes to already-ported behavior, and update the comparison baseline after recording
-what was reviewed. CrossInk remains a source reference, not a merge target.
+With `--fetch`, the report lists the latest stable and RC tags advertised by
+each remote and any newer tags to review. It checks the selected tag against
+the remote commit, including annotated tags. A local-only snapshot uses the
+pinned comparisons and skips discovery. Review a new tag before changing the
+comparison baseline.
 
 The default snapshot compares RC3 and checks 160 catalog/save keys. The
 [RC2 inventory](RC2_SETTINGS_INVENTORY.json) covers 157 keys and the

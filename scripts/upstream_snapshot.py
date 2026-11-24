@@ -5,6 +5,7 @@ import argparse
 from collections import Counter
 from datetime import datetime, timezone
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +17,40 @@ def git(*args):
     return subprocess.check_output(
         ['git', *args], cwd=ROOT, text=True, stderr=subprocess.PIPE
     ).strip()
+
+
+def release_order(tag):
+    """Order stable and RC spellings used by both projects."""
+    match = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)(?:-?rc(?:[.-]?(\d+))?)?', tag, re.ASCII)
+    if not match:
+        return None
+    major, minor, patch, sequence = match.groups()
+    return int(major), int(minor), int(patch), 'rc' not in tag, int(sequence or 0)
+
+
+def advertised_releases(remote, selected, selected_commit):
+    """Query just this remote. Annotated tags compare by peeled commit."""
+    tags = {}
+    peeled = {}
+    for line in git('ls-remote', '--tags', remote).splitlines():
+        oid, ref = line.split('\t')
+        tag = ref[len('refs/tags/'):]
+        if tag.endswith('^{}'):
+            peeled[tag[:-3]] = oid
+        else:
+            tags[tag] = oid
+    tag = selected[len('refs/tags/'):] if selected.startswith('refs/tags/') else selected
+    selected_order = release_order(tag)
+    release_tags = (name for name in tags if release_order(name) is not None)
+    newest = sorted(release_tags, key=lambda name: (release_order(name), name), reverse=True)
+    target = peeled.get(tag, tags.get(tag))
+    return {
+        'latest_stable': next((name for name in newest if 'rc' not in name), None),
+        'latest_rc': next((name for name in newest if 'rc' in name), None),
+        'selected_tag_available': tag in tags,
+        'selected_commit_matches': target == selected_commit if tag in tags else None,
+        'newer_tags': [name for name in newest if selected_order and release_order(name) > selected_order],
+    }
 
 
 def revision(ref):
@@ -111,7 +146,8 @@ def main():
         for field in ('crosspoint', 'crossink', 'crossink_base'):
             ref = getattr(args, field)
             tag = ref if ref.startswith('refs/tags/') else 'refs/tags/' + ref
-            if subprocess.run(['git', 'show-ref', '--verify', '--quiet', tag], cwd=ROOT).returncode != 0:
+            if (release_order(tag[len('refs/tags/'):]) is None or
+                    subprocess.run(['git', 'show-ref', '--verify', '--quiet', tag], cwd=ROOT).returncode != 0):
                 raise ValueError('Release-tag comparison required: ' + ref + '; use --allow-development-ref only for an explicit audit')
             setattr(args, field, tag)
     head = revision('HEAD')
@@ -140,6 +176,10 @@ def main():
                      'overlap_paths': sorted(local_paths & ci_paths),
                      'settings_inventory': settings_inventory(ci)},
     }
+    if args.fetch:
+        for project, remote in [('crosspoint', 'upstream'), ('crossink', 'crossink')]:
+            item = report[project]
+            item['advertised_releases'] = advertised_releases(remote, item['ref'], item['tip'])
     if args.json:
         print(json.dumps(report, indent=2))
     else:
@@ -149,6 +189,15 @@ def main():
         print(f'Fork commits beyond that tag: {report["crosspoint"]["fork_commits_beyond_tag"]} (includes local features and prior integration)')
         print(f'CrossInk {args.crossink} ({ci[:12]}): {report["crossink"]["commits_since_baseline"]} commits since {ci_base[:12]}')
         for name in ('crosspoint', 'crossink'):
+            tags = report[name].get('advertised_releases')
+            if tags is not None:
+                print(f'{name} remote tags: stable {tags["latest_stable"] or "none"}, RC {tags["latest_rc"] or "none"}')
+                if not tags['selected_tag_available']:
+                    print(f'{name}: the selected tag is absent from this remote.')
+                elif not tags['selected_commit_matches']:
+                    print(f'{name}: the remote tag points to a different commit.')
+                if tags['newer_tags']:
+                    print(f'{name} newer tags to review: ' + ', '.join(tags['newer_tags']))
             overlap = report[name]['overlap_paths']
             print(f'{name} overlapping paths ({len(overlap)}):')
             for path in overlap:

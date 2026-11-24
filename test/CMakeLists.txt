@@ -103,6 +103,7 @@ add_subdirectory(plugin_picker_layout)
 add_subdirectory(protected_paths)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME UpstreamReleaseDiscovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_upstream_release_discovery.py)
 add_test(NAME ReaderCompletionAdapter COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_completion_adapter.py)
 add_test(NAME ReaderCompletionShortcut COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_completion_shortcut.py)
 add_test(NAME ClosedCompletionMoveUi COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_closed_completion_move_ui.py)
