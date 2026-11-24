@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace epubtiming {
 enum class PageKind : uint8_t { Text, Illustrated, Indexing };
@@ -12,6 +13,11 @@ struct Summary {
   uint32_t medianMs = 0;
   uint32_t maxMs = 0;
   uint8_t count = 0;
+};
+
+struct ClipSave {
+  uint32_t storeMs;
+  uint32_t exportMs;
 };
 
 // Accessed by the reader and diagnostics under the existing RenderLock.
@@ -24,8 +30,17 @@ class Recorder {
 
   void toggleRecording() {
     recording = !recording;
-    if (recording) windows = {};
+    if (recording) {
+      windows = {};
+      clipSave.reset();
+    }
   }
+
+  void recordClipSave(ClipSave sample) {
+    if (recording) clipSave = sample;
+  }
+
+  std::optional<ClipSave> lastClipSave() const { return clipSave; }
 
   void record(PageKind kind, uint32_t elapsedMs) {
     if (!recording) return;
@@ -52,9 +67,10 @@ class Recorder {
     uint8_t count = 0;
   };
   std::array<Window, 3> windows{};
+  std::optional<ClipSave> clipSave;
   bool recording = false;
 };
 
-static_assert(sizeof(Recorder) <= 208);
+static_assert(sizeof(Recorder) <= 220);
 inline Recorder recorder;
 }  // namespace epubtiming

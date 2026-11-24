@@ -879,12 +879,25 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     }
     const uint16_t paragraphIndex =
         section ? section->getParagraphIndexForPage(startPage).value_or(UINT16_MAX) : UINT16_MAX;
+#if FREEINK_DEVICE_X4PRO
+    const uint32_t storeStart = millis();
+#endif
     const auto addResult = CLIPPINGS.addClipping(
         spineIndex, startPage, endPage, pageCount, clipping.startWordIndex, clipping.endWordIndex, clipping.wordCount,
         chapterTitle.c_str(), paragraphIndex, clipping.text, layoutSignature, clipping.startOffset, clipping.endOffset);
     bool exported = false;
     if (addResult == ClippingStore::AddResult::Added) {
+#if FREEINK_DEVICE_X4PRO
+      const uint32_t exportStart = millis();
+#endif
       exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text);
+#if FREEINK_DEVICE_X4PRO
+      if (exported) {
+        const uint32_t exportMs = static_cast<uint32_t>(millis()) - exportStart;
+        RenderLock lock(RenderLock::Mode::Try);
+        if (lock.ownsLock()) epubtiming::recorder.recordClipSave({exportStart - storeStart, exportMs});
+      }
+#endif
     }
     // The saved highlight confirms success on the normal reader refresh.
     showClippingMessage = !exported;

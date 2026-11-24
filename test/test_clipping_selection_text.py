@@ -56,6 +56,8 @@ harness = r"""
 #define LOG_DBG(module, ...) (void)std::snprintf(nullptr, 0, __VA_ARGS__)
 #include "clippings/ClippingText.h"
 #include "ClippingStore.h"
+#include "activities/reader/EpubRenderTiming.h"
+#include "activities/RenderLock.h"
 #include "personalization/ReaderPageLayout.h"
 #include <Epub/ReaderRenderSpec.h>
 namespace BidiUtils { enum class BidiBaseDir : int8_t { AUTO = -1, LTR = 0, RTL = 1 }; }
@@ -169,7 +171,14 @@ struct Input { bool hasTouch() const { return false; } };
 using GfxRenderer = Renderer;
 using TextBlock = Block;
 struct BoardConfig { static bool isEegoA4() { return false; } };
-unsigned long millis() { return 100; }
+uint32_t clockMs = 100;
+unsigned long millis() { return clockMs; }
+bool renderBusy = false;
+RenderLock::RenderLock(Mode mode) {
+  assert(mode == Mode::Try);
+  isLocked = !renderBusy;
+}
+RenderLock::~RenderLock() = default;
 struct Settings {
   int screenMargin = 0;
   int getReaderFontId() const { return 0; }
@@ -254,6 +263,7 @@ struct ClippingsManager {
   static inline int exports = 0;
   static bool saveClipping(const std::string&, const std::string&, const std::string&, int, const std::string&) {
     ++exports;
+    clockMs += 18;
     return exportSucceeds;
   }
 };
@@ -269,12 +279,19 @@ void checkSaveFeedback(ClippingStore::AddResult addResult, bool exportSucceeds, 
   const struct { std::string text; } clipping{"Passage"};
   ClippingsManager::exportSucceeds = exportSucceeds;
   ClippingsManager::exports = 0;
+  epubtiming::recorder = {};
+  epubtiming::recorder.toggleRecording();
+  const uint32_t storeStart = UINT32_MAX - 5;
+  clockMs = 4;
 """ + save_feedback + r"""
   assert(updates == 1);
   assert(showClippingMessage == expectPopup);
   assert(clippingMessage == expectMessage);
   assert(clippingMessageTime == (expectPopup ? millis() : 40));
   assert(ClippingsManager::exports == (addResult == ClippingStore::AddResult::Added ? 1 : 0));
+  const auto sample = epubtiming::recorder.lastClipSave();
+  assert(sample.has_value() == (!renderBusy && !expectPopup));
+  if (sample) assert(sample->storeMs == 10 && sample->exportMs == 18);
 }
 int loadLine(ClipSelectionActivity& activity, const std::vector<std::string>& logical,
              bool rtl, int first = 0, uint32_t offset = 0, uint16_t row = 0) {
@@ -317,6 +334,9 @@ int main() {
   checkSaveFeedback(AddResult::Added, false, true, StrId::STR_CLIPPING_EXPORT_FAILED);
   checkSaveFeedback(AddResult::LimitReached, false, true, StrId::STR_CLIPPING_LIMIT_REACHED);
   checkSaveFeedback(AddResult::SaveFailed, false, true, StrId::STR_CLIPPING_FAILED);
+  renderBusy = true;
+  checkSaveFeedback(AddResult::Added, true, false, StrId::STR_CLIPPING_FAILED);
+  renderBusy = false;
 
   // Generated markers stay selectable and share a paragraph with their book text.
   for (const auto mode : {ClipSelectionActivity::Mode::Clip, ClipSelectionActivity::Mode::DefinitionLookup}) {
@@ -536,7 +556,7 @@ with tempfile.TemporaryDirectory() as directory:
     cpp.write_text(harness)
     subprocess.run(["cc", "-c", str(ROOT / "lib/MiniBidi/minibidi.c"), "-o", str(bidi_object)], check=True)
     subprocess.run([
-        "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+        "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-DFREEINK_DEVICE_X4PRO=1",
         "-I", str(ROOT / "src"), "-I", str(ROOT / "lib/Memory"),
         "-I", str(ROOT / "test/minibidi_arabic/stubs"),
         "-I", str(ROOT / "lib/MiniBidi"), "-I", str(ROOT / "lib/Utf8"),

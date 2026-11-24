@@ -23,7 +23,7 @@ the same page. Compare the same book, display orientation, refresh setting,
 and pages before and after a change. Use the indexing row for a chapter that
 actually needed a build.
 
-Recording starts off after boot. The recorder uses at most 208 bytes of RAM
+Recording starts off after boot. The recorder uses at most 220 bytes of RAM
 and writes no SD files. Display fit and timing on the physical X4 Pro remain
 unverified.
 
@@ -50,3 +50,11 @@ The reply includes the recording state and three groups named `text`,
 report `medianMs` and `maxMs`. A group with zero samples has no timing values.
 The readings stay available until the next recording or reboot. If the reader
 returns HTTP 503 with `render_busy`, retry after one second.
+
+Builds after test72 can also report `lastClipSave`. Select **Record EPUB timings**
+before saving a clip. The field shows how long it took to save the clip to the
+book's clipping file (`storeMs`) and append it to the text export (`exportMs`).
+It excludes selection, redraw, and panel refresh. Only successful saves produce a
+sample. If the renderer is busy when a save finishes, the previous sample stays
+in place. Starting a new recording clears it. The reply contains no book titles
+or passage text.

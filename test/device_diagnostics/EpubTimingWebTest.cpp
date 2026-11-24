@@ -85,3 +85,36 @@ TEST_F(EpubTimingWebTest, BusyRenderCanBeRetried) {
   request(200);
   EXPECT_FALSE(epubtiming::recorder.isRecording());
 }
+
+TEST_F(EpubTimingWebTest, LatestSuccessfulClipSurvivesStopAndResetsOnStart) {
+  auto& recorder = epubtiming::recorder;
+  recorder.recordClipSave({2, 1});
+  request(200);
+  EXPECT_FALSE(reply["lastClipSave"].is<JsonObject>());
+  recorder.toggleRecording();
+  recorder.recordClipSave({2, 1});
+  recorder.recordClipSave({0, 18});
+  recorder.toggleRecording();
+  recorder.recordClipSave({99, 99});
+  request(200);
+  EXPECT_EQ(reply["lastClipSave"].size(), 2u);
+  EXPECT_EQ(reply["lastClipSave"]["storeMs"].as<unsigned>(), 0u);
+  EXPECT_EQ(reply["lastClipSave"]["exportMs"].as<unsigned>(), 18u);
+  recorder.toggleRecording();
+  request(200);
+  EXPECT_FALSE(reply["lastClipSave"].is<JsonObject>());
+}
+
+TEST_F(EpubTimingWebTest, MaximumMeasurementsFitInOneResponse) {
+  auto& recorder = epubtiming::recorder;
+  recorder.toggleRecording();
+  for (auto kind : {epubtiming::PageKind::Text, epubtiming::PageKind::Illustrated, epubtiming::PageKind::Indexing}) {
+    for (size_t i = 0; i < recorder.WINDOW_SIZE; ++i) recorder.record(kind, UINT32_MAX);
+  }
+  recorder.recordClipSave({UINT32_MAX, UINT32_MAX});
+  recorder.toggleRecording();
+  request(200);
+  EXPECT_EQ(reply.size(), 5u);
+  EXPECT_EQ(reply["indexing"]["count"].as<unsigned>(), recorder.WINDOW_SIZE);
+  EXPECT_EQ(reply["lastClipSave"]["exportMs"].as<uint32_t>(), UINT32_MAX);
+}
