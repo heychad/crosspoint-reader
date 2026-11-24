@@ -1,4 +1,6 @@
-# Five-minute X4 Pro check
+# Five-minute X4 Pro check for test59
+
+For the next firmware test, use the [current X4 Pro checklist](NEXT_DEVICE_QA.md).
 
 Run after the verified backup and reviewed test59 installation. Keep this
 check at five minutes. Report the failed step, book, and action; a pass is

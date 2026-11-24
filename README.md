@@ -163,16 +163,15 @@ Minor adjustments may be required for Windows.
 
 ## Internals
 
-CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based on this constraint.
+This fork targets the Xteink X4 Pro, which uses an ESP32-S3 with 8 MB of PSRAM. The reader stores chapter layouts on the SD card so it can reopen them without paginating the chapter again.
 
 ### Data caching
 
-The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
+The hidden `/.crosspoint` folder holds both generated files and saved reading state. Common entries include
 
 ```text
 .crosspoint/
-├── epub_<hash>/         # one directory per book, named by content hash
+├── epub_<hash>/         # one directory per EPUB path on the card
 │   ├── progress.bin     # reading position (chapter, page, etc.)
 │   ├── cover.bmp        # generated cover image
 │   ├── book.bin         # metadata: title, author, spine, TOC
@@ -182,12 +181,14 @@ cache. This cache directory exists at `.crosspoint` on the SD card. The structur
 │       ├── 0.bin
 │       ├── 1.bin
 │       └── ...
+├── clippings/           # saved passages
+├── reading_stats/       # reading statistics and per-book settings
 ├── settings.json        # device settings
 ├── state.json           # resume/runtime state
 └── recent.json          # recent books list
 ```
 
-Removing `/.crosspoint` clears all cached metadata and forces a full regeneration on next open. Book deletes, overwrites, and moves done through the firmware or web UI clear or re-key matching caches; manual SD-card edits may leave stale cache directories behind.
+**Keep `/.crosspoint` when updating firmware.** Removing it also removes reading positions, clippings, settings, and Recents. If you rename an EPUB directly on the card, its new path points to a different progress folder. For an update or recovery, follow the [current device checklist](docs/downstream/NEXT_DEVICE_QA.md) and [reading-state backup and restore instructions](docs/downstream/DEVICE_TEST.md).
 
 For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
 
