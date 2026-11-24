@@ -383,6 +383,15 @@ reopened the old or new clipping set, including its passages and anchors.
 In 648 separate first-cut FAT snapshots the store was unreadable. Edits and
 sync preparation stayed blocked.
 
+A second fixture used Unicode paths and clip text, with up to 1,023 existing
+clips. It added a clip, removed one, or replaced its text. At all 34,212
+complete sector-write boundaries on FAT and exFAT, the test75 clipping
+store reopened with either the previous or the requested contents. When
+the comparison included partial sector writes, 46 of 4,970,194 snapshots
+had an unreadable store, all on FAT. No readable store returned the wrong
+contents. Replaying the 46 failures with test85 confirmed that adding or
+removing a clip and preparing sync each failed without writing another sector.
+
 ### Comparing the native and RC3 position writers
 
 A Mac fixture replayed four page saves from each of 110 archived positions
@@ -523,3 +532,8 @@ same 94,222 sector reads and 34,445 sector writes as test84. All 24
 chapter files matched its bytes. Each of 59,127 injected read failures
 declined the affected page, and each page reopened after a clean remount.
 Time to turn a page and panel settling still need measurement on the X4 Pro.
+
+The ESP32-S3 compiler reported 32 more bytes of local stack for each
+batched operation. The serialization frame grew from 80 to 112 bytes, and
+the deserialization frame grew from 112 to 144 bytes. These figures cover
+each function's own frame. Peak stack use on the reader is unmeasured.
