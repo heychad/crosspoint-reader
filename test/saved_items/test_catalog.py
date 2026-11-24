@@ -17,6 +17,8 @@ def method(signature):
     return source[start:end]
 code = r'''
 #include <algorithm>
+#include <array>
+#include <span>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -45,6 +47,12 @@ namespace library {
   uint16_t bookCount()const{return books.size();}
   uint16_t ordinalForRow(SortOrder,uint16_t row){assert(lockDepth);return row;}
   bool readRecord(uint16_t ordinal,ClixRecord& out){assert(lockDepth);out.id=ordinal;return ordinal!=failRecord;}
+  int batches=0;
+  bool readRecords(uint16_t first,std::span<ClixRecord> out){
+    if(!out.empty()) ++batches;
+    for(auto& row:out)if(!readRecord(first++,row))return false;
+    return true;
+  }
   bool readPath(const ClixRecord& r,std::string& path,const PathLookup& lookup){assert(lockDepth&&lookup.ready);++pathReads;path=books[r.id].path;return true;}
   bool readTitle(const ClixRecord& r,std::string& text){text=books[r.id].title;return !text.empty();}
   bool readName(const ClixRecord& r,std::string& text){text=books[r.id].name;return true;}
@@ -72,7 +80,7 @@ namespace fui {struct ListItem{const char* label=nullptr;const char* subtitle=nu
 struct SavedItemsActivity {
  enum class State {Scanning,Ready,Error};
  library::LibraryIndexFile index;
- library::ClixRecord record{};
+ std::array<library::ClixRecord,4> records{};
  library::LibraryIndexFile::PathLookup scanPaths{true};
  std::unique_ptr<saveditems::Candidates> sidecars;
  std::unique_ptr<uint16_t[]> ordinals;
@@ -96,7 +104,7 @@ int main(){
   SavedItemsActivity activity(books.size());
   while(activity.state==SavedItemsActivity::State::Scanning)activity.scanBatch();
   assert(activity.count==4093 && activity.incomplete && !activity.scanPaths);
-  assert(activity.index.pathReads==4096 && lockDepth==0);
+  assert(activity.index.pathReads==4096 && activity.index.batches==1024 && lockDepth==0);
   fui::ListItem row;
   {
     RenderLock lock(activity);
@@ -107,7 +115,7 @@ int main(){
   }
   SavedItemsActivity damaged(books.size());damaged.index.failRecord=42;
   while(damaged.state==SavedItemsActivity::State::Scanning)damaged.scanBatch();
-  assert(damaged.state==SavedItemsActivity::State::Error && damaged.count==39 && lockDepth==0);
+  assert(damaged.state==SavedItemsActivity::State::Error && damaged.count==37 && lockDepth==0);
   Storage.probes=0;
   SavedItemsActivity empty(books.size());
   empty.sidecars=std::make_unique<saveditems::Candidates>();

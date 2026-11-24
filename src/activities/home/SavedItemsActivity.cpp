@@ -71,11 +71,18 @@ void SavedItemsActivity::scanBatch() {
   if (sidecars && !sidecars->advance()) return;
   if (discardChangedSidecars()) return;
   if (sidecars && sidecars->empty()) scanned = index.bookCount();
-  const uint16_t end = std::min<int>(index.bookCount(), scanned + 4);
-  for (; scanned < end; ++scanned) {
-    const uint16_t ordinal = index.ordinalForRow(library::SortOrder::TitleAsc, scanned);
-    if (!index.readRecord(ordinal, record) || !index.readPath(record, scratch, scanPaths)) {
-      LOG_ERR("SAVED", "Failed reading library row %u", scanned);
+  const size_t batch = std::min<size_t>(records.size(), index.bookCount() - scanned);
+  auto rows = std::span(records).first(batch);
+  if (!index.readRecords(scanned, rows)) {
+    LOG_ERR("SAVED", "Failed reading library records at %u", scanned);
+    state = State::Error;
+    requestUpdate();
+    return;
+  }
+  for (const auto& record : rows) {
+    const uint16_t ordinal = scanned++;
+    if (!index.readPath(record, scratch, scanPaths)) {
+      LOG_ERR("SAVED", "Failed reading library row %u", ordinal);
       state = State::Error;
       requestUpdate();
       return;
@@ -125,12 +132,12 @@ bool SavedItemsActivity::handleCustomInput() {
 void SavedItemsActivity::provideRow(void* context, const uint16_t rowIndex, fui::ListItem& row) {
   auto& self = *static_cast<SavedItemsActivity*>(context);
   if (rowIndex >= self.count) return;
-  const bool readable =
-      self.index.readRecord(self.ordinals[rowIndex], self.record) &&
-      (self.index.readTitle(self.record, self.scratch) || self.index.readName(self.record, self.scratch));
+  auto& record = self.records.front();
+  const bool readable = self.index.readRecord(self.ordinals[rowIndex], record) &&
+                        (self.index.readTitle(record, self.scratch) || self.index.readName(record, self.scratch));
   snprintf(self.title, sizeof(self.title), "%s", readable ? self.scratch.c_str() : tr(STR_SAVED_ITEMS_ERROR));
   self.title[utf8SafeTruncateBuffer(self.title, strlen(self.title))] = '\0';
-  const bool hasAuthor = readable && self.index.readAuthor(self.record, self.scratch);
+  const bool hasAuthor = readable && self.index.readAuthor(record, self.scratch);
   snprintf(self.author, sizeof(self.author), "%s", hasAuthor ? self.scratch.c_str() : "");
   self.author[utf8SafeTruncateBuffer(self.author, strlen(self.author))] = '\0';
   row.label = self.title;
@@ -180,6 +187,7 @@ void SavedItemsActivity::activateIndex(const int row) {
   uint8_t kinds = 0;
   {
     RenderLock lock(*this);
+    auto& record = records.front();
     if (!index.readRecord(ordinals[row], record) || !index.readPath(record, selectedPath)) return;
     if (!saveditems::inspect(selectedPath, kinds)) incomplete = true;
   }

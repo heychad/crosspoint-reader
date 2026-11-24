@@ -33,7 +33,8 @@ class SavedItemsActivity final : public UiListActivity {
   void onBackButton() override;
 
   library::LibraryIndexFile index;
-  library::ClixRecord record{};
+  // Four title-order records fill one card sector. Once the scan finishes, row rendering reuses the first slot.
+  std::array<library::ClixRecord, 4> records{};
   library::LibraryIndexFile::PathLookup scanPaths;
   std::unique_ptr<saveditems::Candidates> sidecars;
   std::unique_ptr<uint16_t[]> ordinals;

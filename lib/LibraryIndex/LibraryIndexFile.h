@@ -61,10 +61,12 @@ class LibraryIndexFile {
     PathLookup() = default;
     PathLookup(PathLookup&&) = default;
     PathLookup& operator=(PathLookup&&) = default;
-    explicit operator bool() const { return offsets != nullptr; }
+    explicit operator bool() const { return boundaries || offsets; }
 
    private:
     friend class LibraryIndexFile;
+    // Small folder sections fit every boundary in 16 bits. Larger ones use sparse 32-bit offsets.
+    std::unique_ptr<uint16_t[]> boundaries;
     std::unique_ptr<uint32_t[]> offsets;
     const LibraryIndexFile* owner = nullptr;
     uint64_t generation = 0;
@@ -106,6 +108,8 @@ class LibraryIndexFile {
   bool recentRowsFor(const BookIdentity* books, size_t count, uint16_t* outRows);
 
   bool readRecord(uint16_t ordinal, ClixRecord& out);
+  // Consecutive ordinals are in ascending title order. Discard the whole batch on a failed read.
+  bool readRecords(uint16_t first, std::span<ClixRecord> out);
   bool readCreationTime(uint16_t ordinal, uint32_t& out);
   // Persisted complete-path fingerprint used by rebuild reconciliation.
   bool readPathHash(const ClixRecord& record, uint64_t& out);
@@ -139,9 +143,11 @@ class LibraryIndexFile {
  private:
   bool openImpl(const char* path, bool acceptStaleFold);
   bool readAt(uint32_t offset, void* dst, size_t len);
+  bool validateRecord(ClixRecord& out) const;
   bool readBlobField(const ClixRecord& record, uint8_t field, std::string& out);
   bool locateBlobField(const ClixRecord& record, uint8_t field, uint32_t& offset, uint8_t& length);
   bool appendName(const ClixRecord& record, std::string& out);
+  bool finishPath(const ClixRecord& record, std::string& out);
   bool readPathFrom(const ClixRecord& record, std::string& out, uint16_t firstFolder, uint32_t offset);
 
   HalFile file;

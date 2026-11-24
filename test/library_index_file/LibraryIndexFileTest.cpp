@@ -344,6 +344,74 @@ TEST(LibraryIndexFile, JoinsTrailingSlashAndDropsPartialPathOnNameFailure) {
   EXPECT_TRUE(path.empty());
 }
 
+TEST(LibraryIndexFile, ReadsOnlyCompleteValidatedRecordBatches) {
+  auto bytes = makeFolderIndex(5);
+  library::ClixHeader header{};
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  for (uint16_t row = 0; row < header.bookCount; ++row) {
+    auto record = pathRecord(row);
+    record.foldLen = UINT8_MAX;
+    std::memcpy(bytes.data() + library::recordOffset(header, row), &record, sizeof(record));
+  }
+  Storage.setFile("/batch.clx", bytes);
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/batch.clx"));
+  std::array<library::ClixRecord, 4> rows{};
+  HalFile::resetReadCount();
+  ASSERT_TRUE(index.readRecords(1, rows));
+  for (size_t i = 0; i < rows.size(); ++i) {
+    EXPECT_EQ(rows[i].folderId, i + 1);
+    EXPECT_EQ(rows[i].foldLen, library::CLIX_FOLD_BYTES);
+  }
+  EXPECT_TRUE(index.readRecords(5, {}));
+  EXPECT_FALSE(index.readRecords(6, {}));
+  EXPECT_FALSE(index.readRecords(2, rows));
+  EXPECT_EQ(HalFile::readCount(), 1U);
+  for (const uint16_t bad : {2, 4}) {
+    auto damaged = bytes;
+    damaged[library::recordOffset(header, bad) + offsetof(library::ClixRecord, metadataStatus)] = UINT8_MAX;
+    Storage.setFile("/batch.clx", std::move(damaged));
+    EXPECT_FALSE(index.readRecords(1, rows));
+  }
+  bytes.resize(library::recordOffset(header, 4) + sizeof(library::ClixRecord) - 1);
+  Storage.setFile("/batch.clx", std::move(bytes));
+  EXPECT_FALSE(index.readRecords(1, rows));
+  EXPECT_TRUE(index.ioFailed());
+}
+
+TEST(LibraryIndexFile, ReadsEachSmallTableFolderAndNameInTwoCalls) {
+  for (const uint16_t folders : {1, 161, 255}) {
+    Storage.setFile("/folders.clx", makeFolderIndex(folders));
+    library::LibraryIndexFile index;
+    ASSERT_TRUE(index.open("/folders.clx"));
+    auto paths = index.preparePathLookup();
+    ASSERT_TRUE(paths);
+    HalFile::resetReadCount();
+    std::string path;
+    for (uint16_t row = folders; row > 0; --row) {
+      ASSERT_TRUE(index.readPath(pathRecord(row - 1), path, paths));
+      EXPECT_EQ(path, "/f" + std::to_string(row - 1) + "/b.epub");
+    }
+    EXPECT_EQ(HalFile::readCount(), 2U * folders);
+  }
+}
+
+TEST(LibraryIndexFile, RejectsChangedFolderLengthAfterPreparingBoundaries) {
+  auto bytes = makeFolderIndex(2);
+  library::ClixHeader header;
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  Storage.setFile("/folders.clx", bytes);
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  auto paths = index.preparePathLookup();
+  ASSERT_TRUE(paths);
+  bytes[header.folderStart] = 1;
+  Storage.setFile("/folders.clx", std::move(bytes));
+  std::string path("old");
+  EXPECT_FALSE(index.readPath(pathRecord(0), path, paths));
+  EXPECT_TRUE(path.empty());
+}
+
 TEST(LibraryIndexFile, SparseFolderLookupBoundsACompleteLibraryScan) {
   Storage.setFile("/folders.clx", makeFolderIndex(4096));
   library::LibraryIndexFile index;

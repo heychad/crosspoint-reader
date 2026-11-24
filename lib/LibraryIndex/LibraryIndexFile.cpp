@@ -183,10 +183,16 @@ bool LibraryIndexFile::recentRowsFor(const BookIdentity* books, const size_t cou
   return true;
 }
 
-bool LibraryIndexFile::readRecord(const uint16_t ordinal, ClixRecord& out) {
-  if (!opened || ordinal >= head.bookCount) return false;
-  if (!readAt(recordOffset(head, ordinal), &out, sizeof(out))) return false;
+bool LibraryIndexFile::readRecord(const uint16_t ordinal, ClixRecord& out) { return readRecords(ordinal, {&out, 1}); }
 
+bool LibraryIndexFile::readRecords(const uint16_t first, const std::span<ClixRecord> out) {
+  if (!opened || first > head.bookCount || out.size() > static_cast<size_t>(head.bookCount - first)) return false;
+  if (out.empty()) return true;
+  if (!readAt(recordOffset(head, first), out.data(), out.size_bytes())) return false;
+  return std::all_of(out.begin(), out.end(), [this](ClixRecord& record) { return validateRecord(record); });
+}
+
+bool LibraryIndexFile::validateRecord(ClixRecord& out) const {
   // Clamp here, at the single point every record enters the program. These
   // lengths come off an SD card that the user can write to and that can rot: a
   // foldLen of 255 against a 96-byte field sends a string_view 159 bytes past the
@@ -350,12 +356,16 @@ LibraryIndexFile::PathLookup LibraryIndexFile::preparePathLookup() {
   constexpr uint32_t MAX_CHECKPOINTS = 128;
   PathLookup lookup;
   if (!opened || head.folderCount == 0) return lookup;
-  lookup.stride = static_cast<uint16_t>((head.folderCount + MAX_CHECKPOINTS - 1) / MAX_CHECKPOINTS);
-  const uint32_t count = (head.folderCount + lookup.stride - 1) / lookup.stride;
-  lookup.offsets = makeUniqueNoThrow<uint32_t[]>(count);
-  if (!lookup.offsets) {
-    LOG_ERR("LIBIDX", "Failed to allocate %u bytes for folder lookup",
-            static_cast<unsigned int>(count * sizeof(uint32_t)));
+  const uint32_t boundaryCount = head.folderCount + 1U;
+  if (boundaryCount * sizeof(uint16_t) <= MAX_CHECKPOINTS * sizeof(uint32_t) && head.folderLen <= UINT16_MAX) {
+    lookup.boundaries = makeUniqueNoThrow<uint16_t[]>(boundaryCount);
+  } else {
+    lookup.stride = static_cast<uint16_t>((head.folderCount + MAX_CHECKPOINTS - 1) / MAX_CHECKPOINTS);
+    const uint32_t count = (head.folderCount + lookup.stride - 1) / lookup.stride;
+    lookup.offsets = makeUniqueNoThrow<uint32_t[]>(count);
+  }
+  if (!lookup) {
+    LOG_ERR("LIBIDX", "Failed to allocate folder lookup");
     return {};
   }
 
@@ -364,11 +374,16 @@ LibraryIndexFile::PathLookup LibraryIndexFile::preparePathLookup() {
   for (uint32_t folder = 0; folder < head.folderCount; ++folder) {
     if ((folder & 31U) == 0) delay(1);
     if (offset >= folderEnd) return {};
-    if (folder % lookup.stride == 0) lookup.offsets[folder / lookup.stride] = offset;
+    if (lookup.boundaries) {
+      lookup.boundaries[folder] = static_cast<uint16_t>(offset - head.folderStart);
+    } else if (folder % lookup.stride == 0) {
+      lookup.offsets[folder / lookup.stride] = offset;
+    }
     uint8_t length = 0;
     if (!readAt(offset, &length, sizeof(length)) || length == 0 || length > folderEnd - offset - 1U) return {};
     offset += 1U + length;
   }
+  if (lookup.boundaries) lookup.boundaries[head.folderCount] = static_cast<uint16_t>(offset - head.folderStart);
   lookup.owner = this;
   lookup.generation = generation;
   return lookup;
@@ -379,8 +394,27 @@ bool LibraryIndexFile::readPath(const ClixRecord& record, std::string& out, cons
     out.clear();
     return false;
   }
+  if (lookup.boundaries) {
+    const uint16_t start = lookup.boundaries[record.folderId];
+    const size_t length = lookup.boundaries[record.folderId + 1] - start;
+    // Read the original prefix with the name. Reject a changed length before joining paths.
+    out.resize(length);
+    if (readAt(head.folderStart + start, out.data(), length) && static_cast<uint8_t>(out.front()) == length - 1) {
+      out.erase(0, 1);
+      return finishPath(record, out);
+    }
+    out.clear();
+    return false;
+  }
   const uint16_t checkpoint = record.folderId / lookup.stride;
   return readPathFrom(record, out, checkpoint * lookup.stride, lookup.offsets[checkpoint]);
+}
+
+bool LibraryIndexFile::finishPath(const ClixRecord& record, std::string& out) {
+  if (out.back() != '/') out.push_back('/');
+  if (appendName(record, out)) return true;
+  out.clear();
+  return false;
 }
 
 bool LibraryIndexFile::readPathFrom(const ClixRecord& record, std::string& out, const uint16_t firstFolder,
@@ -397,10 +431,7 @@ bool LibraryIndexFile::readPathFrom(const ClixRecord& record, std::string& out, 
     if (pathLen > folderEnd - offset - 1u) return false;
     if (i == record.folderId) {
       out.resize(pathLen);
-      if (readAt(offset + 1, out.data(), pathLen)) {
-        if (out.back() != '/') out.push_back('/');
-        if (appendName(record, out)) return true;
-      }
+      if (readAt(offset + 1, out.data(), pathLen)) return finishPath(record, out);
       out.clear();
       return false;
     }
