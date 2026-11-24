@@ -1382,6 +1382,9 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
 #endif
   constexpr char target[] = "/read/verify.epub";
   constexpr char dictionary[] = "/dictionaries/English/en";
+  std::string backupSource, backupTarget;
+  assert(cm::itemPaths(source, target, cm::LEGACY_PROGRESS_BACKUP_INDEX, backupSource, backupTarget));
+  const uint8_t savedBackup[] = {2, 0, 7, 0, 13, 0, 55, 0, 0, 0};
   std::string originalDictionary, movedDictionary;
   assert(cm::itemPaths(source, target, cm::LEGACY_DICTIONARY_INDEX, originalDictionary, movedDictionary));
   decltype(disk.sectors) beforeRetirement;
@@ -1422,6 +1425,8 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
 #endif
     const auto dictionaryDirectory = originalDictionary.substr(0, originalDictionary.find_last_of('/'));
     assert(volume.exists(dictionaryDirectory.c_str()) || volume.mkdir(dictionaryDirectory.c_str(), true));
+    assert(backupSource == dictionaryDirectory + "/progress.bin.bak");
+    write(backupSource, savedBackup, sizeof(savedBackup));
     write(originalDictionary, reinterpret_cast<const uint8_t*>(dictionary), sizeof(dictionary) - 1);
     cj::Baseline previous{};
     previous.book[0] = 5;
@@ -1588,6 +1593,12 @@ void verifyMovedFilesOnRealFilesystem(bool exfat, bool removeRecent = false) {
     Storage.attach(volume);
     assert(cj::retiredDeferredMoveProof(source, 0x12345678, moveHash) == cj::DeferredRetirementProof::Retired);
     assert(cm::verifyRetiredFiles(source, target, 0x12345678, moveHash) == cm::VerifyFilesResult::ContentMatches);
+    for (const auto& path : {backupSource, backupTarget}) {
+      auto file = Storage.open(path.c_str(), O_RDONLY);
+      uint8_t actual[sizeof(savedBackup)]{};
+      assert(file && file.fileSize() == sizeof(actual) && file.read(actual, sizeof(actual)) == sizeof(actual) &&
+             file.close() && std::memcmp(actual, savedBackup, sizeof(actual)) == 0);
+    }
     for (const auto& path : {originalDictionary, movedDictionary}) {
       auto file = Storage.open(path.c_str(), O_RDONLY);
       char actual[sizeof(dictionary)]{};

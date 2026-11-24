@@ -447,10 +447,59 @@ TEST_F(CompletionMovePlanIO, CopiesBothPerBookDictionaryChoicesAndRetriesInterru
   }
 }
 
-TEST_F(CompletionMovePlanIO, ResumesSealedVersion2PlanWithItsOriginalFileList) {
+TEST_F(CompletionMovePlanIO, PreservesBothProgressBackupsAndRefusesAnOccupiedTarget) {
+  const std::string position{"\x03\0\x12\0\x27\0", 6};
+  const std::string older{"\x02\0\x08\0", 4};
+  const auto put = [](const std::string& path, const std::string& bytes) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForWrite("TEST", path, file));
+    ASSERT_EQ(file.write(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()), bytes.size());
+    ASSERT_TRUE(file.close());
+  };
+  std::string native, target, legacy, legacyTarget, primary, primaryTarget;
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::NATIVE_PROGRESS_BACKUP_INDEX, native, target));
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::MOVED_FILE_COUNT, primary, primaryTarget));
+  ASSERT_EQ(native, primary + ".bak");
+  ASSERT_EQ(target, primaryTarget + ".bak");
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::LEGACY_PROGRESS_BACKUP_INDEX, legacy, legacyTarget));
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::LEGACY_BOOKMARK_END, primary, primaryTarget));
+  ASSERT_EQ(legacy, primary + ".bak");
+  ASSERT_EQ(legacyTarget, primaryTarget + ".bak");
+  if (native == legacy) GTEST_SKIP() << "identical cache keys";
+  put(native, position);
+  put(legacy, older);
+  ASSERT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Ready);
+  put(target, "other book");
+  EXPECT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::Conflict);
+  EXPECT_TRUE(Storage.exists(BOOK));
+  EXPECT_FALSE(Storage.exists(DEST));
+  ASSERT_TRUE(Storage.remove(target.c_str()));
+  ASSERT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::Moved);
+  ASSERT_EQ(cm::verifyPreparedFiles(), cm::VerifyFilesResult::ContentMatches);
+  for (const auto& [path, expected] : {std::pair{native, position}, std::pair{target, position},
+                                       std::pair{legacy, older}, std::pair{legacyTarget, older}}) {
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForRead("TEST", path, file));
+    std::string bytes(expected.size(), '\0');
+    ASSERT_EQ(file.fileSize(), bytes.size());
+    ASSERT_EQ(file.read(bytes.data(), bytes.size()), static_cast<int>(bytes.size()));
+    EXPECT_EQ(bytes, expected);
+    ASSERT_TRUE(file.close());
+  }
+}
+
+class OlderCompletionPlan : public CompletionMovePlanIO, public testing::WithParamInterface<uint8_t> {};
+
+TEST_P(OlderCompletionPlan, ResumesWithItsOriginalFileList) {
+  const uint8_t version = GetParam();
   std::string dictionarySource, dictionaryTarget;
   ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::NATIVE_DICTIONARY_INDEX, dictionarySource, dictionaryTarget));
+  std::string backupSource, backupTarget;
+  ASSERT_TRUE(cm::itemPaths(BOOK, DEST, cm::NATIVE_PROGRESS_BACKUP_INDEX, backupSource, backupTarget));
   HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", backupSource, file));
+  ASSERT_EQ(file.write(static_cast<uint8_t>('p')), 1u);
+  ASSERT_TRUE(file.close());
   ASSERT_TRUE(Storage.openFileForWrite("TEST", dictionarySource, file));
   ASSERT_EQ(file.write(static_cast<uint8_t>('d')), 1u);
   ASSERT_TRUE(file.close());
@@ -460,13 +509,13 @@ TEST_F(CompletionMovePlanIO, ResumesSealedVersion2PlanWithItsOriginalFileList) {
   size_t size = 0;
   std::string_view from, to;
   ASSERT_EQ(cm::inspectPlan(*plan, size, from, to), cm::PlanResult::Ready);
-  // Recreate the v2 wire layout and its seal from the matching earlier fields.
-  constexpr size_t OLD_HEADER_END = 18 + 51 * 17;
-  constexpr size_t ADDED_BYTES = 2 * 17;
-  std::memmove(plan->data() + OLD_HEADER_END, plan->data() + OLD_HEADER_END + ADDED_BYTES,
-               size - OLD_HEADER_END - ADDED_BYTES);
-  size -= ADDED_BYTES;
-  (*plan)[4] = 2;
+  // These wire sizes are fixed by the already-shipped v2 and v3 encoders.
+  const size_t oldCount = version == 2 ? 51 : 53;
+  const size_t oldHeaderEnd = 18 + oldCount * 17;
+  const size_t addedBytes = (cm::FILE_COUNT - oldCount) * 17;
+  std::memmove(plan->data() + oldHeaderEnd, plan->data() + oldHeaderEnd + addedBytes, size - oldHeaderEnd - addedBytes);
+  size -= addedBytes;
+  (*plan)[4] = version;
   const auto checksum = cj::checksum(plan->data(), size - 8);
   std::array<uint8_t, 16> seal{'C', 'P', 'M', 'S', 1, 0, static_cast<uint8_t>(size), static_cast<uint8_t>(size >> 8)};
   for (size_t i = 0; i < 8; ++i) (*plan)[size - 8 + i] = static_cast<uint8_t>(checksum >> (8 * i));
@@ -480,12 +529,16 @@ TEST_F(CompletionMovePlanIO, ResumesSealedVersion2PlanWithItsOriginalFileList) {
   ASSERT_TRUE(file.close());
 
   ASSERT_EQ(cm::inspectPlan(*plan, size, from, to), cm::PlanResult::Ready);
-  EXPECT_EQ((*plan)[4], 2);
+  EXPECT_EQ((*plan)[4], version);
   EXPECT_EQ(cm::movePreparedFiles(), cm::MoveFilesResult::Moved);
   EXPECT_EQ(cm::verifyPreparedFiles(), cm::VerifyFilesResult::ContentMatches);
   EXPECT_TRUE(Storage.exists(dictionarySource.c_str()));
-  EXPECT_FALSE(Storage.exists(dictionaryTarget.c_str()));
+  EXPECT_EQ(Storage.exists(dictionaryTarget.c_str()), version == 3);
+  EXPECT_TRUE(Storage.exists(backupSource.c_str()));
+  EXPECT_FALSE(Storage.exists(backupTarget.c_str()));
 }
+
+INSTANTIATE_TEST_SUITE_P(V2AndV3, OlderCompletionPlan, testing::Values(2, 3));
 
 TEST_F(CompletionMovePlanIO, NativeProgressTakesPrecedenceOverLegacyProgress) {
   std::string legacySource, legacyTarget, nativeSource, nativeTarget;

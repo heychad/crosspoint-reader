@@ -22,16 +22,21 @@ constexpr size_t LEGACY_BOOKMARK_END = 32;
 constexpr size_t V2_FILE_COUNT = 51;
 constexpr size_t NATIVE_DICTIONARY_INDEX = V2_FILE_COUNT;
 constexpr size_t LEGACY_DICTIONARY_INDEX = NATIVE_DICTIONARY_INDEX + 1;
-constexpr size_t FILE_COUNT = LEGACY_DICTIONARY_INDEX + 1;
-constexpr uint8_t PLAN_VERSION = 3;
+constexpr size_t V3_FILE_COUNT = LEGACY_DICTIONARY_INDEX + 1;
+constexpr size_t NATIVE_PROGRESS_BACKUP_INDEX = V3_FILE_COUNT;
+constexpr size_t LEGACY_PROGRESS_BACKUP_INDEX = NATIVE_PROGRESS_BACKUP_INDEX + 1;
+constexpr size_t FILE_COUNT = LEGACY_PROGRESS_BACKUP_INDEX + 1;
+constexpr uint8_t PLAN_VERSION = 4;
 
 constexpr size_t fileCountForVersion(uint8_t version) {
   if (version == 2) return V2_FILE_COUNT;
+  if (version == 3) return V3_FILE_COUNT;
   return version == PLAN_VERSION ? FILE_COUNT : 0;
 }
 
 constexpr bool legacyStateIndex(size_t index) {
-  return (index >= LEGACY_BOOKMARK_END && index < V2_FILE_COUNT) || index == LEGACY_DICTIONARY_INDEX;
+  return (index >= LEGACY_BOOKMARK_END && index < V2_FILE_COUNT) || index == LEGACY_DICTIONARY_INDEX ||
+         index == LEGACY_PROGRESS_BACKUP_INDEX;
 }
 constexpr size_t IDENTITY_BYTES = 17;
 constexpr size_t IDENTITIES_BYTES = FILE_COUNT * IDENTITY_BYTES;

@@ -406,12 +406,15 @@ bool itemPaths(std::string_view from, std::string_view to, size_t index, std::st
         "stats_v5.bin",      "stats_v5.bin.tmp",  "stats_v5.bin.bak",      "stats_v4.bin",         "stats.bin",
         "reading_stats_off", "reader_prefs.json", "reader_prefs.json.tmp", "reader_prefs.json.bak"};
     const bool isLegacy = legacyStateIndex(index);
-    const bool isDictionary = index >= NATIVE_DICTIONARY_INDEX;
+    // Later versions append pairs of state files without renumbering older sealed plans.
+    static constexpr const char* appendedCacheFiles[] = {"dictionary.bin", "progress.bin.bak"};
+    static_assert(NATIVE_DICTIONARY_INDEX + 2 * std::size(appendedCacheFiles) == FILE_COUNT);
+    const bool appended = index >= NATIVE_DICTIONARY_INDEX;
     const size_t stateIndex = isLegacy ? index - LEGACY_BOOKMARK_END : index - MOVED_FILE_COUNT;
-    const bool isCache = isDictionary || stateIndex < std::size(cacheFiles);
-    const char* filename = isDictionary ? "dictionary.bin"
-                           : isCache    ? cacheFiles[stateIndex]
-                                        : statsFiles[stateIndex - std::size(cacheFiles)];
+    const bool isCache = appended || stateIndex < std::size(cacheFiles);
+    const char* filename = appended  ? appendedCacheFiles[(index - NATIVE_DICTIONARY_INDEX) / 2]
+                           : isCache ? cacheFiles[stateIndex]
+                                     : statsFiles[stateIndex - std::size(cacheFiles)];
     const auto path = [isCache, isLegacy, filename](std::string_view book) {
       const uint64_t hash = isLegacy ? cj::checksum(reinterpret_cast<const uint8_t*>(book.data()), book.size())
                                      : static_cast<uint64_t>(std::hash<std::string>{}(std::string(book)));
