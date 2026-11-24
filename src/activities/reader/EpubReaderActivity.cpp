@@ -704,12 +704,39 @@ bool EpubReaderActivity::anyButtonPressed() const {
   return false;
 }
 
+bool EpubReaderActivity::hasPendingReaderInput() const {
+  return pendingManualTurn != 0 || buttonContactClosed() || anyButtonPressed() || mappedInput.touchContactsDown();
+}
+
+void EpubReaderActivity::prewarmNextPageWhenIdle() {
+  constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
+  RenderLock lock(RenderLock::Mode::Try);
+  if (!lock.ownsLock() || !section || section->isBuilding() || !renderer.hasFrameBuffer() || !lastRenderCompleteMs ||
+      millis() - lastRenderCompleteMs <= IDLE_PREWARM_DEBOUNCE_MS ||
+      (idlePrewarmSpine == currentSpineIndex && idlePrewarmPage == section->currentPage) || hasPendingReaderInput() ||
+      ESP.getFreeHeap() <= RENDER_MIN_FREE_HEAP || ESP.getMaxAllocHeap() <= BACKGROUND_BUILD_MIN_MAX_ALLOC)
+    return;
+
+  idlePrewarmSpine = currentSpineIndex;
+  idlePrewarmPage = section->currentPage;
+  const int nextPage = section->currentPage + 1;
+  auto* fonts = renderer.getFontCacheManager();
+  if (!fonts || nextPage >= static_cast<int>(section->pageCount)) return;
+  if (const auto page = section->loadPage(nextPage)) {
+    const auto started = millis();
+    auto scope = fonts->createPrewarmScope();
+    page->render(renderer, SETTINGS.getReaderFontId(), 0, 0);
+    scope.endScanAndPrewarm();
+    LOG_DBG("ERS", "Idle prewarm: page %d in %lums", nextPage, millis() - started);
+  }
+}
+
 void EpubReaderActivity::backgroundBuildTick() {
   RenderLock lock(RenderLock::Mode::Try);
   // Not under an open toolbar or panel: those repaint straight onto the page in the framebuffer.
   if (!lock.ownsLock() || overlay != Overlay::None || !backgroundBuildWanted()) return;
   // A button is down or a page turn is queued: the next loop frames act on it first.
-  if (buttonContactClosed() || anyButtonPressed() || pendingManualTurn != 0 || !buildTickHeapGate()) return;
+  if (hasPendingReaderInput() || !buildTickHeapGate()) return;
   // A build step can lend the framebuffer (image probes), which hands it back white while the
   // panel still shows the page; redraw so nothing is later painted over the blank buffer.
   const uint32_t loansBefore = renderer.frameBufferLoanCount();
@@ -1049,30 +1076,6 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
-  {
-    RenderLock lock(RenderLock::Mode::Try);
-    if (lock.ownsLock() && section && !section->isBuilding() && renderer.hasFrameBuffer() &&
-        lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
-        ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
-        (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
-      idlePrewarmSpine = currentSpineIndex;
-      idlePrewarmPage = section->currentPage;
-      const int nextPage = section->currentPage + 1;
-      if (nextPage < static_cast<int>(section->pageCount)) {
-        if (const auto p = section->loadPage(nextPage)) {
-          if (auto* fcm = renderer.getFontCacheManager()) {
-            const auto t0 = millis();
-            auto scope = fcm->createPrewarmScope();
-            p->render(renderer, SETTINGS.getReaderFontId(), 0, 0);
-            scope.endScanAndPrewarm();
-            LOG_DBG("ERS", "Idle prewarm: page %d in %lums", nextPage, millis() - t0);
-          }
-        }
-      }
-    }
-  }
-
   {
     RenderLock lock(RenderLock::Mode::Try);
     // Never next to the radio: once the reader reaches the watermark, the build starts in
@@ -1407,7 +1410,8 @@ void EpubReaderActivity::loop() {
   prevTriggered = prevTriggered || touch.prev;
   nextTriggered = nextTriggered || touch.next;
   if (!prevTriggered && !nextTriggered) {
-    // Nothing to act on in this frame: build more of the chapter.
+    // Use this quiet frame for font prewarming and chapter indexing.
+    if (!atEndOfBook) prewarmNextPageWhenIdle();
     backgroundBuildTick();
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
     armChapterPrefetch();
@@ -2844,10 +2848,8 @@ void EpubReaderActivity::armChapterPrefetch() {
   RenderLock lock(RenderLock::Mode::Try);
   if (!lock.ownsLock() || !epub || !section || section->isBuilding() || section->isPartial() ||
       section->pageCount == 0 || section->currentPage + 2 < section->pageCount || overlay != Overlay::None ||
-      pendingManualTurn != 0 || buttonContactClosed() || anyButtonPressed() ||
-      mappedInput.getTouchSnapshot().reportedCount != 0 || bleturner::holdsHeap() ||
-      currentSpineIndex + 1 >= epub->getSpineItemsCount() || prefetchAttemptedSpine == currentSpineIndex ||
-      !lastRenderCompleteMs || millis() - lastRenderCompleteMs < 400)
+      hasPendingReaderInput() || bleturner::holdsHeap() || currentSpineIndex + 1 >= epub->getSpineItemsCount() ||
+      prefetchAttemptedSpine == currentSpineIndex || !lastRenderCompleteMs || millis() - lastRenderCompleteMs < 400)
     return;
   bool ready = hasChapterPrefetchRoom(true);
   if (reclaimBackgroundCachesIfNeeded(ready)) ready = hasChapterPrefetchRoom(true);

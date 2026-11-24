@@ -85,6 +85,16 @@ glyphs. In that fixture, the admitted styles cover 21 of 25 glyph uses,
 up from 11 with the previous ordering. Measure render time and memory
 headroom on a mixed-style page on the X4 Pro.
 
+### When next-page fonts load
+
+The EPUB reader handles a waiting page turn or menu action before starting
+next-page font preparation. It waits for a quiet input frame and more than
+400 ms since the last render. A button or touch still held, or a queued turn,
+also defers the background indexing tick and next-chapter prefetch. A press
+that arrives after a synchronous read has started can still wait for it.
+The font scan collects glyphs in visual order and skips baseline measurements
+until the text is drawn.
+
 ## Saved Items feedback, November 12
 
 - First open took more than 30 seconds. Saved Items now scans the bookmark and

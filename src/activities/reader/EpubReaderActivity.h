@@ -209,6 +209,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // One bounded build step on the loop task, in a frame whose input did nothing. Lays out about
   // BACKGROUND_BUILD_PAGES_PER_TICK pages (one 1 KB parse step may add more) and hands the loop
   // back as soon as a button is down, so a short press is seen before more pages are built.
+  bool hasPendingReaderInput() const;
+  void prewarmNextPageWhenIdle();
   void backgroundBuildTick();
   bool anyButtonPressed() const;
   // A background build failed in this spine. The error would likely recur, so from then on the

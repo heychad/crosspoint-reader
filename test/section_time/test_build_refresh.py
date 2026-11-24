@@ -33,7 +33,7 @@ struct EpubReaderActivity {
  enum class Overlay {None,Text};Overlay overlay=Overlay::None;
  std::unique_ptr<Section> section=std::make_unique<Section>();Renderer renderer;Stats readingStats;
  bool pageBufferStale=false,reposition=false;int pendingManualTurn=0,backgroundBuildFailedSpine=-1,currentSpineIndex=5,nextPageNumber=-1,updates=0;
- bool backgroundBuildWanted(){return true;}bool anyButtonPressed(){return false;}bool buildTickHeapGate(){return true;}
+ bool backgroundBuildWanted(){return true;}bool inputPending=false;bool hasPendingReaderInput()const{return inputPending;}bool buildTickHeapGate(){return true;}
  bool applyDeferredReposition(){return reposition;}void requestUpdate(){++updates;}
  bool tryRenderRecovery(){return false;}
  void backgroundBuildTick();
@@ -43,6 +43,8 @@ int main(){
  EpubReaderActivity hidden;hidden.backgroundBuildTick();assert(hidden.updates==0);
  SETTINGS.readerBarsEnabled=true;SETTINGS.readerTopBar.enabled=true;
  EpubReaderActivity ready;ready.backgroundBuildTick();assert(ready.updates==1);
+ EpubReaderActivity holding;holding.inputPending=true;holding.backgroundBuildTick();assert(holding.updates==0);
+ holding.inputPending=false;holding.backgroundBuildTick();assert(holding.updates==1);
  EpubReaderActivity noPace;noPace.readingStats.remaining=0;noPace.backgroundBuildTick();assert(noPace.updates==0);
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_TIME)
  SETTINGS.readerTopBar.enabled=false;SETTINGS.readerTopBar.chapter=true;

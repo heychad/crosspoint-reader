@@ -20,7 +20,11 @@ def extract(name, return_type='void'):
 
 method = (extract('reclaimBackgroundCachesIfNeeded','bool') + '\n' + extract('buildTickHeapGate','bool') + '\n'
           + extract('hasChapterPrefetchRoom','bool') + '\n' + extract('armChapterPrefetch')
-          + '\n' + extract('prefetchNextChapter'))
+          + '\n' + extract('prefetchNextChapter') + '\n' + extract('prewarmNextPageWhenIdle')
+          + '\n' + extract('hasPendingReaderInput','bool'))
+loop = extract('loop')
+idle_dispatch = loop[loop.index('if (!prevTriggered && !nextTriggered)'):].split('return;', 1)[0]
+assert loop.count('prewarmNextPageWhenIdle();') == 1 and 'if (!atEndOfBook) prewarmNextPageWhenIdle();' in idle_dispatch
 header = (root / 'src/activities/reader/EpubReaderActivity.h').read_text()
 work_limit = re.search(r'static constexpr uint32_t PREFETCH_WORK_LIMIT_MS = \d+;',header).group()
 code = r'''
@@ -42,7 +46,11 @@ struct Esp {
  size_t getMaxAllocHeap(){return HalMemory::normal.largestBlockBytes;}
 } ESP;
 struct ImageBlock { static inline int reclaimed=0; static void releaseRenderCache(){++reclaimed;} };
+#define LOG_DBG(...) ((void)0)
 struct FontCache {
+ int scans=0;
+ struct Scope {int& scans; void endScanAndPrewarm(){++scans;}};
+ Scope createPrewarmScope(){return {scans};}
  bool recover=false; int reclaimed=0;
  void releaseInactiveSdFontCaches(int id){
   assert(id==17);
@@ -53,14 +61,16 @@ struct FontCache {
 struct Gfx {
  uint32_t loans=0; FontCache fonts;
  uint32_t frameBufferLoanCount()const{return loans;}
- FontCache* getFontCacheManager(){return &fonts;}
+ bool available=true,hasFonts=true;
+ bool hasFrameBuffer()const{return available;}
+ FontCache* getFontCacheManager(){return hasFonts ? &fonts : nullptr;}
 };
 struct RenderLock { enum class Mode{Try}; RenderLock(Mode){} bool ownsLock()const{return true;} };
 struct Manager {int requests=0; void requestBackgroundRender(){++requests;}} activityManager;
 unsigned long nowMs=1000; unsigned long millis(){return nowMs;}
 int delays=0; void delay(unsigned long ms){nowMs+=ms;++delays;}
 bool rawPressed=false; bool buttonContactClosed(){return rawPressed;}
-struct Input {struct Touch {int reportedCount=0;}; Touch touch; Touch getTouchSnapshot(){return touch;}};
+struct Input {struct Touch {int reportedCount=0;}; Touch touch; bool touchContactsDown() const {return touch.reportedCount != 0;}};
 struct Book { int getSpineItemsCount()const{return 3;} };
 struct Section {
  static inline int starts=0, steps=0, destroyed=0; static inline bool cached=false, nextPartial=false, hadPartialAtStart=false, fail=false, cancelOnStep=false;
@@ -71,6 +81,12 @@ struct Section {
  bool active=false, partial=false; int currentPage=8; int pageCount=10;int remaining=0;
  Section()=default; Section(std::shared_ptr<Book>,int,Gfx&){}
  ~Section(){++destroyed;if(active)++suspended;}
+ int reads=0, renders=0, loadedPage=-1;
+ struct Page {
+   int& renders;
+   void render(Gfx&,int font,int x,int y){assert(font==17 && x==0 && y==0);++renders;}
+ };
+ std::unique_ptr<Page> loadPage(int page){++reads;loadedPage=page;return std::make_unique<Page>(Page{renders});}
  bool isBuilding()const{return active;} bool isPartial()const{return partial;}
  bool loadSectionFile(ReaderRenderSpec){partial=nextPartial;if(inputOnLoad)cancelActivity(inputOnLoad);return cached;}
  bool startBuild(ReaderRenderSpec,void*,bool(*cancel)(void*),void* ctx){++starts;hadPartialAtStart=partial;nowMs+=elapsedOnStart;remaining=workSteps;active=!failStart;return active&&!cancel(ctx);}
@@ -83,7 +99,11 @@ struct EpubReaderActivity {
  std::atomic<uint32_t> prefetchInputSequence{0}; uint32_t prefetchArmedSequence=0,prefetchStartedMs=0;
  WORK_LIMIT
  int prefetchArmedSpine=0,prefetchAttemptedSpine=-1,currentSpineIndex=0; Overlay overlay=Overlay::None;
- Input mappedInput; int pendingManualTurn=0; unsigned long lastRenderCompleteMs=1; bool anyButtonPressed(){return false;}
+ Input mappedInput; int pendingManualTurn=0; unsigned long lastRenderCompleteMs=1; bool pressed=false; bool anyButtonPressed() const {return pressed;}
+ bool hasPendingReaderInput() const;
+ int idlePrewarmPage=-1,idlePrewarmSpine=-1;
+ static constexpr size_t RENDER_MIN_FREE_HEAP=32*1024;
+ void prewarmNextPageWhenIdle();
  bool pageBufferStale=false; int updates=0; void requestUpdate(){++updates;}
  bool backgroundCacheReclaimAttempted=false,buildHeapPaused=false;
  static constexpr size_t BACKGROUND_BUILD_MIN_FREE_HEAP=32*1024, BACKGROUND_BUILD_MIN_MAX_ALLOC=16*1024;
@@ -96,6 +116,36 @@ struct EpubReaderActivity {
 };
 ''' + method + r'''
 int main(){
+ {
+  EpubReaderActivity reader;
+  auto& section=*reader.section;
+  reader.pendingManualTurn=1;
+  reader.prewarmNextPageWhenIdle();
+  reader.pendingManualTurn=0;
+  rawPressed=true;
+  reader.prewarmNextPageWhenIdle();
+  rawPressed=false;
+  reader.pressed=true;
+  reader.prewarmNextPageWhenIdle();
+  reader.pressed=false;
+  reader.mappedInput.touch.reportedCount=1;
+  reader.prewarmNextPageWhenIdle();
+  reader.mappedInput.touch.reportedCount=0;
+  reader.lastRenderCompleteMs=nowMs-400;
+  reader.prewarmNextPageWhenIdle();
+  reader.lastRenderCompleteMs--;
+  assert(section.reads==0);
+  reader.prewarmNextPageWhenIdle();
+  reader.prewarmNextPageWhenIdle();
+  assert(section.reads==1 && section.loadedPage==9 && section.renders==1 && reader.renderer.fonts.scans==1);
+  section.currentPage=section.pageCount-1;
+  reader.prewarmNextPageWhenIdle();
+  section.currentPage=0;
+  reader.renderer.hasFonts=false;
+  reader.prewarmNextPageWhenIdle();
+  assert(section.reads==1);
+ }
+
  {
   EpubReaderActivity low;
   low.prefetchArmedSpine=-1;
