@@ -153,3 +153,8 @@ portable clips, out-of-order source offsets, and books with 1,024 clips.
 Clipping-record lookups fell from 4,240,544 to 1,984,071 and text-width calls
 from 143,644 to 72,726 in that workload. The comparison uses a host font stub.
 Page-turn latency and panel refresh still need measurement on the X4 Pro.
+
+When starting a touch selection, the reader first looks for a saved clip in
+the current chapter. If all clips belong to other chapters, it skips the word
+measurements used to detect a tap on a saved highlight. Overlapping clips
+still select the first matching record in storage order.

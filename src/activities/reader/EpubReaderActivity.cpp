@@ -3203,6 +3203,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 }
 
 int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int y) const {
+  size_t firstChapterClip = 0;
+  while (firstChapterClip < CLIPPINGS.clippingCount() &&
+         CLIPPINGS.clippingAt(firstChapterClip)->spineIndex != currentSpineIndex) {
+    ++firstChapterClip;
+  }
+  if (firstChapterClip == CLIPPINGS.clippingCount()) return -1;
+
   const auto pageLayout = readerPageLayout();
   const int fontId = SETTINGS.getReaderFontId();
   const uint32_t signature =
@@ -3224,7 +3231,7 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
       const Rect rect = clippingWordRect(renderer, fontId, line, i, pageLayout.top, pageLayout.left, width);
       if (x < rect.x || x >= rect.x + rect.width || y < rect.y || y >= rect.y + rect.height) continue;
       const auto range = block->wordSourceRange(i);
-      for (size_t j = 0; j < CLIPPINGS.clippingCount(); ++j) {
+      for (size_t j = firstChapterClip; j < CLIPPINGS.clippingCount(); ++j) {
         if (clippingContainsWord(*CLIPPINGS.clippingAt(j), currentSpineIndex, section->currentPage, section->pageCount,
                                  signature, index, range.start, range.end))
           return static_cast<int>(j);

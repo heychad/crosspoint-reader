@@ -182,9 +182,10 @@ struct Settings {
 } SETTINGS;
 struct SavedClippings {
   Clipping clipping;
+  std::vector<Clipping> extra;
   bool hasClippings() const { return true; }
-  size_t clippingCount() const { return 1; }
-  const Clipping* clippingAt(size_t) const { return &clipping; }
+  size_t clippingCount() const { return 1 + extra.size(); }
+  const Clipping* clippingAt(size_t i) const { return i ? &extra.at(i - 1) : &clipping; }
 } savedClippings;
 #undef CLIPPINGS
 #define CLIPPINGS savedClippings
@@ -446,6 +447,20 @@ int main() {
     savedClippings.clipping.layoutSignature = readerRenderSpecSignature(reader.effectiveRenderSpec(480, 800, 0));
     reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
     assert(activity.renderer.widthMeasurements >= 2 && activity.renderer.fills.size() == 1);
+    reader.currentSpineIndex = 1;
+    activity.renderer.widthMeasurements = 0;
+    assert(reader.clippingAtPoint(*activity.pages[0], 0, 0) == -1);
+    assert(activity.renderer.widthMeasurements == 0);
+    Clipping match = savedClippings.clipping;
+    match.spineIndex = 1;
+    match.startOffset = 0;
+    match.endOffset = 3;
+    savedClippings.extra = {match, savedClippings.clipping, match};
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 38) == 1);
+    savedClippings.extra.front().startOffset = 100;
+    savedClippings.extra.front().endOffset = 110;
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 38) == 3);
+    savedClippings.extra.clear();
   }
   for (const auto& logical : {std::vector<std::string>{"אחד", "alpha", "beta", "שני"},
                               std::vector<std::string>{"واحد", "alpha", "beta", "اثنان"}}) {
