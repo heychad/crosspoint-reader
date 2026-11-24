@@ -58,6 +58,7 @@ class HalFile : public Print {
 
   void flush() {}
   bool sync() const { return data_ && !data_->failSync; }
+  bool isUnallocatedEmpty() const { return data_ && !data_->directory && data_->bytes.empty(); }
   bool hasError() const { return !data_ || data_->writeError; }
   bool seekSet(size_t value) {
     cursor_ = value;
@@ -141,8 +142,13 @@ class HalStorage {
     return file;
   }
   HalFile open(const char* path, int flags) {
-    if (flags & O_CREAT) {
+    if (flags & (O_CREAT | O_TRUNC)) {
+      if (!(flags & O_CREAT) && !exists(path)) return {};
       if ((flags & O_EXCL) && exists(path)) return {};
+      if (!(flags & O_TRUNC)) {
+        const auto found = files_.find(path);
+        if (found != files_.end()) return HalFile(found->second);
+      }
       HalFile file;
       return openFileForWrite("TEST", path, file) ? std::move(file) : HalFile{};
     }

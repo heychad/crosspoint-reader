@@ -358,7 +358,7 @@ used copies of the backup and simulated sector writes.
 
 ### Interrupted SD writes while saving a position
 
-Both the EPUB and XTC writers check the staged record's byte count, sync,
+Test81 checks the staged EPUB or XTC record's byte count, sync,
 file error, and close before replacing the saved position. A regression
 injects each failure and retries with the same next page. In 144 FAT and
 exFAT fixtures, this caught 447 additional staging failures and retained the
@@ -393,3 +393,25 @@ The RC3 reader returned the old or new position on all 167,156 first-cut
 snapshots. A reader using only the native primary saw the newest position
 after 2,640 of the 5,280 completed RC3 saves and the previous position after
 the other 2,640. Test81 keeps the native writer.
+
+### Retrying native progress saves after an interrupted rename
+
+The next Mac build opens the temporary file without truncating it. A fresh,
+empty file needs no directory lookup beyond the normal save. Before reusing a
+nonempty temporary file, the writer checks its size and allocation and compares
+its cluster chain with the primary and CrossInk backup when present. The check
+can use up to 4 KiB of temporary memory. A lock covers the checks and the save.
+An unreadable or shared chain blocks the retry and preserves the files for
+inspection. The remove-and-rename interruption window still exists.
+
+The same 5,559 interrupted card snapshots were given to test81 and the new
+writer. A subsequent save reported success with the wrong position on 12
+snapshots in test81 and zero with the new writer. The new checks declined 764
+additional retries on the interrupted snapshots. Both builds left the primary
+untouched on all 152 observed primary/temp aliases.
+
+A separate uninterrupted-save comparison ran on FAT and exFAT. With a fresh
+temp, both writers used a total of 1,392 sector reads and 259 sector writes
+across the 24 fixtures. With an independent leftover temp, verification
+increased reads from 1,413 to 7,184 across 24 fixtures. Each writer issued 269
+writes. Neither experiment measures physical page-turn latency.

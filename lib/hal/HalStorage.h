@@ -197,6 +197,7 @@ class HalFile : public Print {
   size_t write(uint8_t b) override;
   bool rename(const char* newPath);
   bool isDirectory() const;
+  bool isUnallocatedEmpty() const;
   void rewindDirectory();
   bool close();
   HalFile openNextFile();

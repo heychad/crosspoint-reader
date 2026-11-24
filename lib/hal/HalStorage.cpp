@@ -766,6 +766,10 @@ bool HalFile::rename(const char* newPath) {
   if (!ok) fence.poison();
   return ok;
 }
+bool HalFile::isUnallocatedEmpty() const {
+  HalStorage::StorageLock lock;
+  return impl && isUnallocatedEmptyFile(impl->file);
+}
 bool HalFile::isDirectory() const { HAL_FILE_FORWARD_CALL(isDirectory, ); }  // already thread-safe, no need to wrap
 void HalFile::rewindDirectory() { HAL_FILE_WRAPPED_CALL(rewindDirectory, ); }
 bool HalFile::close() {

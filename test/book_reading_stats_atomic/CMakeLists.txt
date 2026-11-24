@@ -111,4 +111,7 @@ target_compile_definitions(BookReadingStatsDailyTest PRIVATE CROSSPOINT_EXPERIME
 target_link_libraries(BookReadingStatsDailyTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(BookReadingStatsDailyTest TEST_PREFIX DailyEnabled.)
 
-target_sources(BookReadingStatsAtomicTest PRIVATE ProgressFileTest.cpp)
+target_sources(BookReadingStatsAtomicTest PRIVATE
+  ProgressFileTest.cpp
+  ${REPO_ROOT}/src/activities/reader/ProgressFile.cpp
+)
