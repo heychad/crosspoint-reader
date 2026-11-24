@@ -590,3 +590,17 @@ both X4 Pro builds, and the compiled stable-update simulation. The
 5,869,568-byte Mac image has SHA-256
 `c81ad5885715947e30a2291d2b64026ad9e5fd70d8ef7167737c840734e2de87`.
 Its package includes the test70 rollback. Test71 remains staged on the reader.
+
+### Local test82 package
+
+Test82 verifies a leftover progress file before reusing it. Across 5,559
+interrupted card snapshots, the number of retries that reported success but
+reopened at the wrong position fell from 12 to zero. The checks refused 764
+more retries on damaged snapshots. Normal saves used the same number of
+card reads and writes as test81.
+
+Source `6aa0dadd` passed 2,608 enabled checks in each host configuration,
+both X4 Pro builds, and the compiled stable-update simulation. The
+5,870,384-byte Mac image has SHA-256
+`d13d3864d86931a7c7a7524973a47fccba8dd3a887c12cfa23b6b0cf4510f9ee`.
+The package includes the test70 rollback. Test71 remains staged on the reader.

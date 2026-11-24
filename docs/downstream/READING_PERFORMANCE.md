@@ -27,7 +27,10 @@ antialiased text turn on all three X4 Pro controllers in a host bus trace.
 The SDK pinned by CrossInk RC3 sent one on repeated turns with the SSD1677,
 UC8179, and supported UC8279 variants. The SSD1677 still sent two on the
 first transition in this fixture. Both SDKs ran the same 800 × 480 test page
-twice. These counts measure controller commands, not time or visible ghosting.
+twice. In a separate mixed-content trace the RC3 renderer still sent two
+commands for four-tone images. An ordinary text turn also used two when
+PSRAM allocation failed. These counts measure controller commands, not time
+or visible ghosting.
 
 RC3's text path reserves 576,000 bytes of PSRAM for this panel geometry.
 It uses page-type hints and charge history that must stay consistent when
@@ -392,11 +395,21 @@ card latency depends on the card and controller.
 The RC3 reader returned the old or new position on all 167,156 first-cut
 snapshots. A reader using only the native primary saw the newest position
 after 2,640 of the 5,280 completed RC3 saves and the previous position after
-the other 2,640. Test81 keeps the native writer.
+the other 2,640. Test81 and test82 keep the native writer.
+
+The RC3 reader also reopened the previous or requested position in all
+11,324,461 simulated cuts during a second save after recovery. On 14,484
+uninterrupted retries, however, the writer reported success while the
+reader still opened the previous position. One reproducible case started
+with a torn directory entry for the backup. Reading both slots after
+remount found only the original primary. A separate prototype checked
+the written slot by name, sequence, and fields. It caught all 612 misleading
+successes in 8,004 synthetic retries. This comparison used private copies
+of the pinned RC3 writer on the Mac.
 
 ### Retrying native progress saves after an interrupted rename
 
-The next Mac build opens the temporary file without truncating it. A fresh,
+Test82 opens the temporary file without truncating it. A fresh,
 empty file needs no directory lookup beyond the normal save. Before reusing a
 nonempty temporary file, the writer checks its size and allocation and compares
 its cluster chain with the primary and CrossInk backup when present. The check
