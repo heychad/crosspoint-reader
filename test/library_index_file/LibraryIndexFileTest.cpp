@@ -8,14 +8,6 @@
 
 #include "LibraryIndexFile.h"
 
-namespace library {
-
-std::string joinLibraryPath(const std::string_view folder, const std::string_view name) {
-  return std::string(folder) + "/" + std::string(name);
-}
-
-}  // namespace library
-
 namespace {
 
 std::vector<uint8_t> makeBlob(const uint64_t pathHash, const std::initializer_list<uint8_t> fields) {
@@ -331,6 +323,26 @@ library::ClixRecord pathRecord(uint16_t folder) {
   return record;
 }
 }  // namespace
+
+TEST(LibraryIndexFile, JoinsTrailingSlashAndDropsPartialPathOnNameFailure) {
+  auto bytes = makeFolderIndex(1);
+  library::ClixHeader header;
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  bytes[header.folderStart + 3] = '/';  // The stored folder is "/f/".
+  Storage.setFile("/folders.clx", std::move(bytes));
+  library::LibraryIndexFile index;
+  ASSERT_TRUE(index.open("/folders.clx"));
+  auto paths = index.preparePathLookup();
+  ASSERT_TRUE(paths);
+  std::string path;
+  path.reserve(512);
+  auto record = pathRecord(0);
+  ASSERT_TRUE(index.readPath(record, path, paths));
+  EXPECT_EQ(path, "/f/b.epub");
+  record.nameOff = UINT32_MAX;
+  EXPECT_FALSE(index.readPath(record, path, paths));
+  EXPECT_TRUE(path.empty());
+}
 
 TEST(LibraryIndexFile, SparseFolderLookupBoundsACompleteLibraryScan) {
   Storage.setFile("/folders.clx", makeFolderIndex(4096));

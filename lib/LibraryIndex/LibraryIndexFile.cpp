@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include "LibraryText.h"
-
 namespace library {
 
 LibraryIndexFile::~LibraryIndexFile() { close(); }
@@ -210,12 +208,17 @@ bool LibraryIndexFile::readRecord(const uint16_t ordinal, ClixRecord& out) {
 
 bool LibraryIndexFile::readName(const ClixRecord& record, std::string& out) {
   out.clear();
+  return appendName(record, out);
+}
+
+bool LibraryIndexFile::appendName(const ClixRecord& record, std::string& out) {
   if (!opened || record.nameLen == 0) return false;
   if (record.nameOff > head.nameLen || sizeof(uint64_t) > head.nameLen - record.nameOff ||
       record.nameLen > head.nameLen - record.nameOff - sizeof(uint64_t))
     return false;
-  out.resize(record.nameLen);
-  return readAt(head.nameStart + record.nameOff + sizeof(uint64_t), out.data(), record.nameLen);
+  const size_t prefix = out.size();
+  out.resize(prefix + record.nameLen);
+  return readAt(head.nameStart + record.nameOff + sizeof(uint64_t), out.data() + prefix, record.nameLen);
 }
 
 bool LibraryIndexFile::readPathHash(const ClixRecord& record, uint64_t& out) {
@@ -393,12 +396,13 @@ bool LibraryIndexFile::readPathFrom(const ClixRecord& record, std::string& out, 
     if (!readAt(offset, &pathLen, sizeof(pathLen)) || pathLen == 0) return false;
     if (pathLen > folderEnd - offset - 1u) return false;
     if (i == record.folderId) {
-      std::string dir(pathLen, '\0');
-      if (!readAt(offset + 1, dir.data(), pathLen)) return false;
-      std::string name;
-      if (!readName(record, name)) return false;
-      out = joinLibraryPath(dir, name);
-      return true;
+      out.resize(pathLen);
+      if (readAt(offset + 1, out.data(), pathLen)) {
+        if (out.back() != '/') out.push_back('/');
+        if (appendName(record, out)) return true;
+      }
+      out.clear();
+      return false;
     }
     offset += 1u + pathLen;
     if (offset >= folderEnd) return false;

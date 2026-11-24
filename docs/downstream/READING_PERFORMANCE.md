@@ -101,6 +101,12 @@ headroom on a mixed-style page on the X4 Pro.
   a complete cache that matches the current layout and page count. Missing,
   partial, or mismatched caches use the saved passage marker. Host checks cover
   the handoff, exact page, and fallback paths. Device confirmation remains.
+
+Saved Items reserves a 512-byte string for scanning book paths. The follow-up
+reads each folder and filename directly into that string. On the backed-up
+catalog of 1,935 books in 161 folders, this removed 5,549 path-building heap
+allocations in a host scan. All paths and their order matched byte for byte.
+Both scans made 8,637 index reads. First-open time still needs a device reading.
 - Book → clipping list → clipping actions is the current navigation. Keep the
   grouped model unless its replacement is explicitly scoped.
 

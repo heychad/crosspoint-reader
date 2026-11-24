@@ -141,6 +141,7 @@ class LibraryIndexFile {
   bool readAt(uint32_t offset, void* dst, size_t len);
   bool readBlobField(const ClixRecord& record, uint8_t field, std::string& out);
   bool locateBlobField(const ClixRecord& record, uint8_t field, uint32_t& offset, uint8_t& length);
+  bool appendName(const ClixRecord& record, std::string& out);
   bool readPathFrom(const ClixRecord& record, std::string& out, uint16_t firstFolder, uint32_t offset);
 
   HalFile file;
