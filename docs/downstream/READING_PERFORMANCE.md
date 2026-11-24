@@ -482,3 +482,7 @@ A subsequent read of the same page after remount returned the expected words,
 annotations, and image references in every case. These read attempts made
 zero sector writes. This exercises decoding and rereading the same saved
 bytes. The separate reader regression checks which page a rebuild requests.
+
+During chapter layout, the reader can open a page already written to the
+temporary cache. If it cannot restore the append position afterward, it stops
+the build before another page can overwrite the earlier text.

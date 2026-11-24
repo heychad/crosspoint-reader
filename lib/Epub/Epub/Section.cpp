@@ -986,7 +986,7 @@ void Section::abandonBuild() {
 }
 
 std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {
-  if (!build_ || page < 0 || page >= static_cast<int>(build_->lut.size()) || !file) {
+  if (!build_ || buildPageWriteFailed_ || page < 0 || page >= static_cast<int>(build_->lut.size()) || !file) {
     return nullptr;
   }
   const uint32_t pos = build_->lut[page].fileOffset;
@@ -996,9 +996,13 @@ std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {
   // The .bin is open O_RDWR for the build. Read the already-written page, then restore
   // the write cursor so the next onPageComplete keeps appending where it left off.
   const uint32_t writePos = file.position();
-  file.seek(pos);
-  auto p = Page::deserialize(file);
-  file.seek(writePos);
+  auto p = file.seek(pos) ? Page::deserialize(file) : nullptr;
+  if (!file.seek(writePos)) {
+    // The parser must not append a page at the last read position.
+    buildPageWriteFailed_ = true;
+    buildFailure_ = EpubBuildFailure::InputOutput;
+    return nullptr;
+  }
   if (p) {
     p->visibleTextOffset = build_->lut[page].visibleTextOffset;
   }

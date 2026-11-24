@@ -24,6 +24,7 @@ code = r'''
 #include <utility>
 #include <vector>
 #define LOG_ERR(...) ((void)0)
+#define LOG_DBG(...) ((void)0)
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION=99;
 constexpr size_t HEADER_SIZE=46;
 struct ReadFault {
@@ -38,6 +39,7 @@ struct HalStorage {
 } Storage;
 struct HalFile {
  std::string path; size_t pos=64;int calls=0, failAt=-1, seeks=0, failSeek=-1;bool syncOk=true,closeOk=true;
+ explicit operator bool()const{return !path.empty();}
  size_t position()const{return pos;}
  uint64_t fileSize64() const {return fileSize();}
  size_t read(void* buffer,size_t count) {
@@ -65,19 +67,52 @@ struct Entry{uint32_t fileOffset;uint16_t paragraphIndex,listItemIndex;uint32_t 
 struct Page {
  uint32_t visibleTextOffset=0;
  uint8_t marker=0;
+ bool serialize(HalFile& f){return f.write(&marker,sizeof(marker))==sizeof(marker);}
  static std::unique_ptr<Page> deserialize(HalFile& f) {
    auto page=std::make_unique<Page>();
    return serialization::tryReadPod(f,page->marker) ? std::move(page) : nullptr;
  }
 };
 struct Build{std::vector<Entry> lut{{48,1,2,3},{58,4,5,6}};std::unique_ptr<Parser> parser=std::make_unique<Parser>();};
+enum class EpubBuildFailure {None, InputOutput};
 struct Section {
+ bool buildPageWriteFailed_=false;
+ EpubBuildFailure buildFailure_=EpubBuildFailure::None;
+ std::unique_ptr<Page> loadPageDuringBuild(int);
+ uint32_t onPageComplete(std::unique_ptr<Page>);
  bool partial_=false;
  uint16_t partialPageCount_=0,pageCount=2;
  std::unique_ptr<Page> loadPageAt(int page) const;
  HalFile file;std::string filePath="/chapter";std::unique_ptr<Build> build_=std::make_unique<Build>();uint16_t builtPageCount_=2;
  std::string binTmpPath()const{return filePath+".part";}bool commitBuildFile(uint8_t,uint32_t,uint32_t);};
-''' + extract('struct SectionPageTables') + ';\n' + extract('std::unique_ptr<Page> Section::loadPageAt(') + '\n' + extract('bool recoverSectionCache(') + '\n' + extract('bool promoteSectionCache(') + '\n' + extract('bool Section::commitBuildFile(') + r'''
+''' + extract('struct SectionPageTables') + ';\n' + extract('uint32_t Section::onPageComplete(') + '\n' + extract('std::unique_ptr<Page> Section::loadPageDuringBuild(') + '\n' + extract('std::unique_ptr<Page> Section::loadPageAt(') + '\n' + extract('bool recoverSectionCache(') + '\n' + extract('bool promoteSectionCache(') + '\n' + extract('bool Section::commitBuildFile(') + r'''
+void checkActivePageRead() {
+ for(int failedSeek : {-1,0,1}) {
+   Section s; Storage={}; fault={};
+   auto& bytes=Storage.files[s.binTmpPath()]; bytes=std::string(64,0);bytes[58]='B';
+   const auto original=bytes;
+   s.file.path=s.binTmpPath();s.file.failSeek=failedSeek;
+   auto page=s.loadPageDuringBuild(1);
+   assert(fault.reads==(failedSeek==0 ? 0 : 1));
+   assert(bool(page)==(failedSeek<0));
+   if(page) assert(page->marker=='B' && page->visibleTextOffset==6);
+   assert(s.buildPageWriteFailed_==(failedSeek==1));
+   if(failedSeek==1) {
+     assert(s.buildFailure_==EpubBuildFailure::InputOutput && !s.loadPageDuringBuild(0));
+     assert(!s.onPageComplete(std::make_unique<Page>()) && !s.file.calls);
+   } else {
+     assert(s.file.position()==64);
+     fault={};fault.readAt=1;
+     assert(!s.loadPageDuringBuild(1) && !s.buildPageWriteFailed_ && s.file.position()==64);
+   }
+   assert(bytes==original);
+   if(failedSeek!=1) {
+     auto next=std::make_unique<Page>();next->marker='C';
+     assert(s.onPageComplete(std::move(next))==64 && bytes==original+"C");
+   }
+ }
+ fault={};
+}
 void checkCachedPages(bool partial) {
  Section s;
  Storage={};
@@ -127,7 +162,7 @@ void checkCachedPages(bool partial) {
  assert(!s.loadPageAt(0));
 }
 int main(){
- checkCachedPages(false);checkCachedPages(true);
+ checkActivePageRead();checkCachedPages(false);checkCachedPages(true);
  auto seed=[](Section& s){Storage={};Storage.files[s.filePath]="old";Storage.files[s.binTmpPath()]=std::string(64,'\0');s.file.path=s.binTmpPath();};
  Section success;seed(success);assert(success.commitBuildFile(SECTION_FILE_PARTIAL_VERSION,100,200));
  const int writes=success.file.calls;assert(writes>10 && Storage.files[success.filePath]!="old" && !Storage.files.contains(success.filePath+".bak"));
