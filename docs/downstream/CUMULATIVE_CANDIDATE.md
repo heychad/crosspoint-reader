@@ -543,3 +543,22 @@ Both builds passed standard and personal X4 Pro compilation, regular and
 sanitizer host checks, and the compiled stable-update simulation. Each
 package includes the confirmed test70 rollback. Test71 is the image on the
 card for the [morning reading check](NEXT_DEVICE_QA.md).
+
+### Local test79 package
+
+Test79 adds two reading improvements. With black-and-white images and text
+antialiasing enabled, already-cached illustrations skip pixel processing in
+both gray passes. The low-memory streaming path still checks SD reads.
+Bottom-up BMP covers that extend below the screen now draw their visible
+rows. An entirely hidden image still skips its first row read.
+
+Saved Items reuses the same filename buffer for recovery suffixes. In six
+FAT and exFAT runs on a copy of the 1,935-book catalog, all seven candidate
+books matched test77. Temporary allocation calls for checking the filenames
+fell from 36,744 to 23,203. Actual first-open time needs a reader measurement.
+
+Test79 source `6b7ebdaf` passed 2,602 enabled checks in each host
+configuration, both X4 Pro builds, and the compiled stable-update simulation.
+The 5,869,264-byte Mac image has SHA-256
+`c2ed8c3314ecdfb6000b895f98171520d4c2b055f93c958aeaae29cbeba18426`.
+The package includes the test70 rollback. Test71 remains staged on the reader.
