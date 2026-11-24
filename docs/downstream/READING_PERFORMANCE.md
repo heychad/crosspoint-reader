@@ -20,6 +20,26 @@ To check for the slight text shift after a page turn, compare the same text-only
 pages with Text Anti-Aliasing on and off. With it on, the reader applies a
 grayscale pass that can make the text appear to settle after the first refresh.
 
+### Why text can appear to settle
+
+The CrossPoint 2.0.0 SDK sent two panel refresh commands for an ordinary
+antialiased text turn on all three X4 Pro controllers in a host bus trace.
+The SDK pinned by CrossInk RC3 sent one on repeated turns with the SSD1677,
+UC8179, and supported UC8279 variants. The SSD1677 still sent two on the
+first transition in this fixture. Both SDKs ran the same 800 × 480 test page
+twice. These counts measure controller commands, not time or visible ghosting.
+
+RC3's text path reserves 576,000 bytes of PSRAM for this panel geometry.
+It uses page-type hints and charge history that must stay consistent when
+switching between a book, menus, illustrations, and sleep. Test71 and test72
+use the stable SDK. For a physical comparison, **Settings → System → About**
+lists **Display Controller**. Compare the same text page with text antialiasing
+on and off; the reader may still do its scheduled cleanup refresh.
+
+Sources: [stable display SDK](https://github.com/Free-Ink/freeink-sdk/tree/5e94fe7480f019c89fbf691aef87523eb1b46704/libs/display/FreeInkDisplay),
+[RC3 text helper](https://github.com/Free-Ink/freeink-sdk/blob/9d5bba3ef02a1c35363ecadbb50ad0e1ac279653/libs/display/FreeInkDisplay/src/driver/X4ProTextAa.h),
+and [RC3 page scopes](https://github.com/uxjulia/CrossInk/blob/0b939f41ec22c0d647a5c65ec5126141cbe7e565/src/activities/reader/ReaderRefreshScope.h).
+
 ## Remapped EPUB page button
 
 The physical Up button can queue a remapped next or previous EPUB page on

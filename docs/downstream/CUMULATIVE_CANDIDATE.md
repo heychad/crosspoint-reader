@@ -61,6 +61,33 @@ The local manifest also verifies the test70 rollback and `Review71.epub`,
 which exercises divider layout and clipping. Stage the follow-up after the
 [test70 device check](NEXT_DEVICE_QA.md) and a fresh reading-state backup.
 
+### Local test72 package
+
+Test71 and its test70 rollback are on the card. Test72 is a separate Mac
+package, `2026-11-24-test72-reading`, with test71 as its rollback. The
+[device checklist](NEXT_DEVICE_QA.md) still starts with test71.
+
+Test72 includes faster clipping saves, fewer highlight and chapter metadata
+lookups, aligned GIF decoding, and optional Wi-Fi render timing summaries.
+Three archived clipping stores with 14 clips reopened in memory. Adding a
+sample produced byte-identical files on test71 and test72. Every prior
+passage reopened after 116 simulated SD read and write failures. FAT and
+exFAT also reopened all 1,024 clips in the maximum-count fixture. A card
+with an unreadable primary clipping store can display a verified backup;
+edits wait until the primary recovers.
+
+The reviewed firmware source is `16da4a2b`. The packaging checkout
+`5d6c28aa` adds upstream release discovery and its host test. Both X4 Pro
+profiles compiled. All 2,583 enabled host checks passed in the regular and
+sanitizer builds. The separate stable OTA simulation accepted the valid
+compiled preview and rejected a one-byte change before boot selection.
+
+`READER72.BIN` is 5,865,184 bytes and reports
+`2.0.0-chad.3-test72-reading-x4pro`. Its board, OTA slot size, image
+checksum, and validation hash passed. SHA-256:
+`fa00b61162619c88cb71b6d14e09b5f117a02f4d50e6b63fdcb0967c2af9116c`.
+On-device latency and release acceptance remain open.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with
