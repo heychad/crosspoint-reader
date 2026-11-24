@@ -209,7 +209,7 @@ update before finalization or boot selection. The harness uses real SHA-256
 with simulated transport and flash. Live TLS and installation still need a
 reader test.
 
-The current host pipeline simulates upgrading from test70. Use a temporary
+The host pipeline simulates upgrading from test70 by default. Use a temporary
 PlatformIO configuration to build the stable test image from the repository
 root.
 
@@ -223,6 +223,16 @@ CROSSPOINT_STABLE_TEST_IMAGE=.pio/build/x4pro-gh_release/firmware.bin \
   build/recovery-host-tests/personal_update/OtaPipelineTest \
   --gtest_also_run_disabled_tests \
   --gtest_filter=OtaPipeline.DISABLED_CompiledStableImageUpgrade
+```
+
+For a later starting version, configure a separate host build and pass the
+firmware's exact About version through `CROSSPOINT_OTA_HOST_START_VERSION`.
+Run the same compiled-image check with that build's executable.
+
+```sh
+cmake -S test -B build/test71-stable-ota/host \
+  -DCROSSPOINT_OTA_HOST_START_VERSION=2.0.0-chad.3-test71-review-fixes-x4pro
+cmake --build build/test71-stable-ota/host --target OtaPipelineTest
 ```
 
 On November 23, the stable profile built from `c97a5ab6` produced a
@@ -249,6 +259,20 @@ Image SHA-256
 `ac62c87b6e88f1636ffe22036aad458ce2f5e8399d56ecef975bd5ebf8d85a5a`.
 This preview is for local checks. Device installation and live TLS remain
 open. The next physical check is the [test70 handoff](NEXT_DEVICE_QA.md).
+
+### Test71 stable image check
+
+The stable preview built from the same production source as test71
+(`f7257e09`) took 113.93 seconds and produced a 5,817,072-byte X4 Pro image.
+Its board, version, slot size, checksum, and validation hash checks passed.
+Host updaters starting from test70 and test71 both accepted those exact bytes
+and selected the simulated boot slot. Flipping one byte aborted before
+finalization or boot selection. All ten ordinary updater tests also passed
+for each starting version.
+
+Image SHA-256
+`6df1f28dad9345672146f9d568de9ade6205f00dcb6c8f3ec8adceb5c0e11e5a`.
+The preview is local. Live TLS and a physical upgrade remain device checks.
 
 ## Verification boundary
 

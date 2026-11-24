@@ -38,8 +38,10 @@ add_executable(OtaPipelineTest OtaPipelineTest.cpp
 target_include_directories(OtaPipelineTest PRIVATE stubs ${REPO_ROOT}/src/network ${REPO_ROOT}/lib/hal
   ${REPO_ROOT}/lib/Memory ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include)
+set(CROSSPOINT_OTA_HOST_START_VERSION "2.0.0-chad.3-test70-reader-batch-x4pro" CACHE STRING
+    "Running firmware version for the X4 Pro host update tests")
 target_compile_definitions(OtaPipelineTest PRIVATE FREEINK_DEVICE_X4PRO=1
-  CROSSPOINT_VERSION="2.0.0-chad.3-test70-reader-batch-x4pro")
+  CROSSPOINT_VERSION="${CROSSPOINT_OTA_HOST_START_VERSION}")
 target_link_libraries(OtaPipelineTest PRIVATE crosspoint_test_common GTest::gtest_main)
 if(NOT APPLE)
   target_link_libraries(OtaPipelineTest PRIVATE OpenSSL::Crypto)
