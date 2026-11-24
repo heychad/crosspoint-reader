@@ -448,3 +448,10 @@ and full-page decoding are separate measurements.
 The page decoder also checks short reads of its scalar fields before using
 them, including element tags and link coordinates. A host test truncated a
 page containing a rule, drop cap, border, footnote, and link at every byte.
+
+A second fixture used the page and text-block decoders and serialized image
+metadata. It opened 4,352 synthetic pages with short or dense text, including
+illustration references and Japanese reading annotations. Across FAT and exFAT,
+sector reads fell from 98,850 to 94,222 (4.7%). Every expected word, annotation
+position, and image path matched. This includes decoding the page records.
+Displaying pixels on the X4 Pro takes additional time.

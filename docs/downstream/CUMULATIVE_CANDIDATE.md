@@ -604,3 +604,17 @@ both X4 Pro builds, and the compiled stable-update simulation. The
 5,870,384-byte Mac image has SHA-256
 `d13d3864d86931a7c7a7524973a47fccba8dd3a887c12cfa23b6b0cf4510f9ee`.
 The package includes the test70 rollback. Test71 remains staged on the reader.
+
+### Local test83 package
+
+Test83 reads the cached page and text-offset table locations together. A
+failed read keeps the requested page number for the rebuild. A full decoder
+fixture reopened 4,352 synthetic pages with matching words, annotation
+positions, image paths, and link counts. FAT and exFAT sector reads fell
+from 98,850 to 94,222. Physical page-turn timing remains open.
+
+Source `deb9c85b` passed 2,609 enabled checks in each host configuration,
+both X4 Pro builds, and the compiled stable-update simulation. The
+5,870,768-byte Mac image has SHA-256
+`646966fede3deeb4a13ddcef1c7b6b91a3b651eb51af80c46e9d9fa47125112f`.
+The package includes the test70 rollback. Test71 remains staged on the reader.
