@@ -193,3 +193,15 @@ rewritten file matched the previous writer byte for byte after remount.
 
 The reader checks the temporary store's sync and close results before replacing
 the prior copy. If either fails, the prior clippings remain available for retry.
+
+If the card reports a failed rename, the reader discards cached text offsets.
+Reopening the book loads the surviving primary. If that copy is unreadable,
+Saved Items and the reader can read a valid backup. Editing and sync wait for
+a writable primary. A save that reported failure may appear after reopening
+if the card completed the rename.
+
+Cleanup of leftover clipping files checks their allocation chains before
+removing anything. The X4 Pro can check a pair of files up to 5 MiB each,
+using up to 80 KiB of temporary PSRAM for large files. An unreadable chain,
+overlap, or failed allocation leaves the files in place. The normal save path
+with no leftovers skips this check.

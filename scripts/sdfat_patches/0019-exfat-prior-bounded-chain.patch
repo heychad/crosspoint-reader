@@ -18,7 +18,7 @@
      }
      if (checksum != expected) goto fail;
    }
-@@ -798,3 +798,62 @@
+@@ -798,3 +798,69 @@
    m_curCluster = tmp;
    return false;
  }
@@ -52,17 +52,24 @@
 +}
 +
 +bool ExFatFile::settingsClusterList(Cluster_t* out, size_t capacity, size_t* count) {
-+  if (!out || !count || !isFile() || !m_dataLength || m_dataLength > (capacity > 64 ? 262144 : 32768) ||
++  // Larger buffers are used only for clipping-store recovery on X4 Pro.
++  const bool large = capacity > 512;
++  const size_t byteLimit = large ? 5U * 1024U * 1024U : (capacity > 64 ? 262144U : 32768U);
++  if (!out || !count || !isFile() || !m_dataLength || m_dataLength > byteLimit ||
 +      m_validLength != m_dataLength || m_firstCluster < 2) return false;
 +  const uint8_t shift = m_vol->bytesPerClusterShift();
 +  if (shift >= 63) return false;
 +  const uint64_t clusterBytes = uint64_t{1} << shift;
 +  const size_t expected = (m_dataLength + clusterBytes - 1) / clusterBytes;
-+  if (!expected || expected > capacity || expected > 512) return false;
++  if (!expected || expected > capacity || expected > (large ? 10240U : 512U)) return false;
 +  Cluster_t current = m_firstCluster;
 +  for (size_t i = 0; i < expected; ++i) {
 +    if (current < 2 || current - 2 >= m_vol->clusterCount()) return false;
-+    for (size_t j = 0; j < i; ++j) if (out[j] == current) return false;
++    // Every chain below must terminate at exactly its expected length. A
++    // cycle cannot reach EOC. Large-list callers also check sorted IDs.
++    if (!large) {
++      for (size_t j = 0; j < i; ++j) if (out[j] == current) return false;
++    }
 +    const uint32_t bit = current - 2;
 +    const uint8_t sectorShift = m_vol->bytesPerSectorShift();
 +    const Sector_t sector = m_vol->clusterHeapStartSector() + (bit >> (sectorShift + 3));

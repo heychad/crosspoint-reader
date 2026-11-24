@@ -72,11 +72,11 @@ bool prepareWriteLocked(void* context) {
   const auto backup = Storage.lookupPath(backupPath.c_str());
   const auto temp = Storage.lookupPath(tmpPath.c_str());
   if (backup == Status::Failed || temp == Status::Failed) return false;
-  if (backup == Status::Present && (!committed || !Storage.distinctMoveChains(path.c_str(), backupPath.c_str())))
+  if (backup == Status::Present && (!committed || !Storage.distinctClippingChains(path.c_str(), backupPath.c_str())))
     return false;
   if (temp == Status::Present) {
-    if ((committed && !Storage.distinctMoveChains(path.c_str(), tmpPath.c_str())) ||
-        (backup == Status::Present && !Storage.distinctMoveChains(backupPath.c_str(), tmpPath.c_str())) ||
+    if ((committed && !Storage.distinctClippingChains(path.c_str(), tmpPath.c_str())) ||
+        (backup == Status::Present && !Storage.distinctClippingChains(backupPath.c_str(), tmpPath.c_str())) ||
         !Storage.remove(tmpPath.c_str()))
       return false;
   }

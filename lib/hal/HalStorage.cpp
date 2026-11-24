@@ -7,6 +7,8 @@
 #include <esp_heap_caps.h>
 
 #include "CheckedStoragePath.h"
+#include "ClippingFileIdentity.h"
+#include "HalMemory.h"
 #include "SmallFileIdentity.h"
 #if FREEINK_CAP_USB_MSC
 #include <UsbMassStorage.h>
@@ -562,6 +564,18 @@ bool HalStorage::distinctMoveChains(const char* first, const char* second) {
   auto left = SDCard.open(first, O_RDONLY);
   auto right = SDCard.open(second, O_RDONLY);
   const bool distinct = left && right && moveFilesHaveIndependentStorage(left, right);
+  const bool leftClosed = !left || left.close();
+  const bool rightClosed = !right || right.close();
+  return distinct && leftClosed && rightClosed;
+}
+
+bool HalStorage::distinctClippingChains(const char* first, const char* second) {
+  StorageLock lock;
+  if (!first || !second || lookupPath(first) != PathStatus::Present || lookupPath(second) != PathStatus::Present)
+    return false;
+  auto left = SDCard.open(first, O_RDONLY);
+  auto right = SDCard.open(second, O_RDONLY);
+  const bool distinct = left && right && clippingFilesHaveIndependentStorage(left, right, HalMemory::allocatePsram);
   const bool leftClosed = !left || left.close();
   const bool rightClosed = !right || right.close();
   return distinct && leftClosed && rightClosed;

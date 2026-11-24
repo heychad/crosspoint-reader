@@ -51,13 +51,13 @@ PATCHES = (
      "2c9052a915907aa4f7761d5e82e56325ee409155da28059a85e96c958b61b597"),
     ("0011-exfat-strict-scan.patch", "src/ExFatLib/ExFatFile.cpp",
      "ebcdb4c15e9200caf15a93095a37428d987e96da0f85733104550373ce6f0aa0",
-     "ac9f77b4824e0ef4b65aa3169b4db3730fd263e870b8422062634985fbf77dce"),
+     "9456431e4472a13243e7053609eb18a7ad53c952380503bea6142e6f9e89252d"),
     ("0035-exfat-retain-dirty-on-sync-failure.patch", "src/ExFatLib/ExFatFileWrite.cpp",
      "439e1fe566bc04c8e53962eeb8bdd91c89d5358cfff20bcf8be90c742e683ea4",
      "2f78988a33c5c3a828a287b239847db1d313882e1f5fc8fed21d94890dec24b3"),
     ("0017-fat-source-bounded-chain.patch", "src/FatLib/FatFile.cpp",
      "c1757a57ea134df2aab650d2db109b7d731f66cf309e5a070a9b50667c258948",
-     "7c09e58a72ee9472f72ea15d36164e243813f17407443fc73e886f0a3b72e7ce"),
+     "99ba6f0f3ecedfe1818db4af7d234e6c25ea1c06172b4e688d5a772abbcaaadc"),
     ("0054-exfat-unsigned-name-hash.patch", "src/ExFatLib/ExFatName.cpp",
      "65b68473f51e97820fa6fd477addc14c247810902e3b77b5a4fe69849a6988a8",
      "413552937ce1806b04177bc12c25d9e54a1a1da7cf2ba49615a25914cd3f99d9"),
@@ -72,6 +72,8 @@ MIGRATIONS = {
             "0025-fat-partition-header-strict-eoc.patch",
     },
     "src/FatLib/FatFile.cpp": {
+        "7c09e58a72ee9472f72ea15d36164e243813f17407443fc73e886f0a3b72e7ce":
+            "0055-fat-clipping-chain.patch",
         "6e22cddac127b6fd0acdebb1c4a7e5bb48f24d57d855f0bc1345fc0246aba2f6":
             "0053-fat-cached-read-null-pointer.patch",
         "a3eced090c0a4f5dfb370bf6056a7f52d1b46940b5103102569443b3da225c51":
@@ -128,6 +130,8 @@ MIGRATIONS = {
             "0046-move-entry-from-0015-exfat-header-bounded-chain.patch",
     },
     "src/ExFatLib/ExFatFile.cpp": {
+        "ac9f77b4824e0ef4b65aa3169b4db3730fd263e870b8422062634985fbf77dce":
+            "0056-exfat-clipping-chain.patch",
         "fc548634c76ba8078d99222ff41f5d3b3e373fb3b4635a67c52904cf19f9edbb":
             "0052-exfat-move-larger-chain.patch",
         "46c066263885e61c5a0482dc3509df5bace79f089ad38a9378b1f82e551b0a4e":

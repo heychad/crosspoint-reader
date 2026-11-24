@@ -1,3 +1,4 @@
+#include <ClippingFileIdentity.h>
 #include <SmallFileIdentity.h>
 
 #include <cassert>
@@ -61,6 +62,16 @@ struct MoveFile {
   }
 };
 
+struct LargeClipFile : MoveFile {
+  size_t fileSize() const { return empty ? 0 : 4 * 1024 * 1024; }
+  bool settingsClusterList(uint32_t* out, size_t capacity, size_t* count) {
+    if (capacity < 1024) return false;
+    for (size_t i = 0; i < 1024; ++i) out[i] = cluster + 2 * (1023 - i);
+    *count = 1024;
+    return true;
+  }
+};
+
 int main() {
   File first{2}, second{4}, overlap{3};
   failAt = 0;
@@ -99,5 +110,13 @@ int main() {
   assert(!moveFilesHaveIndependentStorage(empty, left));
   empty.differentEntry = true;
   assert(moveFilesHaveIndependentStorage(empty, left));
+  LargeClipFile largeA{{2, false, true}}, largeB{{3, false, true}}, sharedCluster{{2048, false, true}};
+  auto psram = [](size_t bytes) { return makeUniqueNoThrow<uint32_t[]>(bytes / sizeof(uint32_t)); };
+  allocations = 0;
+  failAt = 0;
+  assert(!clippingFilesHaveIndependentStorage(largeA, largeB, psram) && outstanding == 0);
+  failAt = -1;
+  assert(clippingFilesHaveIndependentStorage(largeA, largeB, psram));
+  assert(!clippingFilesHaveIndependentStorage(largeA, sharedCluster, psram));
   assert(outstanding == 0);
 }

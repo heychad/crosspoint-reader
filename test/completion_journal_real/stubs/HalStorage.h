@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 
+#include "ClippingFileIdentity.h"
 #include "SmallFileIdentity.h"
 
 class HalFile {
@@ -188,6 +189,14 @@ class HalStorage {
     FsBaseFile a, b;
     if (!a.open(first, O_RDONLY) || !b.open(second, O_RDONLY)) return false;
     const bool distinct = moveFilesHaveIndependentStorage(a, b);
+    const bool ac = a.close(), bc = b.close();
+    return distinct && ac && bc;
+  }
+  bool distinctClippingChains(const char* first, const char* second) {
+    FsBaseFile a, b;
+    if (!a.open(first, O_RDONLY) || !b.open(second, O_RDONLY)) return false;
+    const bool distinct = clippingFilesHaveIndependentStorage(
+        a, b, [](size_t bytes) { return std::make_unique<uint32_t[]>(bytes / sizeof(uint32_t)); });
     const bool ac = a.close(), bc = b.close();
     return distinct && ac && bc;
   }

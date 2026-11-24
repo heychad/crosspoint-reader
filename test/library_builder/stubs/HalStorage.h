@@ -289,6 +289,7 @@ class HalStorage {
     const auto a = fake::files.find(first), b = fake::files.find(second);
     return a != fake::files.end() && b != fake::files.end() && a->second != b->second;
   }
+  bool distinctClippingChains(const char* first, const char* second) const { return distinctMoveChains(first, second); }
   bool remove(const char* path) {
     if (fake::failRemovePath == path) {
       fake::failRemovePath.clear();

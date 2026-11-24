@@ -127,6 +127,8 @@ class HalStorage {
   // Distinct entries and independent bounded chains, including empty files.
   bool moveChainEligible(const char* path, bool allowUnallocatedEmpty = false);
   bool distinctMoveChains(const char* first, const char* second);
+  // For interrupted clipping saves. Supports files up to 5 MiB, using PSRAM for large chains.
+  bool distinctClippingChains(const char* first, const char* second);
   bool remove(const char* path);
   bool rename(const char* oldPath, const char* newPath);
   // Move a fully written temp file over `path`, replacing any existing file.
