@@ -98,6 +98,28 @@ TEST_F(GifDecoderTest, DecodesSmallFourColorAndMaximumWidthImages) {
   }
 }
 
+TEST_F(GifDecoderTest, PreservesPaletteIndexAtEveryPixelAcrossOddWidthRows) {
+  // Original 131-by-5 four-color diagonal stripe pattern encoded with Pillow.
+  auto bytes = fromHex(
+      "47494638376183000500810000000000505050a0a0a0ffffff2c00000000830005000008550001041030402041830507263ca810a1c386"
+      "10194a5c48f1e1448b152366bca811a3c7811d43721cb9b1e44792274d8a54895263cb972c63a69cb992264c9b0565d6dc7993a7ce9e"
+      "4075e21cea936850a33f590604003b");
+  AnimatedGIF decoder;
+  decoder.begin(GIF_PALETTE_RGB888);
+  int rows = 0;
+  ASSERT_TRUE(decoder.open(bytes.data(), bytes.size(), [](GIFDRAW* row) {
+    int& nextRow = *static_cast<int*>(row->pUser);
+    ASSERT_EQ(row->y, nextRow);
+    ASSERT_EQ(row->iWidth, 131);
+    for (int x = 0; x < row->iWidth; ++x) EXPECT_EQ(row->pPixels[x], (x + nextRow) % 4);
+    ++nextRow;
+  }));
+  decoder.playFrame(false, nullptr, &rows);
+  EXPECT_EQ(decoder.getLastError(), GIF_SUCCESS);
+  EXPECT_EQ(rows, 5);
+  decoder.close();
+}
+
 TEST_F(GifDecoderTest, DecodesLargeGlobalPalettesFromMemoryAndFiles) {
   for (const uint8_t paletteBits : {6, 7}) {
     auto bytes = fromHex(SMALL_GIF);

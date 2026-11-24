@@ -28,7 +28,7 @@ class PatchAnimatedGifTest(unittest.TestCase):
         library = self.root / name / "AnimatedGIF"
         source = library / "src"
         source.mkdir(parents=True)
-        (source / "AnimatedGIF.h").write_text(PATCH.OLD_SNIPPET)
+        (source / "AnimatedGIF.h").write_text(PATCH.OLD_SNIPPET + PATCH.REGISTER_OLD)
         (source / "gif.inl").write_text(PATCH.PALETTE_OLD + PATCH.COPY_OLD)
         return library
 
@@ -40,10 +40,21 @@ class PatchAnimatedGifTest(unittest.TestCase):
         first = {p.name: p.read_bytes() for p in (active / "src").iterdir()}
         self.assertTrue(PATCH.patch_animatedgif(env, require_found=True))
         self.assertEqual(first, {p.name: p.read_bytes() for p in (active / "src").iterdir()})
-        self.assertEqual((sibling / "src" / "AnimatedGIF.h").read_text(), PATCH.OLD_SNIPPET)
+        self.assertEqual((sibling / "src" / "AnimatedGIF.h").read_text(), PATCH.OLD_SNIPPET + PATCH.REGISTER_OLD)
         self.assertEqual((sibling / "src" / "gif.inl").read_text(), PATCH.PALETTE_OLD + PATCH.COPY_OLD)
         self.assertIn(PATCH.PALETTE_NEW, first["gif.inl"].decode())
         self.assertIn(PATCH.COPY_NEW, first["gif.inl"].decode())
+
+    def test_previously_patched_install_upgrades_to_same_sources(self):
+        previous = self.library("previous") / "src"
+        (previous / "AnimatedGIF.h").write_text(PATCH.NEW_SNIPPET + PATCH.REGISTER_OLD)
+        (previous / "gif.inl").write_text(PATCH.PALETTE_NEW + PATCH.COPY_BOUNDED)
+        clean = self.library() / "src"
+        for src in (clean, previous):
+            PATCH.patch_library(src.parent)
+        for path in clean.iterdir():
+            self.assertEqual(path.read_bytes(), (previous / path.name).read_bytes())
+        self.assertIn(PATCH.REGISTER_NEW, (previous / "AnimatedGIF.h").read_text())
 
     def test_unknown_decoder_source_fails_without_rewriting_it(self):
         source = self.library() / "src" / "gif.inl"
