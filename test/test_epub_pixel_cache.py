@@ -29,7 +29,8 @@ struct GfxRenderer {
   int getWriteRows() const { return rows; }
   RenderMode getRenderMode() const { return mode; }
   bool grayPlanesAreAbsolute() const { return false; }
-  bool imagesDitheredInBw() const { return false; }
+  bool ditherImages = false;
+  bool imagesDitheredInBw() const { return ditherImages; }
   int getDisplayWidth() const { return 800; }
   int getDisplayHeight() const { return 480; }
   int getDisplayWidthBytes() const { return 100; }
@@ -174,6 +175,35 @@ int main() {
       HalFile::failSeek = false;
     }
   }
+
+  // A BW image contributes nothing to either text-AA plane. A cached
+  // payload skips the row walk; an unreadable on-card cache still fails.
+  for (auto mode : {GfxRenderer::GRAYSCALE_MSB, GfxRenderer::GRAYSCALE_LSB}) {
+    renderer.ditherImages = true;
+    renderer.mode = mode;
+    renderer.orientation = GfxRenderer::LandscapeCounterClockwise;
+    renderer.origin = 0;
+    renderer.rows = 480;
+    renderer.framebuffer.fill(0xa5);
+    const auto original = renderer.framebuffer;
+    makePackedImage(160, 80);
+    unsigned visits = 0;
+    renderPxcRows(renderer, 0, 0, {3, 160, 80}, [&](size_t position, int) {
+      ++visits;
+      return HalFile::contents.data() + 4 + position;
+    });
+    assert(visits == 0 && renderer.framebuffer == original);
+    HalMemory::present = false;
+    ESP.internal = 0;
+    HalFile::bytesRead = 0;
+    assert(renderFromCache(renderer, "/book/dither.pxc", 0, 0, 160, 80));
+    assert(HalFile::bytesRead == 4 + 40 * 80 && renderer.framebuffer == original);
+    HalFile::failSeek = true;
+    assert(!renderFromCache(renderer, "/book/dither.pxc", 0, 0, 160, 80));
+    HalFile::failSeek = false;
+  }
+  renderer.ditherImages = false;
+  ESP.internal = 8192;
 
   // A smaller image touches only the edge of these landscape strips.
   HalMemory::present = false;

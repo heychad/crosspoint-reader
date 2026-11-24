@@ -23,9 +23,11 @@ program = r'''
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cmath>
 #include <memory>
 #include <vector>
 #define LOG_ERR(...) ((void)0)
+#define LOG_DBG(...) ((void)0)
 bool allocationFails=false;
 size_t requested=0;
 template<class T> std::unique_ptr<T> makeUniqueNoThrow(size_t count){
@@ -37,6 +39,7 @@ struct Bitmap {
  int getWidth()const{return width;}int getHeight()const{return height;}
  int getRowBytes()const{return ((width+31)/32)*4;}
  bool isTopDown()const{return topDown;}
+ bool is1Bit()const{return false;}
  int level(int x,int y)const{return (x+2*y)%4;}
  BmpReaderError readNextRow(uint8_t* out,uint8_t*)const{
   if(row==failAt)return BmpReaderError::Failed;
@@ -61,9 +64,11 @@ struct GfxRenderer {
   for(int yy=y;yy<y+h;++yy)for(int xx=x;xx<x+w;++xx)if(inside(xx,yy))pixels[yy*width+xx]^=1;
  }
  bool drawPerspectiveBitmap(const Bitmap&,int,int,int,int,int)const;
+ bool drawBitmap(const Bitmap&,int,int,int,int,float,float,bool)const;
+ bool drawBitmap1Bit(const Bitmap&,int,int,int,int)const {assert(false);return false;}
  void drawIcon(const uint8_t[],int,int,int,bool=true)const;
 };
-''' + gray + method('bool GfxRenderer::drawPerspectiveBitmap(') + '\n' + method('void GfxRenderer::drawIcon(') + r'''
+''' + gray + method('bool GfxRenderer::drawBitmap(') + '\n' + method('bool GfxRenderer::drawPerspectiveBitmap(') + '\n' + method('void GfxRenderer::drawIcon(') + r'''
 int main(){
  for(bool portrait:{false,true})for(bool topDown:{false,true})for(int sourceW:{1,5,9})for(int sourceH:{1,4,13})
  for(int w:{1,3,9})for(int hl:{1,3,10})for(int hr:{1,5,9})for(bool clip:{false,true})
@@ -92,7 +97,29 @@ int main(){
    assert(r.pixels[yy*r.width+xx]==expected);
   }
  }
+ // Compare each visible source pixel for images drawn partly outside the screen.
+ for(bool topDown:{false,true})for(int y:{-4,0,4,6,9})for(int x:{-2,1,10})
+ for(int mode:{0,1,2})for(bool absolute:{false,true})for(bool invert:{false,true})for(bool initial:{false,true}){
+  GfxRenderer r;r.renderMode=static_cast<GfxRenderer::RenderMode>(mode);
+  r.absoluteGrayPlanes=absolute;r.inverted=invert;r.pixels.assign(96,initial);
+  Bitmap b;b.width=5;b.height=6;b.topDown=topDown;
+  assert(r.drawBitmap(b,x,y,0,0,0,0,false));
+  for(int yy=0;yy<r.height;++yy)for(int xx=0;xx<r.width;++xx){
+   bool expected=initial;
+   if(xx>=x&&xx<x+b.width&&yy>=y&&yy<y+b.height){
+    const int level=b.level(xx-x,yy-y);
+    if(mode==0)expected=(level<3||initial)^invert;
+    else {auto p=grayPlanePixel(level,mode==2,absolute);if(p.write)expected=p.black;}
+   }
+   assert(r.pixels[yy*r.width+xx]==expected);
+  }
+ }
  GfxRenderer r;Bitmap b;
+ b.failAt=0;
+ assert(r.drawBitmap(b,0,r.height,0,0,0,0,false) && b.row==0);
+ // An invisible first row must still be read to reach the visible rows above it.
+ assert(!r.drawBitmap(b,0,r.height-1,0,0,0,0,false));
+ b={};
  allocationFails=true;assert(!r.drawPerspectiveBitmap(b,0,0,4,6,3));assert(b.row==0);
  allocationFails=false;b.failAt=2;assert(!r.drawPerspectiveBitmap(b,0,0,4,6,3));assert(b.row==2);
  b={};r.cache.scanning=true;assert(!r.drawPerspectiveBitmap(b,0,0,4,6,3));assert(b.row==0);

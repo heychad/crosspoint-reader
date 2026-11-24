@@ -58,6 +58,19 @@ bool Candidates::Names::mightContain(std::string_view name) const {
   return true;
 }
 
+bool Candidates::Names::mightContainAny(std::string& path, std::initializer_list<const char*> suffixes) const {
+  if (!reliable || !any) return !reliable;
+  if (mightContain(path)) return true;
+  const auto length = path.size();
+  for (const auto* suffix : suffixes) {
+    path.append(suffix);
+    const bool match = mightContain(path);
+    path.resize(length);
+    if (match) return true;
+  }
+  return false;
+}
+
 Candidates::Candidates() : initialized(Storage.beginMutationSnapshot(snapshot)) {}
 
 bool Candidates::valid() const { return initialized && Storage.mutationSnapshotUnchanged(snapshot); }
@@ -105,20 +118,19 @@ uint8_t Candidates::kindsFor(std::string_view book) const {
   uint8_t kinds = 0;
   const auto path = [book](Root root) { return bookmove::rootPath(book, BookKind::Reflowable, root); };
   const auto& bookmarks = stores[0];
+  // Native clippings and hash-based legacy bookmarks use the same basename.
+  auto hash = path(Root::HashBookmarks);
+  if (stores[1].mightContainAny(hash, {".bak"})) kinds |= HAS_CLIPPINGS;
+  if (!bookmarks.reliable) return kinds | BOOKMARKS | CROSSINK_BOOKMARKS;
+  if (!bookmarks.any) return kinds;
   const auto native = path(Root::NativeBookmarks);
   if (bookmarks.mightContain(native) || bookmarks.mightContain(BookmarkUtil::nativeRecoveryPath(native, true)) ||
       bookmarks.mightContain(BookmarkUtil::nativeRecoveryPath(native, false)))
     kinds |= BOOKMARKS;
-  for (const Root root : {Root::CrcBookmarks, Root::HashBookmarks}) {
-    const auto name = path(root);
-    if (bookmarks.mightContain(name) || bookmarks.mightContain(name + ".bookmark-edit.bak") ||
-        bookmarks.mightContain(name + ".bookmark-edit.guard")) {
-      kinds |= CROSSINK_BOOKMARKS;
-      break;
-    }
-  }
-  const auto name = path(Root::Clippings);
-  if (stores[1].mightContain(name) || stores[1].mightContain(name + ".bak")) kinds |= HAS_CLIPPINGS;
+  const auto edits = {".bookmark-edit.bak", ".bookmark-edit.guard"};
+  if (bookmarks.mightContainAny(hash, edits)) return kinds | CROSSINK_BOOKMARKS;
+  auto crc = path(Root::CrcBookmarks);
+  if (bookmarks.mightContainAny(crc, edits)) kinds |= CROSSINK_BOOKMARKS;
   return kinds;
 }
 

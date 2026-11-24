@@ -2,7 +2,9 @@
 
 #include <array>
 #include <bitset>
+#include <initializer_list>
 #include <memory>
+#include <string>
 #include <string_view>
 
 #include "network/sync/StorageDirectoryScan.h"
@@ -30,6 +32,7 @@ class Candidates {
     bool any = false;
     void insert(std::string_view name);
     bool mightContain(std::string_view name) const;
+    bool mightContainAny(std::string& path, std::initializer_list<const char*> suffixes) const;
   };
   static bool addEntry(void* context, const wirecheck::DirectoryEntry& entry);
 

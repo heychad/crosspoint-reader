@@ -184,8 +184,15 @@ void renderPackedRow(DirectPixelWriter& writer, const uint8_t* pixels, int x, in
   }
 }
 
+// Dithered images have already contributed to BW. Their pixel writer writes
+// neither text-AA plane. Cached rows can skip unpacking in those passes.
+bool cachePassWritesPixels(const GfxRenderer& renderer) {
+  return renderer.getRenderMode() == GfxRenderer::BW || !renderer.imagesDitheredInBw();
+}
+
 template <typename ReadRow>
 void renderPxcRows(GfxRenderer& renderer, int x, int y, const PxcKey& key, const ReadRow& readRow) {
+  if (!cachePassWritesPixels(renderer)) return;
   const int bytesPerRow = (key.width + 3) / 4;
   DirectPixelWriter pw;
   pw.init(renderer);
@@ -301,6 +308,9 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
     return false;
   }
 
+  // The streaming fallback still checks each SD read so an unreadable cache
+  // takes the usual decode or placeholder path.
+  const bool paint = cachePassWritesPixels(renderer);
   for (int row = first; row < last;) {
     const int count = std::min(last - row, rowsPerRead);
     const size_t bytes = static_cast<size_t>(count) * bytesPerRow;
@@ -308,9 +318,11 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
       LOG_ERR("IMG", "Cache read error at row %d", row);
       return false;
     }
-    for (int i = 0; i < count; i++) {
-      const auto* pixels = readBuffer.get() + static_cast<size_t>(i) * bytesPerRow;
-      renderPackedRow(pw, pixels, x, y + row + i, cachedWidth);
+    if (paint) {
+      for (int i = 0; i < count; i++) {
+        const auto* pixels = readBuffer.get() + static_cast<size_t>(i) * bytesPerRow;
+        renderPackedRow(pw, pixels, x, y + row + i, cachedWidth);
+      }
     }
     row += count;
   }
