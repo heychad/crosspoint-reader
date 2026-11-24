@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[1]
-source=(root/'lib/Epub/Epub/blocks/ImageBlock.cpp').read_text()
+source=(root/'lib/Epub/Epub/blocks/ImageBlockCache.cpp').read_text()
 start=source.index('bool ImageBlock::serialize(')
 opening=source.index('{',start)
 depth=0

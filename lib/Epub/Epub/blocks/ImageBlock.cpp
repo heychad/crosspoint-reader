@@ -7,7 +7,6 @@
 #endif
 #include <Logging.h>
 #include <Memory.h>
-#include <Serialization.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -21,9 +20,6 @@
 // - uint16_t width
 // - uint16_t height
 // - uint8_t pixels[...] - 2 bits per pixel, packed (4 pixels per byte), row-major order
-
-ImageBlock::ImageBlock(const std::string& imagePath, const std::string& srcPath, int16_t width, int16_t height)
-    : imagePath(imagePath), srcPath(srcPath), width(width), height(height) {}
 
 void* ImageBlock::extractCtx = nullptr;
 ImageBlock::ExtractFn ImageBlock::extractFn = nullptr;
@@ -461,23 +457,4 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
 
   renderer.preserveImagePolarity(x, y, width, height);
   LOG_DBG("IMG", "Decode successful");
-}
-
-bool ImageBlock::serialize(HalFile& file) {
-  if (!serialization::tryWriteString(file, imagePath)) return false;
-  if (!serialization::tryWriteString(file, srcPath)) return false;
-  if (!serialization::tryWritePod(file, width)) return false;
-  if (!serialization::tryWritePod(file, height)) return false;
-  return true;
-}
-
-std::unique_ptr<ImageBlock> ImageBlock::deserialize(HalFile& file) {
-  std::string path;
-  std::string src;
-  serialization::readString(file, path);
-  serialization::readString(file, src);
-  int16_t w, h;
-  serialization::readPod(file, w);
-  serialization::readPod(file, h);
-  return std::unique_ptr<ImageBlock>(new (std::nothrow) ImageBlock(path, src, w, h));
 }

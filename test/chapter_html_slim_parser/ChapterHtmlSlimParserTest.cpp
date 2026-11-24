@@ -1,6 +1,7 @@
 #include <Epub.h>
 #include <Epub/Page.h>
 #include <Epub/ReaderRenderSpec.h>
+#include <Epub/blocks/CacheString.h>
 #include <Epub/converters/ImageDimsProbe.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
@@ -488,6 +489,14 @@ TEST_F(ChapterHtmlSlimParserTest, TruncatedPageNeverSuppliesClippingOrLinkCoordi
     page.elements.push_back(std::make_unique<PageDropCap>(12, 512, EpdFontFamily::BOLD, "A", 7, 11));
     CssBorderSide sides[4]{};
     page.elements.push_back(std::make_unique<PageBorderBox>(24, 12, sides, true, 3, 5));
+    std::vector<std::string> words{"first", "水"};
+    auto text = std::make_unique<TextBlock>(
+        words, std::vector<int16_t>{0, 22}, std::vector<EpdFontFamily::Style>(2, EpdFontFamily::REGULAR),
+        std::vector<uint8_t>{}, std::vector<uint16_t>{}, BlockStyle{}, std::vector<std::string>{"", "みず"});
+    ASSERT_TRUE(text->valid());
+    page.elements.push_back(std::make_unique<PageLine>(std::move(text), 4, 8));
+    page.elements.push_back(std::make_unique<PageImage>(
+        std::make_unique<ImageBlock>("/cache/1.pxc", "illustrations/地図.png", 37, 91), 2, 4));
     page.addFootnote("1", "note.xhtml");
     ASSERT_TRUE(page.addLink("chapter.xhtml", 1, 2, 8, 9));
     HalFile file;
@@ -499,9 +508,23 @@ TEST_F(ChapterHtmlSlimParserTest, TruncatedPageNeverSuppliesClippingOrLinkCoordi
     ASSERT_TRUE(file.open(path.c_str(), "rb"));
     auto result = Page::deserialize(file);
     ASSERT_NE(result, nullptr);
-    EXPECT_EQ(result->elements.size(), 3U);
+    ASSERT_EQ(result->elements.size(), 5U);
+    const auto* text = static_cast<PageLine&>(*result->elements[3]).getBlock();
+    EXPECT_EQ(text->getRubyTexts(), (std::vector<std::string>{"", "みず"}));
+    const auto& image = static_cast<PageImage&>(*result->elements[4]).getImageBlock();
+    EXPECT_EQ(image.getImagePath(), "/cache/1.pxc");
+    EXPECT_EQ(image.getWidth(), 37);
+    EXPECT_EQ(image.getHeight(), 91);
     ASSERT_EQ(result->links.size(), 1U);
     EXPECT_STREQ(result->links.front().href, "chapter.xhtml");
+  }
+  {
+    HalFile file;
+    ASSERT_TRUE(file.open(path.c_str(), "rb"));
+    HalMemory::largestBlock = sizeof(std::string);
+    // The reading annotation fits inline, but the vector for both words does not.
+    EXPECT_EQ(Page::deserialize(file), nullptr);
+    HalMemory::largestBlock = SIZE_MAX;
   }
   for (auto length = std::filesystem::file_size(path); length > 0; --length) {
     std::filesystem::resize_file(path, length - 1);
@@ -509,6 +532,38 @@ TEST_F(ChapterHtmlSlimParserTest, TruncatedPageNeverSuppliesClippingOrLinkCoordi
     ASSERT_TRUE(file.open(path.c_str(), "rb"));
     ASSERT_EQ(Page::deserialize(file), nullptr) << "truncated at byte " << length - 1;
   }
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, CacheStringChecksGrowthAndReusesCapacity) {
+  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto path = std::filesystem::temp_directory_path() / ("crosspoint-cache-string-" + std::to_string(stamp));
+  const std::string label(256, 'x');
+  {
+    HalFile output;
+    ASSERT_TRUE(output.open(path.c_str(), "wb"));
+    ASSERT_TRUE(serialization::tryWriteString(output, label));
+    ASSERT_TRUE(serialization::tryWriteString(output, ""));
+  }
+  HalFile input;
+  ASSERT_TRUE(input.open(path.c_str(), "rb"));
+  std::string value = "old";
+  HalMemory::largestBlock = label.size();  // No room for the terminating byte.
+  EXPECT_FALSE(epubcache::readString(input, value));
+  EXPECT_EQ(value, "old");
+  value.reserve(160);
+  EXPECT_TRUE(input.seek(0));
+  HalMemory::largestBlock = label.size() + 1;  // Growing can double the old capacity.
+  EXPECT_FALSE(epubcache::readString(input, value));
+  EXPECT_EQ(value, "old");
+  value.reserve(label.size());
+  EXPECT_TRUE(input.seek(0));
+  EXPECT_TRUE(epubcache::readString(input, value));
+  EXPECT_EQ(value, label);
+  EXPECT_TRUE(epubcache::readString(input, value));
+  EXPECT_TRUE(value.empty());
+  HalMemory::largestBlock = SIZE_MAX;
+  EXPECT_TRUE(input.close());
   std::filesystem::remove(path);
 }
 

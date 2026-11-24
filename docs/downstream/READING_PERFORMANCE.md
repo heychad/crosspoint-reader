@@ -455,3 +455,30 @@ illustration references and Japanese reading annotations. Across FAT and exFAT,
 sector reads fell from 98,850 to 94,222 (4.7%). Every expected word, annotation
 position, and image path matched. This includes decoding the page records.
 Displaying pixels on the X4 Pro takes additional time.
+
+### Text and image cache records
+
+Unannotated text writes up to 16 empty ruby annotation lengths at once.
+Reading an empty annotation now ends after its length. Text and image
+records check the byte count before using a field. A growing image path or
+annotation checks the largest available heap block first. Another task
+can allocate after that check.
+
+All 24 generated v84 chapters matched test83 byte-for-byte. Across 4,352
+decoded pages, calls to read file data fell from 3,713,856 to 2,707,456.
+Calls to write file data during chapter creation fell from 1,356,000 to
+1,089,984. Physical-sector operations in these disk images stayed at
+94,222 reads during decoding and 34,445 writes during creation. On the
+reader each file operation takes the storage lock. The wall-clock saving
+depends on the reader and card.
+
+A separate trial read several ruby lengths at a time. Seeking back when it
+encountered a Japanese annotation increased sector reads. The firmware
+reads each length in order.
+
+In 48 additional fixtures on contiguous and fragmented FAT and exFAT files,
+each sector read failed once in turn. All 59,127 failures declined the page.
+A subsequent read of the same page after remount returned the expected words,
+annotations, and image references in every case. These read attempts made
+zero sector writes. This exercises decoding and rereading the same saved
+bytes. The separate reader regression checks which page a rebuild requests.

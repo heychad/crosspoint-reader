@@ -7,11 +7,14 @@
 #include <MemoryManager.h>
 #include <Serialization.h>
 
+#include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <string_view>
 
 #include "../../../../src/fontIds.h"
 #include "../CjkBreaks.h"
+#include "CacheString.h"
 
 size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
   // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
@@ -476,9 +479,18 @@ bool TextBlock::serialize(HalFile& file) const {
     }
   }
 
-  // Ruby text data
-  for (size_t i = 0; i < numWords; i++) {
-    if (!serialization::tryWriteString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string())) return false;
+  // Unannotated lines store one zero length per word in the existing cache format.
+  if (rubyTexts.empty()) {
+    static constexpr uint32_t zeros[16] = {};
+    for (size_t i = 0; i < numWords; i += std::size(zeros)) {
+      const auto bytes = std::min<size_t>(numWords - i, std::size(zeros)) * sizeof(zeros[0]);
+      if (file.write(zeros, bytes) != bytes) return false;
+    }
+  } else {
+    const std::string empty;
+    for (size_t i = 0; i < numWords; ++i) {
+      if (!serialization::tryWriteString(file, i < rubyTexts.size() ? rubyTexts[i] : empty)) return false;
+    }
   }
 
   // Style (alignment + margins/padding/indent)
@@ -518,10 +530,9 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   uint8_t hasFocus;
   uint16_t textBytes;
   uint16_t paragraphStartWord;
-  serialization::readPod(file, wc);
-  serialization::readPod(file, hasFocus);
-  serialization::readPod(file, textBytes);
-  serialization::readPod(file, paragraphStartWord);
+  if (!serialization::tryReadPod(file, wc) || !serialization::tryReadPod(file, hasFocus) ||
+      !serialization::tryReadPod(file, textBytes) || !serialization::tryReadPod(file, paragraphStartWord))
+    return nullptr;
 
   // Sanity checks: cap the arena allocation and reject impossible geometry
   // (every word carries at least its NUL terminator).
@@ -574,21 +585,12 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     }
   }
 
-  // Ruby text data. Ruby is a CJK feature, so for nearly every book every entry here
-  // is the empty string. Materializing the vector regardless costs wordCount * 24 bytes
-  // (sizeof(std::string)) plus a heap block per line, held for as long as the page is
-  // resident -- several KB of DRAM on a full page, none of it ever read. An empty
-  // rubyTexts is already the "no ruby" representation: hasRuby() reports false and every
-  // other reader is guarded by `i < rubyTexts.size()`, so allocate lazily and only once a
-  // non-empty annotation actually shows up.
-  //
-  // `scratch` is reused across words: readString() resizes it to the incoming length and
-  // overwrites every byte, so a moved-from value carries nothing into the next iteration.
   std::string scratch;
-  for (uint16_t i = 0; i < wc; i++) {
-    serialization::readString(file, scratch);
+  for (uint16_t i = 0; i < wc; ++i) {
+    if (!epubcache::readString(file, scratch)) return nullptr;
     if (scratch.empty()) continue;
     if (block->rubyTexts.empty()) {
+      if (wc * sizeof(std::string) > HalMemory::getDefaultHeap().largestBlockBytes) return nullptr;
       block->rubyTexts.resize(wc);
     }
     block->rubyTexts[i] = std::move(scratch);
@@ -596,25 +598,26 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
 
   // Style (alignment + margins/padding/indent)
   BlockStyle& blockStyle = block->blockStyle;
-  serialization::readPod(file, blockStyle.alignment);
-  serialization::readPod(file, blockStyle.textAlignDefined);
-  serialization::readPod(file, blockStyle.marginTop);
-  serialization::readPod(file, blockStyle.marginBottom);
-  serialization::readPod(file, blockStyle.marginLeft);
-  serialization::readPod(file, blockStyle.marginRight);
-  serialization::readPod(file, blockStyle.paddingTop);
-  serialization::readPod(file, blockStyle.paddingBottom);
-  serialization::readPod(file, blockStyle.paddingLeft);
-  serialization::readPod(file, blockStyle.paddingRight);
-  serialization::readPod(file, blockStyle.textIndent);
-  serialization::readPod(file, blockStyle.textIndentDefined);
-  serialization::readPod(file, blockStyle.isRtl);
-  serialization::readPod(file, blockStyle.directionDefined);
-  serialization::readPod(file, blockStyle.characterSpacing);
-  serialization::readPod(file, blockStyle.fontId);
+  if (!serialization::tryReadPod(file, blockStyle.alignment) ||
+      !serialization::tryReadPod(file, blockStyle.textAlignDefined) ||
+      !serialization::tryReadPod(file, blockStyle.marginTop) ||
+      !serialization::tryReadPod(file, blockStyle.marginBottom) ||
+      !serialization::tryReadPod(file, blockStyle.marginLeft) ||
+      !serialization::tryReadPod(file, blockStyle.marginRight) ||
+      !serialization::tryReadPod(file, blockStyle.paddingTop) ||
+      !serialization::tryReadPod(file, blockStyle.paddingBottom) ||
+      !serialization::tryReadPod(file, blockStyle.paddingLeft) ||
+      !serialization::tryReadPod(file, blockStyle.paddingRight) ||
+      !serialization::tryReadPod(file, blockStyle.textIndent) ||
+      !serialization::tryReadPod(file, blockStyle.textIndentDefined) ||
+      !serialization::tryReadPod(file, blockStyle.isRtl) ||
+      !serialization::tryReadPod(file, blockStyle.directionDefined) ||
+      !serialization::tryReadPod(file, blockStyle.characterSpacing) ||
+      !serialization::tryReadPod(file, blockStyle.fontId))
+    return nullptr;
 
   uint8_t hasWordFonts = 0;
-  serialization::readPod(file, hasWordFonts);
+  if (!serialization::tryReadPod(file, hasWordFonts)) return nullptr;
   if (hasWordFonts > 1) {
     LOG_ERR("TXB", "Deserialization failed: bad word font flag %u", hasWordFonts);
     return nullptr;
