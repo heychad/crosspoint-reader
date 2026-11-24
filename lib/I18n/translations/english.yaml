@@ -736,6 +736,8 @@ STR_BT_LOW_MEMORY: "Bluetooth: not enough memory"
 STR_BT_HOLD: "hold"
 STR_BT_MAPPING_CLEARED: "Mapping cleared"
 STR_DELETE_ITEM_CONFIRM: "Delete?"
+STR_DELETE_SIZE_UNSUPPORTED: "Deletion sync supports EPUBs smaller than 4 GiB."
+STR_DELETE_PATH_UNSUPPORTED: "Rename the book or shorten its folder path, then retry."
 STR_DELETE_NEEDS_SPACE: "Free space on the SD card, then retry."
 STR_SET_SLEEP_COVER_CONFIRM: "Set Sleep Cover?"
 

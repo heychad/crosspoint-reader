@@ -214,8 +214,8 @@ void FileBrowserActivity::onExit() {
 
 // To avoid traversing directories twice (once for cache clearing, once for deletion),
 // we do both in one pass here, instead of using Storage.removeDir
-bool FileBrowserActivity::removeDirFile(const std::string& fullPath, bool& insufficientSpace) {
-  insufficientSpace = false;
+bool FileBrowserActivity::removeDirFile(const std::string& fullPath, BookDeleteIssue& issue) {
+  issue = BookDeleteIssue::None;
   if (protectedpaths::isBookDeletionPath(fullPath.c_str(), protectedpaths::PathAccess::Remove)) return false;
   auto file = Storage.open(fullPath.c_str());
   if (!file) {
@@ -225,7 +225,7 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath, bool& insuf
 
   if (!file.isDirectory()) {
     file.close();
-    return removeBookFileWithReceipt(fullPath, &insufficientSpace);
+    return removeBookFileWithReceipt(fullPath, &issue);
   }
   file.close();
 
@@ -455,12 +455,12 @@ void FileBrowserActivity::deleteSelected() {
     }
 
     LOG_DBG("FileBrowser", "Attempting to delete: %s", fullPath.c_str());
-    bool insufficientSpace;
-    if (!removeDirFile(fullPath, insufficientSpace)) {
-      if (insufficientSpace) {
+    BookDeleteIssue issue;
+    if (!removeDirFile(fullPath, issue)) {
+      if (const char* message = bookDeleteIssueMessage(issue)) {
         RenderLock lock(*this);
         const char* options[] = {tr(STR_OK_BUTTON)};
-        optionPopup.showMessage(tr(STR_DELETE), tr(STR_DELETE_NEEDS_SPACE), options, 1, 0, [](int) {});
+        optionPopup.showMessage(tr(STR_DELETE), message, options, 1, 0, [](int) {});
         requestUpdate();
       }
       LOG_ERR("FileBrowser", "Failed to delete: %s", fullPath.c_str());

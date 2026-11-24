@@ -274,3 +274,17 @@ clusters, 96 deletions completed on the first attempt. The other 68 wrote
 nothing before reporting insufficient space. All 68 completed after freeing
 space. After remount, every held book matched its original bytes and receipt.
 The fixtures cover both missing and existing destination folders.
+
+## Names that fit a deletion receipt
+
+For individual EPUB deletions outside `/zDev/`, a long English or Unicode
+name can be staged if the complete holding path fits and the file is smaller
+than 4 GiB. If adding the `.held` suffix exceeds the FAT filename limit of
+255 UTF-16 code units, or the full path exceeds the journal limit, the reader
+keeps the original and asks for a shorter name or path. Wi-Fi File Manager
+lists the affected files and returns HTTP 422. A mixed batch with a low-space
+failure returns 507. Zero-byte EPUBs and development files use local deletion.
+
+The Wi-Fi file list can return names up to 765 UTF-8 bytes, including the
+holding folders. An interrupted directory read ends the response before the
+closing bracket so a client can retry the incomplete listing.

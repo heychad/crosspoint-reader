@@ -7,6 +7,8 @@
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 
+enum class BookDeleteIssue;
+
 class FileBrowserActivity final : public UiListActivity {
  public:
   // Books = standard reader browser; PickFirmware = filter to .bin only and return path via ActivityResult.
@@ -14,7 +16,7 @@ class FileBrowserActivity final : public UiListActivity {
 
  private:
   // File actions
-  bool removeDirFile(const std::string& fullPath, bool& insufficientSpace);
+  bool removeDirFile(const std::string& fullPath, BookDeleteIssue& issue);
   void showEntryActions();
   void openSelectedBookStatistics();
   void startRename();

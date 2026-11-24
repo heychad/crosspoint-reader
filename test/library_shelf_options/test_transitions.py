@@ -26,6 +26,8 @@ namespace bookmove { inline bool blocked=false; bool pending(){return blocked;} 
 #define LOG_ERR(...) ((void)0)
 #define LOG_DBG(...) ((void)0)
 #define tr(key) #key
+enum class BookDeleteIssue {None,InsufficientSpace,UnsupportedPath};
+const char* bookDeleteIssueMessage(BookDeleteIssue issue){return issue==BookDeleteIssue::None?nullptr:"STR_DELETE_NEEDS_SPACE";}
 bool locked=false,allocationOk=true;
 struct RenderLock {
  bool held=true;
@@ -65,7 +67,7 @@ struct LibraryListActivity {
  }
  void promptDeleteBookByPath(const std::string&,const std::string&);
  void promptRemoveRecentBook(const std::string&,const std::string&);
- bool removeBookFileWithReceipt(const std::string&,bool* space){assert(!locked&&!index.opened);*space=spaceError;++deletions;return deleteOk;}
+ bool removeBookFileWithReceipt(const std::string&,BookDeleteIssue* issue){assert(!locked&&!index.opened);*issue=spaceError?BookDeleteIssue::InsufficientSpace:BookDeleteIssue::None;++deletions;return deleteOk;}
  void rebuildIndex(){assert(locked);}
  void resetAfterRebuild(){assert(locked);}
  void resolvePinned(){assert(locked);}

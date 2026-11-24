@@ -51,6 +51,7 @@ program = r'''
 #include <memory>
 #include <vector>
 #include "network/BookMoveWeb.h"
+#include "util/BookCacheUtils.h"
 #include <ArduinoJson.h>
 void convertFromJson(JsonVariantConst json,String& out){out=String(json.as<const char*>());}
 DeserializationError deserializeJson(JsonDocument& doc,const String& input){return deserializeJson(doc,input.c_str());}
@@ -85,8 +86,13 @@ String normalizeWebPath(const String& p){return p;}
 bool isProtectedItemName(const String& p){return p.starts_with('.');}
 void clearBookCache(const std::string&){++cacheClears;}
 bool removeBookFile(const std::string&){++removals;return true;}
-bool removeBookFileWithReceipt(const std::string& path,bool* needsSpace) {
- *needsSpace=path=="/full.epub";if(*needsSpace || path=="/failed.epub")return false;
+const char* bookDeleteIssueMessage(BookDeleteIssue issue){
+ if(issue==BookDeleteIssue::InsufficientSpace)return tr(STR_DELETE_NEEDS_SPACE);
+ if(issue==BookDeleteIssue::UnsupportedPath)return "rename";return nullptr;
+}
+bool removeBookFileWithReceipt(const std::string& path, BookDeleteIssue* issue) {
+ *issue=path=="/full.epub"?BookDeleteIssue::InsufficientSpace:path=="/long.epub"?BookDeleteIssue::UnsupportedPath:BookDeleteIssue::None;
+ if(*issue!=BookDeleteIssue::None || path=="/failed.epub")return false;
  return Storage.paths.erase(path)!=0;
 }
 struct ClippingStore{static bool moveBook(const std::string&,const std::string&){++plainMoves;return true;}};
@@ -117,6 +123,9 @@ int main(){
  reset();CrossPointWebServer web;web.server->params={{"path","/old.epub"},{"dest","/Books"}};
  wsUploadInProgress=true;web.handleMove();assert(web.server->code==423&&bookmove::calls==0);
  bookmove::sendResult(*web.server,bookmove::Result::InsufficientSpace);assert(web.server->code==507);
+ Storage.paths={{"/long.epub",false}};web.server->params={{"path","/long.epub"}};
+ web.handleDelete();assert(web.server->code==422&&web.server->body.find("rename")!=String::npos&&Storage.exists("/long.epub"));
+
  Storage.paths={{"/full.epub",false},{"/ok.epub",false},{"/failed.epub",false}};
  web.server->params={{"paths",R"(["/ok.epub","/full.epub","/failed.epub"])"}};
  web.handleDelete();

@@ -1465,62 +1465,40 @@ void CrossPointWebServer::handleStatus() const {
   server->send(200, "application/json", response);
 }
 
-void CrossPointWebServer::scanFiles(const char* path, const std::function<void(FileInfo)>& callback) const {
-  HalFile root = Storage.open(path);
-  if (!root) {
-    LOG_DBG("WEB", "Failed to open directory: %s", path);
-    return;
-  }
+bool CrossPointWebServer::streamDirectoryEntries(HalFile& directory) const {
+  // A FAT component can occupy 765 UTF-8 bytes. Reuse this space for its JSON
+  // row once String owns the name. Previously two nested buffers used 1,012 bytes.
+  char row[896];
+  JsonDocument doc;
+  bool seenFirst = false;
+  while (auto file = directory.openNextFile()) {
+    const auto length = file.getName(row, sizeof(row));
+    if (!length) return false;
+    const String name(row);
+    if (name.length() != length) return false;
+    bool hidden = name == "." || name == ".." || (!SETTINGS.showHiddenFiles && name.startsWith("."));
+    for (const auto* item : FsHelpers::HIDDEN_ITEMS) hidden |= name.equals(item);
+    const bool isDirectory = file.isDirectory();
+    const uint64_t size = isDirectory ? 0 : file.fileSize64();
+    if (file.hasError() || !file.close()) return false;
 
-  if (!root.isDirectory()) {
-    LOG_DBG("WEB", "Not a directory: %s", path);
-    root.close();
-    return;
-  }
-
-  LOG_DBG("WEB", "Scanning files in: %s", path);
-
-  HalFile file = root.openNextFile();
-  char name[500];
-  while (file) {
-    file.getName(name, sizeof(name));
-    auto fileName = String(name);
-
-    // Skip hidden items (starting with ".")
-    bool shouldHide = !SETTINGS.showHiddenFiles && fileName.startsWith(".");
-
-    // Check against explicitly hidden items list
-    if (!shouldHide) {
-      for (const auto* item : FsHelpers::HIDDEN_ITEMS) {
-        if (fileName.equals(item)) {
-          shouldHide = true;
-          break;
-        }
-      }
+    if (!hidden) {
+      doc.clear();
+      doc["name"] = name;
+      doc["size"] = size;
+      doc["isDirectory"] = isDirectory;
+      doc["isEpub"] = !isDirectory && isEpubFile(name);
+      if (doc.overflowed()) return false;
+      const size_t written = serializeJson(doc, row, sizeof(row));
+      if (!written || written >= sizeof(row)) return false;
+      if (seenFirst) server->sendContent(",");
+      server->sendContent(row, written);
+      seenFirst = true;
     }
-
-    if (!shouldHide) {
-      FileInfo info;
-      info.name = fileName;
-      info.isDirectory = file.isDirectory();
-
-      if (info.isDirectory) {
-        info.size = 0;
-        info.isEpub = false;
-      } else {
-        info.size = file.size();
-        info.isEpub = isEpubFile(info.name);
-      }
-
-      callback(info);
-    }
-
-    file.close();
-    yield();                          // Yield to allow WiFi and other tasks to process during long scans
-    resetTaskWatchdogIfSubscribed();  // Reset watchdog to prevent timeout on large directories
-    file = root.openNextFile();
+    yield();
+    resetTaskWatchdogIfSubscribed();
   }
-  root.close();
+  return !directory.hasError();
 }
 
 bool CrossPointWebServer::isEpubFile(const String& filename) const { return FsHelpers::hasEpubExtension(filename); }
@@ -1536,35 +1514,29 @@ void CrossPointWebServer::handleFileListData() const {
     currentPath = normalizeWebPath(server->arg("path"));
   }
 
+  auto directory = Storage.openChecked(currentPath.c_str());
+  if (!directory) {
+    if (Storage.lookupPath(currentPath.c_str()) == HalStorage::PathStatus::Missing)
+      server->send(200, "application/json", "[]");
+    else
+      server->send(503, "text/plain", "Could not read directory");
+    return;
+  }
+  if (!directory.isDirectory()) {
+    directory.close();
+    server->send(200, "application/json", "[]");
+    return;
+  }
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
   server->sendContent("[");
-  char output[512];
-  constexpr size_t outputSize = sizeof(output);
-  bool seenFirst = false;
-  JsonDocument doc;
-
-  scanFiles(currentPath.c_str(), [this, &output, &doc, seenFirst](const FileInfo& info) mutable {
-    doc.clear();
-    doc["name"] = info.name;
-    doc["size"] = info.size;
-    doc["isDirectory"] = info.isDirectory;
-    doc["isEpub"] = info.isEpub;
-
-    const size_t written = serializeJson(doc, output, outputSize);
-    if (written >= outputSize) {
-      // JSON output truncated; skip this entry to avoid sending malformed JSON
-      LOG_DBG("WEB", "Skipping file entry with oversized JSON for name: %s", info.name.c_str());
-      return;
-    }
-
-    if (seenFirst) {
-      server->sendContent(",");
-    } else {
-      seenFirst = true;
-    }
-    server->sendContent(output);
-  });
+  const bool listed = streamDirectoryEntries(directory);
+  if (!directory.close() || !listed) {
+    // Headers have been sent. A closed, incomplete response tells clients to retry.
+    LOG_ERR("WEB", "Could not finish listing directory: %s", currentPath.c_str());
+    server->client().stop();
+    return;
+  }
   server->sendContent("]");
   // End of streamed response, empty chunk to signal client
   server->sendContent("");
@@ -2339,7 +2311,7 @@ void CrossPointWebServer::handleDelete() const {
 
   // Iterate over paths and delete each item
   bool allSuccess = true;
-  bool insufficientSpace = false;
+  int failureStatus = 500;
   String failedItems;
 
   for (const auto& p : paths) {
@@ -2385,7 +2357,7 @@ void CrossPointWebServer::handleDelete() const {
 
     // Decide whether it's a directory or file by opening it
     bool success = false;
-    bool itemNeedsSpace = false;
+    auto issue = BookDeleteIssue::None;
     HalFile f = Storage.open(itemPath.c_str());
     if (f && f.isDirectory()) {
       // For folders, ensure empty before removing
@@ -2402,13 +2374,16 @@ void CrossPointWebServer::handleDelete() const {
     } else {
       // It's a file (or couldn't open as dir) — remove file
       if (f) f.close();
-      success = removeBookFileWithReceipt(itemPath.c_str(), &itemNeedsSpace);
+      success = removeBookFileWithReceipt(itemPath.c_str(), &issue);
     }
 
     if (!success) {
-      if (itemNeedsSpace) {
-        insufficientSpace = true;
-        failedItems += itemPath + " (" + tr(STR_DELETE_NEEDS_SPACE) + "); ";
+      if (const char* message = bookDeleteIssueMessage(issue)) {
+        if (issue == BookDeleteIssue::InsufficientSpace)
+          failureStatus = 507;
+        else if (failureStatus == 500)
+          failureStatus = 422;
+        failedItems += itemPath + " (" + message + "); ";
       } else {
         failedItems += itemPath + " (deletion failed); ";
       }
@@ -2419,7 +2394,7 @@ void CrossPointWebServer::handleDelete() const {
   if (allSuccess) {
     server->send(200, "text/plain", "All items deleted successfully");
   } else {
-    server->send(insufficientSpace ? 507 : 500, "text/plain", "Failed to delete some items: " + failedItems);
+    server->send(failureStatus, "text/plain", "Failed to delete some items: " + failedItems);
   }
 }
 

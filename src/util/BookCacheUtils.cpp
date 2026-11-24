@@ -2,6 +2,7 @@
 
 #include <Epub.h>
 #include <FsHelpers.h>
+#include <I18n.h>
 #include <Logging.h>
 #include <Xtc.h>
 
@@ -136,18 +137,38 @@ bool acknowledgeBookDeletion(const std::string& held, filechecksum::Job* checksu
 #endif
 }
 
-bool removeBookFileWithReceipt(const std::string& path, bool* insufficientSpace) {
-  if (insufficientSpace) *insufficientSpace = false;
+const char* bookDeleteIssueMessage(BookDeleteIssue issue) {
+  switch (issue) {
+    case BookDeleteIssue::InsufficientSpace:
+      return tr(STR_DELETE_NEEDS_SPACE);
+    case BookDeleteIssue::UnsupportedPath:
+      return tr(STR_DELETE_PATH_UNSUPPORTED);
+    case BookDeleteIssue::UnsupportedSize:
+      return tr(STR_DELETE_SIZE_UNSUPPORTED);
+    default:
+      return nullptr;
+  }
+}
+
+bool removeBookFileWithReceipt(const std::string& path, BookDeleteIssue* issue) {
+  if (issue) *issue = BookDeleteIssue::None;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (protectedpaths::isBookDeletionPath(path.c_str())) return false;
-  const auto nameLength = path.size() - path.find_last_of('/') - 1;
-  if (nameLength <= 230 && FsHelpers::hasEpubExtension(path) && strncasecmp(path.c_str(), "/zDev/", 6) != 0 &&
-      filechecksum::validPath(path)) {
-    auto source = Storage.open(path.c_str());
+  if (FsHelpers::hasEpubExtension(path) && strncasecmp(path.c_str(), "/zDev/", 6) != 0) {
+    if (!filechecksum::validPath(path)) {
+      if (issue) *issue = BookDeleteIssue::UnsupportedPath;
+      return false;
+    }
+    auto source = Storage.openChecked(path.c_str());
     if (!source || source.isDirectory()) return false;
-    const bool empty = source.size() == 0;
-    source.close();
-    if (empty) return removeBookFile(path);
+    const uint64_t size = source.fileSize64();
+    const bool readable = !source.hasError();
+    if (!source.close() || !readable) return false;
+    if (!size) return removeBookFile(path);
+    if (size > filechecksum::MAX_FILE_BYTES) {
+      if (issue) *issue = BookDeleteIssue::UnsupportedSize;
+      return false;
+    }
     // Nest the old path below a random directory. The held suffix keeps the
     // EPUB out of library scans. A same-card rename stages its bytes.
     uint8_t nonce[16];
@@ -161,10 +182,13 @@ bool removeBookFileWithReceipt(const std::string& path, bool* insufficientSpace)
     identifier[32] = '\0';
     const std::string event = std::string(BOOK_DELETION_QUEUE) + "/" + identifier;
     const std::string held = event + path + std::string(bookmove::HELD_SUFFIX);
-    if (!filechecksum::validPath(held) || !bookmove::validMovePath(held)) return false;
+    if (!filechecksum::validPath(held) || !bookmove::validMovePath(held)) {
+      if (issue) *issue = BookDeleteIssue::UnsupportedPath;
+      return false;
+    }
     if (Storage.lookupPath(event.c_str()) != HalStorage::PathStatus::Missing) return false;
     const auto result = bookmove::move(path, held);
-    if (insufficientSpace) *insufficientSpace = result == bookmove::Result::InsufficientSpace;
+    if (issue && result == bookmove::Result::InsufficientSpace) *issue = BookDeleteIssue::InsufficientSpace;
     if (result != bookmove::Result::Moved) return false;
     // Keep local reading state available if the library restores this EPUB.
     return true;

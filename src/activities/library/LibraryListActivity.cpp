@@ -643,8 +643,8 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
     swallowHeldReleases();
     const bool accepted = !result.isCancelled && !bookmove::pending();
     // The journal owner acquires the render lock before taking the storage lock.
-    bool insufficientSpace = false;
-    const bool removed = accepted && removeBookFileWithReceipt(path, &insufficientSpace);
+    auto issue = BookDeleteIssue::None;
+    const bool removed = accepted && removeBookFileWithReceipt(path, &issue);
     {
       // Same lock rationale as onEnter: the walk wants the card to itself, and
       // the render task must not read the index (or the filter) around the
@@ -664,10 +664,10 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
     }
     if (accepted) {
       closeRouting();
-      if (insufficientSpace) {
+      if (const char* message = bookDeleteIssueMessage(issue)) {
         RenderLock lock(*this);
         const char* options[] = {tr(STR_OK_BUTTON)};
-        optionPopup.showMessage(tr(STR_DELETE), tr(STR_DELETE_NEEDS_SPACE), options, 1, 0, [](int) {});
+        optionPopup.showMessage(tr(STR_DELETE), message, options, 1, 0, [](int) {});
       }
       requestUpdate(true);
     }
