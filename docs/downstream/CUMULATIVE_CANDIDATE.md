@@ -118,6 +118,34 @@ the SDK patch, source revision, test evidence, and checksums. Image SHA-256
 `ac3c817e63a5bcc513c9bf73e9718b3ab10517f135130b80d3a8b08dd510d1e0`.
 Physical clipping latency and display behavior remain open.
 
+### Local test74 package
+
+Test71 remains the next device check. The Mac package
+`2026-11-24-test74-cardspace` builds on test73. Test74 checks free clusters
+before staging an EPUB deletion for library sync. Four review areas covered
+correctness, embedded behavior, architecture, and documentation at `f964b3bf`.
+Library and File Browser report insufficient space, and Wi-Fi File Manager
+identifies which files in a batch need a retry.
+
+On simulated FAT and exFAT cards, 186 of 328 attempts completed immediately.
+The other 142 wrote nothing before refusing and succeeded after freeing space.
+After remount, all 328 held books and receipts verified. Test inputs included
+long names, crowded directories, and zero through 40 free clusters. An almost
+full or fragmented FAT card may need to read its entire allocation map. Its
+duration on the X4 Pro and device-to-library deletion and restore remain open.
+
+The pre-test71 backup supplied 50 sealed book-move records, 96 per-book
+statistics records, and two global statistics records. All round-tripped byte
+for byte. The CrossInk layout decoder read all 30 legacy per-book settings
+files. The archive remained read-only.
+
+Both X4 Pro builds and all 2,591 enabled host checks passed in regular and
+sanitizer configurations. The separate offline OTA check accepted the compiled
+stable preview and rejected a corrupted image. All eight files in the private
+Mac package verified, including the test70 rollback. The personal image is
+5,867,200 bytes with SHA-256
+`77317b17a7d88e5a1f6b2ed1f1fd9add9f3b093427b0efee0dec4f19a782209e`.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with

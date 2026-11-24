@@ -253,13 +253,15 @@ checksum, state, reference, and inventory comparisons.
 
 ## Deleting an EPUB on a nearly full card
 
-Before staging an intentional EPUB deletion, the reader checks for room to
+Before staging an EPUB deletion for library sync, the reader checks for room to
 write its journal, mark the library index dirty, create any missing folders,
 move the EPUB, and archive the receipt. The estimate allows for directory
 growth. If the free clusters fall below that bound, the original book stays
 in place. The Library and File Browser show a message asking the reader to
-free space. The Wi-Fi File Manager returns HTTP 507 and identifies the affected item.
-A failed allocation-map read reports a storage error. Ordinary moves and
+free space. Wi-Fi File Manager returns HTTP 507 and lists failed items. Other items
+in the same batch can succeed. Retry only the listed failures. If the
+allocation map cannot be read, the deletion stops. The File Manager shows a
+deletion failure, and the reader logs it. Ordinary moves and
 renames continue to use their existing journal and recovery behavior.
 
 The allocation check uses the mounted volume under the storage lock. On
