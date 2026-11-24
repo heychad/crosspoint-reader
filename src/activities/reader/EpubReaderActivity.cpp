@@ -2752,12 +2752,14 @@ void EpubReaderActivity::renderBook() {
 #endif
   }
 
+  const int totalPages = section->estimatedTotalPages();
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
-      section->pageCount != lastSavedPageCount) {
-    if (saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
+      totalPages != lastSavedPageCount || currentPageVisibleOffset != lastSavedVisibleOffset) {
+    if (saveProgress(currentSpineIndex, section->currentPage, totalPages)) {
       lastSavedSpineIndex = currentSpineIndex;
       lastSavedPage = section->currentPage;
-      lastSavedPageCount = section->estimatedTotalPages();
+      lastSavedPageCount = totalPages;
+      lastSavedVisibleOffset = currentPageVisibleOffset;
     }
   }
 

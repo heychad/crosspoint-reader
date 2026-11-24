@@ -209,6 +209,21 @@ instead of 374 on both filesystems. Timing on the physical card is open.
 
 ## Saving a clipping
 
+When a clip closes, the EPUB reader can redraw the same page while the chapter
+is still indexing. Test72 compared the number of pages built so far with the
+estimated chapter length saved to `progress.bin`. With 8 pages built and 50
+estimated, 100 identical redraws made 100 progress writes in a host check.
+The follow-up made one. It also saved a revised chapter estimate or a new
+visible text offset after reflow, even on the same page. Failed writes are
+retried on the next render. The on-card progress format stays the same.
+CrossInk RC3 also [compares the estimated total on redraw](https://github.com/uxjulia/CrossInk/blob/0b939f41ec22c0d647a5c65ec5126141cbe7e565/src/activities/reader/EpubReaderActivity.cpp#L7397-L7406).
+
+All 110 EPUB position files from the pre-test71 backup passed an in-memory
+round trip through the test71, test72, and follow-up reader code. Each version
+read the position and wrote the original bytes. Four additional fixtures
+covered the older four-byte format, its end-page sentinel, and the six- and
+ten-byte forms.
+
 Each saved clipping has a 156-byte prefix with its location, sync fields, and
 text length. Writing the prefix in one call reduced storage writes from 1,808
 to 208 when saving the 100th short clip in a host fixture. At the X4 Pro limit
