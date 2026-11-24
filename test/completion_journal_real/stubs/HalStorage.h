@@ -60,7 +60,7 @@ class HalStorage {
     return storage;
   }
   enum class AllocationRoom { Enough, TooLittle, Unknown };
-  AllocationRoom allocationRoom(uint32_t bytes, uint8_t extraClusters) {
+  AllocationRoom allocationRoom(uint32_t bytes, uint32_t extraClusters) {
     const int8_t room = volume_ ? volume_->allocationRoom(bytes, extraClusters) : -1;
     if (room < 0) return AllocationRoom::Unknown;
     return room ? AllocationRoom::Enough : AllocationRoom::TooLittle;
@@ -81,7 +81,11 @@ class HalStorage {
     return directory;
   }
   HalFile open(const char* path, oflag_t flags = O_RDONLY) {
-    if (!volume_ || !path || path[0] != '/' || !path[1]) return {};
+    if (!volume_ || !path || path[0] != '/') return {};
+    if (!path[1]) {
+      auto root = std::make_unique<FsBaseFile>();
+      return flags == O_RDONLY && root->openRoot(volume_) ? HalFile(std::move(root)) : HalFile{};
+    }
     FsBaseFile root;
     if (!root.openRoot(volume_)) return {};
     auto f = std::make_unique<FsBaseFile>();

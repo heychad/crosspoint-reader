@@ -73,7 +73,7 @@ bool HalStorage::observedSdmmcHealthy() const {
 #endif
 }
 
-HalStorage::AllocationRoom HalStorage::allocationRoom(uint32_t fileBytes, uint8_t extraClusters) {
+HalStorage::AllocationRoom HalStorage::allocationRoom(uint32_t fileBytes, uint32_t extraClusters) {
   StorageLock lock;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const auto* volume = SDCard.mountedVolume();

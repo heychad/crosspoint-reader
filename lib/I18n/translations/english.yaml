@@ -736,6 +736,7 @@ STR_BT_LOW_MEMORY: "Bluetooth: not enough memory"
 STR_BT_HOLD: "hold"
 STR_BT_MAPPING_CLEARED: "Mapping cleared"
 STR_DELETE_ITEM_CONFIRM: "Delete?"
+STR_DELETE_NEEDS_SPACE: "Free space on the SD card, then retry."
 STR_SET_SLEEP_COVER_CONFIRM: "Set Sleep Cover?"
 
 STR_READER_BARS: "Reader bar layouts"

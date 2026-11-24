@@ -136,7 +136,8 @@ bool acknowledgeBookDeletion(const std::string& held, filechecksum::Job* checksu
 #endif
 }
 
-bool removeBookFileWithReceipt(const std::string& path) {
+bool removeBookFileWithReceipt(const std::string& path, bool* insufficientSpace) {
+  if (insufficientSpace) *insufficientSpace = false;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (protectedpaths::isBookDeletionPath(path.c_str())) return false;
   const auto nameLength = path.size() - path.find_last_of('/') - 1;
@@ -162,7 +163,9 @@ bool removeBookFileWithReceipt(const std::string& path) {
     const std::string held = event + path + std::string(bookmove::HELD_SUFFIX);
     if (!filechecksum::validPath(held) || !bookmove::validMovePath(held)) return false;
     if (Storage.lookupPath(event.c_str()) != HalStorage::PathStatus::Missing) return false;
-    if (bookmove::move(path, held) != bookmove::Result::Moved) return false;
+    const auto result = bookmove::move(path, held);
+    if (insufficientSpace) *insufficientSpace = result == bookmove::Result::InsufficientSpace;
+    if (result != bookmove::Result::Moved) return false;
     // Keep local reading state available if the library restores this EPUB.
     return true;
   }

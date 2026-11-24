@@ -1,5 +1,6 @@
 #pragma once
 
+#include <I18n.h>
 #include <WebServer.h>
 
 #include "util/BookMove.h"
@@ -26,7 +27,7 @@ inline void sendResult(WebServer& server, Result result, int success = 200) {
       server.send(503, "text/plain", "Book move unavailable; retry with storage idle");
       return;
     case Result::InsufficientSpace:
-      server.send(507, "text/plain", "Free space on the SD card and retry the book move");
+      server.send(507, "text/plain", tr(STR_DELETE_NEEDS_SPACE));
       return;
     case Result::RecoveryRequired:
       server.send(423, "text/plain", "Book move needs recovery; files retained. Restart the reader or retry recovery");

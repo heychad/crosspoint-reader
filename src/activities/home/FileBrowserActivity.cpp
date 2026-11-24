@@ -214,7 +214,8 @@ void FileBrowserActivity::onExit() {
 
 // To avoid traversing directories twice (once for cache clearing, once for deletion),
 // we do both in one pass here, instead of using Storage.removeDir
-bool FileBrowserActivity::removeDirFile(const std::string& fullPath) {
+bool FileBrowserActivity::removeDirFile(const std::string& fullPath, bool& insufficientSpace) {
+  insufficientSpace = false;
   if (protectedpaths::isBookDeletionPath(fullPath.c_str(), protectedpaths::PathAccess::Remove)) return false;
   auto file = Storage.open(fullPath.c_str());
   if (!file) {
@@ -224,7 +225,7 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath) {
 
   if (!file.isDirectory()) {
     file.close();
-    return removeBookFileWithReceipt(fullPath);
+    return removeBookFileWithReceipt(fullPath, &insufficientSpace);
   }
   file.close();
 
@@ -454,7 +455,14 @@ void FileBrowserActivity::deleteSelected() {
     }
 
     LOG_DBG("FileBrowser", "Attempting to delete: %s", fullPath.c_str());
-    if (!removeDirFile(fullPath)) {
+    bool insufficientSpace;
+    if (!removeDirFile(fullPath, insufficientSpace)) {
+      if (insufficientSpace) {
+        RenderLock lock(*this);
+        const char* options[] = {tr(STR_OK_BUTTON)};
+        optionPopup.showMessage(tr(STR_DELETE), tr(STR_DELETE_NEEDS_SPACE), options, 1, 0, [](int) {});
+        requestUpdate();
+      }
       LOG_ERR("FileBrowser", "Failed to delete: %s", fullPath.c_str());
       return;
     }

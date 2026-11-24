@@ -17,7 +17,7 @@ bool isBookCacheDirectoryName(const char* name);
 bool removeBookFile(const std::string& path);
 
 // Explicit file deletion may stage an EPUB for host-side deletion sync.
-bool removeBookFileWithReceipt(const std::string& path);
+bool removeBookFileWithReceipt(const std::string& path, bool* insufficientSpace = nullptr);
 // Check that a staged EPUB has a completed rename and the old path is absent.
 bool bookDeletionReceiptReady(const std::string& held, const std::string& previous, filechecksum::Job* checksum);
 bool acknowledgeBookDeletion(const std::string& held, filechecksum::Job* checksum);

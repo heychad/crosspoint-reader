@@ -68,7 +68,7 @@ PATCHES = (
      "ee13e8ecdb3c0847761ef25cd334d68f5932990c216e31da0b4bc48e04f3b7a4"),
     ("0062-volume-allocation-room.patch", "src/FsLib/FsVolume.h",
      "42e3c1190604325e06f49c6b5ba195a36ecb44810303bf515da47b4a26a5dfd1",
-     "b5531dabc0328db1b462f3854f4a35cb934e9db460dedf0f848670a5c19f1d1e"),
+     "b7509f550794c1673044c2495b1b752dbc0ca2d8fcbba181ee97593cc8c710a5"),
     ("0057-exfat-stop-at-full-bitmap.patch", "src/ExFatLib/ExFatPartition.cpp",
      "50f5d03be0f0f6c282bbbecd5b1d20c76c1ee095850c057394e977689f77aa3b",
      "4861b9435a01d048192df03cc8a83444192e3be577f5a23a8bd96e544c98fb12"),
@@ -78,6 +78,10 @@ PATCHES = (
 )
 
 MIGRATIONS = {
+    "src/FsLib/FsVolume.h": {
+        "b5531dabc0328db1b462f3854f4a35cb934e9db460dedf0f848670a5c19f1d1e":
+            "0063-widen-volume-allocation-room.patch",
+    },
     "src/FatLib/FatPartition.h": {
         "97c58360d50f6cd41ed4a1af8e91b7545d6285956cb5ffb3376ce543fb38e8be":
             "0059-fat-room-from-test73.patch",

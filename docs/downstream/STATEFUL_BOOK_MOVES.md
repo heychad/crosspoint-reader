@@ -251,19 +251,24 @@ saved beside the original library plans as
 smoke test used the disposable book; these nine real-book checks are automated
 checksum, state, reference, and inventory comparisons.
 
-## Starting a move on a nearly full card
+## Deleting an EPUB on a nearly full card
 
-A new move or intentional deletion checks the mounted allocation map before
-creating its journal. It counts the clusters needed for the plan,
-seal, directory entries, and any missing deletion folders. If space is too
-low, the book stays at its original path and the reader can keep opening books.
-Web moves and renames return HTTP 507. Free space and repeat the operation.
-An unreadable allocation map reports a storage error. Recovery of an existing
-sealed move still runs through the original path.
+Before staging an intentional EPUB deletion, the reader checks for room to
+write its journal, mark the library index dirty, create any missing folders,
+move the EPUB, and archive the receipt. The estimate allows for directory
+growth. If the free clusters fall below that bound, the original book stays
+in place. The Library and File Browser show a message asking the reader to
+free space. The Wi-Fi File Manager returns HTTP 507 and identifies the affected item.
+A failed allocation-map read reports a storage error. Ordinary moves and
+renames continue to use their existing journal and recovery behavior.
 
-In 44 simulated FAT and exFAT deletion attempts, 20 completed immediately and
-24 needed space. All 24 succeeded after space was freed. Every held copy had
-the original bytes and a verified deletion receipt. No attempt left a pending
-journal after retry. On newly formatted 1–128 GiB images, checking the common
-case read one or two sectors. A nearly full or fragmented card can require
-scanning the entire allocation map. On-device timing is open.
+The allocation check uses the mounted volume under the storage lock. On
+newly formatted 1–128 GiB FAT and exFAT images, it read one or two sectors.
+A nearly full or fragmented card can require scanning the entire allocation
+map. The duration on the X4 Pro is unmeasured.
+
+Across 164 simulated attempts on FAT and exFAT with zero through 40 free
+clusters, 96 deletions completed on the first attempt. The other 68 wrote
+nothing before reporting insufficient space. All 68 completed after freeing
+space. After remount, every held book matched its original bytes and receipt.
+The fixtures cover both missing and existing destination folders.

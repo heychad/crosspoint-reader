@@ -54,7 +54,10 @@ struct Gui {void drawPopup(int&,const char*){assert(locked);}} GUI;
 struct Nav {int selected=1;bool followOnBuild=false;};
 struct LibraryListActivity {
  Index index;int renderer=0,mappedInput=0,starts=0,releases=0,updates=0,deletions=0;Nav nav;
- bool deleteOk=true;
+ bool deleteOk=true,spaceError=false;
+ struct Popup {int notices=0;void showMessage(const char*,const char* message,const char**,int,int,std::function<void(int)>){
+   assert(locked && std::string(message)=="STR_DELETE_NEEDS_SPACE");++notices;
+ }} optionPopup;
  std::function<void(const ActivityResult&)> callback;
  void swallowHeldReleases(){++releases;}
  void startActivityForResult(std::unique_ptr<ConfirmationActivity> screen,std::function<void(const ActivityResult&)> cb){
@@ -62,7 +65,7 @@ struct LibraryListActivity {
  }
  void promptDeleteBookByPath(const std::string&,const std::string&);
  void promptRemoveRecentBook(const std::string&,const std::string&);
- bool removeBookFileWithReceipt(const std::string&){assert(!locked&&!index.opened);++deletions;return deleteOk;}
+ bool removeBookFileWithReceipt(const std::string&,bool* space){assert(!locked&&!index.opened);*space=spaceError;++deletions;return deleteOk;}
  void rebuildIndex(){assert(locked);}
  void resetAfterRebuild(){assert(locked);}
  void resolvePinned(){assert(locked);}
@@ -84,10 +87,10 @@ int main(){
  allocationOk=true;c.promptRemoveRecentBook("/c.epub","C");
  assert(c.starts==1 && !c.index.opened);c.callback({true});assert(c.index.opened && !locked);
  LibraryListActivity d;d.promptDeleteBookByPath("/d.epub","D");bookmove::blocked=true;
- d.callback({false});assert(d.deletions==0&&d.index.opened&&!locked);
- bookmove::blocked=false;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});assert(d.deletions==1);
+ d.callback({false});assert(d.optionPopup.notices==0);assert(d.deletions==0&&d.index.opened&&!locked);
+ bookmove::blocked=false;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});assert(d.optionPopup.notices==0);assert(d.deletions==1);
  assert(RECENT_BOOKS.removals==1);
- d.deleteOk=false;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});
+ d.deleteOk=false;d.spaceError=true;d.promptDeleteBookByPath("/d.epub","D");d.callback({false});assert(d.optionPopup.notices==1);
  assert(d.deletions==2&&RECENT_BOOKS.removals==1&&d.index.opened&&!locked);
 }
 '''

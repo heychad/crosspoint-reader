@@ -2339,6 +2339,7 @@ void CrossPointWebServer::handleDelete() const {
 
   // Iterate over paths and delete each item
   bool allSuccess = true;
+  bool insufficientSpace = false;
   String failedItems;
 
   for (const auto& p : paths) {
@@ -2384,6 +2385,7 @@ void CrossPointWebServer::handleDelete() const {
 
     // Decide whether it's a directory or file by opening it
     bool success = false;
+    bool itemNeedsSpace = false;
     HalFile f = Storage.open(itemPath.c_str());
     if (f && f.isDirectory()) {
       // For folders, ensure empty before removing
@@ -2400,11 +2402,16 @@ void CrossPointWebServer::handleDelete() const {
     } else {
       // It's a file (or couldn't open as dir) — remove file
       if (f) f.close();
-      success = removeBookFileWithReceipt(itemPath.c_str());
+      success = removeBookFileWithReceipt(itemPath.c_str(), &itemNeedsSpace);
     }
 
     if (!success) {
-      failedItems += itemPath + " (deletion failed); ";
+      if (itemNeedsSpace) {
+        insufficientSpace = true;
+        failedItems += itemPath + " (" + tr(STR_DELETE_NEEDS_SPACE) + "); ";
+      } else {
+        failedItems += itemPath + " (deletion failed); ";
+      }
       allSuccess = false;
     }
   }
@@ -2412,7 +2419,7 @@ void CrossPointWebServer::handleDelete() const {
   if (allSuccess) {
     server->send(200, "text/plain", "All items deleted successfully");
   } else {
-    server->send(500, "text/plain", "Failed to delete some items: " + failedItems);
+    server->send(insufficientSpace ? 507 : 500, "text/plain", "Failed to delete some items: " + failedItems);
   }
 }
 

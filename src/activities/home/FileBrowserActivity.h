@@ -14,7 +14,7 @@ class FileBrowserActivity final : public UiListActivity {
 
  private:
   // File actions
-  bool removeDirFile(const std::string& fullPath);
+  bool removeDirFile(const std::string& fullPath, bool& insufficientSpace);
   void showEntryActions();
   void openSelectedBookStatistics();
   void startRename();

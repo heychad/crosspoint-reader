@@ -24,6 +24,7 @@ class String : public std::string {
  using std::string::string;
  String(const std::string& s):std::string(s){}
  bool isEmpty()const{return empty();}
+ bool equals(const char* value)const{return *this==value;}
  void trim(){while(!empty()&&back()==' ')pop_back();while(!empty()&&front()==' ')erase(begin());}
  int indexOf(char c)const{auto n=find(c);return n==npos?-1:int(n);}
  int lastIndexOf(char c)const{auto n=rfind(c);return n==npos?-1:int(n);}
@@ -50,6 +51,10 @@ program = r'''
 #include <memory>
 #include <vector>
 #include "network/BookMoveWeb.h"
+#include <ArduinoJson.h>
+void convertFromJson(JsonVariantConst json,String& out){out=String(json.as<const char*>());}
+DeserializationError deserializeJson(JsonDocument& doc,const String& input){return deserializeJson(doc,input.c_str());}
+namespace FsHelpers { constexpr const char* HIDDEN_ITEMS[]={".crosspoint"}; }
 #define FREEINK_DEVICE_X4PRO 1
 #include "network/ProtectedPaths.h"
 #define LOG_DBG(...) ((void)0)
@@ -63,13 +68,14 @@ Result move(const std::string& a,const std::string& b){++calls;oldPath=a;newPath
 unsigned cacheClears=0,plainMoves=0,removals=0;
 bool wsUploadInProgress=false;
 struct HalFile {
- bool opened=false,dir=false;
+ bool opened=false,dir=false; HalFile openNextFile(){return {};}
  explicit operator bool()const{return opened;}bool isDirectory()const{return dir;}bool close(){opened=false;return true;}
 };
 struct FakeStorage {
  enum class PathStatus{Missing,Present,Failed};
  std::map<std::string,bool> paths;
  bool exists(const char* p){return paths.contains(p);}
+ bool rmdir(const char* p){return paths.erase(p)!=0;}
  HalFile open(const char* p){return {exists(p),paths.contains(p)&&paths[p]};}
  HalFile openChecked(const char* p){return open(p);}
  PathStatus lookupPath(const char* p){return exists(p)?PathStatus::Present:PathStatus::Missing;}
@@ -79,10 +85,14 @@ String normalizeWebPath(const String& p){return p;}
 bool isProtectedItemName(const String& p){return p.starts_with('.');}
 void clearBookCache(const std::string&){++cacheClears;}
 bool removeBookFile(const std::string&){++removals;return true;}
+bool removeBookFileWithReceipt(const std::string& path,bool* needsSpace) {
+ *needsSpace=path=="/full.epub";if(*needsSpace || path=="/failed.epub")return false;
+ return Storage.paths.erase(path)!=0;
+}
 struct ClippingStore{static bool moveBook(const std::string&,const std::string&){++plainMoves;return true;}};
 struct CrossPointWebServer {
  std::unique_ptr<WebServer> server=std::make_unique<WebServer>();struct{bool file=false;}upload;
- void handleRename()const;void handleMove()const;
+ void handleRename()const;void handleMove()const;void handleDelete()const;
 };
 struct WebDAVHandler {
  String source="/old.epub",dest="/Books/old.epub";bool overwrite=true;
@@ -90,7 +100,7 @@ struct WebDAVHandler {
  bool getOverwrite(WebServer&){return overwrite;}bool isProtectedPath(const String&){return false;}
  void handleMove(WebServer&);
 };
-''' + method('src/network/CrossPointWebServer.cpp', 'void CrossPointWebServer::handleRename()') + method(
+''' + method('src/network/CrossPointWebServer.cpp', 'void CrossPointWebServer::handleDelete()') + method('src/network/CrossPointWebServer.cpp', 'void CrossPointWebServer::handleRename()') + method(
     'src/network/CrossPointWebServer.cpp', 'void CrossPointWebServer::handleMove()') + method(
     'src/network/WebDAVHandler.cpp', 'void WebDAVHandler::handleMove(') + r'''
 void reset(){Storage.paths={{"/old.epub",false},{"/Books",true}};bookmove::held=false;bookmove::calls=0;
@@ -107,6 +117,13 @@ int main(){
  reset();CrossPointWebServer web;web.server->params={{"path","/old.epub"},{"dest","/Books"}};
  wsUploadInProgress=true;web.handleMove();assert(web.server->code==423&&bookmove::calls==0);
  bookmove::sendResult(*web.server,bookmove::Result::InsufficientSpace);assert(web.server->code==507);
+ Storage.paths={{"/full.epub",false},{"/ok.epub",false},{"/failed.epub",false}};
+ web.server->params={{"paths",R"(["/ok.epub","/full.epub","/failed.epub"])"}};
+ web.handleDelete();
+ assert(web.server->code==507 && web.server->body.find("STR_DELETE_NEEDS_SPACE")!=String::npos);
+ assert(web.server->body.find("/failed.epub (deletion failed)")!=String::npos && !Storage.exists("/ok.epub"));
+ assert(Storage.exists("/full.epub") && Storage.exists("/failed.epub"));
+ web.server->params={{"path","/failed.epub"}};web.handleDelete();assert(web.server->code==500);
  const String queue="/zDev/Library deletions";
  reset();Storage.paths[queue]=true;web.server->params={{"path","/old.epub"},{"dest",queue}};
  web.handleMove();assert(web.server->code==403&&bookmove::calls==0&&plainMoves==0);
@@ -138,9 +155,10 @@ int main(){
 with tempfile.TemporaryDirectory() as temporary:
     directory = Path(temporary)
     (directory / 'WebServer.h').write_text(shim)
+    (directory / 'I18n.h').write_text('#pragma once\n#define tr(key) #key\n')
     (directory / 'test.cpp').write_text(program)
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', *shlex.split(os.environ.get('CXXFLAGS', '')),
-                    '-I', str(directory), '-I', str(ROOT / 'src'), str(directory / 'test.cpp'),
+                    '-I', str(directory), '-I', str(ROOT / '.pio/libdeps/x4pro/ArduinoJson/src'), '-I', str(ROOT / 'src'), str(directory / 'test.cpp'),
                     '-o', str(directory / 'test')], check=True)
     subprocess.run([str(directory / 'test')], check=True)
 print('Production Wi-Fi/DAV routes preserve book-state ownership, conflicts, and streaming recovery guards')
