@@ -59,11 +59,12 @@ on the card after a fresh backup of 494 readable state files. The
 [next device check](NEXT_DEVICE_QA.md#test71-on-the-x4-pro) covers reading
 position, clip saving, and the first page turn after saving.
 
-The latest Mac package is [test76](CUMULATIVE_CANDIDATE.md#local-test76-package).
-It reduces Saved Items catalog reads and includes the clipping, position-write,
-card-space, and long-name deletion fixes. A renamed book restored from
-the library can still return to a different path on the card. The original
-position survives under its earlier path.
+The latest Mac package is [test84](CUMULATIVE_CANDIDATE.md#local-test84-package).
+It reduces storage work on page turns and checks interrupted saves and
+chapter-cache rebuilds. All 28 selected feature cores are built. Hardware
+acceptance remains open. A renamed book restored from the library can
+still return to a different path on the card, while the saved position
+stays under the original reader path.
 
 The test70 release check verified the pins against GitHub Releases and Git tags.
 See [CrossPoint 2.0.0](https://github.com/crosspoint-reader/crosspoint-reader/releases/tag/2.0.0)

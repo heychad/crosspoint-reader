@@ -618,3 +618,22 @@ both X4 Pro builds, and the compiled stable-update simulation. The
 5,870,768-byte Mac image has SHA-256
 `646966fede3deeb4a13ddcef1c7b6b91a3b651eb51af80c46e9d9fa47125112f`.
 The package includes the test70 rollback. Test71 remains staged on the reader.
+
+### Local test84 package
+
+Test84 reduces the number of file operations needed to decode a page and
+build its chapter cache. All 24 chapter files matched test83 byte for byte.
+Across 4,352 decoded pages, file read calls fell 27%. Building the caches
+took 20% fewer file write calls. The simulated card read and write counts
+stayed the same. Screen timing still needs the X4 Pro.
+
+All 59,127 injected read failures declined the affected page. Each page
+reopened with the expected contents on a clean remount. A separate active
+layout test verifies that a failed seek cannot cause the parser to write
+its next page over earlier text.
+
+Source `2ea4125d` passed both X4 Pro builds, 2,610 enabled checks in each
+host configuration, and the compiled stable-image update simulation. The
+5,871,312-byte Mac image has SHA-256
+`cbac677b638b8773044dcbd86c50eef81f6495c22147c0e7b8cee59c5f7f21f4`.
+The package includes the test70 rollback. Test71 remains staged on the reader.

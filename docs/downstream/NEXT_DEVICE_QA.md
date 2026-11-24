@@ -23,6 +23,13 @@ older page-only highlights may disappear while their saved text remains in
 Saved Items. The test71 rollback image is **zDev → READER70.BIN**. Resolve
 any pending Move to Read transaction before rollback.
 
+## Later comparison on test84
+
+Test84 is the cumulative Mac build. After the test71 check, repeat the same
+passage, clip, and immediate page turn on test84 when it is staged. Keep the
+orientation, text antialiasing, and refresh interval the same. One comparison
+covers test72 through test84.
+
 ## Previous update to test70
 
 From test62, install **Settings → System → SD Card Firmware Update → zDev →
