@@ -59,7 +59,7 @@ on the card after a fresh backup of 494 readable state files. The
 [next device check](NEXT_DEVICE_QA.md#test71-on-the-x4-pro) covers reading
 position, clip saving, and the first page turn after saving.
 
-The latest Mac package is [test84](CUMULATIVE_CANDIDATE.md#local-test84-package).
+The latest Mac package is [test85](CUMULATIVE_CANDIDATE.md#local-test85-package).
 It reduces storage work on page turns and checks interrupted saves and
 chapter-cache rebuilds. All 28 selected feature cores are built. Hardware
 acceptance remains open. A renamed book restored from the library can

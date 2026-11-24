@@ -644,3 +644,20 @@ was 16 bytes smaller and passed its own ESP checksum and validation hash.
 The two builds contain different compile timestamps. Rebuilding with the
 original object cache reproduced the packaged SHA-256 exactly. Use the
 package manifest when checking a transfer.
+
+### Local test85 package
+
+Test85 is the cumulative Mac build for the next comparison with test71.
+The 20-EPUB fixture set produced the same 691 page records, text draw
+positions, and word source ranges on both versions. Reading those records
+took 235,718 file calls instead of 533,792. Writing them took 158,246
+instead of 441,848. The [benchmark](READING_PERFORMANCE.md#reading-a-lines-cached-layout)
+covers text layout, image placements, and file operations. E-paper timing
+still needs the reader.
+
+Source `558f20a6` passed both X4 Pro builds, 2,611 enabled checks in each
+host configuration, and the compiled stable-image update simulation.
+The checksum-verified Mac package includes the test70 rollback. Its
+5,871,056-byte `READER85.BIN` has SHA-256
+`1336e259032491cd05c10b6f7c7180aae0a5a1d5f0f882cd160fb4179141803e`.
+Test71 remains the staged morning check.
