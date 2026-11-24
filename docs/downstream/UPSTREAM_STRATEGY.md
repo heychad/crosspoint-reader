@@ -21,7 +21,7 @@ Current pins verified through GitHub Releases:
 - CrossPoint stable: `2.0.0`, `42d58daaabcf469a2e5e1ba871714fb9dcf51d29`.
 - CrossInk stable reference: `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`.
 - New CrossInk RC comparison: `v2.0.0-rc3`, `0b939f41ec22c0d647a5c65ec5126141cbe7e565`.
-- Last full CrossInk settings audit: `v2.0.0-rc2`, `959e3d1575cf1cf49475c4c4546e49adadf4d477`.
+- Latest settings audit: RC3, including the [three added settings](RC3_SETTINGS_DELTA.json).
 - CrossPoint `2.0.0rc` is older than stable `2.0.0`; it is not an upgrade target.
 
 The November 12 release check found CrossInk `v2.0.0-rc2`,
@@ -111,8 +111,13 @@ python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc3 --c
 Inspect newly reported changes, prioritize fixes to already-ported behavior, and update the comparison baseline after recording
 what was reviewed. CrossInk remains a source reference, not a merge target.
 
-The snapshot also checks the [RC2 settings inventory](RC2_SETTINGS_INVENTORY.json).
-Its 157 catalog/save keys have explicit scope and compatibility classifications.
+The default snapshot compares RC3 and checks 160 catalog/save keys. The
+[RC2 inventory](RC2_SETTINGS_INVENTORY.json) covers 157 keys and the
+[RC3 delta](RC3_SETTINGS_DELTA.json) classifies the three additions. Explicit
+RC2 comparisons use the original inventory. RC3 also moves focus and guide
+controls into the Font submenu, factors out the quick-resume sleep predicate,
+and simplifies centered status-bar width arithmetic. Those changes preserve
+the existing saved values.
 Changed reviewed source files require a new semantic audit, including changes
 to defaults, enum values, nested codecs, or behavior with the same key names.
 Matching hashes mean the reviewed sources are unchanged, not that every

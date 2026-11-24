@@ -1,0 +1,36 @@
+{
+  "reference": "0b939f41ec22c0d647a5c65ec5126141cbe7e565",
+  "base_reference": "959e3d1575cf1cf49475c4c4546e49adadf4d477",
+  "source_blobs": {
+    "src/SettingsList.cpp": "70cca1eab7aa545e2060301ee6d5e6071253654c",
+    "src/SettingsList.h": "47a3f2e7a0ec410a3410ad219565c11e39c827f7",
+    "src/CrossPointSettings.cpp": "dbd7673fc35275555f64e3aa0b17ab67700de2ad",
+    "src/CrossPointSettings.h": "f292842729640a101803ffab3f962266cec50aab",
+    "src/util/ReaderStatusBarConfig.h": "9932db7b33e033b9c060872e83792985892dc11d"
+  },
+  "groups": [
+    {
+      "handling": "later",
+      "keys": [
+        "ruledLines",
+        "textDarkness"
+      ],
+      "behavior": "RC3 adds ruled-line strength and text darkness to Font settings, both off or normal by default. The X4 Pro fork retains these values for future rendering work in per-book migration previews.",
+      "evidence": [
+        "docs/downstream/BOOK_SETTINGS.md",
+        "docs/downstream/UPSTREAM_STRATEGY.md"
+      ]
+    },
+    {
+      "handling": "board-excluded",
+      "keys": [
+        "twoToneTextAA"
+      ],
+      "behavior": "The RC3 catalog exposes this toggle only on EEGO A4. The per-book RC3 value is recognized by the import preview.",
+      "evidence": [
+        "docs/downstream/BOOK_SETTINGS.md",
+        "docs/downstream/UPSTREAM_STRATEGY.md"
+      ]
+    }
+  ]
+}

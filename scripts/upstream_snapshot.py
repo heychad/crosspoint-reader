@@ -40,6 +40,21 @@ def settings_inventory(ref):
     inventory = json.loads(path.read_text())
     if inventory['schema_version'] != 1 or not inventory['source_blobs']:
         raise ValueError('Unsupported or empty settings inventory')
+    delta = json.loads((path.parent / 'RC3_SETTINGS_DELTA.json').read_text())
+    if delta['base_reference'] != inventory['reference']:
+        raise ValueError('RC3 settings delta does not match the reviewed base')
+    ancestor = subprocess.run(['git', 'merge-base', '--is-ancestor', delta['reference'], ref],
+                              cwd=ROOT, capture_output=True)
+    if ancestor.returncode == 0:
+        inventory['reference'] = delta['reference']
+        inventory['source_blobs'].update(delta['source_blobs'])
+        inventory['groups'].extend(delta['groups'])
+    elif ancestor.returncode != 1:
+        # An RC2-only checkout can still audit its older tags.
+        prior = subprocess.run(['git', 'merge-base', '--is-ancestor', ref, inventory['reference']],
+                               cwd=ROOT, capture_output=True)
+        if prior.returncode != 0:
+            raise ValueError('Cannot resolve settings audit ancestry. Fetch both release references.')
     allowed = {'mapped', 'conditional', 'partial', 'open', 'later',
                'board-excluded', 'preserve-native', 'skip'}
     counts = Counter()
@@ -81,7 +96,7 @@ def main():
     parser.add_argument('--fetch', action='store_true',
                         help='fetch both upstreams without merging or updating submodules')
     parser.add_argument('--crosspoint', default='refs/tags/2.0.0')
-    parser.add_argument('--crossink', default='refs/tags/v2.0.0-rc2')
+    parser.add_argument('--crossink', default='refs/tags/v2.0.0-rc3')
     parser.add_argument('--crossink-base', default='refs/tags/v1.6.1',
                         help='released CrossInk baseline; defaults to v1.6.1')
     parser.add_argument('--allow-development-ref', action='store_true',
