@@ -56,8 +56,9 @@ ReadResult readFile(const char* path, uint8_t* out, size_t capacity, size_t& siz
   if (presence != HalStorage::PathStatus::Present) return ReadResult::Failed;
   HalFile file;
   if (!Storage.openFileForRead("STATS", path, file)) return ReadResult::Failed;
-  const size_t length = file.fileSize();
-  if (length > capacity) return file.close() ? ReadResult::Invalid : ReadResult::Failed;
+  const uint64_t physicalSize = file.fileSize64();
+  if (physicalSize > capacity) return file.close() ? ReadResult::Invalid : ReadResult::Failed;
+  const size_t length = static_cast<size_t>(physicalSize);
   const bool read = file.read(out, length) == static_cast<int>(length);
   const bool closed = file.close();
   if (!read || !closed) return ReadResult::Failed;
@@ -74,7 +75,7 @@ bool createFile(const char* path, const uint8_t* bytes, size_t size) {
   if (!written || !synced || !closed) return false;
   HalFile check;
   if (!Storage.openFileForRead("STATS", path, check)) return false;
-  bool same = check.fileSize() == size;
+  bool same = check.fileSize64() == size;
   uint8_t buffer[64];
   for (size_t offset = 0; same && offset < size;) {
     const auto count = std::min(sizeof(buffer), size - offset);
@@ -209,8 +210,8 @@ bool handleLocked(void* raw) {
         return true;
       }
       FileIdentity destinationIdentity;
-      const auto oldStatus = captureFile(oldPath, (*identities)[i]);
-      const auto newStatus = captureFile(newPath, destinationIdentity);
+      const auto oldStatus = captureFile(oldPath, (*identities)[i], sizeLimitForIndex(i));
+      const auto newStatus = captureFile(newPath, destinationIdentity, sizeLimitForIndex(i));
       if (oldStatus == FileResult::Unavailable || newStatus == FileResult::Unavailable) return true;
       if ((oldStatus != FileResult::Ready && oldStatus != FileResult::Absent) || newStatus != FileResult::Absent ||
           (i == 0 && oldStatus != FileResult::Ready)) {
@@ -591,8 +592,9 @@ VerifyFilesResult verifyFilesForPlan(std::string_view from, std::string_view to,
       continue;
     }
     FileIdentity source, target, staging;
-    const auto a = captureFile(oldPath, source), b = captureFile(newPath, target);
-    const auto c = captureFile(newPath + ".completion-copy", staging);
+    const auto a = captureFile(oldPath, source, sizeLimitForIndex(i)),
+               b = captureFile(newPath, target, sizeLimitForIndex(i));
+    const auto c = captureFile(newPath + ".completion-copy", staging, sizeLimitForIndex(i));
     if (a == FileResult::Unavailable || b == FileResult::Unavailable || c == FileResult::Unavailable)
       return VerifyFilesResult::Unavailable;
     if ((a != FileResult::Ready && a != FileResult::Absent) || (b != FileResult::Ready && b != FileResult::Absent) ||

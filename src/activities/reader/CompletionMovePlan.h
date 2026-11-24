@@ -38,6 +38,11 @@ constexpr bool legacyStateIndex(size_t index) {
   return (index >= LEGACY_BOOKMARK_END && index < V2_FILE_COUNT) || index == LEGACY_DICTIONARY_INDEX ||
          index == LEGACY_PROGRESS_BACKUP_INDEX;
 }
+// Progress backups currently occupy 4, 6, 10, or 20 bytes. Keep one sector
+// available for other small formats without treating arbitrary files as progress.
+constexpr uint64_t sizeLimitForIndex(size_t index) {
+  return index == NATIVE_PROGRESS_BACKUP_INDEX || index == LEGACY_PROGRESS_BACKUP_INDEX ? 512 : UINT64_MAX;
+}
 constexpr size_t IDENTITY_BYTES = 17;
 constexpr size_t IDENTITIES_BYTES = FILE_COUNT * IDENTITY_BYTES;
 constexpr size_t CHECKSUM_BYTES = 8;
@@ -63,7 +68,8 @@ inline bool encode(std::string_view from, std::string_view to, uint64_t completi
   size_t offset = HEADER_BYTES;
   for (size_t i = 0; i < FILE_COUNT; ++i) {
     const FileIdentity identity = identities ? identities[i] : FileIdentity{};
-    if (!identity.present && (identity.size || identity.checksum)) return false;
+    if ((!identity.present && (identity.size || identity.checksum)) || identity.size > sizeLimitForIndex(i))
+      return false;
     output[offset++] = identity.present ? 1 : 0;
     for (size_t j = 0; j < 8; ++j) output[offset++] = static_cast<uint8_t>(identity.size >> (8 * j));
     for (size_t j = 0; j < 8; ++j) output[offset++] = static_cast<uint8_t>(identity.checksum >> (8 * j));
@@ -104,7 +110,8 @@ inline bool decode(const uint8_t* bytes, size_t size, uint64_t completionHash, s
     identity.present = bytes[offset++] == 1;
     for (size_t j = 0; j < 8; ++j) identity.size |= uint64_t{bytes[offset++]} << (8 * j);
     for (size_t j = 0; j < 8; ++j) identity.checksum |= uint64_t{bytes[offset++]} << (8 * j);
-    if (!identity.present && (identity.size || identity.checksum)) return false;
+    if ((!identity.present && (identity.size || identity.checksum)) || identity.size > sizeLimitForIndex(i))
+      return false;
   }
   const std::string_view source(reinterpret_cast<const char*>(bytes + offset), fromSize);
   const std::string_view destination(reinterpret_cast<const char*>(bytes + offset + fromSize), toSize);

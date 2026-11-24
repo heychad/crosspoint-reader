@@ -38,3 +38,22 @@ TEST(CompletionMovePlan, RejectsAmbiguousAndOutOfBoundsPaths) {
   EXPECT_FALSE(cm::encode("/" + std::string(cm::MAX_PATH_BYTES, 'x'), "/read/a.epub", 1, *plan, size));
   EXPECT_TRUE(cm::encode("/" + std::string(cm::MAX_PATH_BYTES - 1, 'x'), "/read/a.epub", 1, *plan, size));
 }
+
+TEST(CompletionMovePlan, BoundsProgressBackupSizesInSealedVersionFourIntents) {
+  auto plan = std::make_unique<cm::Plan>();
+  std::array<cm::FileIdentity, cm::FILE_COUNT> ids{};
+  size_t size = 0;
+  std::string_view from, to;
+  for (size_t index : {cm::NATIVE_PROGRESS_BACKUP_INDEX, cm::LEGACY_PROGRESS_BACKUP_INDEX}) {
+    ids[index] = {true, 512, 7};
+    ASSERT_TRUE(cm::encode("/a.epub", "/read/a.epub", 1, *plan, size, ids.data()));
+    ASSERT_TRUE(cm::decode(plan->data(), size, 1, from, to));
+    (*plan)[cm::HEADER_BYTES + index * cm::IDENTITY_BYTES + 1] = 1;  // 513 bytes.
+    auto hash = readingstats::completionjournal::checksum(plan->data(), size - cm::CHECKSUM_BYTES);
+    for (size_t i = 0; i < cm::CHECKSUM_BYTES; ++i) (*plan)[size - cm::CHECKSUM_BYTES + i] = hash >> (8 * i);
+    EXPECT_FALSE(cm::decode(plan->data(), size, 1, from, to));
+    ids[index].size = 513;
+    EXPECT_FALSE(cm::encode("/a.epub", "/read/a.epub", 1, *plan, size, ids.data()));
+    ids[index] = {};
+  }
+}

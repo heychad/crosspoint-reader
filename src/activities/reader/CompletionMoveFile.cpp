@@ -15,7 +15,7 @@
 
 namespace readingstats::completionmove {
 namespace {
-FileResult captureLocked(const std::string& path, FileIdentity& output) {
+FileResult captureLocked(const std::string& path, FileIdentity& output, const uint64_t maxBytes = UINT64_MAX) {
   const auto state = Storage.lookupPath(path.c_str());
   if (state == HalStorage::PathStatus::Missing) {
     output = {};
@@ -24,10 +24,11 @@ FileResult captureLocked(const std::string& path, FileIdentity& output) {
   if (state != HalStorage::PathStatus::Present) return FileResult::Unavailable;
   HalFile file;
   if (!Storage.openFileForRead("MOVE", path, file)) return FileResult::Unavailable;
-  if (file.isDirectory()) {
+  const uint64_t bytes = file.fileSize64();
+  if (file.isDirectory() || bytes > maxBytes) {
     return file.close() ? FileResult::Conflict : FileResult::Unavailable;
   }
-  FileIdentity identity{true, file.fileSize(), filefingerprint::OFFSET};
+  FileIdentity identity{true, bytes, filefingerprint::OFFSET};
   uint8_t buffer[256];
   uint64_t offset = 0;
   bool ok = true;
@@ -60,11 +61,12 @@ bool equal(const FileIdentity& left, const FileIdentity& right) {
 struct CaptureContext {
   const std::string& path;
   FileIdentity& output;
+  uint64_t maxBytes;
   FileResult result = FileResult::Unavailable;
 };
 bool captureCallback(void* raw) {
   auto& context = *static_cast<CaptureContext*>(raw);
-  context.result = captureLocked(context.path, context.output);
+  context.result = captureLocked(context.path, context.output, context.maxBytes);
   return true;
 }
 
@@ -160,9 +162,9 @@ bool copyCallback(void* raw) {
     return true;
   }
   FileIdentity source, target, staging;
-  const auto a = captureLocked(context.from, source);
-  const auto b = captureLocked(context.to, target);
-  const auto c = captureLocked(temporary, staging);
+  const auto a = captureLocked(context.from, source, context.expected.size);
+  const auto b = captureLocked(context.to, target, context.expected.size);
+  const auto c = captureLocked(temporary, staging, context.expected.size);
   if (a == FileResult::Unavailable || b == FileResult::Unavailable || c == FileResult::Unavailable) return true;
   if ((a != FileResult::Ready && a != FileResult::Absent) || (b != FileResult::Ready && b != FileResult::Absent) ||
       (c != FileResult::Ready && c != FileResult::Absent)) {
@@ -184,10 +186,6 @@ bool copyCallback(void* raw) {
                          : FileResult::Conflict;
     return true;
   }
-  if (staging.present && staging.size > context.expected.size) {
-    context.result = FileResult::Conflict;
-    return true;
-  }
   // A failed earlier rename can leave two paths to one chain. Never append to
   // such a stage or accept it as an independent copy of reader state.
   if (staging.present && !Storage.distinctMoveChains(context.from.c_str(), temporary.c_str())) {
@@ -195,6 +193,11 @@ bool copyCallback(void* raw) {
     return true;
   }
   if (!staging.present || !equal(staging, context.expected)) {
+    // The HAL accepts size_t for seekSet on the X4 Pro.
+    if (staging.present && staging.size > SIZE_MAX) {
+      context.result = FileResult::Conflict;
+      return true;
+    }
     HalFile input;
     if (!Storage.openFileForRead("MOVE", context.from, input)) return true;
     if (staging.present) {
@@ -258,7 +261,8 @@ bool copyCallback(void* raw) {
     const bool synced = output.sync();
     const bool outputClosed = output.close();
     const bool inputClosed = input.close();
-    if (!ok || !synced || !outputClosed || !inputClosed || captureLocked(temporary, staging) != FileResult::Ready ||
+    if (!ok || !synced || !outputClosed || !inputClosed ||
+        captureLocked(temporary, staging, context.expected.size) != FileResult::Ready ||
         !equal(staging, context.expected)) {
       context.result = FileResult::Uncertain;
       return true;
@@ -273,9 +277,9 @@ bool copyCallback(void* raw) {
     return true;
   }
   FileIdentity verifiedTarget, verifiedStaging;
-  context.result = captureLocked(context.to, verifiedTarget) == FileResult::Ready &&
+  context.result = captureLocked(context.to, verifiedTarget, context.expected.size) == FileResult::Ready &&
                            equal(verifiedTarget, context.expected) &&
-                           captureLocked(temporary, verifiedStaging) == FileResult::Absent &&
+                           captureLocked(temporary, verifiedStaging, context.expected.size) == FileResult::Absent &&
                            Storage.distinctMoveChains(context.from.c_str(), context.to.c_str())
                        ? FileResult::Copied
                        : FileResult::Uncertain;
@@ -283,8 +287,8 @@ bool copyCallback(void* raw) {
 }
 }  // namespace
 
-FileResult captureFile(const std::string& path, FileIdentity& identity) {
-  CaptureContext context{path, identity};
+FileResult captureFile(const std::string& path, FileIdentity& identity, const uint64_t maxBytes) {
+  CaptureContext context{path, identity, maxBytes};
   return Storage.withStorageLock(captureCallback, &context) ? context.result : FileResult::Unavailable;
 }
 

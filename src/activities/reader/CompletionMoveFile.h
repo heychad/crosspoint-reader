@@ -14,7 +14,7 @@ enum class MoveFileState { AtSource, AtDestination, Absent, Duplicate, Conflict,
 
 // The identity must be durably recorded before the first rename. These APIs
 // do not publish the identity and cannot be used as a move transaction alone.
-FileResult captureFile(const std::string& path, FileIdentity& identity);
+FileResult captureFile(const std::string& path, FileIdentity& identity, uint64_t maxBytes = UINT64_MAX);
 // Read-only recovery classification. Duplicate paths may share disk clusters;
 // this result never authorizes deleting either entry.
 MoveFileState inspectMoveFile(const std::string& from, const std::string& to, const FileIdentity& identity);

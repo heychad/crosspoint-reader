@@ -466,6 +466,9 @@ TEST_F(CompletionMovePlanIO, PreservesBothProgressBackupsAndRefusesAnOccupiedTar
   ASSERT_EQ(legacy, primary + ".bak");
   ASSERT_EQ(legacyTarget, primaryTarget + ".bak");
   if (native == legacy) GTEST_SKIP() << "identical cache keys";
+  put(native, std::string(513, 'p'));
+  EXPECT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Conflict);
+  EXPECT_FALSE(Storage.exists(PLAN));
   put(native, position);
   put(legacy, older);
   ASSERT_EQ(cm::preparePlan(BOOK, DEST), cm::PlanResult::Ready);
