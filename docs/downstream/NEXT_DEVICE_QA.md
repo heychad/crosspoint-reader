@@ -1,5 +1,30 @@
 # Next X4 Pro device test
 
+## Test71 on the X4 Pro
+
+The reader reported test70 over Wi-Fi, and Chad reported a good reading
+experience. The library completed a reader check with zero deletion events.
+The end-to-end deletion and restore check remains open.
+
+1. Before updating, open your current book on test70 and note the passage.
+   For a clipping comparison, save a short clip and try to turn the page as
+   soon as the highlight appears.
+2. Install **Settings → System → SD Card Firmware Update → zDev → READER71.BIN**.
+   Keep the reader powered through restart. About should show
+   `2.0.0-chad.3-test71-review-fixes-x4pro`.
+3. Reopen the same book. Check the passage, save a short clip, then turn the
+   page immediately. Record any extra refresh or missed turn.
+
+The staged fixture is **zDev → Review71.epub**. With Default rendering and
+publisher styles enabled, **Divider check** should show the gray and dark
+rules. The white rule should leave a gap. **Spacing and clipping** should
+open directly to text. Section caches rebuild on first open. After reflow,
+older page-only highlights may disappear while their saved text remains in
+Saved Items. The test71 rollback image is **zDev → READER70.BIN**. Resolve
+any pending Move to Read transaction before rollback.
+
+## Previous update to test70
+
 From test62, install **Settings → System → SD Card Firmware Update → zDev →
 READER70.BIN**. Keep the reader powered through restart. **About** should show
 `2.0.0-chad.3-test70-reader-batch-x4pro`. This direct update supersedes the
