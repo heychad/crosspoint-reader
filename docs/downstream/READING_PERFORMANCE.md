@@ -106,7 +106,22 @@ Saved Items reserves a 512-byte string for scanning book paths. The follow-up
 reads each folder and filename directly into that string. On the backed-up
 catalog of 1,935 books in 161 folders, this removed 5,549 path-building heap
 allocations in a host scan. All paths and their order matched byte for byte.
-Both scans made 8,637 index reads. First-open time still needs a device reading.
+Both scans made 8,637 index reads, excluding file open and lookup setup.
+
+Test76 reads four title-order records together. At most 255 folders fit in a
+512-byte table of boundaries. Larger tables use the sparse lookup. The row
+buffer adds 384 bytes to the Saved Items activity.
+
+| Cold index scan, including setup | Test75 | Test76 |
+| --- | ---: | ---: |
+| Calls to read the index | 8,799 | 4,516 |
+| Simulated FAT sector reads | 6,150 | 4,641 |
+| Simulated exFAT sector reads | 6,149 | 4,640 |
+
+All 1,935 paths matched byte for byte in order. Neither scan wrote to the card.
+The comparison covers the index scan. Checking bookmarks and clippings and
+drawing the screen take additional time. First-open time on the X4 Pro is open.
+
 - Book → clipping list → clipping actions is the current navigation. Keep the
   grouped model unless its replacement is explicitly scoped.
 

@@ -183,6 +183,27 @@ test70 rollback. All eight manifest entries verified. The new image is
 `f2b34f1d9438de1c9b0597847c02005b6f26b953fc78a7839995ab2d1a6f93b3`.
 Hardware acceptance and the disposable-book deletion check remain open.
 
+### Local test76 package
+
+Test71 remains the morning install. Test76 at `976134cf` reduces the SD reads
+needed to scan Saved Items. With the archived 1,935-book index, both simulated
+filesystems made 1,509 fewer sector reads and produced the same paths in the
+same order. Four review areas covered grouping, failure handling, legacy
+compatibility, storage, and UI memory. [Measurement details](READING_PERFORMANCE.md#saved-items-feedback-november-12).
+
+Both X4 Pro profiles and all 2,595 enabled host checks passed in regular and
+sanitizer configurations. The offline OTA check accepted the compiled stable
+preview and rejected a corrupted copy. All eight files verified in the Mac
+package `2026-11-24-test76-saved-items`, including the test70 rollback.
+The 5,868,560-byte image has SHA-256
+`8b02b2987bb05437fcaa746f4832aa2effe86eb3d6e586ac904a3493cf14765d`.
+Device timing remains open.
+
+In a separate library experiment, using the verified deletion receipt's original
+reader path restored the EPUB and its exact ten-byte reading position in all ten
+FAT/exFAT cases. The production library still uses the Drive path when it
+resyncs the book.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with
