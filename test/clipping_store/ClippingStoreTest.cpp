@@ -137,6 +137,52 @@ TEST(ClippingStore, OffsetAllocationFailureDoesNotCreateTempFile) {
   EXPECT_EQ(add(store, "two"), Result::Added);
 }
 
+TEST(ClippingStore, MissingStoreAndUnreadableDirectoryHaveDifferentOutcomes) {
+  fake::reset();
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+  ASSERT_EQ(add(store), Result::Added);
+  const auto path = storePath();
+  const auto original = fake::files.at(path);
+  store.unload();
+  for (const bool useBackup : {false, true}) {
+    const auto active = useBackup ? path + ".bak" : path;
+    if (useBackup) ASSERT_TRUE(Storage.rename(path.c_str(), active.c_str()));
+    fake::failOpenPath = active;
+    EXPECT_FALSE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    EXPECT_EQ(add(store), Result::SaveFailed);
+    EXPECT_EQ(fake::files.at(active), original);
+    fake::failOpenPath.clear();
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(store.clippingCount(), 1u);
+  }
+  ASSERT_TRUE(Storage.rename(path.c_str(), "/parked"));
+  EXPECT_EQ(add(store), Result::SaveFailed);
+  EXPECT_FALSE(Storage.exists(path.c_str()));
+  ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+  ASSERT_TRUE(Storage.rename("/parked", path.c_str()));
+  EXPECT_EQ(add(store, "two"), Result::SaveFailed);
+  EXPECT_EQ(fake::files.at(path), original);
+  ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+  EXPECT_EQ(add(store, "two"), Result::Added);
+}
+
+TEST(ClippingStore, InterruptedRenameAliasesSurviveRetry) {
+  for (const char* sidecar : {".tmp", ".bak"}) {
+    fake::reset();
+    ClippingStore store;
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(add(store), Result::Added);
+    const auto path = storePath();
+    const auto original = fake::files.at(path)->bytes;
+    fake::files[path + sidecar] = fake::files.at(path);
+    EXPECT_EQ(add(store, "two"), Result::SaveFailed);
+    EXPECT_EQ(fake::files.at(path)->bytes, original);
+    EXPECT_EQ(fake::files.at(path + sidecar)->bytes, original);
+    EXPECT_EQ(store.clippingCount(), 1u);
+  }
+}
+
 TEST(ClippingStore, FailedSyncOrClosePreservesCommittedClippingsForRetry) {
   enum class Failure { Sync, TempClose, SourceClose };
   for (const auto failure : {Failure::Sync, Failure::TempClose, Failure::SourceClose}) {

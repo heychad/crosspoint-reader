@@ -39,6 +39,48 @@ std::string storeFilePathForBook(const std::string& filePath, const std::string&
          ".bin";
 }
 
+// A failed directory read must never turn a populated store into an empty one.
+HalStorage::PathStatus recoverStoreIfMissing(const std::string& path) {
+  using Status = HalStorage::PathStatus;
+  const auto primary = Storage.lookupPath(path.c_str());
+  if (primary != Status::Missing) return primary;
+  const auto backup = path + ".bak";
+  const auto backupStatus = Storage.lookupPath(backup.c_str());
+  if (backupStatus != Status::Present) return backupStatus;
+  return Storage.rename(backup.c_str(), path.c_str()) ? Status::Present : Status::Failed;
+}
+
+struct ClippingWritePaths {
+  const std::string& primary;
+  const std::string& temp;
+  const std::string& backup;
+  bool committed;
+};
+
+bool prepareWriteLocked(void* context) {
+  using Status = HalStorage::PathStatus;
+  const auto& [path, tmpPath, backupPath, committed] = *static_cast<const ClippingWritePaths*>(context);
+  const auto status = recoverStoreIfMissing(path);
+  if (status == Status::Failed || (status == Status::Present) != committed) {
+    LOG_ERR("CLIP", "Clipping store unavailable or changed since loading: %s", path.c_str());
+    return false;
+  }
+  // A stopped rename can leave two names for the same data. Before reusing
+  // either sidecar, check all survivors against one another.
+  const auto backup = Storage.lookupPath(backupPath.c_str());
+  const auto temp = Storage.lookupPath(tmpPath.c_str());
+  if (backup == Status::Failed || temp == Status::Failed) return false;
+  if (backup == Status::Present && (!committed || !Storage.distinctMoveChains(path.c_str(), backupPath.c_str())))
+    return false;
+  if (temp == Status::Present) {
+    if ((committed && !Storage.distinctMoveChains(path.c_str(), tmpPath.c_str())) ||
+        (backup == Status::Present && !Storage.distinctMoveChains(backupPath.c_str(), tmpPath.c_str())) ||
+        !Storage.remove(tmpPath.c_str()))
+      return false;
+  }
+  return backup != Status::Present || Storage.remove(backupPath.c_str());
+}
+
 void copyBounded(char* dst, const size_t dstSize, const char* src) {
   if (dstSize == 0) return;
   if (!src) src = "";
@@ -209,13 +251,10 @@ bool ClippingStore::loadForBook(const std::string& filePath, const std::string& 
   bookAuthor = author;
 
   storeFilePath = storeFilePathForBook(filePath, bookType);
-  const std::string backup = storeFilePath + ".bak";
-  if (!Storage.exists(storeFilePath.c_str()) && Storage.exists(backup.c_str()) &&
-      !Storage.rename(backup.c_str(), storeFilePath.c_str())) {
-    LOG_ERR("CLIP", "Failed to recover clipping backup");
-    return false;
-  }
-  if (!Storage.exists(storeFilePath.c_str())) {
+  const auto status = recoverStoreIfMissing(storeFilePath);
+  if (status == HalStorage::PathStatus::Failed) return false;
+  hasCommittedStore = status == HalStorage::PathStatus::Present;
+  if (!hasCommittedStore) {
     loaded = true;
     return true;
   }
@@ -273,10 +312,8 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
   clipping.textLength = static_cast<uint16_t>(std::min(text.size(), CLIPPING_TEXT_MAX));
 
   clippingRef(clippingSize++) = clipping;
-  dirty = true;
   if (!writeToFile(&text, clippingSize - 1)) {
     --clippingSize;
-    dirty = true;
     return AddResult::SaveFailed;
   }
   dirty = false;
@@ -596,26 +633,16 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
 
   const std::string tmpPath = storeFilePath + ".tmp";
   const std::string backupPath = storeFilePath + ".bak";
-  if (!Storage.exists(storeFilePath.c_str()) && Storage.exists(backupPath.c_str())) {
-    if (!Storage.rename(backupPath.c_str(), storeFilePath.c_str())) {
-      LOG_ERR("CLIP", "Failed to recover clipping backup: %s", backupPath.c_str());
-      return false;
-    }
-    LOG_INF("CLIP", "Recovered clipping backup: %s", storeFilePath.c_str());
-  }
-  if (Storage.exists(tmpPath.c_str())) Storage.remove(tmpPath.c_str());
-  if (Storage.exists(backupPath.c_str()) && Storage.exists(storeFilePath.c_str())) Storage.remove(backupPath.c_str());
+  ClippingWritePaths paths{storeFilePath, tmpPath, backupPath, hasCommittedStore};
+  if (!Storage.withStorageLock(prepareWriteLocked, &paths)) return false;
 
   HalFile source;
-  const std::string& sourcePath = storeFilePath;
-  const bool hasTextSource = Storage.exists(sourcePath.c_str());
-  const bool hasDestination = Storage.exists(storeFilePath.c_str());
-  if (hasTextSource && !Storage.openFileForRead("CLIP", sourcePath, source)) {
-    LOG_ERR("CLIP", "Failed to open clipping source for rewrite: %s", sourcePath.c_str());
+  if (hasCommittedStore && !Storage.openFileForRead("CLIP", storeFilePath, source)) {
+    LOG_ERR("CLIP", "Failed to open clipping source for rewrite: %s", storeFilePath.c_str());
     return false;
   }
 
-  HalFile f = Storage.open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+  HalFile f = Storage.open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_EXCL);
   if (!f) {
     if (source) source.close();
     LOG_ERR("CLIP", "Failed to open clipping temp file for write: %s", tmpPath.c_str());
@@ -676,20 +703,19 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
     return false;
   }
 
-  if (hasDestination && !Storage.rename(storeFilePath.c_str(), backupPath.c_str())) {
+  if (hasCommittedStore && !Storage.rename(storeFilePath.c_str(), backupPath.c_str())) {
     LOG_ERR("CLIP", "Failed to back up clipping file: %s", storeFilePath.c_str());
-    Storage.remove(tmpPath.c_str());
     return false;
   }
   if (!Storage.rename(tmpPath.c_str(), storeFilePath.c_str())) {
     LOG_ERR("CLIP", "Failed to replace clipping file: %s", storeFilePath.c_str());
-    Storage.remove(tmpPath.c_str());
-    if (hasDestination) Storage.rename(backupPath.c_str(), storeFilePath.c_str());
+    if (hasCommittedStore) recoverStoreIfMissing(storeFilePath);
     return false;
   }
-  if (hasDestination && Storage.exists(backupPath.c_str())) {
+  if (hasCommittedStore) {
     Storage.remove(backupPath.c_str());
   }
+  hasCommittedStore = true;
   for (uint16_t i = 0; i < count; ++i) {
     clippingRef(i).textOffset = newTextOffsets[i];
   }

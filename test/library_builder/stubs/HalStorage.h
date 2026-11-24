@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-inline constexpr int O_WRONLY = 1, O_CREAT = 2, O_TRUNC = 4, O_APPEND = 8, O_RDWR = 16, O_AT_END = 32;
+inline constexpr int O_WRONLY = 1, O_CREAT = 2, O_TRUNC = 4, O_APPEND = 8, O_RDWR = 16, O_AT_END = 32, O_EXCL = 64;
 
 namespace fake {
 
@@ -258,6 +258,7 @@ class HalStorage {
     return file;
   }
   HalFile open(const char* path, const int flags) {
+    if ((flags & O_EXCL) && exists(path)) return {};
     if (!exists(path) && (flags & O_CREAT)) fake::add(path, "");
     auto file = open(path);
     if (file && (flags & O_TRUNC)) file.node->bytes.clear();

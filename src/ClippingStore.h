@@ -93,6 +93,7 @@ class ClippingStore {
   size_t clippingSize = 0;
   size_t clippingCapacity = 0;
   bool loaded = false;
+  bool hasCommittedStore = false;
   std::string bookFilePath;
   std::string bookTitle;
   std::string bookAuthor;
