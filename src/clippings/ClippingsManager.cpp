@@ -4,7 +4,6 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Utf8.h>
-#include <common/FsApiConstants.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -68,15 +67,17 @@ bool ClippingsManager::saveClipping(const std::string& bookTitle, const std::str
   buffer.append(selectedText.c_str(), textLen);
   buffer += separator;
 
-  const bool ok = file.write(buffer.data(), buffer.size()) == buffer.size();
-  const bool rolledBack = ok || file.truncate(originalSize);
-  file.flush();
-
-  if (!ok) {
-    if (!rolledBack) LOG_ERR("CLIP", "Failed to roll back partial write to %s", CLIPPINGS_PATH);
+  if (file.write(buffer.data(), buffer.size()) != buffer.size() || !file.sync()) {
+    if (!file.truncate(originalSize) || !file.sync()) {
+      LOG_ERR("CLIP", "Failed to roll back export to %s", CLIPPINGS_PATH);
+    }
+    file.close();
     LOG_ERR("CLIP", "Failed to write clipping to %s", CLIPPINGS_PATH);
     return false;
   }
-
+  if (!file.close()) {
+    LOG_ERR("CLIP", "Failed to close %s after export", CLIPPINGS_PATH);
+    return false;
+  }
   return true;
 }
