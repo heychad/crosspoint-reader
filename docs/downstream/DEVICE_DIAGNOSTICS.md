@@ -42,8 +42,8 @@ should show `TOO_SMALL` before confirmation. Back should leave the failure scree
 
 After a reading session, open Wi-Fi File Transfer and visit
 `/api/diagnostics/epub-timings` at the address on the X4 Pro. Anyone on the
-network who can reach File Transfer can read these totals. Recording starts
-and stops on the device.
+network who can reach the reader during File Transfer or Calibre Connect can
+read these totals. Recording starts and stops on the device.
 
 The reply includes the recording state and three groups named `text`,
 `illustrated`, and `indexing`. Each has a `count`. Groups with samples also
