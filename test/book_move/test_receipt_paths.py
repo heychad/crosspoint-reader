@@ -18,6 +18,7 @@ storage = r'''
 #include <ArduinoJson.h>
 #include <CheckedStoragePath.h>
 #include <HiddenItems.h>
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <memory>
@@ -28,6 +29,7 @@ storage = r'''
 #include "util/BookDeletionPath.h"
 #include "util/BookMove.h"
 #include "util/BookMovePlan.h"
+#include "util/Utf8Validation.h"
 #define FREEINK_DEVICE_X4PRO 1
 using protectedpaths::BOOK_DELETION_QUEUE;
 struct String : std::string {
@@ -121,11 +123,26 @@ std::string repeat(const char* text, unsigned n) {
   while (n--) result += text;
   return result;
 }
+namespace FsHelpers {
+bool checkFileExtension(std::string_view name, std::string_view ext) { return name.ends_with(ext); }
+bool hasReflowableBookExtension(std::string_view name) { return hasEpubExtension(name); }
+bool hasXtcExtension(std::string_view name) { return name.ends_with(".xtc"); }
+bool hasImageExtension(std::string_view name) { return name.ends_with(".png"); }
+void sortFileList(std::vector<std::string>& files) { std::sort(files.begin(),files.end()); }
+}
 struct FileBrowserActivity {
+  enum class Mode { Books, PickFirmware, PickStatsBackup };
+  Mode mode = Mode::Books;
+  std::string basepath = "/folder";
+  std::vector<std::string> files;
+  int prewarmedStart = -1;
+  bool listingReadFailed = false;
+  void loadFiles();
   std::unique_ptr<char[]> fileNameBuffer = std::make_unique<char[]>(NAME_BUFFER_SIZE);
   bool removeDirFile(const std::string& fullPath, BookDeleteIssue& issue);
 };
 __REMOVE_DIR__
+__LOAD_FILES__
 int main() {
   const std::string folder = repeat("界",255);
   const std::string leaf = repeat("本",245)+".epub";
@@ -172,8 +189,22 @@ int main() {
     assert(hardDeletes == before && Storage.removedDirectories == 0);
   }
   HalFile longDirectory{&entries.front()};
-  assert(readEntryName(longDirectory,browser.fileNameBuffer.get()));
+  assert(readEntryName(longDirectory,browser.fileNameBuffer.get()) == EntryName::Valid);
   assert(folder==browser.fileNameBuffer.get());
+  const std::string legacyBytes = std::string("CAF") + static_cast<char>(0x82) + ".EPUB";
+  Storage.directory = {{"one.epub",10,false},{" leading.epub",10,false},{legacyBytes,10,false},{"two.epub",20,false}};
+  browser.loadFiles();
+  assert(!browser.listingReadFailed && (browser.files == std::vector<std::string>{"one.epub","two.epub"}));
+  tx.path = "/folder";
+  web.handleFileListData();
+  assert(tx.stopped && deserializeJson(result,tx.body));
+  tx = Transport{};
+  Storage.directory.insert(Storage.directory.begin()+1,{"",0,false});
+  browser.loadFiles();
+  assert(browser.listingReadFailed && browser.files.empty());
+  Storage.directory.clear();
+  browser.loadFiles();
+  assert(!browser.listingReadFailed && browser.files.empty());
   Storage.directory = entries;
   tx.path = "/folder";
   web.handleFileListData();
@@ -195,11 +226,12 @@ size_constant = '\n'.join(line for line in (ROOT / 'src/network/FileChecksum.h')
                           if line.startswith(('constexpr size_t MAX_PATH_BYTES', 'constexpr uint64_t MAX_FILE_BYTES')))
 browser = 'src/activities/home/FileBrowserActivity.cpp'
 name_buffer = next(line for line in (ROOT / browser).read_text().splitlines() if line.startswith('constexpr size_t NAME_BUFFER_SIZE'))
+checks = checks.replace('__LOAD_FILES__', method(browser, 'void FileBrowserActivity::loadFiles('))
 checks = checks.replace('__REMOVE_DIR__', method(browser, 'bool FileBrowserActivity::removeDirFile('))
 source = '\n'.join([storage, size_constant, method(checksum, 'bool validPath('), '}',
                     method(cache, 'bool removeBookFileWithReceipt('), wire,
                     method(server, 'bool CrossPointWebServer::streamDirectoryEntries('),
-                    method(server, 'void CrossPointWebServer::handleFileListData('), name_buffer, method(browser, 'bool readEntryName('), checks])
+                    method(server, 'void CrossPointWebServer::handleFileListData('), name_buffer, method(browser, 'enum class EntryName '), checks])
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     cpp = path / 'receipt_paths.cpp'

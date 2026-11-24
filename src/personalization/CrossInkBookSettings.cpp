@@ -30,7 +30,7 @@ struct Cursor {
   bool name(char* font = nullptr) {
     if (64 > length - pos) return false;
     const auto* end = static_cast<const uint8_t*>(std::memchr(bytes + pos, 0, 64));
-    if (!end || !validUtf8(bytes + pos, static_cast<size_t>(end - (bytes + pos)))) return false;
+    if (!end || !utf8::isValid(bytes + pos, static_cast<size_t>(end - (bytes + pos)))) return false;
     const size_t size = static_cast<size_t>(end - (bytes + pos));
     if (font && compatibleFontName(reinterpret_cast<const char*>(bytes + pos), size))
       std::memcpy(font, bytes + pos, size + 1);

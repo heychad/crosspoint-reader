@@ -293,5 +293,8 @@ The Wi-Fi file list can return names up to 765 UTF-8 bytes, including the
 holding folders. An interrupted directory read ends the response before the
 closing bracket so a client can retry the incomplete listing. A confirmed
 missing folder returns an empty list. An unreadable folder returns HTTP 503.
-The on-device File Browser checks each name before offering actions or
-constructing a child path during folder deletion.
+A legacy FAT short name that cannot be represented in UTF-8 also ends the
+Wi-Fi listing. On the reader, File Browser skips decoded names that cannot
+identify an unambiguous path and still shows their siblings. A failed
+directory or filename read clears the partial list and asks you to reopen
+the folder. Recursive deletion stops at an unreadable or unsupported name.

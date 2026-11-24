@@ -26,6 +26,7 @@
 #include <esp_efuse_table.h>
 
 #include "BookMoveWeb.h"
+#include "util/Utf8Validation.h"
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 #include <esp_random.h>
 
@@ -1473,7 +1474,7 @@ bool CrossPointWebServer::streamDirectoryEntries(HalFile& directory) const {
   bool seenFirst = false;
   while (auto file = directory.openNextFile()) {
     const auto length = file.getName(row, sizeof(row));
-    if (!length) return false;
+    if (!length || length >= sizeof(row) || !utf8::isValid(reinterpret_cast<const uint8_t*>(row), length)) return false;
     const String name(row);
     if (name.length() != length) return false;
     bool hidden = name == "." || name == ".." || (!SETTINGS.showHiddenFiles && name.startsWith("."));

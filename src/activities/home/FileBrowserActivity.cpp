@@ -33,9 +33,12 @@ namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr size_t NAME_BUFFER_SIZE = 255 * 3 + 1;
 
-bool readEntryName(HalFile& entry, char* name) {
+enum class EntryName { Valid, Unsupported, ReadFailed };
+
+EntryName readEntryName(HalFile& entry, char* name) {
   const auto length = entry.getName(name, NAME_BUFFER_SIZE);
-  return length && length < NAME_BUFFER_SIZE && validCheckedStorageComponent(std::string_view(name, length));
+  if (!length || length >= NAME_BUFFER_SIZE || entry.hasError()) return EntryName::ReadFailed;
+  return validCheckedStorageComponent(std::string_view(name, length)) ? EntryName::Valid : EntryName::Unsupported;
 }
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
@@ -75,6 +78,7 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
       basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
 
 void FileBrowserActivity::loadFiles() {
+  listingReadFailed = true;
   files.clear();
   prewarmedStart = -1;  // new folder contents: re-prewarm the visible window
 
@@ -101,7 +105,9 @@ void FileBrowserActivity::loadFiles() {
   files.reserve(entryCount);
 
   for (auto file = root.openNextFile(); file; file = root.openNextFile()) {
-    if (!readEntryName(file, fileNameBuffer.get())) {
+    const auto nameStatus = readEntryName(file, fileNameBuffer.get());
+    if (nameStatus == EntryName::Unsupported) continue;
+    if (nameStatus == EntryName::ReadFailed) {
       LOG_ERR("FileBrowser", "Could not read an entry in %s", basepath.c_str());
       files.clear();
       root.close();
@@ -133,6 +139,7 @@ void FileBrowserActivity::loadFiles() {
     files.clear();
     return;
   }
+  listingReadFailed = false;
   FsHelpers::sortFileList(files);
 }
 
@@ -199,6 +206,7 @@ void FileBrowserActivity::onEnter() {
 
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {
+    listingReadFailed = true;
     LOG_ERR("FileBrowser", "malloc failed for name buffer");
     return;
   }
@@ -281,7 +289,7 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath, BookDeleteI
 
     dir.rewindDirectory();
     for (auto entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
-      if (!readEntryName(entry, fileNameBuffer.get())) return false;
+      if (readEntryName(entry, fileNameBuffer.get()) != EntryName::Valid) return false;
       std::string entryPath = currentPath;
       if (entryPath.back() != '/') {
         entryPath += "/";
@@ -712,7 +720,9 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   }
 
   if (files.empty()) {
-    screen.centeredText(mode != Mode::Books ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
+    const char* message = mode == Mode::Books ? tr(STR_NO_FILES_FOUND) : tr(STR_NO_BIN_FILES);
+    if (listingReadFailed) message = tr(STR_FILE_BROWSER_READ_FAILED);
+    screen.centeredText(message, screen.theme().bodyText);
     return;
   }
 
