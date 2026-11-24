@@ -250,8 +250,9 @@ bool ClippingStore::countForBook(const std::string& bookPath, uint16_t& count) {
   if (status != Status::Missing && readClippingCount(path, count, status == Status::Failed ? &bookPath : nullptr))
     return true;
   const auto backupPath = path + ".bak";
-  if (status == Status::Missing && Storage.lookupPath(backupPath.c_str()) == Status::Missing) return true;
-  return readClippingCount(backupPath, count);
+  const auto backup = Storage.lookupPath(backupPath.c_str());
+  if (backup == Status::Missing) return status == Status::Missing;
+  return readClippingCount(backupPath, count, backup == Status::Failed ? &bookPath : nullptr);
 }
 
 bool ClippingStore::loadForBook(const std::string& filePath, const std::string& title, const std::string& author,
@@ -289,7 +290,8 @@ bool ClippingStore::loadForBook(const std::string& filePath, const std::string& 
     readOnlyRecovery = true;
     bookTitle = title;
     bookAuthor = author;
-    loaded = readFromFile();
+    const auto backup = Storage.lookupPath(storeFilePath.c_str());
+    loaded = backup != HalStorage::PathStatus::Missing && readFromFile(backup == HalStorage::PathStatus::Failed);
   }
   if (!loaded) {
     for (auto& block : clippingBlocks) block.reset();

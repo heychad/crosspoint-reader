@@ -279,6 +279,42 @@ TEST(ClippingStore, StrictDirectoryFailureAllowsOnlyReadsFromAMatchingPrimary) {
   EXPECT_EQ(count, 0);
 }
 
+TEST(ClippingStore, BackupHeaderIdentityIsRequiredWhenItsDirectoryEntryCannotBeVerified) {
+  fake::reset();
+  const std::string book = "/book.epub";
+  const auto path = "/.crosspoint/clippings/epub_" + std::to_string(std::hash<std::string>{}(book)) + ".bin";
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook(book, "Book", "Author", "epub"));
+  ASSERT_EQ(add(store, "saved"), Result::Added);
+  store.unload();
+  const auto backup = path + ".bak";
+  ASSERT_TRUE(Storage.rename(path.c_str(), backup.c_str()));
+  fake::add(path, "");
+  fake::failLookupPath = backup;
+  uint16_t count = 0;
+  EXPECT_TRUE(ClippingStore::countForBook(book, count));
+  ASSERT_TRUE(store.loadForBook(book, "Book", "Author", "epub"));
+  EXPECT_EQ(count, store.clippingCount());
+  EXPECT_EQ(count, 1);
+  EXPECT_FALSE(store.removeClippingAt(0));
+  store.unload();
+
+  auto& bytes = fake::files.at(backup)->bytes;
+  const auto stored = std::search(bytes.begin(), bytes.end(), book.begin(), book.end());
+  ASSERT_NE(stored, bytes.end());
+  *(stored + 1) = 'x';
+  EXPECT_FALSE(ClippingStore::countForBook(book, count));
+  EXPECT_FALSE(store.loadForBook(book, "Book", "Author", "epub"));
+  // A normal move keeps the old embedded path. The verified filename owns the store.
+  fake::failLookupPath.clear();
+  EXPECT_TRUE(ClippingStore::countForBook(book, count));
+  EXPECT_EQ(count, 1);
+  EXPECT_TRUE(store.loadForBook(book, "Book", "Author", "epub"));
+  std::string passage;
+  ASSERT_TRUE(store.readClippingText(0, passage));
+  EXPECT_EQ(passage, "saved");
+}
+
 TEST(ClippingStore, RewritingMixedLengthClipsFallsBackWhenSectorBufferIsUnavailable) {
   for (const bool failBuffer : {false, true}) {
     fake::reset();

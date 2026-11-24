@@ -232,7 +232,11 @@ An interrupted write of a sibling directory entry can make a strict lookup
 fail even when the primary clipping file still opens. In that case the reader
 compares the file's embedded book path with the open book and validates its
 records. Saved Items uses the same path check for counts. A match allows
-reading. Editing and syncing wait for a successful normal lookup.
+reading. Editing and syncing wait for a successful normal lookup. A backup whose
+directory entry cannot be verified must pass the same embedded path check.
+A moved store can still have its old book path until the next save. Its
+verified filename works normally. If its directory entry also becomes
+unreadable, the old embedded path cannot establish its new identity.
 
 In a simulated three-clip save on each filesystem, cutting power between
 whole sector writes preserved every earlier passage. A second experiment
