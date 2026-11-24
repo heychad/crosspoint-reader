@@ -136,6 +136,19 @@ int main(){
  EpubReaderActivity g;g.initializeCompletionPrompt();g.observeCompletionPosition();
  g.completionPrompt.observe(1,1.0f,false);g.readingStats.known=false;g.section->currentPage=9;
  assert(g.pageTurn(true) && !g.completionPrompt.queued());
+ for (int spine : {0,1}) {
+  EpubReaderActivity partial;
+  partial.currentSpineIndex=spine;
+  partial.section->partial=true;
+  partial.section->pageCount=93;
+  partial.nextPageNumber=7;
+  partial.section->currentPage=partial.section->pageCount-1;
+  assert(partial.pageTurn(true));
+  assert(partial.currentSpineIndex==spine && partial.section->currentPage==partial.section->pageCount);
+  assert(!partial.completionPrompt.queued());
+  partial.section.reset();  // The demanded extension fails and is dropped.
+  assert(partial.nextPageNumber==92);
+ }
  EpubReaderActivity h;
  h.epub->manifest=R"({"format":"x-locations","version":1,"totalLocations":1000,"totalCharacters":1000,"charactersPerReferencePage":100,"spine":[{"characterStart":0,"characterCount":995},{"characterStart":995,"characterCount":5}]})";
  h.initializeCompletionPrompt();h.completionPrompt.observe(0,0.0f,false);h.completionPrompt.observe(0,1.0f,false);

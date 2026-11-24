@@ -21,10 +21,11 @@ def extract(name, return_type='void'):
 method = (extract('reclaimBackgroundCachesIfNeeded','bool') + '\n' + extract('buildTickHeapGate','bool') + '\n'
           + extract('hasChapterPrefetchRoom','bool') + '\n' + extract('armChapterPrefetch')
           + '\n' + extract('prefetchNextChapter') + '\n' + extract('prewarmNextPageWhenIdle')
-          + '\n' + extract('hasPendingReaderInput','bool'))
+          + '\n' + extract('hasPendingReaderInput','bool') + '\n' + extract('resumePartialSectionWhenIdle'))
 loop = extract('loop')
 idle_dispatch = loop[loop.index('if (!prevTriggered && !nextTriggered)'):].split('return;', 1)[0]
-assert loop.count('prewarmNextPageWhenIdle();') == 1 and 'if (!atEndOfBook) prewarmNextPageWhenIdle();' in idle_dispatch
+assert loop.count('prewarmNextPageWhenIdle();') == 1 and 'prewarmNextPageWhenIdle();' in idle_dispatch
+assert loop.count('resumePartialSectionWhenIdle();') == 1 and 'resumePartialSectionWhenIdle();' in idle_dispatch
 header = (root / 'src/activities/reader/EpubReaderActivity.h').read_text()
 work_limit = re.search(r'static constexpr uint32_t PREFETCH_WORK_LIMIT_MS = \d+;',header).group()
 code = r'''
@@ -47,6 +48,7 @@ struct Esp {
 } ESP;
 struct ImageBlock { static inline int reclaimed=0; static void releaseRenderCache(){++reclaimed;} };
 #define LOG_DBG(...) ((void)0)
+#define LOG_ERR(...) ((void)0)
 struct FontCache {
  int scans=0;
  struct Scope {int& scans; void endScanAndPrewarm(){++scans;}};
@@ -81,7 +83,8 @@ struct Section {
  bool active=false, partial=false; int currentPage=8; int pageCount=10;int remaining=0;
  Section()=default; Section(std::shared_ptr<Book>,int,Gfx&){}
  ~Section(){++destroyed;if(active)++suspended;}
- int reads=0, renders=0, loadedPage=-1;
+ int reads=0, renders=0, loadedPage=-1, partialStartAttempts=0;
+ bool startBuild(ReaderRenderSpec){++partialStartAttempts;active=!failStart;return active;}
  struct Page {
    int& renders;
    void render(Gfx&,int font,int x,int y){assert(font==17 && x==0 && y==0);++renders;}
@@ -104,6 +107,11 @@ struct EpubReaderActivity {
  int idlePrewarmPage=-1,idlePrewarmSpine=-1;
  static constexpr size_t RENDER_MIN_FREE_HEAP=32*1024;
  void prewarmNextPageWhenIdle();
+ void resumePartialSectionWhenIdle();
+ bool partialRebuildStartFailed=false,recoveryAvailable=false;
+ int buildViewportWidth=480,buildViewportHeight=800;
+ static constexpr int PARTIAL_REBUILD_START_MARGIN=3;
+ bool tryRenderRecovery(){if(recoveryAvailable)section.reset();return recoveryAvailable;}
  bool pageBufferStale=false; int updates=0; void requestUpdate(){++updates;}
  bool backgroundCacheReclaimAttempted=false,buildHeapPaused=false;
  static constexpr size_t BACKGROUND_BUILD_MIN_FREE_HEAP=32*1024, BACKGROUND_BUILD_MIN_MAX_ALLOC=16*1024;
@@ -116,6 +124,33 @@ struct EpubReaderActivity {
 };
 ''' + method + r'''
 int main(){
+ {
+  EpubReaderActivity partial;
+  partial.section->partial=true;
+  partial.section->currentPage=1;
+  partial.resumePartialSectionWhenIdle();
+  partial.section->currentPage=8;
+  partial.mappedInput.touch.reportedCount=1;
+  partial.resumePartialSectionWhenIdle();
+  partial.mappedInput.touch.reportedCount=0;
+  bleturner::active=true;
+  partial.resumePartialSectionWhenIdle();
+  bleturner::active=false;
+  assert(partial.section->partialStartAttempts==0);
+  partial.resumePartialSectionWhenIdle();
+  partial.resumePartialSectionWhenIdle();
+  assert(partial.section->active && partial.section->partialStartAttempts==1);
+  partial.section->active=false;
+  Section::failStart=true;
+  partial.resumePartialSectionWhenIdle();
+  partial.resumePartialSectionWhenIdle();
+  assert(partial.partialRebuildStartFailed && partial.section->partialStartAttempts==2);
+  partial.partialRebuildStartFailed=false;
+  partial.recoveryAvailable=true;
+  partial.resumePartialSectionWhenIdle();
+  assert(!partial.section && !partial.partialRebuildStartFailed);
+  Section::failStart=false;
+ }
  {
   EpubReaderActivity reader;
   auto& section=*reader.section;

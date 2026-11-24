@@ -211,6 +211,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // back as soon as a button is down, so a short press is seen before more pages are built.
   bool hasPendingReaderInput() const;
   void prewarmNextPageWhenIdle();
+  void resumePartialSectionWhenIdle();
   void backgroundBuildTick();
   bool anyButtonPressed() const;
   // A background build failed in this spine. The error would likely recur, so from then on the

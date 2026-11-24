@@ -731,6 +731,21 @@ void EpubReaderActivity::prewarmNextPageWhenIdle() {
   }
 }
 
+void EpubReaderActivity::resumePartialSectionWhenIdle() {
+  RenderLock lock(RenderLock::Mode::Try);
+  if (!lock.ownsLock() || !section || section->isBuilding() || !section->isPartial() || buildViewportWidth == 0 ||
+      partialRebuildStartFailed || bleturner::holdsHeap() ||
+      section->currentPage + PARTIAL_REBUILD_START_MARGIN < static_cast<int>(section->pageCount) ||
+      hasPendingReaderInput())
+    return;
+
+  const ReaderRenderSpec spec = effectiveRenderSpec(buildViewportWidth, buildViewportHeight, currentSpineIndex);
+  if (!section->startBuild(spec) && !tryRenderRecovery()) {
+    partialRebuildStartFailed = true;
+    LOG_ERR("ERS", "Failed to start deferred partial extension build");
+  }
+}
+
 void EpubReaderActivity::backgroundBuildTick() {
   RenderLock lock(RenderLock::Mode::Try);
   // Not under an open toolbar or panel: those repaint straight onto the page in the framebuffer.
@@ -1076,26 +1091,6 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  {
-    RenderLock lock(RenderLock::Mode::Try);
-    // Never next to the radio: once the reader reaches the watermark, the build starts in
-    // renderBook(), which stops the radio first.
-    if (lock.ownsLock() && section && !section->isBuilding() && section->isPartial() && buildViewportWidth > 0 &&
-        !partialRebuildStartFailed && !bleturner::holdsHeap() &&
-        section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount)) {
-      const ReaderRenderSpec buildSpec =
-          effectiveRenderSpec(buildViewportWidth, buildViewportHeight, currentSpineIndex);
-      if (!section->startBuild(buildSpec)) {
-        if (tryRenderRecovery()) return;
-        partialRebuildStartFailed = true;
-        LOG_ERR("ERS", "Failed to start deferred partial extension build");
-      } else {
-        LOG_DBG("ERS", "Reader near partial watermark (%d/%d), resuming extension build", section->currentPage,
-                section->pageCount);
-      }
-    }
-  }
-
   const bool atEndOfBook = currentSpineIndex > 0 && currentSpineIndex >= epub->getSpineItemsCount();
   clearEndOfBookOptionsIfNeeded();
 
@@ -1411,7 +1406,10 @@ void EpubReaderActivity::loop() {
   nextTriggered = nextTriggered || touch.next;
   if (!prevTriggered && !nextTriggered) {
     // Use this quiet frame for font prewarming and chapter indexing.
-    if (!atEndOfBook) prewarmNextPageWhenIdle();
+    if (!atEndOfBook) {
+      resumePartialSectionWhenIdle();
+      prewarmNextPageWhenIdle();
+    }
     backgroundBuildTick();
 #if defined(CROSSPOINT_EXPERIMENTAL_CHAPTER_PREFETCH)
     armChapterPrefetch();
@@ -2193,7 +2191,11 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
     clearDeferredReposition();
   }
   if (isForwardTurn) {
-    if (section->currentPage < section->pageCount - 1 || section->isBuilding()) {
+    // A partial index ends at its last cached page. renderBook extends it on demand.
+    const bool indexedPageAhead = section->currentPage < section->pageCount - 1;
+    if (indexedPageAhead || section->isBuilding() || section->isPartial()) {
+      // A failed extension drops the section. Reopen at the last indexed page on retry.
+      if (!indexedPageAhead && section->pageCount > 0) nextPageNumber = section->pageCount - 1;
       section->currentPage++;
       lastPageTurnTime = millis();
       return true;

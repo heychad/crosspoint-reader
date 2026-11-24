@@ -92,6 +92,10 @@ next-page font preparation. It waits for a quiet input frame and more than
 400 ms since the last render. A button or touch still held, or a queued turn,
 also defers the background indexing tick and next-chapter prefetch. A press
 that arrives after a synchronous read has started can still wait for it.
+When reading approaches the last cached page in a partly indexed chapter,
+the reader also waits for a quiet frame before starting optional indexing.
+A turn past that page extends the current chapter on demand. The first
+uncached page can still take longer while the reader lays it out.
 The font scan collects glyphs in visual order and skips baseline measurements
 until the text is drawn.
 
