@@ -114,6 +114,7 @@ struct Renderer {
   mutable std::vector<Draw> fills;
   bool sdFont = false;
   mutable size_t coldMeasurements = 0;
+  mutable size_t widthMeasurements = 0;
   std::set<std::pair<uint8_t, uint32_t>> advances;
   bool isSdCardFont(int) const { return sdFont; }
   int getFontAscenderSize(int) const { return 12; }
@@ -123,6 +124,7 @@ struct Renderer {
     *top = *right = *bottom = *left = 0;
   }
   int getTextAdvanceX(int, const char* text, EpdFontFamily::Style style, int8_t tracking = 0) const {
+    ++widthMeasurements;
     if (sdFont) {
       const uint8_t* p = reinterpret_cast<const uint8_t*>(text);
       while (const uint32_t cp = utf8NextCodepoint(&p)) {
@@ -432,6 +434,18 @@ int main() {
     reader.topBarHeight = 30;
     assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == -1);
     assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 38) == 0);
+    savedClippings.clipping.startOffset = 300;
+    savedClippings.clipping.endOffset = 310;
+    activity.renderer.widthMeasurements = 0;
+    activity.renderer.fills.clear();
+    reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
+    assert(activity.renderer.fills.empty() && activity.renderer.widthMeasurements == 0);
+    // Page-based clippings still count every positive-width visible word.
+    savedClippings.clipping.startOffset = savedClippings.clipping.endOffset = UINT32_MAX;
+    savedClippings.clipping.startWordIndex = savedClippings.clipping.endWordIndex = 1;
+    savedClippings.clipping.layoutSignature = readerRenderSpecSignature(reader.effectiveRenderSpec(480, 800, 0));
+    reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
+    assert(activity.renderer.widthMeasurements >= 2 && activity.renderer.fills.size() == 1);
   }
   for (const auto& logical : {std::vector<std::string>{"אחד", "alpha", "beta", "שני"},
                               std::vector<std::string>{"واحد", "alpha", "beta", "اثنان"}}) {

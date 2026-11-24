@@ -137,3 +137,19 @@ byte-identical output. Tests also cover repeated blocks at the same row,
 clipped gaps, short writes, and an image shorter than the decoder's block
 limit. The first-decode time on an X4 Pro SD card still needs measurement.
 This adapts the [CrossInk RC3 image cache change](https://github.com/uxjulia/CrossInk/commit/07346cb24f9ccc19ea46521e6fc6f7a9b17e7b58).
+
+## Page turns in a book with clippings
+
+After test71, the highlight renderer skips font-width measurements for words
+outside a portable clip unless the preceding word was highlighted. It still
+measures the adjacent word so zero-width text preserves highlight spacing.
+Page-based clips in the same chapter retain the full word count. Words outside
+the chapter's clipped source range skip the per-word search when all of its
+clips have source offsets. The change adds no buffer or persistent state.
+
+A seeded host comparison against test71 produced the same horizontal highlight
+positions and widths on 4,000 generated pages, including mixed legacy and
+portable clips, out-of-order source offsets, and books with 1,024 clips.
+Clipping-record lookups fell from 4,240,544 to 1,984,071 and text-width calls
+from 143,644 to 72,726 in that workload. The comparison uses a host font stub.
+Page-turn latency and panel refresh still need measurement on the X4 Pro.

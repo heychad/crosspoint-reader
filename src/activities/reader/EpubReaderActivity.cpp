@@ -3240,9 +3240,20 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
     return;
   }
 
+  uint32_t firstSourceOffset = UINT32_MAX;
+  uint32_t lastSourceOffset = 0;
+  bool needsWordIndex = false;
   size_t chapterClippings = 0;
   for (size_t i = 0; i < CLIPPINGS.clippingCount(); ++i) {
-    if (CLIPPINGS.clippingAt(i)->spineIndex == currentSpineIndex) ++chapterClippings;
+    const Clipping& clipping = *CLIPPINGS.clippingAt(i);
+    if (clipping.spineIndex != currentSpineIndex) continue;
+    ++chapterClippings;
+    if (clipping.startOffset == UINT32_MAX || clipping.endOffset == UINT32_MAX) {
+      needsWordIndex = true;
+    } else {
+      firstSourceOffset = std::min(firstSourceOffset, clipping.startOffset);
+      lastSourceOffset = std::max(lastSourceOffset, clipping.endOffset);
+    }
   }
   if (!chapterClippings) return;
 
@@ -3252,7 +3263,9 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
   const uint32_t layoutSignature =
       readerRenderSpecSignature(effectiveRenderSpec(buildViewportWidth, buildViewportHeight, currentSpineIndex));
   const auto isHighlighted = [&](const uint16_t wordIndex, const TextBlock::SourceRange range) {
-    // ponytail: scan at most 256 C3 / 1024 S3 clippings per word; index by chapter if this becomes slow.
+    if (!needsWordIndex &&
+        (range.start == UINT32_MAX || range.end <= firstSourceOffset || range.start >= lastSourceOffset))
+      return false;
     for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
       const Clipping& clipping = *CLIPPINGS.clippingAt(index);
       if (clippingContainsWord(clipping, static_cast<uint16_t>(currentSpineIndex), currentPage, section->pageCount,
@@ -3285,12 +3298,16 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
     for (uint16_t i = 0; i < block->wordCount(); ++i) {
       const char* text = block->wordText(i);
       if (!clippingText::hasVisibleText(text)) continue;
+      const bool highlighted = isHighlighted(pageWordIndex, block->wordSourceRange(i));
+      // Portable clips use source offsets. Measure an adjacent word to preserve
+      // gap filling across zero-width words, or any word a legacy clip must count.
+      if (!highlighted && !needsWordIndex && !hasPreviousHighlight) continue;
       const auto style = static_cast<EpdFontFamily::Style>(block->wordStyle(i) & ~EpdFontFamily::UNDERLINE);
       int width = renderer.getTextAdvanceX(clippingWordFont(renderer, fontId, *block, i), text, style,
                                            block->getBlockStyle().characterSpacing);
       if (width <= 0) continue;
-      const uint16_t wordIndex = pageWordIndex++;
-      if (!isHighlighted(wordIndex, block->wordSourceRange(i))) {
+      ++pageWordIndex;
+      if (!highlighted) {
         hasPreviousHighlight = false;
         continue;
       }
