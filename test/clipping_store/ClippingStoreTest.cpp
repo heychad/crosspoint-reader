@@ -213,6 +213,30 @@ TEST(ClippingStore, FailedSyncOrClosePreservesCommittedClippingsForRetry) {
   }
 }
 
+TEST(ClippingStore, RewritingMixedLengthClipsFallsBackWhenSectorBufferIsUnavailable) {
+  for (const bool failBuffer : {false, true}) {
+    fake::reset();
+    ClippingStore store;
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    const std::vector<std::string> texts = {"a", std::string(480, 'b'), std::string(512, 'c'),
+                                            std::string(CLIPPING_TEXT_MAX, 'd'), "last"};
+    for (size_t i = 0; i < texts.size(); ++i) {
+      // The offsets array is allocated first, then the optional sector buffer.
+      if (failBuffer && i > 0) fake::failAlloc = 1;
+      ASSERT_EQ(add(store, texts[i]), Result::Added);
+      if (failBuffer && i > 0) EXPECT_EQ(fake::failAlloc, -1);
+    }
+    store.unload();
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(store.clippingCount(), texts.size());
+    for (size_t i = 0; i < texts.size(); ++i) {
+      std::string restored;
+      ASSERT_TRUE(store.readClippingText(i, restored));
+      EXPECT_EQ(restored, texts[i]);
+    }
+  }
+}
+
 TEST(ClippingStore, ShortDeletionAppendRollsBackAndRetryCanSync) {
   for (const bool failedRollback : {false, true}) {
     fake::reset();

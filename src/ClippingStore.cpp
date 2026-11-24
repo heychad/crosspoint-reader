@@ -1,5 +1,6 @@
 #include "ClippingStore.h"
 
+#include <BufferedFile.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -12,6 +13,7 @@
 #include <cstring>
 #include <ctime>
 #include <functional>
+#include <optional>
 
 #include "clippings/ClippingPreview.h"
 
@@ -104,11 +106,11 @@ bool writeRecordPrefix(HalFile& out, const Fields&... fields) {
   return out.write(bytes.data(), bytes.size()) == bytes.size();
 }
 
-bool copyBytes(HalFile& in, HalFile& out, uint16_t length) {
+bool copyBytes(serialization::BufferedFileReader& in, HalFile& out, uint16_t length) {
   std::array<uint8_t, TEXT_COPY_BUFFER_SIZE> buffer{};
   while (length > 0) {
     const size_t chunk = std::min<size_t>(length, buffer.size());
-    if (in.read(buffer.data(), chunk) != static_cast<int>(chunk)) {
+    if (in.read(buffer.data(), chunk) != chunk) {
       return false;
     }
     if (out.write(buffer.data(), chunk) != chunk) {
@@ -659,6 +661,9 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
     return false;
   }
 
+  // Keep the current source sector while writing several short clips to the temp file.
+  std::optional<serialization::BufferedFileReader> reader;
+  if (source) reader.emplace(source, 512, 512);
   for (uint16_t i = 0; i < count; ++i) {
     const Clipping& clipping = clippingRef(i);
     const bool useReplacement = replacementText && i == replacementIndex;
@@ -682,7 +687,7 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
     if (textLen > 0 && useReplacement) {
       wroteText = f.write(reinterpret_cast<const uint8_t*>(replacementText->data()), textLen) == textLen;
     } else if (textLen > 0) {
-      wroteText = source && source.seek(clipping.textOffset) && copyBytes(source, f, textLen);
+      wroteText = reader && reader->seek(clipping.textOffset) && copyBytes(*reader, f, textLen);
     }
     if (!wroteText) {
       LOG_ERR("CLIP", "Failed to write clipping text %u: %s", i, tmpPath.c_str());

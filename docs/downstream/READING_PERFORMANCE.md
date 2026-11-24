@@ -184,5 +184,12 @@ of 1,024 clips, writes fell from 18,440 to 2,056. Both writers produced
 byte-identical files. These counts measure calls into storage. Time spent
 waiting for the SD card and display still needs a device measurement.
 
+When rewriting an existing store, a 512-byte source buffer keeps short clips
+from repeatedly evicting the output sector. Allocation failure uses direct
+reads. With 99 existing 64-byte clips, saving the 100th on simulated FAT went
+from 251 sector reads and 160 writes to 108 reads and 93 writes. On exFAT it
+went from 254 reads and 154 writes to 111 reads and 87 writes. On both, the
+rewritten file matched the previous writer byte for byte after remount.
+
 The reader checks the temporary store's sync and close results before replacing
 the prior copy. If either fails, the prior clippings remain available for retry.
