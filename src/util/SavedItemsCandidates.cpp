@@ -11,13 +11,6 @@ namespace {
 constexpr const char* DIRECTORIES[] = {"/.crosspoint/bookmarks", "/.crosspoint/clippings"};
 constexpr unsigned RECORDS_PER_BATCH = 32;
 
-bool ascii(std::string_view name) {
-  for (const unsigned char c : name) {
-    if (c >= 128) return false;
-  }
-  return true;
-}
-
 uint32_t foldedHash(std::string_view name) {
   uint32_t hash = 2166136261U;
   for (const unsigned char c : name) {
@@ -30,8 +23,14 @@ uint32_t foldedHash(std::string_view name) {
 
 void Candidates::Names::insert(std::string_view name) {
   any = true;
-  if (!ascii(name)) {
+  const auto units = checkedStorageComponentUnits(name);
+  if (!units) {
     reliable = false;
+    return;
+  }
+  lengths[units] = true;
+  if (units != name.size()) {
+    nonAsciiLengths[units] = true;
     return;
   }
   const uint32_t hash = foldedHash(name);
@@ -44,11 +43,14 @@ bool Candidates::Names::mightContain(std::string_view name) const {
   if (!reliable) return true;
   if (!any) return false;
   name.remove_prefix(name.find_last_of('/') + 1);
-  if (!ascii(name) || !validCheckedStorageComponent(name)) return true;
-  const auto dot = name.find('.');
-  // The inventory emits long names. A possible FAT short-name lookup must
-  // still go through the filesystem, even if it misses the filter.
-  if (name.size() <= 8 || (dot <= 8 && name.size() - dot <= 4)) return true;
+  const auto units = checkedStorageComponentUnits(name);
+  if (!units) return true;
+  // A FAT short alias can have a different length from its long name. Send any
+  // possible 8.3 lookup to the filesystem, including multibyte OEM names.
+  if (units <= 12) return true;
+  // SdFat compares long names one UTF-16 unit at a time on FAT and exFAT.
+  if (!lengths[units]) return false;
+  if (nonAsciiLengths[units] || units != name.size()) return true;
   const uint32_t hash = foldedHash(name);
   for (const uint32_t bit : {hash % BIT_COUNT, (hash >> 16) % BIT_COUNT}) {
     if ((bits[bit / 32] & (1UL << (bit % 32))) == 0) return false;

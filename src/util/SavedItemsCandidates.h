@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bitset>
 #include <memory>
 #include <string_view>
 
@@ -22,6 +23,9 @@ class Candidates {
   static constexpr unsigned BIT_COUNT = 4096;
   struct Names {
     std::array<uint32_t, BIT_COUNT / 32> bits{};
+    // A long-name match uses the same number of UTF-16 units even if its casing changes.
+    std::bitset<256> lengths;
+    std::bitset<256> nonAsciiLengths;
     bool reliable = true;
     bool any = false;
     void insert(std::string_view name);

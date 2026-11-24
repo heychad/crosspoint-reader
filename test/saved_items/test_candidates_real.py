@@ -86,12 +86,33 @@ int main(int argc, char** argv) {
     possible += sparse.kindsFor("/Books/Catalog " + std::to_string(i) + ".epub") != 0;
   }
   assert(possible < 64);
+  // A Unicode filename must not force a filesystem lookup for every book.
   put("/.crosspoint/bookmarks/Café.json");
+  const std::string accented = "/Books/A long Étude for two voices.epub";
+  put(path(accented, Root::NativeBookmarks));
+  const std::string astral = "/Books/Astral 🍎 reading notes.epub";
+  put(BookmarkUtil::nativeRecoveryPath(path(astral, Root::NativeBookmarks), true));
+  const std::string longBook = "/" + std::string(248, 'x') + "🍎.epub";
+  auto longBackup = BookmarkUtil::nativeRecoveryPath(path(longBook, Root::NativeBookmarks), true);
+  assert(longBackup.ends_with(".jbak"));
+  put(longBackup);
+  // This pair in the pinned SdFat upcase table uses two and three UTF-8 bytes.
+  put("/.crosspoint/bookmarks/Books_long_ɫetter_pair.json");
   Candidates unicode;
   finish(unicode);
   assert(unicode.valid());
-  assert(unicode.kindsFor(absent) & saveditems::BOOKMARKS);
-  assert(unicode.kindsFor(absent) & saveditems::CROSSINK_BOOKMARKS);
+  assert(unicode.kindsFor(accented) & saveditems::BOOKMARKS);
+  const auto folded = "/Books/A LONG étude for two voices.epub";
+  assert(Storage.lookupPath(path(folded, Root::NativeBookmarks).c_str()) == HalStorage::PathStatus::Present);
+  assert(unicode.kindsFor(folded) & saveditems::BOOKMARKS);
+  const auto differentWidthFold = "/Books/long_Ɫetter_pair.epub";
+  assert(Storage.lookupPath(path(differentWidthFold, Root::NativeBookmarks).c_str()) == HalStorage::PathStatus::Present);
+  assert(unicode.kindsFor(differentWidthFold) & saveditems::BOOKMARKS);
+  assert(unicode.kindsFor(astral) & saveditems::BOOKMARKS);
+  assert(unicode.kindsFor(longBook) & saveditems::BOOKMARKS);
+  assert(unicode.kindsFor("/Library/A title with an unmatched length in this inventory.epub") == 0);
+  assert(unicode.kindsFor(crc) & saveditems::CROSSINK_BOOKMARKS);
+  assert(unicode.kindsFor(hash) & saveditems::CROSSINK_BOOKMARKS);
   assert(!(unicode.kindsFor(absent) & saveditems::HAS_CLIPPINGS));
 
   SDCard.volume = nullptr;

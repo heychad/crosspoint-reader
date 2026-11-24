@@ -5,13 +5,12 @@
 #include <cstring>
 #include <string_view>
 
-// Reject invalid or ambiguous FAT components before a lookup can report Missing.
-// FAT long names are limited to 255 UTF-16 code units.
-inline bool validCheckedStorageComponent(std::string_view name) {
-  if (name.empty() || name.front() == ' ') return false;
+// Return the FAT long-name length in UTF-16 units, or zero for an invalid component.
+inline uint16_t checkedStorageComponentUnits(std::string_view name) {
+  if (name.empty() || name.front() == ' ') return 0;
   const size_t length = name.size();
-  if (name[length - 1] == ' ' || name[length - 1] == '.') return false;
-  if (name == "." || name == "..") return false;
+  if (name[length - 1] == ' ' || name[length - 1] == '.') return 0;
+  if (name == "." || name == "..") return 0;
   const auto* bytes = reinterpret_cast<const unsigned char*>(name.data());
   size_t offset = 0;
   size_t units = 0;
@@ -32,25 +31,27 @@ inline bool validCheckedStorageComponent(std::string_view name) {
       codepoint = first & 0x07;
       count = 4;
     } else {
-      return false;
+      return 0;
     }
-    if (count > length - offset) return false;
+    if (count > length - offset) return 0;
     for (size_t i = 1; i < count; ++i) {
-      if ((bytes[offset + i] & 0xc0) != 0x80) return false;
+      if ((bytes[offset + i] & 0xc0) != 0x80) return 0;
       codepoint = (codepoint << 6) | (bytes[offset + i] & 0x3f);
     }
     if ((count == 3 && codepoint < 0x800) || (count == 4 && codepoint < 0x10000) ||
         (codepoint >= 0xd800 && codepoint <= 0xdfff) || codepoint > 0x10ffff)
-      return false;
+      return 0;
     if (codepoint < 0x20 || codepoint == '"' || codepoint == '*' || codepoint == '/' || codepoint == ':' ||
         codepoint == '<' || codepoint == '>' || codepoint == '?' || codepoint == '\\' || codepoint == '|')
-      return false;
+      return 0;
     units += codepoint > 0xffff ? 2 : 1;
-    if (units > 255) return false;
+    if (units > 255) return 0;
     offset += count;
   }
-  return true;
+  return static_cast<uint16_t>(units);
 }
+
+inline bool validCheckedStorageComponent(std::string_view name) { return checkedStorageComponentUnits(name) != 0; }
 inline bool validCheckedStorageComponent(const char* name) {
   return name && validCheckedStorageComponent(std::string_view(name));
 }

@@ -2,7 +2,6 @@
 #include <FatLib/FatFormatter.h>
 #include <FatLib/FatVolume.h>
 #include <common/FsBlockDeviceInterface.h>
-#include "CheckedStoragePath.h"
 
 #include <cassert>
 #include <cstdio>
@@ -10,6 +9,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "CheckedStoragePath.h"
 
 struct Disk : FsBlockDeviceInterface {
   std::vector<uint8_t> bytes = std::vector<uint8_t>(64 * 1024 * 1024);
@@ -60,6 +61,9 @@ int main() {
     FatFile rejected;
     assert(!rejected.open(&root, invalid.c_str(), O_RDONLY));
   }
+  assert(checkedStorageComponentUnits("Café 世界.epub") == 12);
+  assert(checkedStorageComponentUnits(std::string(253, 'a') + "🍎") == 255);
+  assert(checkedStorageComponentUnits(std::string(254, 'a') + "🍎") == 0);
   assert(validCheckedStorageComponent("Café 世界.epub"));
   assert(validCheckedStorageComponent(std::string(255, 'a').c_str()));
   FatFile directory;
@@ -177,11 +181,15 @@ int main() {
   assert(exclusiveFaults >= 3);
   // A matching long name with a damaged short-entry checksum or LFN chain
   // must be treated as an error, never as an absent book.
-  struct Damage { uint32_t index; unsigned byte; uint8_t mask; };
+  struct Damage {
+    uint32_t index;
+    unsigned byte;
+    uint8_t mask;
+  };
   constexpr uint32_t firstLongEntry = (199 + 12) / 13;
-  for (const auto& damaged : {Damage{bookmarkIndex, 0, 1}, Damage{bookmarkIndex - 1, 13, 1},
-                               Damage{bookmarkIndex - firstLongEntry, 0, 0x40},
-                               Damage{bookmarkIndex - firstLongEntry, 0, 1}}) {
+  for (const auto& damaged :
+       {Damage{bookmarkIndex, 0, 1}, Damage{bookmarkIndex - 1, 13, 1}, Damage{bookmarkIndex - firstLongEntry, 0, 0x40},
+        Damage{bookmarkIndex - firstLongEntry, 0, 1}}) {
     FatFile parentRoot;
     assert(parentRoot.openRoot(&volume));
     FatFile parent;
