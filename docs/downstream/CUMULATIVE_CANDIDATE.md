@@ -576,3 +576,17 @@ both X4 Pro builds, and the compiled stable-update simulation. The
 5,869,520-byte Mac image has SHA-256
 `8328027405989f16a31b06def925685e702e86325f63b371da14b8bb27d06f0d`.
 Its package includes the test70 rollback. Test71 remains staged on the reader.
+
+### Local test81 package
+
+Test81 handles waiting input before loading next-page fonts or extending
+a partly indexed chapter. Turning beyond the last cached page requests
+the next page of that chapter. A failed extension retains the prior page
+for retry. EPUB and XTC progress saves also check the staged write before
+replacing the current position.
+
+Source `67e8584d` passed 2,606 enabled checks in each host configuration,
+both X4 Pro builds, and the compiled stable-update simulation. The
+5,869,568-byte Mac image has SHA-256
+`c81ad5885715947e30a2291d2b64026ad9e5fd70d8ef7167737c840734e2de87`.
+Its package includes the test70 rollback. Test71 remains staged on the reader.

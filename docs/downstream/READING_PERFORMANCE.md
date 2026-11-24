@@ -363,5 +363,33 @@ file error, and close before replacing the saved position. A regression
 injects each failure and retries with the same next page. In 144 FAT and
 exFAT fixtures, this caught 447 additional staging failures and retained the
 previous position in each. Across the separate remove and rename steps, 72
-injected failures still left the canonical position missing. Native progress
-bytes and the existing CrossInk backup are preserved by this change.
+publication-stage faults in each build left no readable canonical position
+after remount. The fixtures used absent or independently allocated temporary
+files. A pre-existing temporary file sharing the canonical cluster chain can
+still damage the original when reopened for writing. The saved format is
+unchanged. The writer does not open the CrossInk backup.
+
+
+### Repeated interruptions during clipping recovery
+
+Three backed-up clipping stores were replayed on FAT and exFAT with short
+and long directory entries. A second simulated power cut interrupted each
+distinct changed byte prefix of the writes made during first-remount
+recovery. All 43,776 second-cut snapshots that needed recovery writes
+reopened the old or new clipping set, including its passages and anchors.
+In 648 separate first-cut FAT snapshots the store was unreadable. Edits and
+sync preparation stayed blocked.
+
+### Comparing the native and RC3 position writers
+
+A Mac fixture replayed four page saves from each of 110 archived positions
+across six directory layouts on FAT and exFAT. The current native writer
+issued 12 sector writes per turn on FAT and 9 on exFAT. The tagged RC3
+two-slot writer issued one sector write on every third and fourth turn of
+these runs. Earlier turns included allocating and growing the slots. Actual
+card latency depends on the card and controller.
+
+The RC3 reader returned the old or new position on all 167,156 first-cut
+snapshots. A reader using only the native primary saw the newest position
+after 2,640 of the 5,280 completed RC3 saves and the previous position after
+the other 2,640. Test81 keeps the native writer.
