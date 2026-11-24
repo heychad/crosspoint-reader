@@ -137,6 +137,36 @@ TEST(ClippingStore, OffsetAllocationFailureDoesNotCreateTempFile) {
   EXPECT_EQ(add(store, "two"), Result::Added);
 }
 
+TEST(ClippingStore, FailedSyncOrClosePreservesCommittedClippingsForRetry) {
+  enum class Failure { Sync, TempClose, SourceClose };
+  for (const auto failure : {Failure::Sync, Failure::TempClose, Failure::SourceClose}) {
+    fake::reset();
+    ClippingStore store;
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(add(store), Result::Added);
+    const auto path = storePath();
+    const auto original = fake::files.at(path)->bytes;
+    if (failure == Failure::Sync)
+      fake::failSync = 0;
+    else
+      fake::failClosePath = failure == Failure::TempClose ? path + ".tmp" : path;
+    EXPECT_EQ(add(store, "two"), Result::SaveFailed);
+    EXPECT_TRUE(fake::failureTriggered);
+    EXPECT_EQ(fake::files.at(path)->bytes, original);
+    EXPECT_FALSE(Storage.exists((path + ".tmp").c_str()));
+    EXPECT_EQ(store.clippingCount(), 1u);
+    EXPECT_EQ(add(store, "two"), Result::Added);
+    store.unload();
+    ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
+    ASSERT_EQ(store.clippingCount(), 2u);
+    std::string text;
+    ASSERT_TRUE(store.readClippingText(0, text));
+    EXPECT_EQ(text, "one");
+    ASSERT_TRUE(store.readClippingText(1, text));
+    EXPECT_EQ(text, "two");
+  }
+}
+
 TEST(ClippingStore, ShortDeletionAppendRollsBackAndRetryCanSync) {
   for (const bool failedRollback : {false, true}) {
     fake::reset();
@@ -319,6 +349,7 @@ TEST(ClippingStore, OldVersionsPreserveTextAndCoordinatesAcrossNativeSave) {
       write(static_cast<uint16_t>(expected.size()));
     ASSERT_EQ(file.write(reinterpret_cast<const uint8_t*>(expected.data()), expected.size()), expected.size());
     file.close();
+    const auto original = fake::files.at(path)->bytes;
     ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
     ASSERT_EQ(store.clippingCount(), 1u);
     const auto check = [&] {
@@ -339,7 +370,13 @@ TEST(ClippingStore, OldVersionsPreserveTextAndCoordinatesAcrossNativeSave) {
     };
     check();
     ASSERT_EQ(add(store, "second"), Result::Added);
-    ASSERT_EQ(fake::files.at(path)->bytes.front(), 4);
+    const auto& rewritten = fake::files.at(path)->bytes;
+    ASSERT_EQ(rewritten.front(), 4);
+    if (version == 4) {
+      // Only the two-byte count changes before the newly appended record.
+      ASSERT_GT(rewritten.size(), original.size());
+      EXPECT_TRUE(std::equal(original.begin() + 3, original.end(), rewritten.begin() + 3));
+    }
     store.unload();
     ASSERT_TRUE(store.loadForBook("/book.epub", "Book", "Author", "epub"));
     ASSERT_EQ(store.clippingCount(), 2u);

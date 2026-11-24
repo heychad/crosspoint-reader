@@ -174,3 +174,15 @@ against the writer. With the production SdFat library and a simulated card,
 a cold FAT open used 218 sector reads, down from 374. A contiguous exFAT
 file used 217, down from 373. Interleaving writes to a second file gave 218
 instead of 374 on both filesystems. Timing on the physical card is open.
+
+## Saving a clipping
+
+Each saved clipping has a 156-byte prefix with its location, sync fields, and
+text length. Writing the prefix in one call reduced storage writes from 1,808
+to 208 when saving the 100th short clip in a host fixture. At the X4 Pro limit
+of 1,024 clips, writes fell from 18,440 to 2,056. Both writers produced
+byte-identical files. These counts measure calls into storage. Time spent
+waiting for the SD card and display still needs a device measurement.
+
+The reader checks the temporary store's sync and close results before replacing
+the prior copy. If either fails, the prior clippings remain available for retry.

@@ -24,6 +24,7 @@ inline int failRead = -1;
 inline int failWrite = -1;
 inline int shortWrite = -1;
 inline int failTruncate = -1;
+inline int failSync = -1;
 inline int failRename = -1;
 inline int failAlloc = -1;
 inline bool failDirectorySeek = false;
@@ -61,6 +62,7 @@ inline void reset() {
   failWrite = -1;
   shortWrite = -1;
   failTruncate = -1;
+  failSync = -1;
   failRename = -1;
   failAlloc = -1;
   failDirectorySeek = false;
@@ -190,6 +192,7 @@ class HalFile {
   int available() const { return node ? static_cast<int>(node->bytes.size() - std::min(pos, node->bytes.size())) : -1; }
   size_t size() const { return fileSize(); }
   void flush() {}
+  bool sync() { return node && !fake::fail(fake::failSync); }
   bool truncate(const size_t size) {
     if (!node || fake::fail(fake::failTruncate) || size > node->bytes.size()) return false;
     node->bytes.resize(size);

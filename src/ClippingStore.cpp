@@ -46,6 +46,22 @@ void copyBounded(char* dst, const size_t dstSize, const char* src) {
   dst[utf8SafeTruncateBuffer(dst, static_cast<int>(strlen(dst)))] = '\0';
 }
 
+// The v4 prefix uses native scalar representations in this exact order, with no
+// struct padding. Write it in one storage call per clipping.
+template <typename... Fields>
+bool writeRecordPrefix(HalFile& out, const Fields&... fields) {
+  constexpr size_t length = (sizeof(Fields) + ...);
+  static_assert(length == 156, "v4 clipping record prefix changed");
+  std::array<uint8_t, length> bytes;
+  size_t offset = 0;
+  const auto append = [&](const auto& field) {
+    std::memcpy(bytes.data() + offset, &field, sizeof(field));
+    offset += sizeof(field);
+  };
+  (append(fields), ...);
+  return out.write(bytes.data(), bytes.size()) == bytes.size();
+}
+
 bool copyBytes(HalFile& in, HalFile& out, uint16_t length) {
   std::array<uint8_t, TEXT_COPY_BUFFER_SIZE> buffer{};
   while (length > 0) {
@@ -618,31 +634,16 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
 
   for (uint16_t i = 0; i < count; ++i) {
     const Clipping& clipping = clippingRef(i);
-    if (!serialization::tryWritePod(f, clipping.spineIndex) || !serialization::tryWritePod(f, clipping.startPage) ||
-        !serialization::tryWritePod(f, clipping.endPage) || !serialization::tryWritePod(f, clipping.pageCount) ||
-        !serialization::tryWritePod(f, clipping.startWordIndex) ||
-        !serialization::tryWritePod(f, clipping.endWordIndex) || !serialization::tryWritePod(f, clipping.wordCount) ||
-        !serialization::tryWritePod(f, clipping.paragraphIndex) || !serialization::tryWritePod(f, clipping.timestamp) ||
-        !serialization::tryWritePod(f, clipping.layoutSignature) ||
-        !serialization::tryWritePod(f, clipping.startOffset) || !serialization::tryWritePod(f, clipping.endOffset) ||
-        !serialization::tryWritePod(f, clipping.syncRevision) ||
-        !serialization::tryWritePod(f, clipping.pendingUpload) ||
-        f.write(reinterpret_cast<const uint8_t*>(clipping.id), sizeof(clipping.id)) != sizeof(clipping.id) ||
-        f.write(reinterpret_cast<const uint8_t*>(clipping.chapterTitle), sizeof(clipping.chapterTitle)) !=
-            sizeof(clipping.chapterTitle)) {
-      LOG_ERR("CLIP", "Failed to write clipping record %u: %s", i, storeFilePath.c_str());
-      f.close();
-      if (source) source.close();
-      Storage.remove(tmpPath.c_str());
-      return false;
-    }
-
     const bool useReplacement = replacementText && i == replacementIndex;
     const uint16_t textLen = useReplacement
                                  ? static_cast<uint16_t>(std::min(replacementText->size(), CLIPPING_TEXT_MAX))
                                  : clipping.textLength;
-    if (!serialization::tryWritePod(f, textLen)) {
-      LOG_ERR("CLIP", "Failed to write clipping text length %u: %s", i, tmpPath.c_str());
+    if (!writeRecordPrefix(f, clipping.spineIndex, clipping.startPage, clipping.endPage, clipping.pageCount,
+                           clipping.startWordIndex, clipping.endWordIndex, clipping.wordCount, clipping.paragraphIndex,
+                           clipping.timestamp, clipping.layoutSignature, clipping.startOffset, clipping.endOffset,
+                           clipping.syncRevision, clipping.pendingUpload, clipping.id, clipping.chapterTitle,
+                           textLen)) {
+      LOG_ERR("CLIP", "Failed to write clipping record %u: %s", i, tmpPath.c_str());
       f.close();
       if (source) source.close();
       Storage.remove(tmpPath.c_str());
@@ -666,9 +667,14 @@ bool ClippingStore::writeToFile(const std::string* replacementText, const size_t
     newTextOffsets[i] = newTextOffset;
   }
 
-  f.flush();
-  f.close();
-  if (source) source.close();
+  const bool synced = f.sync();
+  const bool closed = f.close();
+  const bool sourceClosed = !source || source.close();
+  if (!synced || !closed || !sourceClosed) {
+    LOG_ERR("CLIP", "Failed to finish clipping file: %s", tmpPath.c_str());
+    Storage.remove(tmpPath.c_str());
+    return false;
+  }
 
   if (hasDestination && !Storage.rename(storeFilePath.c_str(), backupPath.c_str())) {
     LOG_ERR("CLIP", "Failed to back up clipping file: %s", storeFilePath.c_str());
