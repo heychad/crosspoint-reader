@@ -58,8 +58,9 @@ The 5,860,848-byte `READER71.BIN` passed the board, version, slot size,
 checksum, and validation hash checks. Its SHA-256 is
 `487ab6b2fd68e1ade483f79e4fca76ebf0c8e1271b2d67399607d1909db49862`.
 The local manifest also verifies the test70 rollback and `Review71.epub`,
-which exercises divider layout and clipping. Stage the follow-up after the
-[test70 device check](NEXT_DEVICE_QA.md) and a fresh reading-state backup.
+which exercises divider layout and clipping. The image was staged after the
+test70 device check and a fresh reading-state backup. The
+[morning check](NEXT_DEVICE_QA.md) starts with this image.
 
 ### Local test72 package
 

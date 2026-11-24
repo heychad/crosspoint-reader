@@ -54,7 +54,7 @@ returns HTTP 503 with `render_busy`, retry after one second.
 Builds after test72 can also report `lastClipSave`. Select **Record EPUB timings**
 before saving a clip. The field shows how long it took to save the clip to the
 book's clipping file (`storeMs`) and append it to the text export (`exportMs`).
-It excludes selection, redraw, and panel refresh. Only successful saves produce a
-sample. If the renderer is busy when a save finishes, the previous sample stays
-in place. Starting a new recording clears it. The reply contains no book titles
-or passage text.
+It excludes selection, time waiting for a redraw to finish before the save,
+and panel refresh. Only successful saves produce a sample. If the renderer is
+busy when a save finishes, the previous sample stays in place. Starting a new
+recording clears it. The reply contains no book titles or passage text.

@@ -285,6 +285,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // Caller holds RenderLock because renderBook also reads cachedBookmarks.
   void loadCachedBookmarks();
   void addBookmark();
+  void addBookmark(const RenderLock&);
   void updateBookmarkFlag();
 
   void navigateToHref(const std::string& href, bool savePosition = false);

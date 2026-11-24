@@ -35,7 +35,9 @@ word_font = method("int clippingWordFont", "Rect clippingWordRect", reader_sourc
 word_rect = method("Rect clippingWordRect", "int clampPercent", reader_source)
 saved_hit = method("int EpubReaderActivity::clippingAtPoint", "void EpubReaderActivity::drawClippingHighlights", reader_source)
 saved_draw = method("void EpubReaderActivity::drawClippingHighlights", "void EpubReaderActivity::renderStatusBar", reader_source)
-save_feedback = method("bool exported = false;", "  });", reader_source)
+callback_start = reader_source.index("](const ActivityResult& result) {", reader_source.index("void EpubReaderActivity::startClipSelection"))
+callback_end = reader_source.index("\n  });\n}", callback_start)
+save_callback = reader_source[reader_source.index("{", callback_start) + 1:callback_end]
 
 # Compile production extraction, export, and redraws with bounded UI/rendering stubs.
 harness = r"""
@@ -44,6 +46,9 @@ harness = r"""
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <variant>
 #include <set>
 #include <span>
 #include <string>
@@ -174,11 +179,24 @@ struct BoardConfig { static bool isEegoA4() { return false; } };
 uint32_t clockMs = 100;
 unsigned long millis() { return clockMs; }
 bool renderBusy = false;
+std::mutex renderMutex;
+thread_local bool renderLockHeld = false;
 RenderLock::RenderLock(Mode mode) {
-  assert(mode == Mode::Try);
-  isLocked = !renderBusy;
+  assert(!renderLockHeld);
+  if (mode == Mode::Blocking) {
+    renderMutex.lock();
+    isLocked = true;
+  } else {
+    isLocked = !renderBusy && renderMutex.try_lock();
+  }
+  renderLockHeld = isLocked;
 }
-RenderLock::~RenderLock() = default;
+void RenderLock::unlock() {
+  if (!isLocked) return;
+  isLocked = renderLockHeld = false;
+  renderMutex.unlock();
+}
+RenderLock::~RenderLock() { unlock(); }
 struct Settings {
   int screenMargin = 0;
   int getReaderFontId() const { return 0; }
@@ -190,6 +208,16 @@ struct Settings {
   }
 } SETTINGS;
 struct SavedClippings {
+  ClippingStore::AddResult result = ClippingStore::AddResult::Added;
+  template <class... Args> ClippingStore::AddResult addClipping(const Args&...) {
+    assert(renderLockHeld);
+    bool couldDraw = true;
+    std::thread paint([&] { RenderLock lock(RenderLock::Mode::Try); couldDraw = lock.ownsLock(); });
+    paint.join();
+    assert(!couldDraw);
+    clockMs += 10;
+    return result;
+  }
   Clipping clipping;
   std::vector<Clipping> extra;
   bool hasClippings() const { return true; }
@@ -262,33 +290,64 @@ struct ClippingsManager {
   static inline bool exportSucceeds = false;
   static inline int exports = 0;
   static bool saveClipping(const std::string&, const std::string&, const std::string&, int, const std::string&) {
+    assert(!renderLockHeld);
     ++exports;
     clockMs += 18;
     return exportSucceeds;
   }
 };
-void checkSaveFeedback(ClippingStore::AddResult addResult, bool exportSucceeds, bool expectPopup, StrId expectMessage) {
-  // Start with an old error so success must also clear it.
-  bool showClippingMessage = true;
+struct ClippingResult {
+  enum class Action { Clip, Bookmark, Lookup };
+  Action action = Action::Clip;
+  int startPageOffset = 0, endPageOffset = 1, startWordIndex = 0, endWordIndex = 1, wordCount = 2;
+  uint32_t startOffset = 4, endOffset = 9;
+  std::string text = "Passage";
+};
+struct ActivityResult { bool isCancelled = false; std::variant<ClippingResult> data; };
+struct DictionaryWordSelectActivity {
+  template<class... Args> explicit DictionaryWordSelectActivity(Args&&...) {}
+};
+struct ClipResultHarness {
+  struct Section {
+    int currentPage = 4, pageCount = 10;
+    std::optional<uint32_t> getVisibleTextOffsetForPage(int) { assert(renderLockHeld); return 40; }
+    std::optional<uint16_t> getParagraphIndexForPage(int) { assert(renderLockHeld); return 3; }
+    std::unique_ptr<Page> loadPage(int) { assert(renderLockHeld); return std::make_unique<Page>(); }
+  } book;
+  Section* section = &book;
+  int spineIndex = 1, currentSpineIndex = 1, pageNumber = 4, pageCount = 10, layoutSignature = 1;
+  std::optional<uint32_t> currentPageVisibleOffset;
+  std::string bookTitle = "Book", author = "Author", chapterTitle = "Chapter";
+  bool showClippingMessage = true, showBookmarkMessage = false;
   StrId clippingMessage = StrId::STR_CLIPPING_FAILED;
-  unsigned long clippingMessageTime = 40;
-  int updates = 0;
-  const auto requestUpdate = [&] { ++updates; };
-  const std::string bookTitle = "Book", author = "Author", chapterTitle = "Chapter";
-  const int startPage = 4;
-  const struct { std::string text; } clipping{"Passage"};
+  unsigned long clippingMessageTime = 40, bookmarkMessageTime = 0;
+  int updates = 0, bookmarks = 0, lookups = 0;
+  Renderer renderer;
+  Input mappedInput;
+  struct Layout { int left = 0, top = 0; };
+  Layout readerPageLayout() const { assert(renderLockHeld); return {}; }
+  void requestUpdate() { ++updates; }
+  void addBookmark(const RenderLock& lock) { assert(lock.ownsLock() && renderLockHeld); ++bookmarks; }
+  void openDictionaryWordSelect() {}
+  template<class A, class F> void startActivityForResult(A&&, F&&) { ++lookups; }
+  void finishSelection(const ActivityResult& result) {
+""" + save_callback + r"""
+  }
+};
+void checkSaveFeedback(ClippingStore::AddResult result, bool exportSucceeds, bool expectPopup, StrId expectMessage) {
+  ClipResultHarness reader;
+  savedClippings.result = result;
   ClippingsManager::exportSucceeds = exportSucceeds;
   ClippingsManager::exports = 0;
   epubtiming::recorder = {};
   epubtiming::recorder.toggleRecording();
-  const uint32_t storeStart = UINT32_MAX - 5;
-  clockMs = 4;
-""" + save_feedback + r"""
-  assert(updates == 1);
-  assert(showClippingMessage == expectPopup);
-  assert(clippingMessage == expectMessage);
-  assert(clippingMessageTime == (expectPopup ? millis() : 40));
-  assert(ClippingsManager::exports == (addResult == ClippingStore::AddResult::Added ? 1 : 0));
+  clockMs = UINT32_MAX - 5;
+  reader.finishSelection({});
+  assert(!renderLockHeld && reader.updates == 1);
+  assert(reader.book.currentPage == 5 && reader.currentPageVisibleOffset == 40);
+  assert(reader.showClippingMessage == expectPopup && reader.clippingMessage == expectMessage);
+  assert(reader.clippingMessageTime == (expectPopup ? millis() : 40));
+  assert(ClippingsManager::exports == (result == ClippingStore::AddResult::Added ? 1 : 0));
   const auto sample = epubtiming::recorder.lastClipSave();
   assert(sample.has_value() == (!renderBusy && !expectPopup));
   if (sample) assert(sample->storeMs == 10 && sample->exportMs == 18);
@@ -337,6 +396,16 @@ int main() {
   renderBusy = true;
   checkSaveFeedback(AddResult::Added, true, false, StrId::STR_CLIPPING_FAILED);
   renderBusy = false;
+  ClipResultHarness alternate;
+  alternate.finishSelection({true, ClippingResult{}});
+  assert(!renderLockHeld && alternate.updates == 1 && alternate.book.currentPage == 4);
+  ClippingResult selected;
+  selected.action = ClippingResult::Action::Bookmark;
+  alternate.finishSelection({false, selected});
+  assert(!renderLockHeld && alternate.bookmarks == 1 && alternate.showBookmarkMessage);
+  selected.action = ClippingResult::Action::Lookup;
+  alternate.finishSelection({false, selected});
+  assert(!renderLockHeld && alternate.lookups == 1);
 
   // Generated markers stay selectable and share a paragraph with their book text.
   for (const auto mode : {ClipSelectionActivity::Mode::Clip, ClipSelectionActivity::Mode::DefinitionLookup}) {
@@ -556,7 +625,7 @@ with tempfile.TemporaryDirectory() as directory:
     cpp.write_text(harness)
     subprocess.run(["cc", "-c", str(ROOT / "lib/MiniBidi/minibidi.c"), "-o", str(bidi_object)], check=True)
     subprocess.run([
-        "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-DFREEINK_DEVICE_X4PRO=1",
+        "c++", "-std=c++20", "-pthread", "-Wall", "-Wextra", "-Werror", "-DFREEINK_DEVICE_X4PRO=1",
         "-I", str(ROOT / "src"), "-I", str(ROOT / "lib/Memory"),
         "-I", str(ROOT / "test/minibidi_arabic/stubs"),
         "-I", str(ROOT / "lib/MiniBidi"), "-I", str(ROOT / "lib/Utf8"),

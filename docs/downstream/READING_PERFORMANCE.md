@@ -224,6 +224,11 @@ read the position and wrote the original bytes. Four additional fixtures
 covered the older four-byte format, its end-page sentinel, and the six- and
 ten-byte forms.
 
+Returning from text selection can coincide with a queued screen refresh.
+The follow-up keeps the reader's page and clipping list under the render lock
+until the clipping store finishes saving or rolling back. The separate text
+export runs after the lock is released.
+
 Each saved clipping has a 156-byte prefix with its location, sync fields, and
 text length. Writing the prefix in one call reduced storage writes from 1,808
 to 208 when saving the 100th short clip in a host fixture. At the X4 Pro limit
@@ -259,7 +264,8 @@ An interrupted write of a sibling directory entry can make a strict lookup
 fail even when the primary clipping file still opens. In that case the reader
 compares the file's embedded book path with the open book and validates its
 records. Saved Items uses the same path check for counts. A match allows
-reading. Editing and syncing wait for a successful normal lookup. A backup whose
+reading. Editing and syncing resume when the store reopens with a successful
+normal lookup. A backup whose
 directory entry cannot be verified must pass the same embedded path check.
 A moved store can still have its old book path until the next save. Its
 verified filename works normally. If its directory entry also becomes

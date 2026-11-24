@@ -779,6 +779,7 @@ void EpubReaderActivity::openDictionaryWordSelect() {
 
 void EpubReaderActivity::startClipSelection(const int initialX, const int initialY,
                                             const ClipSelectionActivity::Mode mode) {
+  RenderLock selectionLock;
   if (!section || !epub || section->currentPage < 0 || section->currentPage >= section->pageCount) return;
 
   const int pageNumber = section->currentPage;
@@ -791,7 +792,6 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     auto page = section->loadPage(pageNumber + pageOffset);
     if (!page) break;
     if (pageOffset == 0 && initialX >= 0 && CLIPPINGS.hasClippings()) {
-      RenderLock lock;
       const int clippingIndex = clippingAtPoint(*page, initialX, initialY);
       if (clippingIndex >= 0) {
         const bool removed = CLIPPINGS.removeClippingAt(static_cast<size_t>(clippingIndex));
@@ -846,12 +846,14 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     const auto& clipping = std::get<ClippingResult>(result.data);
     const uint16_t startPage = static_cast<uint16_t>(pageNumber + clipping.startPageOffset);
     const uint16_t endPage = static_cast<uint16_t>(pageNumber + clipping.endPageOffset);
+    // A queued selection redraw can reach the reader as soon as the selection closes.
+    RenderLock resultLock;
     if (section && currentSpineIndex == spineIndex && endPage < section->pageCount) {
       section->currentPage = endPage;
       currentPageVisibleOffset = section->getVisibleTextOffsetForPage(endPage);
     }
     if (clipping.action == ClippingResult::Action::Bookmark) {
-      addBookmark();
+      addBookmark(resultLock);
       showBookmarkMessage = true;
       bookmarkMessageTime = millis();
       requestUpdate();
@@ -885,27 +887,32 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     const auto addResult = CLIPPINGS.addClipping(
         spineIndex, startPage, endPage, pageCount, clipping.startWordIndex, clipping.endWordIndex, clipping.wordCount,
         chapterTitle.c_str(), paragraphIndex, clipping.text, layoutSignature, clipping.startOffset, clipping.endOffset);
-    bool exported = false;
-    if (addResult == ClippingStore::AddResult::Added) {
+    showClippingMessage = addResult != ClippingStore::AddResult::Added;
+    if (showClippingMessage) {
+      clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED
+                                                                            : StrId::STR_CLIPPING_FAILED;
+      clippingMessageTime = millis();
+    } else {
+#if FREEINK_DEVICE_X4PRO
+      const uint32_t storeMs = static_cast<uint32_t>(millis()) - storeStart;
+#endif
+      resultLock.unlock();
 #if FREEINK_DEVICE_X4PRO
       const uint32_t exportStart = millis();
 #endif
-      exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text);
+      if (!ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text)) {
+        RenderLock lock;
+        showClippingMessage = true;
+        clippingMessage = StrId::STR_CLIPPING_EXPORT_FAILED;
+        clippingMessageTime = millis();
+      }
 #if FREEINK_DEVICE_X4PRO
-      if (exported) {
+      else {
         const uint32_t exportMs = static_cast<uint32_t>(millis()) - exportStart;
         RenderLock lock(RenderLock::Mode::Try);
-        if (lock.ownsLock()) epubtiming::recorder.recordClipSave({exportStart - storeStart, exportMs});
+        if (lock.ownsLock()) epubtiming::recorder.recordClipSave({storeMs, exportMs});
       }
 #endif
-    }
-    // The saved highlight confirms success on the normal reader refresh.
-    showClippingMessage = !exported;
-    if (showClippingMessage) {
-      clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED
-                        : addResult == ClippingStore::AddResult::Added      ? StrId::STR_CLIPPING_EXPORT_FAILED
-                                                                            : StrId::STR_CLIPPING_FAILED;
-      clippingMessageTime = millis();
     }
     requestUpdate();
   });
@@ -4468,6 +4475,10 @@ void EpubReaderActivity::loadCachedBookmarks() {
 
 void EpubReaderActivity::addBookmark() {
   RenderLock lock(*this);
+  addBookmark(lock);
+}
+
+void EpubReaderActivity::addBookmark(const RenderLock&) {
   if (!section || !epub) return;
   if (!cachedBookmarksReadable) {
     loadCachedBookmarks();
