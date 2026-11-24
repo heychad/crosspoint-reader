@@ -60,19 +60,15 @@ std::string readingstats::bookDirectory(const std::string& cachePath) {
   return "/.crosspoint/reading_stats/" + cachePath.substr(slash == std::string::npos ? 0 : slash + 1);
 }
 
-BookReadingStats readingstats::loadBook(const std::string& cachePath, const std::string& bookPath, bool& enabled,
-                                        bool* found, BookReadingStats::LoadMode mode, bool* trackingKnown) {
-  if (found) *found = false;
+namespace {
+BookReadingStats loadHistory(const std::string& cachePath, const std::string& bookPath, bool* found,
+                             BookReadingStats::LoadMode mode) {
+  using readingstats::bookDirectory;
   const std::string directory = bookDirectory(cachePath);
   std::string legacy;
   if (cachePath.find("/epub_") != std::string::npos) {
     legacy = "/.crosspoint/epub_" + std::to_string(ZipFile::fnvHash64(bookPath.data(), bookPath.size()));
   }
-  const auto trackingState = booktracking::state(cachePath, bookPath);
-  enabled = trackingState == booktracking::State::Enabled;
-  if (trackingKnown) *trackingKnown = trackingState != booktracking::State::Unknown;
-  // A move requires a known marker state before any repair or migration writes.
-  if (trackingKnown && !*trackingKnown) return {};
   // CrossInk's EPUB cache key is FNV-1a; CrossPoint keeps its existing std::hash identity.
   const std::array<std::string, 4> directories{directory, cachePath, legacy.empty() ? "" : bookDirectory(legacy),
                                                legacy};
@@ -99,6 +95,23 @@ BookReadingStats readingstats::loadBook(const std::string& cachePath, const std:
     return unavailable;
   }
   return {};
+}
+}  // namespace
+
+std::optional<bool> readingstats::storedCompletion(const std::string& cachePath, const std::string& bookPath) {
+  const auto stats = loadHistory(cachePath, bookPath, nullptr, BookReadingStats::LoadMode::ReadOnly);
+  return stats.writable ? std::optional<bool>(stats.isCompleted) : std::nullopt;
+}
+
+BookReadingStats readingstats::loadBook(const std::string& cachePath, const std::string& bookPath, bool& enabled,
+                                        bool* found, BookReadingStats::LoadMode mode, bool* trackingKnown) {
+  if (found) *found = false;
+  const auto trackingState = booktracking::state(cachePath, bookPath);
+  enabled = trackingState == booktracking::State::Enabled;
+  if (trackingKnown) *trackingKnown = trackingState != booktracking::State::Unknown;
+  // A move requires a known marker state before any repair or migration writes.
+  if (trackingKnown && !*trackingKnown) return {};
+  return loadHistory(cachePath, bookPath, found, mode);
 }
 
 bool readingstats::saveBook(const std::string& directory, const BookReadingStats& stats) {

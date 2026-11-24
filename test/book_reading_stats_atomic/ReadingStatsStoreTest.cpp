@@ -349,6 +349,29 @@ TEST_F(ReadingStatsStoreTest, CompletionFilterKeepsMissingAndUnreadableBooksUnkn
   EXPECT_FALSE(readingstats::bookCompletion(BOOK).has_value());
 }
 
+TEST_F(ReadingStatsStoreTest, CompletionFilterSkipsTrackingMarkersAndHonorsQualifiedCrossInkHistory) {
+  writeBytes(BOOK, {1});
+  const std::string cache = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(BOOK));
+  const std::string marker = readingstats::bookDirectory(cache) + "/reading_stats_off";
+  writeBytes(marker, {1});
+  Storage.failNextOpenReadFor(marker);
+  BookReadingStats finished;
+  finished.isCompleted = true;
+  writeBytes(legacyDirectory() + "/stats_v7_crossink-001122334455.bin", crossInkStats(7, finished, 0, 4));
+  EXPECT_EQ(readingstats::bookCompletion(BOOK), std::optional<bool>(true));
+
+  bool enabled = true, found = true, trackingKnown = true;
+  readingstats::loadBook(cache, BOOK, enabled, &found, BookReadingStats::LoadMode::ReadOnly, &trackingKnown);
+  EXPECT_FALSE(trackingKnown);
+  EXPECT_FALSE(found);
+  const auto stats =
+      readingstats::loadBook(cache, BOOK, enabled, &found, BookReadingStats::LoadMode::ReadOnly, &trackingKnown);
+  EXPECT_TRUE(trackingKnown);
+  EXPECT_FALSE(enabled);
+  EXPECT_TRUE(found);
+  EXPECT_TRUE(stats.isCompleted);
+}
+
 TEST_F(ReadingStatsStoreTest, CompletionFilterKeepsRecoveryFilesInPlace) {
   HalFile book;
   ASSERT_TRUE(Storage.openFileForWrite("TEST", BOOK, book));

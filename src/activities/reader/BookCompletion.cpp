@@ -15,7 +15,5 @@ std::optional<bool> readingstats::bookCompletion(const std::string& bookPath) {
     prefix = "xtc_";
   if (!prefix || !Storage.exists(bookPath.c_str())) return std::nullopt;
   const std::string cache = std::string("/.crosspoint/") + prefix + std::to_string(std::hash<std::string>{}(bookPath));
-  bool tracking = true;
-  const auto stats = loadBook(cache, bookPath, tracking, nullptr, BookReadingStats::LoadMode::ReadOnly);
-  return stats.writable ? std::optional<bool>(stats.isCompleted) : std::nullopt;
+  return storedCompletion(cache, bookPath);
 }

@@ -313,3 +313,30 @@ succeeded immediately. All 94 that failed succeeded after space was freed.
 Each reopened store contained the expected passages and revisions. A separate
 regression checks writing the last free cluster, attempting another write,
 remounting a full exFAT image, and writing again after freeing space.
+
+## Filtering finished books
+
+The Library reads completion history without opening the files that control
+per-book tracking. A book can be finished even if tracking is off. A missing
+book or unreadable history stays visible when finished books are hidden.
+
+On copies of 1,935 catalog paths with 114 seeded histories, the filter found
+the same 57 finished books in both versions. Sector reads fell from 267,979
+to 167,703 on simulated FAT and from 880,903 to 544,771 on exFAT. Neither
+run wrote to storage. The counts cover completion lookups across the catalog.
+Elapsed time in the reader's Library is still unmeasured.
+
+## Bookmarks, clippings, and positions after a move or interrupted save
+
+On simulated FAT and exFAT, Move to Read preserved all 110 primary EPUB
+positions from the pre-test71 backup under both native and legacy cache names.
+All 440 runs reopened at the expected position. The 156 runs with a backup
+position also preserved its exact bytes.
+
+Separate power-cut tests replayed three backed-up clipping stores containing
+14 clips in total. Across 468 add, delete, and edit runs, all 20,538 snapshots
+taken between complete sector writes reopened with the previous or updated
+contents. Of 1,014,665 snapshots including partial writes, 648 on FAT could
+not reopen the store. Every readable snapshot returned the complete old or
+new contents. No exFAT snapshot in this fixture was unreadable. These tests
+used copies of the backup and simulated sector writes.

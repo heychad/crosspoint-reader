@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "BookReadingStats.h"
@@ -11,6 +12,8 @@ std::string bookDirectory(const std::string& cachePath);
 BookReadingStats loadBook(const std::string& cachePath, const std::string& bookPath, bool& enabled,
                           bool* found = nullptr, BookReadingStats::LoadMode mode = BookReadingStats::LoadMode::Repair,
                           bool* trackingKnown = nullptr);
+// Read completion history for display without opening per-book tracking preferences.
+std::optional<bool> storedCompletion(const std::string& cachePath, const std::string& bookPath);
 bool preserveCache(const std::string& cachePath);
 // Clear rebuildable data even when statistics cannot be migrated.
 bool clearCache(const std::string& cachePath);
