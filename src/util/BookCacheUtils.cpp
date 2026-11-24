@@ -162,8 +162,7 @@ bool removeBookFileWithReceipt(const std::string& path) {
     const std::string held = event + path + std::string(bookmove::HELD_SUFFIX);
     if (!filechecksum::validPath(held) || !bookmove::validMovePath(held)) return false;
     if (Storage.lookupPath(event.c_str()) != HalStorage::PathStatus::Missing) return false;
-    const std::string parent = held.substr(0, held.find_last_of('/'));
-    if (!Storage.mkdir(parent.c_str(), true) || bookmove::move(path, held) != bookmove::Result::Moved) return false;
+    if (bookmove::move(path, held) != bookmove::Result::Moved) return false;
     // Keep local reading state available if the library restores this EPUB.
     return true;
   }

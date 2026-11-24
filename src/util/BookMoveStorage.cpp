@@ -298,9 +298,22 @@ Result prepare(Work& work) {
   if (!classify(work, deletionId)) return Result::Invalid;
   if (pending()) return Result::RecoveryRequired;
   bool available = false;
+  std::string deletionParent;
+  // Plan and seal are separate files. The journal root and current directory
+  // can each need their own cluster and an extension to their parent.
+  size_t extraClusters = 5;
   if (work.operation == Operation::Delete) {
-    if (!directory(parent(work.to), false) || Storage.lookupPath(work.to.c_str()) != HalStorage::PathStatus::Missing)
+    deletionParent = parent(work.to);
+    const auto parentStatus = Storage.lookupPath(deletionParent.c_str());
+    if (parentStatus == HalStorage::PathStatus::Failed) return Result::Unavailable;
+    if (parentStatus == HalStorage::PathStatus::Missing) {
+      // One cluster for each directory, plus up to two for long-name entries
+      // in a parent with 512-byte clusters.
+      extraClusters += 3 * std::count(deletionParent.begin(), deletionParent.end(), '/');
+    } else if (!directory(deletionParent, false) ||
+               Storage.lookupPath(work.to.c_str()) != HalStorage::PathStatus::Missing) {
       return Result::Conflict;
+    }
     const auto captured = capture(work.from, EntryKind::File, work.identities[0]);
     if (captured != Result::Moved) return captured;
     if (work.identities[0].kind != EntryKind::File || work.identities[0].size == 0) return Result::Conflict;
@@ -323,6 +336,11 @@ Result prepare(Work& work) {
   }
   if (!available || !encodePlan(work.from, work.to, work.id, work.identities, work.bytes, work.size))
     return Result::Unavailable;
+  if (extraClusters > UINT8_MAX) return Result::Invalid;
+  const auto room = Storage.allocationRoom(work.size, static_cast<uint8_t>(extraClusters));
+  if (room == HalStorage::AllocationRoom::TooLittle) return Result::InsufficientSpace;
+  if (room == HalStorage::AllocationRoom::Unknown) return Result::Unavailable;
+  if (!deletionParent.empty() && !directory(deletionParent, true)) return Result::Unavailable;
   if (!directory(JOURNAL_ROOT, true) || !directory(CURRENT, true)) return Result::RecoveryRequired;
   if (!publish(PLAN, work.bytes.data(), work.size)) return Result::RecoveryRequired;
   uint8_t proof[16];

@@ -25,6 +25,9 @@ inline void sendResult(WebServer& server, Result result, int success = 200) {
     case Result::Unavailable:
       server.send(503, "text/plain", "Book move unavailable; retry with storage idle");
       return;
+    case Result::InsufficientSpace:
+      server.send(507, "text/plain", "Free space on the SD card and retry the book move");
+      return;
     case Result::RecoveryRequired:
       server.send(423, "text/plain", "Book move needs recovery; files retained. Restart the reader or retry recovery");
       return;

@@ -23,6 +23,8 @@ enum class UsbDriveState : uint8_t {
 
 class HalStorage {
  public:
+  enum class AllocationRoom { Enough, TooLittle, Unknown };
+  AllocationRoom allocationRoom(uint32_t fileBytes, uint8_t extraClusters);
   enum class PathStatus { Missing, Present, Failed };
   HalStorage();
   bool begin();

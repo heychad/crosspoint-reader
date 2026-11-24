@@ -1,0 +1,27 @@
+--- a/src/FatLib/FatPartition.h
++++ b/src/FatLib/FatPartition.h
+@@ -100,4 +100,17 @@
+   /** \return The FAT type of the volume. Values are 12, 16 or 32. */
+   uint8_t fatType() const { return m_fatType; }
++  // Count only allocatable entries, and stop as soon as the request fits.
++  int8_t hasFreeClusters(uint32_t needed) {
++    if (!needed) return 1;
++    if (needed > clusterCount()) return 0;
++    // Check the tail first. A sequentially filled card often has free space there.
++    for (Cluster_t cluster = m_lastCluster; cluster >= 2; --cluster) {
++      Cluster_t value = 0;
++      const int8_t result = fatGet(cluster, &value);
++      if (result < 0) return -1;
++      if (result && value == 0 && --needed == 0) return 1;
++    }
++    return 0;
++  }
+   /** \return free cluster count or -1 if an error occurs. */
+   int32_t freeClusterCount();
+@@ -233,5 +246,5 @@
+     return m_dataStartSector + ((cluster - 2) << m_sectorsPerClusterShift);
+   }
+-  int8_t fatGet(Cluster_t cluster, Cluster_t* value);
++  int8_t fatGet(Cluster_t cluster, Cluster_t* value, bool* strictEoc = nullptr);
+   bool fatPut(Cluster_t cluster, Cluster_t value);
+   bool fatPutEOC(Cluster_t cluster) { return fatPut(cluster, 0x0FFFFFFF); }

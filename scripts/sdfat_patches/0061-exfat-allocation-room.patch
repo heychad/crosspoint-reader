@@ -1,0 +1,29 @@
+--- a/src/ExFatLib/ExFatPartition.h
++++ b/src/ExFatLib/ExFatPartition.h
+@@ -97,4 +97,26 @@
+   /** \return free cluster count or -1 if an error occurs. */
+   Cluster_t freeClusterCount();
++  // Count only real allocation bits. Padding in the final byte is unspecified.
++  int8_t hasFreeClusters(uint32_t needed) {
++    if (!needed) return 1;
++    if (needed > m_clusterCount) return 0;
++    const uint32_t bitsPerSector = uint32_t(m_bytesPerSector) * 8;
++    Sector_t remaining = 1 + (m_clusterCount - 1) / bitsPerSector;
++    while (remaining) {
++      const Sector_t sector = --remaining;
++      const uint8_t* data = bitmapCachePrepare(m_clusterHeapStartSector + sector,
++                                               FsCache::CACHE_FOR_READ);
++      if (!data) return -1;
++      const uint32_t valid = m_clusterCount - sector * bitsPerSector;
++      for (uint32_t bit = 0; bit < bitsPerSector && bit < valid; bit += 8) {
++        uint8_t occupied = data[bit / 8];
++        if (occupied == 0xFF) continue;
++        for (uint8_t k = 0; k < 8 && bit + k < valid; ++k, occupied >>= 1) {
++          if (!(occupied & 1) && --needed == 0) return 1;
++        }
++      }
++    }
++    return 0;
++  }
+   /** Initialize a exFAT partition.
+    * \param[in] dev The blockDevice for the partition.

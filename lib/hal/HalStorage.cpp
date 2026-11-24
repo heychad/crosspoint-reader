@@ -73,6 +73,18 @@ bool HalStorage::observedSdmmcHealthy() const {
 #endif
 }
 
+HalStorage::AllocationRoom HalStorage::allocationRoom(uint32_t fileBytes, uint8_t extraClusters) {
+  StorageLock lock;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const auto* volume = SDCard.mountedVolume();
+  if (volume && observedSdmmcHealthy()) {
+    const int8_t room = volume->allocationRoom(fileBytes, extraClusters);
+    if (room >= 0 && observedSdmmcHealthy()) return room ? AllocationRoom::Enough : AllocationRoom::TooLittle;
+  }
+#endif
+  return AllocationRoom::Unknown;
+}
+
 bool HalStorage::beginMutationSnapshot(MutationSnapshot& snapshot) {
   StorageLock lock;
   if (!observedSdmmcHealthy()) mutationFence.poison();

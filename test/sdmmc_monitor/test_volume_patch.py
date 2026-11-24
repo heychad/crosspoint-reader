@@ -42,6 +42,20 @@ class PatchTest(unittest.TestCase):
         module.apply_patch(self.project, expected_revision=self.revision)
         self.assertEqual(module.patcher.digest(self.target), module.PATCHED_SHA256)
 
+    def test_upgrade_previous_patched_header(self):
+        shutil.copyfile(ROOT / module.UPGRADE_PATCH, self.project / module.UPGRADE_PATCH)
+        previous = ROOT / 'scripts/freeink_patches/0002-mounted-filesystem-type.patch'
+        subprocess.run(['git', 'apply', str(previous)], cwd=self.sdk, check=True)
+        self.assertEqual(module.patcher.digest(self.target), module.PREVIOUS_PATCHED_SHA256)
+        prior_root = fixture.ROOT
+        self.addCleanup(setattr, fixture, 'ROOT', prior_root)
+        fixture.ROOT = self.project
+        result = fixture.patched_source(module).encode()
+        self.assertEqual(module.patcher.hashlib.sha256(result).hexdigest(), module.PATCHED_SHA256)
+        self.assertEqual(module.patcher.digest(self.target), module.PREVIOUS_PATCHED_SHA256)
+        module.apply_patch(self.project, expected_revision=self.revision)
+        self.assertEqual(module.patcher.digest(self.target), module.PATCHED_SHA256)
+
     def test_host_fixture_from_unpatched_source(self):
         prior_root = fixture.ROOT
         self.addCleanup(setattr, fixture, 'ROOT', prior_root)

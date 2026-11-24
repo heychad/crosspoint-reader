@@ -1,0 +1,16 @@
+--- a/src/FsLib/FsVolume.h
++++ b/src/FsLib/FsVolume.h
+@@ -156,4 +156,13 @@
+   }
+   //----------------------------------------------------------------------------
++  // Return 1 when the file and overhead fit, 0 for insufficient space,
++  // and -1 when the mounted volume's allocation map cannot be read.
++  int8_t allocationRoom(uint32_t fileBytes, uint8_t extraClusters) const {
++    uint32_t clusterBytes = m_fVol ? uint32_t(m_fVol->bytesPerSector()) * m_fVol->sectorsPerCluster()
++                                   : m_xVol ? m_xVol->bytesPerCluster() : 0;
++    if (!clusterBytes) return -1;
++    uint32_t needed = extraClusters + (fileBytes ? 1 + (fileBytes - 1) / clusterBytes : 0);
++    return m_fVol ? m_fVol->hasFreeClusters(needed) : m_xVol->hasFreeClusters(needed);
++  }
+   /** \return free cluster count or -1 if an error occurs. */
+   int32_t freeClusterCount() const {

@@ -250,3 +250,20 @@ saved beside the original library plans as
 `reader-held-moves-test62-complete.json`. The test62 restart/resume and saved-item
 smoke test used the disposable book; these nine real-book checks are automated
 checksum, state, reference, and inventory comparisons.
+
+## Starting a move on a nearly full card
+
+A new move or intentional deletion checks the mounted allocation map before
+creating its journal. It counts the clusters needed for the plan,
+seal, directory entries, and any missing deletion folders. If space is too
+low, the book stays at its original path and the reader can keep opening books.
+Web moves and renames return HTTP 507. Free space and repeat the operation.
+An unreadable allocation map reports a storage error. Recovery of an existing
+sealed move still runs through the original path.
+
+In 44 simulated FAT and exFAT deletion attempts, 20 completed immediately and
+24 needed space. All 24 succeeded after space was freed. Every held copy had
+the original bytes and a verified deletion receipt. No attempt left a pending
+journal after retry. On newly formatted 1–128 GiB images, checking the common
+case read one or two sectors. A nearly full or fragmented card can require
+scanning the entire allocation map. On-device timing is open.

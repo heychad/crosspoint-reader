@@ -3,7 +3,7 @@
 #include <string>
 
 namespace bookmove {
-enum class Result { Moved, NothingPending, Invalid, Conflict, Busy, Unavailable, RecoveryRequired };
+enum class Result { Moved, NothingPending, Invalid, Conflict, Busy, Unavailable, RecoveryRequired, InsufficientSpace };
 bool managedBook(const std::string& path);
 // True also on an unreadable journal path. Never authorizes an edit.
 bool pending();

@@ -241,6 +241,78 @@ void faults(bool exfat) {
 }
 
 #if defined(SDFAT_BOOK_DELETIONS)
+// Five isolated free clusters must count even when no contiguous run fits.
+void allocationMapThreshold(bool exfat) {
+  Disk disk;
+  disk.sectorsTotal = 2 * 1024 * 1024 + (exfat ? 3 * 256 : 0);
+  std::array<uint8_t, 512> sector{};
+  if (exfat) {
+    ExFatFormatter format;
+    assert(format.format(&disk, sector.data()));
+  } else {
+    FatFormatter format;
+    assert(format.format(&disk, sector.data()));
+  }
+  FsVolume volume;
+  assert(volume.begin(&disk));
+  const uint32_t clusterBytes = volume.bytesPerCluster();
+  assert(clusterBytes);
+  if (exfat) assert(volume.clusterCount() % 8);  // Allocation bitmap has padding bits.
+  for (unsigned slot = 0; slot < 10; ++slot) {
+    auto file = volume.open(("/slot" + std::to_string(slot)).c_str(), O_CREAT | O_EXCL | O_RDWR);
+    assert(file && file.preAllocate(clusterBytes) && file.close());
+  }
+  auto filler = volume.open("/filler", O_CREAT | O_EXCL | O_RDWR);
+  assert(filler && filler.preAllocate(static_cast<uint64_t>(volume.freeClusterCount()) * clusterBytes));
+  assert(filler.close() && volume.freeClusterCount() == 0);
+  assert(volume.allocationRoom(1, 0) == 0);
+  for (unsigned slot = 0; slot < 10; slot += 2) assert(volume.remove(("/slot" + std::to_string(slot)).c_str()));
+  volume.end();
+  assert(volume.begin(&disk));
+  const int writes = disk.writes;
+  assert(volume.allocationRoom(2 * clusterBytes + 1, 2) == 1);
+  assert(volume.allocationRoom(3 * clusterBytes + 1, 2) == 0);
+  volume.end();
+  assert(volume.begin(&disk));
+  disk.failReadAt = disk.reads;
+  assert(volume.allocationRoom(3 * clusterBytes + 1, 2) == -1 && disk.injectedRead);
+  assert(disk.writes == writes);
+  volume.end();
+  assert(volume.allocationRoom(1, 0) == -1);
+}
+
+void deletionCapacity(bool exfat) {
+  const std::string held = "/zDev/Library deletions/0123456789abcdefaaaaaaaaaaaaaaaa" + from + ".held";
+  for (bool existingParent : {false, true}) {
+    Disk disk;
+    FsVolume volume;
+    seed(volume, exfat, disk);
+    if (existingParent) assert(Storage.mkdir(held.substr(0, held.find_last_of('/')).c_str(), true));
+    auto filler = volume.open("/reserved", O_CREAT | O_EXCL | O_RDWR);
+    const int32_t free = volume.freeClusterCount();
+    assert(filler && free > 4);
+    assert(filler.preAllocate(static_cast<uint64_t>(free - 3) * volume.bytesPerCluster()));
+    assert(filler.close() && volume.freeClusterCount() == 3);
+    volume.end();
+    assert(volume.begin(&disk));
+    Storage.attach(volume);
+    bm::Work work;
+    work.from = from;
+    work.to = held;
+    const auto writes = disk.writes;
+    assert(bm::prepare(work) == bm::Result::InsufficientSpace);
+    assert(disk.writes == writes && !bm::pending() && read(from) == contents(0));
+    assert(!bm::verifyCommittedDeletion(held, from));
+    assert(volume.remove("/reserved"));
+    assert(bm::prepare(work) == bm::Result::Moved && bm::execute(work) == bm::Result::Moved);
+    volume.end();
+    assert(volume.begin(&disk));
+    Storage.attach(volume);
+    assert(!bm::pending() && read(held) == contents(0) && bm::verifyCommittedDeletion(held, from));
+    volume.end();
+  }
+}
+
 void deletionFaults(bool exfat) {
   const std::string held = "/zDev/Library deletions/0123456789abcdefaaaaaaaaaaaaaaaa" + from + ".held";
   Disk baseline;
@@ -331,7 +403,11 @@ int bookMoveTests() {
   return bookMoveReferenceTests();
 #endif
 #if defined(SDFAT_BOOK_DELETIONS)
-  for (bool exfat : {false, true}) bookmovetest::deletionFaults(exfat);
+  for (bool exfat : {false, true}) {
+    bookmovetest::allocationMapThreshold(exfat);
+    bookmovetest::deletionCapacity(exfat);
+    bookmovetest::deletionFaults(exfat);
+  }
   return 0;
 #endif
   for (bool exfat : {false, true}) {

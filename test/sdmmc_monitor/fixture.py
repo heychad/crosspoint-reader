@@ -17,10 +17,13 @@ def patched_source(config=patcher):
     digest = hashlib.sha256(source).hexdigest()
     if digest == config.PATCHED_SHA256:
         return source.decode()
-    if digest != config.ORIGINAL_SHA256:
+    if digest == config.ORIGINAL_SHA256:
+        patch, expected = ROOT / config.PATCH, config.PATCH_SHA256
+    elif digest == getattr(config, 'PREVIOUS_PATCHED_SHA256', None):
+        patch, expected = ROOT / config.UPGRADE_PATCH, config.UPGRADE_PATCH_SHA256
+    else:
         raise RuntimeError('FreeInk SDMMC source contains unrecognized changes')
-    patch = ROOT / config.PATCH
-    if hashlib.sha256(patch.read_bytes()).hexdigest() != config.PATCH_SHA256:
+    if hashlib.sha256(patch.read_bytes()).hexdigest() != expected:
         raise RuntimeError('FreeInk SDMMC patch hash mismatch')
     with tempfile.TemporaryDirectory() as tmp:
         target = Path(tmp) / config.TARGET

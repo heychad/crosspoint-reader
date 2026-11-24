@@ -6,7 +6,9 @@ overridable, invalidate the sector cache after a failed read, and write the
 FAT cache before the data cache on sync, preserve exFAT file metadata after a failed sync while the handle remains open, preserve LFN lookup read errors, and
 provide scoped FAT and exFAT directory checks, avoid null-pointer arithmetic in
 cached FAT reads, use unsigned exFAT name-hash arithmetic, and terminate
-allocation searches on full exFAT volumes. They target SdFat 2.3.1 only.
+allocation searches on full exFAT volumes. The mounted volume also supports
+a read-only check for enough free clusters to publish a journal. These patches
+target SdFat 2.3.1 only.
 
 Unlike JPEGDEC, SdFat is a registry dependency of the SDK, so the script
 patches only the copy that the current environment actually builds:
@@ -34,9 +36,9 @@ PATCHES = (
     ("0002-allow-separate-fat-cache-override.patch", "src/SdFatConfig.h",
      "7889975cad262158e1623c873730210c41c55c2198830d668952b82e588ff7cc",
      "32104db82acc857b70c7fe20740afbffa9f7dee0a7c685c106febfa989fdbe77"),
-    ("0003-sync-fat-before-data-cache.patch", "src/FatLib/FatPartition.h",
+    ("0058-fat-allocation-room.patch", "src/FatLib/FatPartition.h",
      "fb91c81beac2779a0d4b08e886a5fefdf8062b8ad422ccec4e178ae4e88b72e5",
-     "97c58360d50f6cd41ed4a1af8e91b7545d6285956cb5ffb3376ce543fb38e8be"),
+     "ea9de7c98278dc5e416d0fb1b46f6398d4dcd9d8acf23ec6586cad3bf4f3b6e6"),
     ("0004-preserve-lfn-read-errors.patch", "src/FatLib/FatFileLFN.cpp",
      "e7a13328625505c5f2c18279087a36d90b308bc7c97513371a6ce14884026be2",
      "e5506cfd44e2776482404d3e378a458538aa9debd3d8a2640c42728b56f846ac"),
@@ -61,6 +63,12 @@ PATCHES = (
     ("0054-exfat-unsigned-name-hash.patch", "src/ExFatLib/ExFatName.cpp",
      "65b68473f51e97820fa6fd477addc14c247810902e3b77b5a4fe69849a6988a8",
      "413552937ce1806b04177bc12c25d9e54a1a1da7cf2ba49615a25914cd3f99d9"),
+    ("0061-exfat-allocation-room.patch", "src/ExFatLib/ExFatPartition.h",
+     "7d542a80c4e68c52ec1c53b349e72d3fa8a271c18a02d28332a3d75aff9fef04",
+     "ee13e8ecdb3c0847761ef25cd334d68f5932990c216e31da0b4bc48e04f3b7a4"),
+    ("0062-volume-allocation-room.patch", "src/FsLib/FsVolume.h",
+     "42e3c1190604325e06f49c6b5ba195a36ecb44810303bf515da47b4a26a5dfd1",
+     "b5531dabc0328db1b462f3854f4a35cb934e9db460dedf0f848670a5c19f1d1e"),
     ("0057-exfat-stop-at-full-bitmap.patch", "src/ExFatLib/ExFatPartition.cpp",
      "50f5d03be0f0f6c282bbbecd5b1d20c76c1ee095850c057394e977689f77aa3b",
      "4861b9435a01d048192df03cc8a83444192e3be577f5a23a8bd96e544c98fb12"),
@@ -71,8 +79,10 @@ PATCHES = (
 
 MIGRATIONS = {
     "src/FatLib/FatPartition.h": {
+        "97c58360d50f6cd41ed4a1af8e91b7545d6285956cb5ffb3376ce543fb38e8be":
+            "0059-fat-room-from-test73.patch",
         "10d66a5d2424ed9c6919a9dc65305ebd5854170bdeea29f4b7c70f57bee929af":
-            "0025-fat-partition-header-strict-eoc.patch",
+            "0060-fat-room-from-initial-cache.patch",
     },
     "src/FatLib/FatFile.cpp": {
         "7c09e58a72ee9472f72ea15d36164e243813f17407443fc73e886f0a3b72e7ce":

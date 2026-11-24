@@ -106,6 +106,7 @@ int main(){
  }
  reset();CrossPointWebServer web;web.server->params={{"path","/old.epub"},{"dest","/Books"}};
  wsUploadInProgress=true;web.handleMove();assert(web.server->code==423&&bookmove::calls==0);
+ bookmove::sendResult(*web.server,bookmove::Result::InsufficientSpace);assert(web.server->code==507);
  const String queue="/zDev/Library deletions";
  reset();Storage.paths[queue]=true;web.server->params={{"path","/old.epub"},{"dest",queue}};
  web.handleMove();assert(web.server->code==403&&bookmove::calls==0&&plainMoves==0);

@@ -1,0 +1,8 @@
+--- a/libs/hardware/SDCardManager/include/SDCardManager.h
++++ b/libs/hardware/SDCardManager/include/SDCardManager.h
+@@ -34,4 +34,5 @@
+   bool ready() const;
+   // Caller serializes storage access; zero means no mounted filesystem.
++  const FsVolume* mountedVolume() { return initialized ? &vol() : nullptr; }
+   uint8_t filesystemType() { return initialized ? vol().fatType() : 0; }
+   // Returns the total card capacity in bytes. Cached at begin(); 0 if not mounted.

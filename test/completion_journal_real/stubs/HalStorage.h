@@ -59,6 +59,12 @@ class HalStorage {
     static HalStorage storage;
     return storage;
   }
+  enum class AllocationRoom { Enough, TooLittle, Unknown };
+  AllocationRoom allocationRoom(uint32_t bytes, uint8_t extraClusters) {
+    const int8_t room = volume_ ? volume_->allocationRoom(bytes, extraClusters) : -1;
+    if (room < 0) return AllocationRoom::Unknown;
+    return room ? AllocationRoom::Enough : AllocationRoom::TooLittle;
+  }
   void attach(FsVolume& volume) { volume_ = &volume; }
   PathStatus lookupPath(const char* path);
   bool exists(const char* path) { return lookupPath(path) == PathStatus::Present; }
