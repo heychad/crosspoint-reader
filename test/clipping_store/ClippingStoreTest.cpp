@@ -250,6 +250,35 @@ TEST(ClippingStore, FailedPromotionRequiresFreshOffsetsAndKeepsTheBackupReadable
   }
 }
 
+TEST(ClippingStore, StrictDirectoryFailureAllowsOnlyReadsFromAMatchingPrimary) {
+  fake::reset();
+  const std::string book = "/" + std::string(80, 'a') + ".epub";
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook(book, "Book", "Author", "epub"));
+  ASSERT_EQ(add(store, "first"), Result::Added);
+  store.unload();
+  const auto path = "/.crosspoint/clippings/epub_" + std::to_string(std::hash<std::string>{}(book)) + ".bin";
+  fake::failLookupPath = path;
+  ASSERT_TRUE(store.loadForBook(book, "Book", "Author", "epub"));
+  uint16_t count = 0;
+  ASSERT_TRUE(ClippingStore::countForBook(book, count));
+  EXPECT_EQ(count, 1);
+  std::string text;
+  ASSERT_TRUE(store.readClippingText(0, text));
+  EXPECT_EQ(text, "first");
+  EXPECT_EQ(add(store, "second"), Result::SaveFailed);
+  EXPECT_FALSE(store.removeClippingAt(0));
+  store.unload();
+
+  auto& bytes = fake::files.at(path)->bytes;
+  const auto stored = std::search(bytes.begin(), bytes.end(), book.begin(), book.end());
+  ASSERT_NE(stored, bytes.end());
+  *(stored + 70) = 'b';
+  EXPECT_FALSE(store.loadForBook(book, "Book", "Author", "epub"));
+  EXPECT_FALSE(ClippingStore::countForBook(book, count));
+  EXPECT_EQ(count, 0);
+}
+
 TEST(ClippingStore, RewritingMixedLengthClipsFallsBackWhenSectorBufferIsUnavailable) {
   for (const bool failBuffer : {false, true}) {
     fake::reset();

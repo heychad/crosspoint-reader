@@ -225,3 +225,19 @@ removing anything. The X4 Pro can check a pair of files up to 5 MiB each,
 using up to 80 KiB of temporary PSRAM for large files. An unreadable chain,
 overlap, or failed allocation leaves the files in place. The normal save path
 with no leftovers skips this check.
+
+### Reading clips after an interrupted save
+
+An interrupted write of a sibling directory entry can make a strict lookup
+fail even when the primary clipping file still opens. In that case the reader
+compares the file's embedded book path with the open book and validates its
+records. Saved Items uses the same path check for counts. A match allows
+reading. Editing and syncing wait for a successful normal lookup.
+
+In a simulated three-clip save on each filesystem, cutting power between
+whole sector writes preserved every earlier passage. A second experiment
+stopped individual sector writes partway through changed bytes. On exFAT,
+all 1,739 snapshots reopened the old or new generation. On FAT, four of
+1,883 snapshots left the primary inaccessible and the backup incomplete.
+The reader keeps the files for recovery. It never promotes an uncommitted
+temporary file to fill that gap.

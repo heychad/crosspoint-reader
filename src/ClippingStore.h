@@ -94,8 +94,8 @@ class ClippingStore {
   size_t clippingCapacity = 0;
   bool loaded = false;
   bool hasCommittedStore = false;
-  bool readOnlyBackup = false;
-  bool canEdit() const { return loaded && !readOnlyBackup; }
+  bool readOnlyRecovery = false;
+  bool canEdit() const { return loaded && !readOnlyRecovery; }
   std::string bookFilePath;
   std::string bookTitle;
   std::string bookAuthor;
@@ -103,7 +103,7 @@ class ClippingStore {
   bool dirty = false;
 
   bool reserveClippings(size_t count);
-  bool readFromFile();
+  bool readFromFile(bool requireBookPath = false);
   bool writeToFile(const std::string* replacementText = nullptr, size_t replacementIndex = SIZE_MAX);
 };
 

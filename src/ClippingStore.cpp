@@ -192,7 +192,7 @@ bool moveTreeStores(const std::string& from, const std::string& to, const MovePh
   }
   return true;
 }
-bool readClippingCount(const std::string& path, uint16_t& count) {
+bool readClippingCount(const std::string& path, uint16_t& count, const std::string* requiredBook = nullptr) {
   HalFile file = Storage.open(path.c_str());
   uint8_t version = 0;
   uint16_t storedCount = 0;
@@ -205,7 +205,19 @@ bool readClippingCount(const std::string& path, uint16_t& count) {
   };
   for (int field = 0; field < 3; ++field) {
     uint32_t length = 0;
-    if (!serialization::tryReadPod(file, length) || length > HEADER_STRING_MAX || !skip(length)) return false;
+    if (!serialization::tryReadPod(file, length) || length > HEADER_STRING_MAX) return false;
+    if (field == 2 && requiredBook) {
+      if (length != requiredBook->size()) return false;
+      char part[32];
+      for (size_t offset = 0; offset < length; offset += sizeof(part)) {
+        const size_t bytes = std::min<size_t>(sizeof(part), length - offset);
+        if (file.read(part, bytes) != static_cast<int>(bytes) ||
+            memcmp(part, requiredBook->data() + offset, bytes) != 0)
+          return false;
+      }
+    } else if (!skip(length)) {
+      return false;
+    }
   }
   for (uint16_t row = 0; row < storedCount; ++row) {
     size_t fields = 8 * sizeof(uint16_t) + sizeof(uint32_t) + CLIPPING_CHAPTER_TITLE_MAX;
@@ -235,7 +247,8 @@ bool ClippingStore::countForBook(const std::string& bookPath, uint16_t& count) {
   count = 0;
   const auto path = storeFilePathForBook(bookPath, "epub");
   const auto status = Storage.lookupPath(path.c_str());
-  if (status == Status::Present && readClippingCount(path, count)) return true;
+  if (status != Status::Missing && readClippingCount(path, count, status == Status::Failed ? &bookPath : nullptr))
+    return true;
   const auto backupPath = path + ".bak";
   if (status == Status::Missing && Storage.lookupPath(backupPath.c_str()) == Status::Missing) return true;
   return readClippingCount(backupPath, count);
@@ -248,7 +261,7 @@ bool ClippingStore::loadForBook(const std::string& filePath, const std::string& 
   for (auto& block : clippingBlocks) block.reset();
   clippingSize = clippingCapacity = 0;
   storeFilePath.clear();
-  readOnlyBackup = false;
+  readOnlyRecovery = false;
   if (bookType != "epub" || filePath.empty()) {
     LOG_ERR("CLIP", "Invalid clipping book type or path: %s", bookType.c_str());
     return false;
@@ -265,12 +278,15 @@ bool ClippingStore::loadForBook(const std::string& filePath, const std::string& 
     loaded = true;
     return true;
   }
-  loaded = hasCommittedStore && readFromFile();
+  // An incomplete sibling entry can break strict directory lookup while the
+  // primary is still readable. Match its embedded book path before showing it.
+  readOnlyRecovery = !hasCommittedStore;
+  loaded = readFromFile(readOnlyRecovery);
   if (!loaded) {
     // An interrupted rename can leave a zero-byte primary or an unreadable
     // directory entry. Keep both survivors and read the previous copy in place.
     storeFilePath += ".bak";
-    readOnlyBackup = true;
+    readOnlyRecovery = true;
     bookTitle = title;
     bookAuthor = author;
     loaded = readFromFile();
@@ -545,7 +561,7 @@ bool ClippingStore::reserveClippings(const size_t count) {
   return true;
 }
 
-bool ClippingStore::readFromFile() {
+bool ClippingStore::readFromFile(const bool requireBookPath) {
   const auto& path = storeFilePath;
   clippingSize = 0;
   HalFile f;
@@ -565,6 +581,8 @@ bool ClippingStore::readFromFile() {
     LOG_ERR("CLIP", "Failed to read clipping header: %s", path.c_str());
     return false;
   }
+
+  if (requireBookPath && storedPath != bookFilePath) return false;
 
   if (count > CLIPPING_MAX_PER_BOOK) {
     LOG_ERR("CLIP", "Clipping count %u exceeds max, file may be corrupt: %s", count, path.c_str());

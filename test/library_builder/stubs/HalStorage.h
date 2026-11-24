@@ -32,6 +32,7 @@ inline bool failDirectorySeek = false;
 inline std::string failRemovePath;
 inline std::string failClosePath;
 inline std::string failOpenPath;
+inline std::string failLookupPath;
 inline std::string failNamePath;
 inline std::string failEnumerationPath;
 inline int failEnumerationAt = -1;
@@ -72,6 +73,7 @@ inline void reset() {
   failRemovePath.clear();
   failClosePath.clear();
   failOpenPath.clear();
+  failLookupPath.clear();
   failNamePath.clear();
   failEnumerationPath.clear();
   failEnumerationAt = -1;
@@ -236,7 +238,7 @@ class HalStorage {
  public:
   enum class PathStatus { Present, Missing, Failed };
   PathStatus lookupPath(const char* path) const {
-    if (fake::failOpenPath == path) return PathStatus::Failed;
+    if (fake::failOpenPath == path || fake::failLookupPath == path) return PathStatus::Failed;
     return fake::files.count(path) ? PathStatus::Present : PathStatus::Missing;
   }
   static HalStorage& getInstance() {

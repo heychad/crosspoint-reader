@@ -92,7 +92,8 @@ inline void run(bool exfat) {
     volume.end();
   }
 
-  for (const bool failRead : {false, true}) {
+  enum class Fault { Read, Write, PowerCut };
+  for (const auto fault : {Fault::Read, Fault::Write, Fault::PowerCut}) {
     unsigned failures = 0;
     for (int operation = 0; operation < 512; ++operation) {
       Disk trial = baseline;
@@ -103,11 +104,13 @@ inline void run(bool exfat) {
         ClippingStore store;
         assert(store.loadForBook(book, "Book", "Author", "epub"));
         trial.reads = trial.writes = 0;
-        (failRead ? trial.failReadAt : trial.failAt) = operation;
+        trial.failStop = fault == Fault::PowerCut;
+        (fault == Fault::Read ? trial.failReadAt : trial.failAt) = operation;
         acknowledged = append(store, 3);
         trial.failReadAt = trial.failAt = -1;
       }
       volume.end();
+      trial.dead = false;
       if (!trial.injected && !trial.injectedRead) break;
       ++failures;
       assert(volume.begin(&trial));
@@ -115,6 +118,8 @@ inline void run(bool exfat) {
       ClippingStore recovered;
       assert(recovered.loadForBook(book, "Book", "Author", "epub"));
       assert(recovered.clippingCount() == 4 || (!acknowledged && recovered.clippingCount() == 3));
+      uint16_t count = 0;
+      assert(ClippingStore::countForBook(book, count) && count == recovered.clippingCount());
       for (size_t i = 0; i < recovered.clippingCount(); ++i) {
         std::string actual;
         assert(recovered.readClippingText(i, actual) && actual == text(i));
@@ -122,8 +127,10 @@ inline void run(bool exfat) {
       volume.end();
     }
     assert(failures > 0 && failures < 512);
-    std::printf("%s clip save: prior text survived %u transient %s failures\n", exfat ? "exFAT" : "FAT", failures,
-                failRead ? "read" : "write");
+    const char* kind = fault == Fault::Read    ? "transient reads"
+                       : fault == Fault::Write ? "transient writes"
+                                               : "power cuts";
+    std::printf("%s clip save: prior text survived %u %s\n", exfat ? "exFAT" : "FAT", failures, kind);
   }
 }
 }  // namespace clippingrecoverytest
