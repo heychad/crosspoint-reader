@@ -428,3 +428,23 @@ temp, both writers used a total of 1,392 sector reads and 259 sector writes
 across the 24 fixtures. With an independent leftover temp, verification
 increased reads from 1,413 to 7,184 across 24 fixtures. Each writer issued 269
 writes. Neither experiment measures physical page-turn latency.
+
+### Loading a cached EPUB page
+
+The reader gets the page-table and visible-text-table locations from one
+header read. It then seeks directly to those entries and the page. The same
+format is used for complete and partly indexed chapters. A missing table,
+invalid range, or short index read starts the existing cache rebuild. The
+retry keeps the requested page number. The existing error screen appears
+if attempts run out.
+
+A fixture read 14,496 page markers and visible offsets from synthetic v84
+chapters on FAT and exFAT. Both loaders returned the same values. FAT
+sector reads fell from 50,777 to 43,313, and exFAT reads fell from 50,766
+to 43,302. Of 112 runs, 92 required fewer reads and 20 were unchanged.
+This measures the cache lookup with a four-byte payload. Device latency
+and full-page decoding are separate measurements.
+
+The page decoder also checks short reads of its scalar fields before using
+them, including element tags and link coordinates. A host test truncated a
+page containing a rule, drop cap, border, footnote, and link at every byte.

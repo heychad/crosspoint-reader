@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -476,6 +477,39 @@ TEST_F(ChapterHtmlSlimParserTest, PageImageDeserializeRejectsMissingImageBlock) 
   HalFile input;
   ASSERT_TRUE(input.open(path.c_str(), "rb"));
   EXPECT_EQ(PageImage::deserialize(input), nullptr);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, TruncatedPageNeverSuppliesClippingOrLinkCoordinates) {
+  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto path = std::filesystem::temp_directory_path() / ("crosspoint-cache-page-" + std::to_string(stamp));
+  {
+    Page page;
+    page.elements.push_back(std::make_unique<PageHorizontalRule>(23, 2, 5, 9));
+    page.elements.push_back(std::make_unique<PageDropCap>(12, 512, EpdFontFamily::BOLD, "A", 7, 11));
+    CssBorderSide sides[4]{};
+    page.elements.push_back(std::make_unique<PageBorderBox>(24, 12, sides, true, 3, 5));
+    page.addFootnote("1", "note.xhtml");
+    ASSERT_TRUE(page.addLink("chapter.xhtml", 1, 2, 8, 9));
+    HalFile file;
+    ASSERT_TRUE(file.open(path.c_str(), "wb"));
+    ASSERT_TRUE(page.serialize(file));
+  }
+  {
+    HalFile file;
+    ASSERT_TRUE(file.open(path.c_str(), "rb"));
+    auto result = Page::deserialize(file);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->elements.size(), 3U);
+    ASSERT_EQ(result->links.size(), 1U);
+    EXPECT_STREQ(result->links.front().href, "chapter.xhtml");
+  }
+  for (auto length = std::filesystem::file_size(path); length > 0; --length) {
+    std::filesystem::resize_file(path, length - 1);
+    HalFile file;
+    ASSERT_TRUE(file.open(path.c_str(), "rb"));
+    ASSERT_EQ(Page::deserialize(file), nullptr) << "truncated at byte " << length - 1;
+  }
+  std::filesystem::remove(path);
 }
 
 TEST_P(ChapterHtmlSlimParserTest, KeepsCssVerticalAlignAndInternalLinkMetadata) {

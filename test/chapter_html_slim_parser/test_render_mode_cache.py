@@ -35,16 +35,18 @@ constexpr uint8_t SECTION_FILE_VERSION = CACHE_VERSION_TOKEN;
 constexpr uint8_t SECTION_FILE_INCOMPLETE_VERSION = 0;
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 28);
 struct File {
-  std::vector<uint8_t> bytes; size_t pos = 0;
+  std::vector<uint8_t> bytes; size_t pos = 0, shortReadAt = SIZE_MAX; bool failSeek = false;
   explicit operator bool() const { return true; }
   size_t write(const uint8_t* in, size_t n) {bytes.insert(bytes.end(), in, in + n); return n;}
-  size_t read(uint8_t* out, size_t n) {assert(pos+n <= bytes.size());memcpy(out,bytes.data()+pos,n);pos+=n;return n;}
-  void seek(size_t next) {pos=next;}
+  size_t read(uint8_t* out, size_t n) {if(pos>bytes.size())return 0; n=std::min(n,bytes.size()-pos); if(pos==shortReadAt && n)--n; memcpy(out,bytes.data()+pos,n); pos+=n; return n;}
+  bool seek64(uint64_t next) {if(failSeek || next>bytes.size())return false; pos=next;return true;}
+  uint64_t fileSize64() const {return bytes.size();}
   size_t size() const {return bytes.size();}
   bool close() {return true;}
 };
 namespace serialization {
 template<class T> bool tryWritePod(File& f, const T& value) {return f.write(reinterpret_cast<const uint8_t*>(&value), sizeof value)==sizeof value;}
+template<class T> bool tryReadPod(File& f, T& value) {return f.read(reinterpret_cast<uint8_t*>(&value), sizeof value)==sizeof value;}
 template<class T> void readPod(File& f, T& value) {f.read(reinterpret_cast<uint8_t*>(&value), sizeof value);}
 }
 struct StorageType {
@@ -60,7 +62,7 @@ struct Section {
   bool loadSectionFile(const ReaderRenderSpec&);
   bool clearCache() {cleared=true; return true;}
 };
-''' + header + '\n' + method('bool Section::writeSectionFileHeader(') + '\n' + method('bool Section::loadSectionFile(') + r'''
+''' + header + '\n' + method('struct SectionPageTables') + ';\n' + method('bool Section::writeSectionFileHeader(') + '\n' + method('bool Section::loadSectionFile(') + r'''
 int main() {
   ReaderRenderSpec original; original.viewportWidth=480;original.viewportHeight=800;
   auto signature=readerRenderSpecSignature(original);
@@ -79,12 +81,24 @@ int main() {
     Storage.saved[0]=0xFE - (SECTION_FILE_VERSION-1-28);Section oldPartial;
     assert(!oldPartial.loadSectionFile(spec));assert(oldPartial.cleared);
     Storage.saved[0]=SECTION_FILE_PARTIAL_VERSION;
-    const uint32_t li=HEADER_SIZE, visible=HEADER_SIZE+4, consumed=200, total=400;
-    memcpy(Storage.saved.data()+HEADER_SIZE-8,&li,4);memcpy(Storage.saved.data()+HEADER_SIZE-4,&visible,4);
+    const uint32_t pages=HEADER_SIZE+4, anchors=pages+8, paragraphs=anchors+2;
+    const uint32_t listItems=paragraphs+6, visible=listItems+4, consumed=200, total=400;
+    const uint32_t tables[]={pages,anchors,paragraphs,listItems,visible};
+    memcpy(Storage.saved.data()+HEADER_SIZE-sizeof(tables),tables,sizeof(tables));
     Storage.saved.resize(visible+2*4+8);
     memcpy(Storage.saved.data()+visible+2*4,&consumed,4);memcpy(Storage.saved.data()+visible+2*4+4,&total,4);
     Section partial;assert(partial.loadSectionFile(spec));assert(partial.partial_);
     assert(partial.partialPageCount_==2 && partial.partialBytesConsumed_==200 && partial.partialTotalBytes_==400);
+    for (const size_t offset : {size_t(HEADER_SIZE-22),size_t(HEADER_SIZE-20),size_t(visible+8),size_t(visible+12)}) {
+      Section fault;
+      fault.file.shortReadAt=offset;
+      assert(!fault.loadSectionFile(spec) && !fault.partial_ && !fault.cleared);
+    }
+    Section seekFault;seekFault.file.failSeek=true;
+    assert(!seekFault.loadSectionFile(spec) && !seekFault.partial_ && !seekFault.cleared);
+    const uint32_t wrapped=UINT32_MAX-3;
+    memcpy(Storage.saved.data()+HEADER_SIZE-4,&wrapped,4);
+    Section invalid;assert(!invalid.loadSectionFile(spec) && invalid.cleared && !invalid.partial_);
     Section otherPartial;assert(!otherPartial.loadSectionFile(otherIndent));
   }
   }

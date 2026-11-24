@@ -15,6 +15,8 @@ for position in range(opening, len(source)):
         break
 else:
     raise ValueError('tryRenderRecovery')
+load_failure = source.split('auto p = section->loadPage(section->currentPage);', 1)[1].split(
+    '    pageLoadRetryCount = 0;\n\n', 1)[0]
 code = r'''
 #include <cassert>
 #include <memory>
@@ -22,18 +24,38 @@ code = r'''
 #include <string>
 #include "personalization/EpubRenderRecovery.h"
 struct Settings { ReaderRenderSpec readerRenderSpec(int,int){return {};} } SETTINGS;
-struct Section { EpubBuildFailure failure; EpubBuildFailure lastBuildFailure(){return failure;} };
+#define LOG_ERR(...) ((void)0)
+struct Section { EpubBuildFailure failure; int currentPage=91;
+ void abandonBuild(){currentPage=0;} void clearCache(){} EpubBuildFailure lastBuildFailure(){return failure;} };
 struct EpubReaderActivity {
   std::unique_ptr<Section> section; EpubRenderRecovery renderRecovery;
   int buildViewportWidth=480,buildViewportHeight=800,currentSpineIndex=2,visibleOffsetSpine=2,cachedSpineIndex=2;
   bool pendingPercentJump=false,buildPopupPending=true,partialRebuildStartFailed=true,buildHeapPaused=true;
   bool automaticPageTurnActive=true,updated=false;int backgroundBuildFailedSpine=2;
   std::optional<unsigned> pendingPageJump,pendingOffsetJump,currentPageVisibleOffset=123,cachedVisibleTextOffset=100;
+  struct Renderer {
+    void clearScreen(){} void displayBuffer(){}
+    void drawCenteredText(int,int,int,bool,int){}
+  } renderer;
+  struct EpdFontFamily {static constexpr int BOLD=1;};
+  static constexpr int UI_12_FONT_ID=0, STR_PAGE_LOAD_ERROR=0, MAX_PAGE_LOAD_RETRIES=3;
+  int pageLoadRetryCount=0,nextPageNumber=7;
+  static int tr(int id){return id;}
+  void showPendingSyncSaveError(){}
+  void readFailure();
   std::string pendingAnchor;
   void requestUpdate(){updated=true;} bool tryRenderRecovery();
 };
-''' + method + r'''
+''' + method + '\nvoid EpubReaderActivity::readFailure(){ bool p=false;\n' + load_failure + '}\n' + r'''
 int main(){
+  for(int failed:{0,3}) {
+    EpubReaderActivity retry;
+    retry.pageLoadRetryCount=failed;
+    retry.section=std::make_unique<Section>(Section{EpubBuildFailure::InputOutput});
+    retry.readFailure();
+    assert(!retry.section && retry.nextPageNumber==91 && retry.updated==(failed==0));
+    assert(!retry.pendingOffsetJump);
+  }
   ReaderRenderSpec base; EpubRenderRecovery policy;
   assert(!policy.retry(EpubBuildFailure::InputOutput,base,1));
   assert(policy.retry(EpubBuildFailure::OutOfMemory,base,1));

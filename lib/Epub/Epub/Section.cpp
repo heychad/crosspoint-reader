@@ -111,6 +111,28 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(int8_t) +
                                  sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(ParagraphIndentMode);
 
+struct SectionPageTables {
+  uint32_t pages;
+  uint32_t anchors;
+  uint32_t paragraphs;
+  uint32_t listItems;
+  uint32_t visibleOffsets;
+
+  uint64_t visibleEnd(uint16_t count) const { return static_cast<uint64_t>(visibleOffsets) + count * sizeof(uint32_t); }
+
+  bool fits(uint16_t count, bool partial, uint64_t fileSize) const {
+    const uint32_t pageBytes = count * sizeof(uint32_t);
+    const uint32_t indexBytes = count * sizeof(uint16_t);
+    return count > 0 && fileSize <= UINT32_MAX && pages >= HEADER_SIZE &&
+           static_cast<uint64_t>(pages) + pageBytes == anchors &&
+           static_cast<uint64_t>(anchors) + sizeof(uint16_t) <= paragraphs &&
+           static_cast<uint64_t>(paragraphs) + sizeof(uint16_t) + indexBytes == listItems &&
+           static_cast<uint64_t>(listItems) + indexBytes == visibleOffsets &&
+           visibleEnd(count) + (partial ? 2 * sizeof(uint32_t) : 0) <= fileSize;
+  }
+};
+static_assert(sizeof(SectionPageTables) == 5 * sizeof(uint32_t));
+
 bool recoverSectionCache(const std::string& path) {
   const auto current = Storage.lookupPath(path.c_str());
   if (current == HalStorage::PathStatus::Failed) return false;
@@ -308,30 +330,32 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     }
   }
 
-  serialization::readPod(file, pageCount);
+  if (!serialization::tryReadPod(file, pageCount)) {
+    file.close();
+    pageCount = 0;
+    return false;
+  }
 
   if (filePartial) {
-    // A partial's pageCount is the watermark of a suspended build. Read the watermark
-    // trailer (appended after the visible-offset LUT) so estimatedTotalPages can extrapolate.
-    uint32_t liLutOffset = 0;
-    file.seek(HEADER_SIZE - sizeof(uint32_t) * 2);
-    serialization::readPod(file, liLutOffset);
-    uint32_t visibleLutOffset = 0;
-    file.seek(HEADER_SIZE - sizeof(uint32_t));
-    serialization::readPod(file, visibleLutOffset);
-    const uint32_t trailerOffset = visibleLutOffset + static_cast<uint32_t>(pageCount) * sizeof(uint32_t);
-    const bool trailerValid = pageCount > 0 && liLutOffset >= HEADER_SIZE && visibleLutOffset > liLutOffset &&
-                              trailerOffset + 2 * sizeof(uint32_t) <= file.size();
-    if (!trailerValid) {
+    SectionPageTables tables;
+    if (!serialization::tryReadPod(file, tables)) {
+      file.close();
+      pageCount = 0;
+      return false;
+    }
+    if (!tables.fits(pageCount, true, file.fileSize64())) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: malformed partial section");
       clearCache();
       pageCount = 0;
       return false;
     }
-    file.seek(trailerOffset);
-    serialization::readPod(file, partialBytesConsumed_);
-    serialization::readPod(file, partialTotalBytes_);
+    if (!file.seek64(tables.visibleEnd(pageCount)) || !serialization::tryReadPod(file, partialBytesConsumed_) ||
+        !serialization::tryReadPod(file, partialTotalBytes_)) {
+      file.close();
+      pageCount = 0;
+      return false;
+    }
     partial_ = true;
     partialPageCount_ = pageCount;
   }
@@ -985,38 +1009,27 @@ std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {
 // previous session). Uses a local handle so it is safe while a build holds the member
 // `file` open on the tmp .bin.
 std::unique_ptr<Page> Section::loadPageAt(const int page) const {
+  const uint16_t count = partial_ ? partialPageCount_ : pageCount;
+  if (page < 0 || page >= count) return nullptr;
   HalFile f;
-  if (!Storage.openFileForRead("SCT", filePath, f)) {
+  if (!Storage.openFileForRead("SCT", filePath, f)) return nullptr;
+
+  // Read both table locations while the header sector is in the card cache.
+  SectionPageTables tables;
+  if (!f.seek(HEADER_SIZE - sizeof(tables)) || !serialization::tryReadPod(f, tables) ||
+      !tables.fits(count, partial_, f.fileSize64()))
     return nullptr;
-  }
 
-  f.seek(HEADER_SIZE - sizeof(uint32_t) * 5);
-  uint32_t lutOffset;
-  serialization::readPod(f, lutOffset);
-  f.seek(lutOffset + sizeof(uint32_t) * page);
+  const uint32_t displacement = static_cast<uint32_t>(page) * sizeof(uint32_t);
   uint32_t pagePos;
-  serialization::readPod(f, pagePos);
-
-  // Read this page's visible-codepoint start offset from the visible-offset LUT (last header slot)
-  // in the same open handle, so the reader can persist progress without reopening the section file
-  // on every page turn (see Page::visibleTextOffset). A malformed/old file leaves it at 0.
-  f.seek(HEADER_SIZE - sizeof(uint32_t));
-  uint32_t visibleLutOffset;
-  serialization::readPod(f, visibleLutOffset);
-  uint32_t visibleTextOffset = 0;
-  const uint32_t visibleEntry = visibleLutOffset + sizeof(uint32_t) * page;
-  if (visibleLutOffset >= HEADER_SIZE && visibleEntry + sizeof(uint32_t) <= f.size()) {
-    f.seek(visibleEntry);
-    serialization::readPod(f, visibleTextOffset);
-  }
-
-  f.seek(pagePos);
+  uint32_t visibleOffset;
+  if (!f.seek(tables.pages + displacement) || !serialization::tryReadPod(f, pagePos) || pagePos < HEADER_SIZE ||
+      pagePos >= tables.pages || !f.seek(tables.visibleOffsets + displacement) ||
+      !serialization::tryReadPod(f, visibleOffset) || !f.seek(pagePos))
+    return nullptr;
   auto p = Page::deserialize(f);
-  if (p) {
-    p->visibleTextOffset = visibleTextOffset;
-  }
+  if (p) p->visibleTextOffset = visibleOffset;
   return p;
-  // No f.close() needed -- DESTRUCTOR_CLOSES_FILE=1 handles it at scope exit
 }
 
 std::unique_ptr<Page> Section::loadPage(const int page) {

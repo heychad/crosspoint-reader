@@ -2708,6 +2708,7 @@ void EpubReaderActivity::renderBook() {
       LOG_ERR("ERS", "Failed to load page from SD - clearing section cache");
       automaticPageTurnActive = false;
       const bool giveUp = ++pageLoadRetryCount > MAX_PAGE_LOAD_RETRIES;
+      nextPageNumber = section->currentPage;
       section->abandonBuild();
       section->clearCache();
       section.reset();
