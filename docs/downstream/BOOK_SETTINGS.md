@@ -312,3 +312,21 @@ Clipping signature version 2 now covers indent width and mode. Source-offset
 clippings retain their text anchors. Older page-only highlights require a
 matching layout signature; the saved clipping text and navigation entry are
 preserved. No reading-progress or clipping file is rewritten by migration.
+
+## Inspecting a backed-up reading position
+
+From the fork checkout, run this against one extracted EPUB cache directory.
+
+```sh
+python3 scripts/preview_crossink_progress.py /path/to/backup/.crosspoint/epub_123
+```
+
+The preview reads the primary and backup, checks RC3 records with their CRC,
+and prints the saved chapter, page, page count, and text offset when present.
+`native_hex` is the exact byte representation of that position for the
+CrossPoint reader. The command only reads the two files.
+
+A native primary and a different RC3 backup can come from either an upgrade
+or a rollback. The preview shows both and leaves the choice open. Exit status
+2 means the choice is open or both records are unusable. Status 1 means
+the input could not be inspected.
