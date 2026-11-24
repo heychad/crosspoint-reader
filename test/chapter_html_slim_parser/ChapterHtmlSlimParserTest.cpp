@@ -535,6 +535,62 @@ TEST_F(ChapterHtmlSlimParserTest, TruncatedPageNeverSuppliesClippingOrLinkCoordi
   std::filesystem::remove(path);
 }
 
+TEST_F(ChapterHtmlSlimParserTest, LineStyleRetainsTheLegacyWireOrderAndChecksFlags) {
+  // A wordless v84 line isolates its 28-byte style between the header and the word-font flag.
+  const std::array<uint8_t, 36> legacy{0, 0, 0, 0, 0, 0xff, 0xff, 3,    1, 1, 0, 0xfe, 0xff, 3,    0,    4,    0, 5, 0,
+                                       6, 0, 7, 0, 8, 0,    0xf7, 0xff, 1, 1, 0, 0xfd, 0x78, 0x56, 0x34, 0x12, 0};
+  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto path = std::filesystem::temp_directory_path() / ("crosspoint-line-style-" + std::to_string(stamp));
+  HalFile file;
+  ASSERT_TRUE(file.open(path.c_str(), "wb"));
+  ASSERT_EQ(file.write(legacy.data(), legacy.size()), legacy.size());
+  ASSERT_TRUE(file.close());
+  ASSERT_TRUE(file.open(path.c_str(), "rb"));
+  auto block = TextBlock::deserialize(file);
+  ASSERT_NE(block, nullptr);
+  const auto& style = block->getBlockStyle();
+  EXPECT_EQ(style.alignment, CssTextAlign::Right);
+  EXPECT_TRUE(style.textAlignDefined);
+  EXPECT_EQ(style.marginTop, 1);
+  EXPECT_EQ(style.marginBottom, -2);
+  EXPECT_EQ(style.marginLeft, 3);
+  EXPECT_EQ(style.marginRight, 4);
+  EXPECT_EQ(style.paddingTop, 5);
+  EXPECT_EQ(style.paddingBottom, 6);
+  EXPECT_EQ(style.paddingLeft, 7);
+  EXPECT_EQ(style.paddingRight, 8);
+  EXPECT_EQ(style.textIndent, -9);
+  EXPECT_TRUE(style.textIndentDefined);
+  EXPECT_TRUE(style.isRtl);
+  EXPECT_FALSE(style.directionDefined);
+  EXPECT_EQ(style.characterSpacing, -3);
+  EXPECT_EQ(style.fontId, 0x12345678);
+  ASSERT_TRUE(file.close());
+  ASSERT_TRUE(file.open(path.c_str(), "wb"));
+  const auto before = HalFileTest::writeCalls;
+  ASSERT_TRUE(block->serialize(file));
+  EXPECT_LE(HalFileTest::writeCalls - before, 6U);
+  ASSERT_TRUE(file.close());
+  ASSERT_TRUE(file.open(path.c_str(), "rb"));
+  std::array<uint8_t, legacy.size()> result{};
+  ASSERT_EQ(file.read(result.data(), result.size()), result.size());
+  EXPECT_EQ(result, legacy);
+  EXPECT_EQ(file.position(), file.size());
+  ASSERT_TRUE(file.close());
+
+  for (size_t offset : {7, 8, 27, 28, 29}) {
+    auto damaged = legacy;
+    damaged[offset] = 0xff;
+    ASSERT_TRUE(file.open(path.c_str(), "wb"));
+    ASSERT_EQ(file.write(damaged.data(), damaged.size()), damaged.size());
+    ASSERT_TRUE(file.close());
+    ASSERT_TRUE(file.open(path.c_str(), "rb"));
+    EXPECT_EQ(TextBlock::deserialize(file), nullptr) << "byte " << offset;
+    ASSERT_TRUE(file.close());
+  }
+  std::filesystem::remove(path);
+}
+
 TEST_F(ChapterHtmlSlimParserTest, CacheStringChecksGrowthAndReusesCapacity) {
   const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
   const auto path = std::filesystem::temp_directory_path() / ("crosspoint-cache-string-" + std::to_string(stamp));

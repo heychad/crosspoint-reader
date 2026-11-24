@@ -16,6 +16,55 @@
 #include "../CjkBreaks.h"
 #include "CacheString.h"
 
+namespace {
+// The v84 cache writes this subset of BlockStyle in this order. The in-memory
+// BlockStyle also has layout-only fields and has a different member order.
+struct CachedLineStyle {
+  CssTextAlign alignment;
+  uint8_t textAlignDefined;
+  int16_t marginTop, marginBottom, marginLeft, marginRight;
+  int16_t paddingTop, paddingBottom, paddingLeft, paddingRight;
+  int16_t textIndent;
+  uint8_t textIndentDefined, isRtl, directionDefined;
+  int8_t characterSpacing;
+  int32_t fontId;
+};
+static_assert(sizeof(CachedLineStyle) == 28 && sizeof(CssTextAlign) == 1 && sizeof(bool) == 1);
+
+bool writeLineStyle(HalFile& file, const BlockStyle& style) {
+  const CachedLineStyle record{
+      style.alignment,   style.textAlignDefined, style.marginTop,        style.marginBottom,
+      style.marginLeft,  style.marginRight,      style.paddingTop,       style.paddingBottom,
+      style.paddingLeft, style.paddingRight,     style.textIndent,       style.textIndentDefined,
+      style.isRtl,       style.directionDefined, style.characterSpacing, style.fontId};
+  return serialization::tryWritePod(file, record);
+}
+
+bool readLineStyle(HalFile& file, BlockStyle& style) {
+  CachedLineStyle record;
+  if (!serialization::tryReadPod(file, record) || record.alignment > CssTextAlign::None ||
+      record.textAlignDefined > 1 || record.textIndentDefined > 1 || record.isRtl > 1 || record.directionDefined > 1)
+    return false;
+  style.alignment = record.alignment;
+  style.textAlignDefined = record.textAlignDefined;
+  style.marginTop = record.marginTop;
+  style.marginBottom = record.marginBottom;
+  style.marginLeft = record.marginLeft;
+  style.marginRight = record.marginRight;
+  style.paddingTop = record.paddingTop;
+  style.paddingBottom = record.paddingBottom;
+  style.paddingLeft = record.paddingLeft;
+  style.paddingRight = record.paddingRight;
+  style.textIndent = record.textIndent;
+  style.textIndentDefined = record.textIndentDefined;
+  style.isRtl = record.isRtl;
+  style.directionDefined = record.directionDefined;
+  style.characterSpacing = record.characterSpacing;
+  style.fontId = record.fontId;
+  return true;
+}
+}  // namespace
+
 size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
   // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
   size_t size =
@@ -493,23 +542,7 @@ bool TextBlock::serialize(HalFile& file) const {
     }
   }
 
-  // Style (alignment + margins/padding/indent)
-  if (!serialization::tryWritePod(file, blockStyle.alignment)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.textAlignDefined)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.marginTop)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.marginBottom)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.marginLeft)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.marginRight)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.paddingTop)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.paddingBottom)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.paddingLeft)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.paddingRight)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.textIndent)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.textIndentDefined)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.isRtl)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.directionDefined)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.characterSpacing)) return false;
-  if (!serialization::tryWritePod(file, blockStyle.fontId)) return false;
+  if (!writeLineStyle(file, blockStyle)) return false;
 
   // Per-word fonts: a flag, then the font table and one slot per word.
   const uint8_t hasWordFonts = wordFontData ? 1 : 0;
@@ -596,25 +629,7 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     block->rubyTexts[i] = std::move(scratch);
   }
 
-  // Style (alignment + margins/padding/indent)
-  BlockStyle& blockStyle = block->blockStyle;
-  if (!serialization::tryReadPod(file, blockStyle.alignment) ||
-      !serialization::tryReadPod(file, blockStyle.textAlignDefined) ||
-      !serialization::tryReadPod(file, blockStyle.marginTop) ||
-      !serialization::tryReadPod(file, blockStyle.marginBottom) ||
-      !serialization::tryReadPod(file, blockStyle.marginLeft) ||
-      !serialization::tryReadPod(file, blockStyle.marginRight) ||
-      !serialization::tryReadPod(file, blockStyle.paddingTop) ||
-      !serialization::tryReadPod(file, blockStyle.paddingBottom) ||
-      !serialization::tryReadPod(file, blockStyle.paddingLeft) ||
-      !serialization::tryReadPod(file, blockStyle.paddingRight) ||
-      !serialization::tryReadPod(file, blockStyle.textIndent) ||
-      !serialization::tryReadPod(file, blockStyle.textIndentDefined) ||
-      !serialization::tryReadPod(file, blockStyle.isRtl) ||
-      !serialization::tryReadPod(file, blockStyle.directionDefined) ||
-      !serialization::tryReadPod(file, blockStyle.characterSpacing) ||
-      !serialization::tryReadPod(file, blockStyle.fontId))
-    return nullptr;
+  if (!readLineStyle(file, block->blockStyle)) return nullptr;
 
   uint8_t hasWordFonts = 0;
   if (!serialization::tryReadPod(file, hasWordFonts)) return nullptr;

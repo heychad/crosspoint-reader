@@ -496,3 +496,30 @@ bytes. The separate reader regression checks which page a rebuild requests.
 During chapter layout, the reader can open a page already written to the
 temporary cache. If it cannot restore the append position afterward, it stops
 the build before another page can overwrite the earlier text.
+
+### Reading a line's cached layout
+
+The reader stores 28 bytes of alignment, margins, padding, indent, direction,
+spacing, and font data per text line. Reading or writing those bytes now
+takes one file operation instead of sixteen. A malformed flag or incomplete
+record declines the page. The serialized format and its field order stay
+the same.
+
+A host comparison parsed 107 spine items from 20 test EPUBs, including the
+staged Review71 book. Portrait and landscape with publisher styles on and
+off produced 691 pages per version. Test71, test84, and this version matched
+on every serialized page record, recorded text position, and word source
+range. The fixtures included tables, right-to-left text, and 120 image
+placements. The renderer used test fonts and recorded draw calls.
+
+| Calls for 691 pages | Test71 | Test84 | Batched line style |
+| --- | ---: | ---: | ---: |
+| Read page records | 533,792 | 441,848 | 235,718 |
+| Write page records | 441,848 | 364,376 | 158,246 |
+
+In the separate 4,352-page FAT/exFAT fixture, the new version used
+1,760,896 file read calls and 616,704 file write calls. It retained the
+same 94,222 sector reads and 34,445 sector writes as test84. All 24
+chapter files matched its bytes. Each of 59,127 injected read failures
+declined the affected page, and each page reopened after a clean remount.
+Time to turn a page and panel settling still need measurement on the X4 Pro.
