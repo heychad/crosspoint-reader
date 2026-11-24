@@ -284,3 +284,17 @@ all 1,739 snapshots reopened the old or new generation. On FAT, four of
 1,883 snapshots left the primary inaccessible and the backup incomplete.
 The reader keeps the files for recovery. It never promotes an uncommitted
 temporary file to fill that gap.
+
+### Saving on a full card
+
+A full exFAT card could keep scanning its allocation bitmap indefinitely when
+saving a clip or mounting the card. The pinned SdFat patch ends the search
+after the last cluster. The reader can report a failed save, and the user can
+free space and retry.
+
+A host test mounted FAT and exFAT images with 0–256 free clusters and added,
+deleted, or replaced a clip in stores of 3–1,023 clips. Of 300 edits, 206
+succeeded immediately. All 94 that failed succeeded after space was freed.
+Each reopened store contained the expected passages and revisions. A separate
+regression checks writing the last free cluster, attempting another write,
+remounting a full exFAT image, and writing again after freeing space.

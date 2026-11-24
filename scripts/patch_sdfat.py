@@ -5,8 +5,8 @@ The patches in `scripts/sdfat_patches/` make USE_SEPARATE_FAT_CACHE
 overridable, invalidate the sector cache after a failed read, and write the
 FAT cache before the data cache on sync, preserve exFAT file metadata after a failed sync while the handle remains open, preserve LFN lookup read errors, and
 provide scoped FAT and exFAT directory checks, avoid null-pointer arithmetic in
-cached FAT reads, and use unsigned exFAT name-hash arithmetic. They target
-SdFat 2.3.1 only.
+cached FAT reads, use unsigned exFAT name-hash arithmetic, and terminate
+allocation searches on full exFAT volumes. They target SdFat 2.3.1 only.
 
 Unlike JPEGDEC, SdFat is a registry dependency of the SDK, so the script
 patches only the copy that the current environment actually builds:
@@ -61,6 +61,9 @@ PATCHES = (
     ("0054-exfat-unsigned-name-hash.patch", "src/ExFatLib/ExFatName.cpp",
      "65b68473f51e97820fa6fd477addc14c247810902e3b77b5a4fe69849a6988a8",
      "413552937ce1806b04177bc12c25d9e54a1a1da7cf2ba49615a25914cd3f99d9"),
+    ("0057-exfat-stop-at-full-bitmap.patch", "src/ExFatLib/ExFatPartition.cpp",
+     "50f5d03be0f0f6c282bbbecd5b1d20c76c1ee095850c057394e977689f77aa3b",
+     "4861b9435a01d048192df03cc8a83444192e3be577f5a23a8bd96e544c98fb12"),
     ("0026-fat-partition-strict-eoc.patch", "src/FatLib/FatPartition.cpp",
      "36163b3dc4ee985da9a6c6fb99b635fb5b63255d35fa5b3ccc1778db1534c0fe",
      "07f1656abc18b97cceb66913eac49212d354a4858c9e7d1450333431686d70ab"),

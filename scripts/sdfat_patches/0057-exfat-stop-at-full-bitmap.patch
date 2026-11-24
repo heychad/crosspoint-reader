@@ -1,0 +1,12 @@
+--- a/src/ExFatLib/ExFatPartition.cpp
++++ b/src/ExFatLib/ExFatPartition.cpp
+@@ -59,7 +59,8 @@
+         } else {
+           bgnAlloc = endAlloc;
+         }
+-        if (endAlloc == start) {
++        // A search starting at zero finishes at the end of the bitmap.
++        if (endAlloc == start || (start == 0 && endAlloc == m_clusterCount)) {
+           return 1;
+         }
+         if (endAlloc >= m_clusterCount) {

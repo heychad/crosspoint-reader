@@ -63,6 +63,45 @@ inline void largeStore() {
   }
 }
 
+// Bound bitmap reads so the upstream full-volume loop fails the test instead of hanging it.
+inline void fullExfat() {
+  Disk disk;
+  disk.sectorsTotal = 2 * 1024 * 1024;  // Two bitmap sectors keep the read budget observable.
+  uint8_t sector[512];
+  ExFatFormatter format;
+  assert(format.format(&disk, sector));
+  FsVolume volume;
+  assert(volume.begin(&disk));
+  auto probe = volume.open("/probe", O_CREAT | O_RDWR);
+  auto filler = volume.open("/filler", O_CREAT | O_RDWR);
+  assert(probe && filler);
+  const int32_t free = volume.freeClusterCount();
+  assert(free > 4096);
+  const auto clusterBytes = volume.bytesPerCluster();
+  assert(filler.preAllocate(static_cast<uint64_t>(free - 1) * clusterBytes));
+  assert(filler.close() && volume.freeClusterCount() == 1);
+  auto last = volume.open("/last", O_CREAT | O_RDWR);
+  constexpr uint8_t marker = 42;
+  assert(last && last.write(&marker, 1) == 1 && last.close());
+  assert(volume.freeClusterCount() == 0);
+
+  const int readBudget = 40 + 4 * (free / 4096 + 1);
+  disk.failReadAt = disk.reads + readBudget;
+  assert(probe.write(&marker, 1) == 0 && !disk.injectedRead);
+  probe.close();
+  volume.end();
+
+  disk.failReadAt = disk.reads + readBudget;
+  assert(volume.begin(&disk) && !disk.injectedRead);
+  disk.failReadAt = -1;
+  assert(volume.remove("/filler"));
+  probe = volume.open("/probe", O_RDWR);
+  assert(probe && probe.fileSize() == 0 && probe.write(&marker, 1) == 1 && probe.close());
+  probe = volume.open("/probe", O_RDONLY);
+  assert(probe && probe.read() == marker && probe.read() < 0 && probe.close());
+  volume.end();
+}
+
 // Fail each individual sector operation of a real SdFat save and reopen the book.
 inline void run(bool exfat) {
   Disk baseline;
@@ -70,6 +109,7 @@ inline void run(bool exfat) {
   if (exfat) {
     ExFatFormatter format;
     assert(format.format(&baseline, sector));
+    fullExfat();
   } else {
     FatFormatter format;
     assert(format.format(&baseline, sector));
