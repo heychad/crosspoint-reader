@@ -16,6 +16,7 @@
 namespace heap {
 bool counting = false;
 size_t live = 0;
+size_t allocations = 0;
 
 struct alignas(std::max_align_t) Header {
   size_t size;
@@ -27,7 +28,10 @@ void* allocate(const size_t size) {
   if (!header) return nullptr;
   header->size = size;
   header->counted = counting;
-  if (counting) live += size;
+  if (counting) {
+    live += size;
+    ++allocations;
+  }
   return header + 1;
 }
 
@@ -65,7 +69,8 @@ std::string cacheDir() {
 }
 
 // Writes book.bin through the cache's own writer; returns every chapter's cumulative size.
-std::vector<uint32_t> buildBook(const std::string& dir, const int spineCount) {
+std::vector<uint32_t> buildBook(const std::string& dir, const int spineCount, bool withToc = true,
+                                const BookMetadataCache::BookMetadata& metadata = {}) {
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   zipEntrySizes.clear();
@@ -78,9 +83,11 @@ std::vector<uint32_t> buildBook(const std::string& dir, const int spineCount) {
   EXPECT_TRUE(cache.beginWrite() && cache.beginContentOpfPass());
   for (int i = 0; i < spineCount; i++) cache.createSpineEntry(chapterHref(i));
   EXPECT_TRUE(cache.endContentOpfPass() && cache.beginTocPass());
-  for (int i = 0; i < spineCount; i++) cache.createTocEntry("Chapter " + std::to_string(i), chapterHref(i), "", 1);
+  if (withToc) {
+    for (int i = 0; i < spineCount; i++) cache.createTocEntry("Chapter " + std::to_string(i), chapterHref(i), "", 1);
+  }
   EXPECT_TRUE(cache.endTocPass() && cache.endWrite());
-  EXPECT_TRUE(cache.buildBookBin("book.epub", {}));
+  EXPECT_TRUE(cache.buildBookBin("book.epub", metadata));
   EXPECT_TRUE(cache.cleanupTmpFiles());
   return cumulative;
 }
@@ -107,19 +114,68 @@ TEST(BookMetadataCacheTitles, BoundedSpineTitleReadsRealCache) {
 // A loaded book must not hold heap per chapter: 5,000 chapters may hold at most 1 KB more than 30.
 TEST(BookMetadataCacheHeap, ResidentHeapDoesNotGrowWithSpineCount) {
   size_t resident[2] = {};
+  size_t loadAllocations[2] = {};
   for (const int spineCount : {30, 5000}) {
     const std::vector<uint32_t> cumulative = buildBook(cacheDir(), spineCount);
     BookMetadataCache cache(cacheDir());
     heap::live = 0;
+    heap::allocations = 0;
     heap::counting = true;
     EXPECT_TRUE(cache.load());
     const size_t loaded = heap::live;
+    loadAllocations[spineCount == 5000] = heap::allocations;
     for (int i = 0; i < spineCount; i++) EXPECT_EQ(cache.getCumulativeSize(i), cumulative[i]) << "spine " << i;
     EXPECT_EQ(heap::live, loaded) << spineCount << " chapters";
     heap::counting = false;
     resident[spineCount == 5000] = loaded;
   }
+  EXPECT_LE(loadAllocations[1], loadAllocations[0] + 1) << "Loading chapter names would allocate per spine";
   EXPECT_LE(resident[1], resident[0] + 1024) << "30 chapters: " << resident[0] << " B";
+}
+
+TEST(BookMetadataCacheSizes, LastChapterAndWindowBoundariesMatchTheWriter) {
+  for (int chapters : {1, 31, 32, 33, 64, 65}) {
+    const auto cumulative = buildBook(cacheDir(), chapters);
+    BookMetadataCache cache(cacheDir());
+    ASSERT_TRUE(cache.load()) << chapters;
+    for (int i = 0; i < chapters; ++i) EXPECT_EQ(cache.getCumulativeSize(i), cumulative[i]);
+  }
+}
+
+TEST(BookMetadataCacheSizes, OpensExistingFormatWithoutContentsEntries) {
+  const BookMetadataCache::BookMetadata metadata{"An omnibus", "An author", "en", "images/cover.jpg", "chapter1.xhtml"};
+  const auto totals = buildBook(cacheDir(), 32, false, metadata);
+  BookMetadataCache cache(cacheDir());
+  ASSERT_TRUE(cache.load());
+  EXPECT_EQ(cache.getTocCount(), 0);
+  EXPECT_EQ(cache.coreMetadata.title, metadata.title);
+  EXPECT_EQ(cache.coreMetadata.author, metadata.author);
+  EXPECT_EQ(cache.coreMetadata.language, metadata.language);
+  EXPECT_EQ(cache.coreMetadata.coverItemHref, metadata.coverItemHref);
+  EXPECT_EQ(cache.coreMetadata.textReferenceHref, metadata.textReferenceHref);
+  EXPECT_EQ(cache.getCumulativeSize(31), totals.back());
+}
+
+TEST(BookMetadataCacheSizes, FailedReloadDropsLoadedStateAndCanRetry) {
+  const auto totals = buildBook(cacheDir(), 33);
+  BookMetadataCache cache(cacheDir());
+  ASSERT_TRUE(cache.load());
+  const auto path = std::filesystem::path(cacheDir()) / "book.bin";
+  std::ifstream input(path, std::ios::binary);
+  const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  input.close();
+  auto lastHref = bytes.find(chapterHref(32));
+  ASSERT_NE(lastHref, std::string::npos);
+  std::filesystem::resize_file(path, lastHref + chapterHref(32).size());
+  EXPECT_FALSE(cache.load());
+  EXPECT_FALSE(cache.isLoaded());
+  EXPECT_EQ(cache.getCumulativeSize(32), 0u);
+  {
+    std::ofstream restored(path, std::ios::binary | std::ios::trunc);
+    restored.write(bytes.data(), bytes.size());
+  }
+  ASSERT_TRUE(cache.load());
+  EXPECT_EQ(cache.getCumulativeSize(32), totals.back());
 }
 
 // book.bin cut short inside a window: the window answers the total before it, never less.

@@ -24,6 +24,15 @@ constexpr size_t BUILD_IO_BUFFER_SIZE = 4096;
 // The render task and the main loop both ask for sizes.
 std::mutex sizeWindowLock;
 
+// A spine entry stores its cumulative size immediately after its length-prefixed href.
+bool readSpineSizeAt(HalFile& file, uint32_t entry, uint64_t fileSize, uint32_t& size) {
+  uint32_t hrefLength = 0;
+  if (!file.seek64(entry) || !serialization::tryReadPod(file, hrefLength)) return false;
+  const uint64_t sizeOffset = uint64_t{entry} + sizeof(hrefLength) + hrefLength;
+  return sizeOffset + sizeof(size) + sizeof(int16_t) <= fileSize && file.seek64(sizeOffset) &&
+         serialization::tryReadPod(file, size);
+}
+
 // Entry (de)serializers, templated so they run over HalFile and the Buffered*
 // wrappers alike (two instantiations each -- a few hundred bytes of flash, in
 // exchange for the build path streaming at SD speed instead of per-pod).
@@ -461,39 +470,58 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
 /* ============= READING / LOADING FUNCTIONS ================ */
 
 bool BookMetadataCache::load() {
-  if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, bookFile)) {
-    return false;
-  }
+  loaded = false;
+  if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, bookFile)) return false;
 
-  uint8_t version;
-  serialization::readPod(bookFile, version);
-  if (version != BOOK_CACHE_VERSION) {
-    LOG_DBG("BMC", "Cache version mismatch: expected %d, got %d", BOOK_CACHE_VERSION, version);
-    // Explicit close() required: member variable persists beyond function scope
+  uint8_t version = 0;
+  if (!serialization::tryReadPod(bookFile, version) || version != BOOK_CACHE_VERSION ||
+      !serialization::tryReadPod(bookFile, lutOffset) || !serialization::tryReadPod(bookFile, spineCount) ||
+      !serialization::tryReadPod(bookFile, tocCount)) {
     bookFile.close();
     return false;
   }
 
-  serialization::readPod(bookFile, lutOffset);
-  serialization::readPod(bookFile, spineCount);
-  serialization::readPod(bookFile, tocCount);
+  if (!serialization::tryReadString(bookFile, coreMetadata.title, lutOffset) ||
+      !serialization::tryReadString(bookFile, coreMetadata.author, lutOffset) ||
+      !serialization::tryReadString(bookFile, coreMetadata.language, lutOffset) ||
+      !serialization::tryReadString(bookFile, coreMetadata.coverItemHref, lutOffset) ||
+      !serialization::tryReadString(bookFile, coreMetadata.textReferenceHref, lutOffset)) {
+    bookFile.close();
+    return false;
+  }
 
-  serialization::readString(bookFile, coreMetadata.title);
-  serialization::readString(bookFile, coreMetadata.author);
-  serialization::readString(bookFile, coreMetadata.language);
-  serialization::readString(bookFile, coreMetadata.coverItemHref);
-  serialization::readString(bookFile, coreMetadata.textReferenceHref);
-
-  // Spine entries follow the LUTs in index order; keep every SIZE_WINDOW-th cumulative size.
+  // Progress needs only the total before each window and the final book size.
+  // Use the existing lookup table so opening a book never materializes every chapter href.
   windowStarts.clear();
   bookSize = 0;
   windowFirst = -1;
+  const uint64_t fileSize = bookFile.fileSize64();
+  const uint64_t recordsStart = lutOffset + uint64_t{sizeof(uint32_t)} * (spineCount + tocCount);
+  if (bookFile.position() > lutOffset || recordsStart > fileSize) {
+    bookFile.close();
+    return false;
+  }
+  // Collect the last entry offset for each window first. Both passes then seek forward on the SD.
   windowStarts.reserve((spineCount + SIZE_WINDOW - 1) / SIZE_WINDOW);
-  const uint32_t lutSize = (static_cast<uint32_t>(spineCount) + tocCount) * sizeof(uint32_t);
-  bookFile.seek(lutOffset + lutSize);
-  for (uint16_t i = 0; i < spineCount; i++) {
-    if (i % SIZE_WINDOW == 0) windowStarts.push_back(bookSize);
-    bookSize = readSpineEntry(bookFile).cumulativeSize;
+  for (int first = 0; first < spineCount; first += SIZE_WINDOW) {
+    const int last = std::min(first + SIZE_WINDOW, static_cast<int>(spineCount)) - 1;
+    const uint64_t slot = lutOffset + uint64_t{sizeof(uint32_t)} * last;
+    uint32_t entry = 0;
+    if (!bookFile.seek64(slot) || !serialization::tryReadPod(bookFile, entry) || entry < recordsStart ||
+        (!windowStarts.empty() && entry <= windowStarts.back())) {
+      bookFile.close();
+      return false;
+    }
+    windowStarts.push_back(entry);
+  }
+  for (auto& offset : windowStarts) {
+    uint32_t endSize = 0;
+    if (!readSpineSizeAt(bookFile, offset, fileSize, endSize)) {
+      bookFile.close();
+      return false;
+    }
+    offset = bookSize;  // Replace the temporary offset with the cumulative size before this window.
+    bookSize = endSize;
   }
 
   loaded = true;

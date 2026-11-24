@@ -158,3 +158,19 @@ When starting a touch selection, the reader first looks for a saved clip in
 the current chapter. If all clips belong to other chapters, it skips the word
 measurements used to detect a tap on a saved highlight. Overlapping clips
 still select the first matching record in storage order.
+
+## Reopening a book with many chapters
+
+The X4 Pro uses the existing chapter lookup table to read the progress total
+at the end of each 32-chapter window. It reads the table offsets in order,
+then reads the totals in file order. The same vector holds both sets of
+values in succession. The cache format and saved positions stay compatible.
+
+On a host fixture with 5,000 chapters, opening the metadata cache took 480
+file reads totaling 1,913 bytes. The previous loader took 20,014 reads
+totaling 188,919 bytes on the same file. Both returned the same book size
+of 80,088,000 bytes. The tests also compared each chapter's cumulative size
+against the writer. With the production SdFat library and a simulated card,
+a cold FAT open used 218 sector reads, down from 374. A contiguous exFAT
+file used 217, down from 373. Interleaving writes to a second file gave 218
+instead of 374 on both filesystems. Timing on the physical card is open.
