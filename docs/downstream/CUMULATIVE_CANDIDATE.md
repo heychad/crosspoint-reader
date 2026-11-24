@@ -562,3 +562,17 @@ configuration, both X4 Pro builds, and the compiled stable-update simulation.
 The 5,869,264-byte Mac image has SHA-256
 `c2ed8c3314ecdfb6000b895f98171520d4c2b055f93c958aeaae29cbeba18426`.
 The package includes the test70 rollback. Test71 remains staged on the reader.
+
+### Local test80 package
+
+Test80 reads a book’s saved completion status without opening its tracking
+switch. On a 1,935-book test catalog, both builds identified the same 57
+finished titles. Simulated SD reads fell 37% on FAT and 38% on exFAT.
+With EPUB timing diagnostics enabled, the report also shows the duration and
+outcome of the last progress save.
+
+Source `b2b327a1` passed 2,605 enabled checks in each host configuration,
+both X4 Pro builds, and the compiled stable-update simulation. The
+5,869,520-byte Mac image has SHA-256
+`8328027405989f16a31b06def925685e702e86325f63b371da14b8bb27d06f0d`.
+Its package includes the test70 rollback. Test71 remains staged on the reader.

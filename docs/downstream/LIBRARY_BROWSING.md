@@ -93,8 +93,9 @@ validation remain.
 Show EPUB, XTC, TXT and Markdown independently. XTC includes `.xtc` and `.xtch`.
 Markdown uses the reader's `.md` support. Hide finished books removes entries
 whose saved statistics identify them as completed. Completion checks are
-read-only. Books with unavailable or damaged statistics or pending recovery
-stay visible. Search combines with the selected filters. Turning a format back
+read-only and independent of the per-book tracking switch. When a current or
+recovered statistics record establishes completion, the filter uses it. Books
+whose completion is unknown stay visible. Search combines with the selected filters. Turning a format back
 on makes matching books visible again.
 
 Recent books use the same visibility rules as indexed books. A visible pin
@@ -131,7 +132,8 @@ lookup belongs to one open index generation and is released at scan exit.
 Plain search avoids full paths, and format-only filtering reads filenames.
 With Hide finished enabled, only books that pass search and format filtering
 need a completion check. The scan builds the folder lookup at the first match.
-Recently opened also checks completion only for matches.
+Recently opened also checks completion only for matches. Neither view opens
+the per-book tracking switch during this scan.
 
 Filtering runs under the owning Library render lock, yields during long
 scans, and closes published row routing before rebuilding the model. An
