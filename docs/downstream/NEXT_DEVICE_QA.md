@@ -46,8 +46,19 @@ same text page turns with **Text Anti-Aliasing** on and off, then restore your
 setting. Record any extra refresh, wait before a turn, or visible text shift.
 The clip refresh fix and later render changes are on the development branch.
 
-Run the Drive deletion and restore check on test70 separately, using one
-disposable synced EPUB.
+For the Drive check, delete one disposable synced EPUB on test70. Reopen
+**File Transfer → Join Network**, then use **Check reader** in the book library
+and confirm the book appears under
+**Recently deleted** and leaves the active Drive shelf. Restore it there
+and confirm it returns to its original shelf.
+
+## Test70 rollback
+
+The staged rollback is **zDev → RC365.BIN** (test65). Finish or recover any
+active version-3 Move to Read transaction before downgrading. Test65 cannot
+replay that journal version. Take a fresh backup of the affected book paths
+and state together, then use **Settings → System → SD Card Firmware Update**.
+See [the coherent restore procedure](DEVICE_TEST.md).
 
 ## Reader controls and display regression
 

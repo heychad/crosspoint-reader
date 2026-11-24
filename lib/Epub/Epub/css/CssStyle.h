@@ -176,6 +176,7 @@ struct CssStyle {
   CssTextDecoration textDecoration = CssTextDecoration::None;
   CssTextDirection direction = CssTextDirection::Ltr;
   bool backgroundImage = false;  // Presence only, for a thematic break's fallback rule.
+  bool darkBackground = false;   // Visible on a divider, without darkening text blocks.
 
   CssLength textIndent;     // First-line indent (deferred resolution)
   CssLength marginTop;      // Vertical spacing before block
@@ -325,6 +326,7 @@ struct CssStyle {
     }
     if (base.defined.shaded) {
       shaded = base.shaded;
+      darkBackground = base.darkBackground;
       defined.shaded = 1;
     }
     if (base.defined.backgroundImage) {
@@ -376,8 +378,8 @@ struct CssStyle {
       return ((borderWidthsDefined & bit) && side.width == 0) ||
              ((borderStylesDefined & bit) && side.style == CssBorderStyle::None);
     };
-    return !backgroundImage && hidden(borderTop, 1) && hidden(borderRight, 2) && hidden(borderBottom, 4) &&
-           hidden(borderLeft, 8);
+    return !backgroundImage && !shaded && !darkBackground && hidden(borderTop, 1) && hidden(borderRight, 2) &&
+           hidden(borderBottom, 4) && hidden(borderLeft, 8);
   }
 
   void reset() { *this = CssStyle{}; }

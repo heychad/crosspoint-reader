@@ -1217,6 +1217,35 @@ TEST_F(ChapterBlockDecorationTest, BorderlessDividerKeepsOnlyExplicitSpacing) {
   EXPECT_EQ(parser.currentPageNextY, 17);
 }
 
+TEST_F(ChapterBlockDecorationTest, ColorBackedDividerRetainsFallback) {
+  open("hr", "border: 0; height: 2px; background-color: #aaa");
+  close("hr");
+  open("hr", "border: 0; height: 2px; background: #000");
+  close("hr");
+  open("hr", "border: 0; height: 2px; background: transparent");
+  close("hr");
+  EXPECT_EQ(elementsWithTag(TAG_PageHorizontalRule).size(), 2u);
+}
+
+TEST_F(ChapterBlockDecorationTest, OversizedHiddenDividerSpacingDoesNotEmitBlankPages) {
+  parser.viewportHeight = 800;
+  for (int i = 0; i < 17; ++i) {
+    open("hr", "border: none; margin: 1000px 0");
+    close("hr");
+  }
+  EXPECT_TRUE(elementsWithTag(TAG_PageHorizontalRule).empty());
+  EXPECT_EQ(parser.currentPageNextY, 800);
+  const auto precedingPages = parser.completedPageCount;
+  open("p", nullptr);
+  text("Readable text");
+  close("p");
+  const auto lines = elementsWithTag(TAG_PageLine);
+  ASSERT_EQ(lines.size(), 1u);
+  EXPECT_EQ(parser.completedPageCount, precedingPages);
+  EXPECT_GE(lines[0]->yPos, 0);
+  EXPECT_LT(lines[0]->yPos, parser.viewportHeight);
+}
+
 TEST_F(ChapterBlockDecorationTest, ImageBackedDividerRetainsFallback) {
   open("hr", "border: none; background: url(ornament.png) center no-repeat");
   close("hr");

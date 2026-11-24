@@ -46,10 +46,11 @@ EEGO display work. The 157-key settings inventory still covers RC2.
 
 The fork adapts [RC3's XTC bit-depth fix](https://github.com/uxjulia/CrossInk/commit/810cf78437995967f16b7895c382b16322b5d7bb).
 When a converter labels the container differently from its pages, the
-reader follows the first page's recognized format. Unreadable or unrecognized
-headers leave the container depth in place. Buffered and streaming reads
-still validate every page. The probe adds at most one four-byte read and
-no allocation.
+reader follows the first page's recognized format if its header, encoded
+bitmap size, and page bounds agree. A malformed page leaves the container's
+depth in place so valid later pages can still open. Buffered and streaming
+reads check the header magic and bitmap size of each page they load. The probe
+reads one 22-byte header without a heap allocation.
 
 [RC3 excludes blocking activity time from inactivity](https://github.com/uxjulia/CrossInk/commit/0c866e7b5ddd7ae021303b41d586402ff83b75ae).
 The fork applies the same adjustment to its auto-sleep and CPU idle timers.

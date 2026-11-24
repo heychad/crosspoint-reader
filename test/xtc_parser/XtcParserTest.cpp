@@ -21,14 +21,13 @@ constexpr uint8_t kFill = 0x55;
 // 1-bit pages are row-major ((w+7)/8 * h); 2-bit pages are two column-major planes (w * ceil(h/8) * 2).
 uint32_t payloadSize(uint32_t pageMagic) { return pageMagic == XTH_MAGIC ? kSide * ((kSide + 7) / 8) * 2 : 8; }
 
-// One-page book: header, one page table entry, one page.
-std::vector<uint8_t> buildBook(uint32_t containerMagic, uint32_t pageMagic) {
+std::vector<uint8_t> buildBook(uint32_t containerMagic, uint32_t pageMagic, uint16_t pageCount = 1) {
   XtcHeader header{};
   header.magic = containerMagic;
   header.versionMajor = 1;
-  header.pageCount = 1;
+  header.pageCount = pageCount;
   header.pageTableOffset = sizeof(XtcHeader);
-  header.dataOffset = sizeof(XtcHeader) + sizeof(PageTableEntry);
+  header.dataOffset = sizeof(XtcHeader) + pageCount * sizeof(PageTableEntry);
 
   XtgPageHeader page{};
   page.magic = pageMagic;
@@ -36,12 +35,14 @@ std::vector<uint8_t> buildBook(uint32_t containerMagic, uint32_t pageMagic) {
   page.height = kSide;
   page.dataSize = payloadSize(pageMagic);
 
-  PageTableEntry entry{header.dataOffset, static_cast<uint32_t>(sizeof(XtgPageHeader) + page.dataSize), kSide, kSide};
-
-  std::vector<uint8_t> bytes(header.dataOffset + sizeof(XtgPageHeader) + page.dataSize, kFill);
+  const auto pageSize = static_cast<uint32_t>(sizeof(XtgPageHeader) + page.dataSize);
+  std::vector<uint8_t> bytes(header.dataOffset + pageCount * pageSize, kFill);
   std::memcpy(bytes.data(), &header, sizeof(header));
-  std::memcpy(bytes.data() + header.pageTableOffset, &entry, sizeof(entry));
-  std::memcpy(bytes.data() + header.dataOffset, &page, sizeof(page));
+  for (uint16_t i = 0; i < pageCount; ++i) {
+    const PageTableEntry entry{header.dataOffset + i * pageSize, pageSize, kSide, kSide};
+    std::memcpy(bytes.data() + header.pageTableOffset + i * sizeof(entry), &entry, sizeof(entry));
+    std::memcpy(bytes.data() + entry.dataOffset, &page, sizeof(page));
+  }
   return bytes;
 }
 
@@ -116,7 +117,7 @@ TEST(XtcParser, UnknownPageMagicKeepsContainerDepth) {
   }
 }
 
-// A first-page offset beyond the file (including one that would overflow offset + 4)
+// A first-page offset beyond the file (including one that would overflow offset + header size)
 // is ignored by the probe: open still succeeds with the container depth, the page fails.
 TEST(XtcParser, OutOfRangeFirstPageOffsetKeepsContainerDepth) {
   for (const uint64_t offset : {uint64_t{1} << 40, std::numeric_limits<uint64_t>::max() - 1}) {
@@ -141,6 +142,36 @@ TEST(XtcParser, TruncatedFirstPageKeepsContainerDepth) {
   EXPECT_EQ(parser.getBitDepth(), 1);
   uint8_t buffer[64]{};
   EXPECT_EQ(parser.loadPage(0, buffer, sizeof(buffer)), 0u);
+}
+
+TEST(XtcParser, CorruptedOppositeFirstPageMagicKeepsLaterPageReadable) {
+  auto bytes = buildBook(XTC_MAGIC, XTG_MAGIC, 2);
+  const size_t firstPage = sizeof(XtcHeader) + 2 * sizeof(PageTableEntry);
+  const uint32_t wrongMagic = XTH_MAGIC;
+  std::memcpy(bytes.data() + firstPage, &wrongMagic, sizeof(wrongMagic));
+  Storage.setFile(kPath, std::move(bytes));
+  XtcParser parser;
+  ASSERT_EQ(parser.open(kPath), XtcError::OK);
+  EXPECT_EQ(parser.getBitDepth(), 1);
+  uint8_t buffer[64]{};
+  EXPECT_EQ(parser.loadPage(0, buffer, sizeof(buffer)), 0u);
+  EXPECT_EQ(parser.loadPage(1, buffer, sizeof(buffer)), payloadSize(XTG_MAGIC));
+  size_t streamed = 0;
+  EXPECT_EQ(
+      parser.loadPageStreaming(1, [&](const uint8_t*, size_t size, size_t) { streamed += size; }, 3), XtcError::OK);
+  EXPECT_EQ(streamed, payloadSize(XTG_MAGIC));
+}
+
+TEST(XtcParser, OppositePageWithPayloadOutsideItsEntryKeepsContainerDepth) {
+  auto bytes = buildBook(XTC_MAGIC, XTH_MAGIC);
+  PageTableEntry entry;
+  std::memcpy(&entry, bytes.data() + sizeof(XtcHeader), sizeof(entry));
+  entry.dataSize = sizeof(XtgPageHeader);
+  std::memcpy(bytes.data() + sizeof(XtcHeader), &entry, sizeof(entry));
+  Storage.setFile(kPath, std::move(bytes));
+  XtcParser parser;
+  ASSERT_EQ(parser.open(kPath), XtcError::OK);
+  EXPECT_EQ(parser.getBitDepth(), 1);
 }
 
 // Failed access must not change the container-derived depth or fail opening.

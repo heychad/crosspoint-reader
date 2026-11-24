@@ -11,6 +11,44 @@ The subsequent [test60 swipe patch](SWIPE_LINK_RETURN_FIX.md) corrects a reporte
 input regression without changing persistence or the SDK. Its separate source,
 checks, review, and package are recorded there; physical confirmation is pending.
 
+## Post-test70 review
+
+The X4 Pro comparison starts at test70 source `8959351d` and includes the
+follow-up batch through `c06f2d12`. It keeps CrossPoint 2.0.0 and the pinned
+FreeInk SDK `5e94fe7480f019c89fbf691aef87523eb1b46704` with the existing
+patches. The standard and personal test profiles are the intended build
+checks. The personal profile enables the same twelve selected flags as
+test70.
+
+Independent correctness, architecture, embedded, and documentation reviews
+found four firmware regressions. They are covered by the corrective tests.
+
+- Validate the first XTC page before using it to set the depth of later
+  pages. A damaged first page with the opposite magic no longer blocks a
+  valid second page. The correction checks both buffered and streaming reads.
+- Keep a fallback line for borderless dividers painted with a recognized
+  background color. Transparent and white colors keep the rule invisible
+  when its borders and background image are absent.
+- Bound invisible divider spacing and keep the first text on an empty page
+  within view.
+- Use the release handler for a remapped Up press while a page turn is pending.
+
+Targeted second review cleared the four findings. A subsequent focused
+correction handles decimal RGB inputs as complete values. The direct
+[test70 checklist](NEXT_DEVICE_QA.md) now identifies the staged test65 rollback,
+the version-3 completion journal requirement, and the disposable Drive
+restore check. Physical review starts with test70.
+
+The corrected source passed all 2,563 enabled host checks in 130.02 seconds.
+The 31 CSS parser and 10 XTC parser checks passed AddressSanitizer and
+UndefinedBehaviorSanitizer. The remapped-input fixture passed both sanitizers.
+The standard X4 Pro built in 76.39 seconds and the personal profile in
+69.20 seconds. The 5,860,736-byte personal WIP image passed the board,
+version, slot size, checksum, and validation hash checks. Its SHA-256 is
+`24d6f0ce0cdc2a60d32f9ff56e0d5f21e08a6aadeed6c86c36b2fd33129a6e11`.
+The earlier simulated stable upgrade is recorded separately with its
+[preview revision and image hash](PERSONAL_UPDATES.md#post-test70-integration-check).
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with

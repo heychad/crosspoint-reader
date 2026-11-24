@@ -217,8 +217,8 @@ bool EpubReaderActivity::handleReaderShortcutInput() {
   const auto& down = contacts[1];
   // Down can still join Power + Down. Up can act on press when it has no
   // competing hold or chord and Down has no input to dispatch this frame.
-  if (managed && contacts[0].pressed && !down.down && !down.pressed && !down.released && !upHasHold &&
-      !sideChordEnabled && SETTINGS.powerUpChordAction <= static_cast<uint8_t>(Action::Disabled)) {
+  if (managed && pendingManualTurn == 0 && contacts[0].pressed && !down.down && !down.pressed && !down.released &&
+      !upHasHold && !sideChordEnabled && SETTINGS.powerUpChordAction <= static_cast<uint8_t>(Action::Disabled)) {
     const auto action = tapAction(true);
     if (action == Action::PreviousPage || action == Action::NextPage) {
       mappedInput.consumeSideButtonUntilReleased(Button::Up);

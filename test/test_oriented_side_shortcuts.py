@@ -52,6 +52,7 @@ class EpubReaderActivity {
   bool shortcutSideSwapped=false;
   MappedInputManager mappedInput;
   int actions=0; Action last=Action::Default; QuickLockTrigger origin=QuickLockTrigger::None;
+  int pendingManualTurn=0;
   bool customSideShortcuts() const {return true;}
   bool handleReaderShortcut(Action action, QuickLockTrigger trigger){++actions;last=action;origin=trigger;return true;}
   bool handleReaderShortcutInput();
@@ -145,6 +146,17 @@ int main(){
     overlapping.mappedInput.frame(false,false,false,false,true,false);
     assert(overlapping.handleReaderShortcutInput() && overlapping.last==Action::NextPage);
     assert(overlapping.actions==2);
+  }
+  {
+    EpubReaderActivity rapid;
+    rapid.pendingManualTurn=1;  // First turn is still waiting behind the reader guard.
+    rapid.mappedInput.frame(true,false,true,false,false,false);
+    assert(!rapid.handleReaderShortcutInput());
+    assert(!rapid.mappedInput.consumed[0] && rapid.pendingManualTurn==1);
+    rapid.pendingManualTurn=0;  // First turn has now executed.
+    rapid.mappedInput.frame(false,false,false,false,true,false);
+    assert(rapid.handleReaderShortcutInput() && rapid.last==Action::NextPage);
+    assert(rapid.actions==1);
   }
   {
     SETTINGS.readerUpTap=uint8_t(Action::Default);

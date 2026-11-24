@@ -24,7 +24,8 @@ grayscale pass that can make the text appear to settle after the first refresh.
 
 The physical Up button can queue a remapped next or previous EPUB page on
 press. This applies when its effective hold action, the Up + Down chord, and
-the Power + Up chord are disabled, and Down has no input in the same frame.
+the Power + Up chord are disabled, Down has no input in the same frame, and a
+previous page turn is not pending.
 The reader consumes the rest of the Up contact, including release, so an
 end-of-book menu cannot reuse it. A remapped Down tap waits for release to
 support Power + Down screenshots. This adapts the
@@ -39,8 +40,9 @@ check that the same press can start the chord before a turn is queued.
 
 Small caps, superscripts, subscripts, and drop caps now clip each character
 before sampling its font bitmap. The renderer calculates the screen rotation
-and framebuffer steps once per character and skips bitmap reads when the
-character is outside the active area. The change adds no buffers.
+and framebuffer steps once per character. A character outside the active
+area skips the bitmap fetch after its metrics are known. A cold SD font can
+still read bitmap data during the metrics lookup. The change adds no buffers.
 
 An AddressSanitizer and UndefinedBehaviorSanitizer comparison against the
 previous renderer matched pixels and character advances in 13,448 cases,

@@ -904,20 +904,19 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle, con
     currentPageNextY = 0;
   }
 
-  const int16_t lineHeight = static_cast<int16_t>(renderer.getLineHeight(fontId, lineCompression));
-  const int16_t defaultVerticalSpacing = visible ? static_cast<int16_t>(lineHeight / 2) : 0;
-  const int16_t topSpacing =
-      static_cast<int16_t>((blockStyle.marginTop > 0 ? blockStyle.marginTop : defaultVerticalSpacing) +
-                           (blockStyle.paddingTop > 0 ? blockStyle.paddingTop : 0));
-  const int16_t bottomSpacing =
-      static_cast<int16_t>((blockStyle.marginBottom > 0 ? blockStyle.marginBottom : defaultVerticalSpacing) +
-                           (blockStyle.paddingBottom > 0 ? blockStyle.paddingBottom : 0));
+  const int lineHeight = renderer.getLineHeight(fontId, lineCompression);
+  const int defaultVerticalSpacing = visible ? lineHeight / 2 : 0;
+  const int topSpacing = (blockStyle.marginTop > 0 ? blockStyle.marginTop : defaultVerticalSpacing) +
+                         std::max<int>(0, blockStyle.paddingTop);
+  const int bottomSpacing = (blockStyle.marginBottom > 0 ? blockStyle.marginBottom : defaultVerticalSpacing) +
+                            std::max<int>(0, blockStyle.paddingBottom);
   const uint8_t ruleThickness = visible ? 2 : 0;
+  const int pageBottom = std::min<int>(viewportHeight, INT16_MAX);
   const int clearTopSpacing =
       visible ? std::max<int>(topSpacing, lastLineGlyphBottom() - currentPageNextY) : topSpacing;
-  const int16_t totalHeight = static_cast<int16_t>(clearTopSpacing + ruleThickness + bottomSpacing);
+  const int totalHeight = clearTopSpacing + ruleThickness + bottomSpacing;
 
-  if (!currentPage->elements.empty() && currentPageNextY + totalHeight > viewportHeight) {
+  if (!currentPage->elements.empty() && currentPageNextY + totalHeight > pageBottom) {
     setCurrentPageVisibleOffset(visibleTextOffset);
     emitCurrentPage();
     completedPageCount++;
@@ -931,9 +930,11 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle, con
     currentPageVisibleOffsetSet = false;
   }
 
-  // Only the visible line needs to clear the previous line's glyphs.
-  currentPageNextY += visible ? std::max<int>(topSpacing, lastLineGlyphBottom() - currentPageNextY) : topSpacing;
+  int nextY = currentPageNextY + topSpacing;
   if (visible) {
+    // Clear the previous line's glyphs on the page that will hold the rule.
+    nextY = std::min(std::max(nextY, lastLineGlyphBottom()), std::max(0, pageBottom - ruleThickness));
+    currentPageNextY = static_cast<int16_t>(nextY);
     const int16_t availableWidth =
         std::max<int16_t>(1, static_cast<int16_t>(viewportWidth - blockStyle.totalHorizontalInset()));
     const int16_t width = std::max<int16_t>(1, static_cast<int16_t>(availableWidth / 4));
@@ -948,7 +949,7 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle, con
     noteContent(currentPageNextY, currentPageNextY + ruleThickness);
   }
   keepWithNextLines = 0;
-  currentPageNextY = static_cast<int16_t>(currentPageNextY + ruleThickness + bottomSpacing);
+  currentPageNextY = static_cast<int16_t>(std::min(pageBottom, nextY + ruleThickness + bottomSpacing));
 
   if (!pendingAnchorId.empty()) {
     anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
@@ -3290,10 +3291,15 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
   }
 
   if (currentPageNextY + contentHeight > viewportHeight) {
-    size_t paragraphLines = 0;
-    const size_t carry = linesToCarry(paragraphLines);
-    breakPageCarryingLines(carry, paragraphLines, visibleOffset);
-    if (stopRequested) return;
+    if (currentPage->elements.empty()) {
+      // Spacing alone cannot fill a page and push readable text off it.
+      currentPageNextY = 0;
+    } else {
+      size_t paragraphLines = 0;
+      const size_t carry = linesToCarry(paragraphLines);
+      breakPageCarryingLines(carry, paragraphLines, visibleOffset);
+      if (stopRequested) return;
+    }
   }
   setCurrentPageVisibleOffset(visibleOffset);
 

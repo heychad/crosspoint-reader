@@ -90,6 +90,16 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 84
+
+A borderless divider with a recognized visible background color keeps its fallback line.
+Oversized spacing from invisible dividers stops at the page boundary and
+does not push the first line of text off an empty page. CSS cache version 21
+records whether the existing background-color byte represents invisible
+color, a gray fill, or a dark divider fallback. The wire size is unchanged.
+Clipping layout signatures advance to version 5. Progress files and portable
+clipping offsets keep their formats.
+
 ### Version 83
 
 Completed and partial section caches rebuild for publisher-styled EPUB

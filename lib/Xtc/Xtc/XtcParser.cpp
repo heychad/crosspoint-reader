@@ -15,6 +15,14 @@
 
 namespace xtc {
 
+namespace {
+size_t pageBitmapSize(const XtgPageHeader& header, uint8_t bitDepth) {
+  // XTH stores two column-major planes. XTG uses one row-major plane.
+  return bitDepth == 2 ? static_cast<size_t>(header.width) * ((header.height + 7) / 8) * 2
+                       : static_cast<size_t>((header.width + 7) / 8) * header.height;
+}
+}  // namespace
+
 XtcParser::XtcParser()
     : m_isOpen(false),
       m_defaultWidth(DISPLAY_WIDTH),
@@ -227,12 +235,18 @@ XtcError XtcParser::readFirstPageInfo() {
   m_defaultWidth = entry.width;
   m_defaultHeight = entry.height;
 
-  // Some converters label the container differently from its pages.
-  uint32_t pageMagic = 0;
-  if (entry.dataOffset <= fileSize - sizeof(pageMagic) && m_file.seek64(entry.dataOffset) &&
-      m_file.read(&pageMagic, sizeof(pageMagic)) == sizeof(pageMagic)) {
-    const uint8_t pageDepth = pageMagic == XTH_MAGIC ? 2 : pageMagic == XTG_MAGIC ? 1 : 0;
-    if (pageDepth != 0 && pageDepth != m_bitDepth) {
+  // Some converters mislabel the container. A damaged page must not tell
+  // the reader to interpret the rest of the book with the wrong depth.
+  XtgPageHeader pageHeader;
+  if (entry.dataOffset >= m_header.pageTableOffset + pageTableSize &&
+      entry.dataOffset <= fileSize - sizeof(pageHeader) && entry.dataSize >= sizeof(pageHeader) &&
+      entry.dataSize <= fileSize - entry.dataOffset && m_file.seek64(entry.dataOffset) &&
+      m_file.read(&pageHeader, sizeof(pageHeader)) == sizeof(pageHeader)) {
+    const uint8_t pageDepth = pageHeader.magic == XTH_MAGIC ? 2 : pageHeader.magic == XTG_MAGIC ? 1 : 0;
+    if (pageDepth != 0 && pageDepth != m_bitDepth && pageHeader.width != 0 && pageHeader.height != 0 &&
+        pageHeader.width == entry.width && pageHeader.height == entry.height && pageHeader.compression == 0 &&
+        pageHeader.dataSize == pageBitmapSize(pageHeader, pageDepth) &&
+        pageHeader.dataSize <= entry.dataSize - sizeof(pageHeader)) {
       LOG_INF("XTC", "Container says %u-bit, pages are %u-bit", static_cast<unsigned>(m_bitDepth),
               static_cast<unsigned>(pageDepth));
       m_bitDepth = pageDepth;
@@ -449,15 +463,7 @@ size_t XtcParser::loadPage(uint32_t pageIndex, uint8_t* buffer, size_t bufferSiz
     return 0;
   }
 
-  // Calculate bitmap size based on bit depth
-  // XTG (1-bit): Row-major, ((width+7)/8) * height bytes
-  // XTH (2-bit): Two column-major bit planes; each column occupies ceil(height/8) bytes
-  size_t bitmapSize;
-  if (m_bitDepth == 2) {
-    bitmapSize = static_cast<size_t>(pageHeader.width) * ((static_cast<size_t>(pageHeader.height) + 7) / 8) * 2;
-  } else {
-    bitmapSize = ((pageHeader.width + 7) / 8) * pageHeader.height;
-  }
+  const size_t bitmapSize = pageBitmapSize(pageHeader, m_bitDepth);
 
   if (pageHeader.dataSize != bitmapSize) {
     LOG_DBG("XTC", "Page %u payload size mismatch: declared %lu, expected %lu", pageIndex,
@@ -518,15 +524,7 @@ XtcError XtcParser::loadPageStreaming(uint32_t pageIndex,
     return XtcError::READ_ERROR;
   }
 
-  // Calculate bitmap size based on bit depth
-  // XTG (1-bit): Row-major, ((width+7)/8) * height bytes
-  // XTH (2-bit): Two column-major bit planes; each column occupies ceil(height/8) bytes
-  size_t bitmapSize;
-  if (m_bitDepth == 2) {
-    bitmapSize = static_cast<size_t>(pageHeader.width) * ((static_cast<size_t>(pageHeader.height) + 7) / 8) * 2;
-  } else {
-    bitmapSize = ((pageHeader.width + 7) / 8) * pageHeader.height;
-  }
+  const size_t bitmapSize = pageBitmapSize(pageHeader, m_bitDepth);
 
   if (pageHeader.dataSize != bitmapSize) {
     LOG_DBG("XTC", "Page %u payload size mismatch: declared %lu, expected %lu", pageIndex,

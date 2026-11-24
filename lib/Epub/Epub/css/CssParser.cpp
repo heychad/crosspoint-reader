@@ -358,18 +358,38 @@ int colorLuminance(const std::string_view value) {
   const auto luminance = [](const int r, const int g, const int b) { return (r * 299 + g * 587 + b * 114) / 1000; };
   const size_t rgb = value.find("rgb");
   if (rgb != std::string_view::npos) {
-    int channels[3] = {};
-    int count = 0;
-    int current = -1;
-    for (size_t i = value.find('(', rgb); i != std::string_view::npos && i < value.size() && count < 3; ++i) {
-      if (std::isdigit(static_cast<unsigned char>(value[i]))) {
-        current = (current < 0 ? 0 : current * 10) + (value[i] - '0');
-      } else if (current >= 0) {
-        channels[count++] = value[i] == '%' ? current * 255 / 100 : std::min(current, 255);
-        current = -1;
-      }
+    const size_t open = value.find('(', rgb);
+    const size_t close = value.find(')', open);
+    if (open == std::string_view::npos || close == std::string_view::npos) return -1;
+    const auto args = value.substr(open + 1, close - open - 1);
+    size_t alphaSeparator = args.find('/');
+    if (alphaSeparator == std::string_view::npos && std::count(args.begin(), args.end(), ',') == 3) {
+      alphaSeparator = args.rfind(',');
     }
-    return count == 3 ? luminance(channels[0], channels[1], channels[2]) : -1;
+    if (alphaSeparator != std::string_view::npos) {
+      auto alpha = trimAsciiWhitespace(args.substr(alphaSeparator + 1));
+      if (!alpha.empty() && alpha.back() == '%') alpha.remove_suffix(1);
+      float opacity = 1;
+      if (tryParseNumber(alpha, opacity) && opacity <= 0) return 255;
+    }
+    int channels[3] = {};
+    size_t count = 0;
+    bool valid = true;
+    forEachDelimitedToken(
+        args.substr(0, alphaSeparator), [](char c) { return c == ',' || isAsciiWhitespace(c); },
+        [&](std::string_view token) {
+          if (!valid) return;
+          const bool percent = token.back() == '%';
+          if (percent) token.remove_suffix(1);
+          float component = 0;
+          if (count == 3 || !tryParseNumber(token, component) || !std::isfinite(component)) {
+            valid = false;
+            return;
+          }
+          const float bounded = std::clamp(component, 0.0f, percent ? 100.0f : 255.0f);
+          channels[count++] = static_cast<int>(percent ? bounded * 255.0f / 100.0f : bounded);
+        });
+    return valid && count == 3 ? luminance(channels[0], channels[1], channels[2]) : -1;
   }
 
   int result = -1;
@@ -381,9 +401,17 @@ int colorLuminance(const std::string_view value) {
       if (hex.size() == 3 || hex.size() == 4) {
         for (int i = 0; i < 3; ++i) c[i] = hexNibble(hex[i]) * 17;
       } else if (hex.size() == 6 || hex.size() == 8) {
-        for (int i = 0; i < 3; ++i) c[i] = hexNibble(hex[2 * i]) * 16 + hexNibble(hex[2 * i + 1]);
+        for (int i = 0; i < 3; ++i) {
+          const int high = hexNibble(hex[2 * i]);
+          const int low = hexNibble(hex[2 * i + 1]);
+          if (high < 0 || low < 0) return;
+          c[i] = high * 16 + low;
+        }
       }
-      if (c[0] >= 0 && c[1] >= 0 && c[2] >= 0) result = luminance(c[0], c[1], c[2]);
+      if (c[0] >= 0 && c[1] >= 0 && c[2] >= 0) {
+        const bool transparent = (hex.size() == 4 && hex[3] == '0') || (hex.size() == 8 && hex.substr(6) == "00");
+        result = transparent ? 255 : luminance(c[0], c[1], c[2]);
+      }
       return;
     }
     struct Named {
@@ -404,13 +432,6 @@ int colorLuminance(const std::string_view value) {
     }
   });
   return result;
-}
-
-// Light backgrounds shade the box; white is invisible on paper, and dark ones
-// are skipped because the text inside would stay black.
-bool interpretShade(const std::string_view value) {
-  const int luminance = colorLuminance(value);
-  return luminance >= 128 && luminance < 240;
 }
 
 std::string_view stripTrailingImportant(std::string_view value) {
@@ -473,7 +494,7 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
     out[offset++] = static_cast<uint8_t>(side->style);
   }
   out[offset++] = style.borderWidthsDefined | (style.borderStylesDefined << 4);
-  out[offset++] = style.shaded ? 1 : 0;
+  out[offset++] = style.shaded ? 1 : style.darkBackground ? 2 : 0;
   out[offset++] = style.floatLeft ? 1 : 0;
   out[offset++] = style.initialLetter;
   out[offset++] = style.preserveWhitespace ? 1 : 0;
@@ -575,11 +596,12 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   const uint8_t borderComponents = in[offset++];
   style.borderWidthsDefined = borderComponents & 0x0f;
   style.borderStylesDefined = borderComponents >> 4;
-  const uint8_t shaded = in[offset++];
+  const uint8_t backgroundTone = in[offset++];
   const uint8_t floatLeft = in[offset++];
   const uint8_t initialLetter = in[offset++];
-  if (shaded > 1 || floatLeft > 1 || initialLetter > MAX_INITIAL_LETTER) return false;
-  style.shaded = shaded != 0;
+  if (backgroundTone > 2 || floatLeft > 1 || initialLetter > MAX_INITIAL_LETTER) return false;
+  style.shaded = backgroundTone == 1;
+  style.darkBackground = backgroundTone == 2;
   style.floatLeft = floatLeft != 0;
   style.initialLetter = initialLetter;
   const uint8_t preserveWhitespace = in[offset++];
@@ -1096,7 +1118,9 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
       style.backgroundImage = hasBackgroundImageUrl(value);
       style.defined.backgroundImage = 1;
     }
-    style.shaded = interpretShade(value);
+    const int luminance = colorLuminance(value);
+    style.shaded = luminance >= 128 && luminance < 240;
+    style.darkBackground = luminance >= 0 && luminance < 128;
     style.defined.shaded = 1;
   } else if (iequalsAscii(name, "float")) {
     style.floatLeft = iequalsAscii(value, "left");

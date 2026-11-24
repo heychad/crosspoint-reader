@@ -537,6 +537,14 @@ TEST_F(CssParserTest, BackgroundImageKeepsDividerFallbackThroughCascadeAndCache)
                     "hr.ornament.blank { background: none; }"
                     "hr.ornament.no-art { background-image: none; }"
                     "hr.empty { background: url(' '); }"
+                    "hr.gray { background-color: #aaa; }"
+                    "hr.dark { background: black; }"
+                    "hr.dark.no-art { background-image: none; }"
+                    "hr.dark.blank { background: transparent; }"
+                    "hr.dark.rgb-transparent { background-color: rgba(20, 20, 20, 0); }"
+                    "hr.dark.hex-transparent { background-color: #0000; }"
+                    "hr.dark.decimal-white { background-color: rgb(255.0,255.0,255.0); }"
+                    "hr.percent { background-color: rgb(0% 50.5% 0%); }"
                     "hr.border { border-top: 1px solid; }"),
             CssParser::ParseResult::Complete);
   ASSERT_TRUE(writer.saveToCache(true));
@@ -548,6 +556,13 @@ TEST_F(CssParserTest, BackgroundImageKeepsDividerFallbackThroughCascadeAndCache)
     EXPECT_TRUE(parser->resolveStyle("hr", "ornament blank").suppressesHorizontalRule());
     EXPECT_TRUE(parser->resolveStyle("hr", "ornament no-art").suppressesHorizontalRule());
     EXPECT_TRUE(parser->resolveStyle("hr", "empty").suppressesHorizontalRule());
+    EXPECT_FALSE(parser->resolveStyle("hr", "gray").suppressesHorizontalRule());
+    EXPECT_FALSE(parser->resolveStyle("hr", "dark no-art").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "dark blank").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "dark rgb-transparent").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "dark hex-transparent").suppressesHorizontalRule());
+    EXPECT_TRUE(parser->resolveStyle("hr", "dark decimal-white").suppressesHorizontalRule());
+    EXPECT_FALSE(parser->resolveStyle("hr", "percent").suppressesHorizontalRule());
     EXPECT_FALSE(parser->resolveStyle("hr", "border").suppressesHorizontalRule());
   }
 }
