@@ -460,6 +460,9 @@ int main() {
     savedClippings.extra.front().startOffset = 100;
     savedClippings.extra.front().endOffset = 110;
     assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 38) == 3);
+    activity.renderer.fills.clear();
+    reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
+    assert(activity.renderer.fills.size() == 1 && activity.renderer.fills[0].width == width);
     savedClippings.extra.clear();
   }
   for (const auto& logical : {std::vector<std::string>{"אחד", "alpha", "beta", "שני"},

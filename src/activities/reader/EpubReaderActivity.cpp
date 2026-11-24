@@ -3250,10 +3250,15 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
   uint32_t firstSourceOffset = UINT32_MAX;
   uint32_t lastSourceOffset = 0;
   bool needsWordIndex = false;
+  // Stores retain save order, so other chapters can occur inside this interval.
+  size_t firstChapterClip = 0;
+  size_t lastChapterClip = 0;
   size_t chapterClippings = 0;
   for (size_t i = 0; i < CLIPPINGS.clippingCount(); ++i) {
     const Clipping& clipping = *CLIPPINGS.clippingAt(i);
     if (clipping.spineIndex != currentSpineIndex) continue;
+    if (!chapterClippings) firstChapterClip = i;
+    lastChapterClip = i;
     ++chapterClippings;
     if (clipping.startOffset == UINT32_MAX || clipping.endOffset == UINT32_MAX) {
       needsWordIndex = true;
@@ -3273,7 +3278,7 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
     if (!needsWordIndex &&
         (range.start == UINT32_MAX || range.end <= firstSourceOffset || range.start >= lastSourceOffset))
       return false;
-    for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
+    for (size_t index = firstChapterClip; index <= lastChapterClip; ++index) {
       const Clipping& clipping = *CLIPPINGS.clippingAt(index);
       if (clippingContainsWord(clipping, static_cast<uint16_t>(currentSpineIndex), currentPage, section->pageCount,
                                layoutSignature, wordIndex, range.start, range.end))

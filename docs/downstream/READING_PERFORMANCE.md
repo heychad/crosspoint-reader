@@ -174,6 +174,18 @@ Clipping-record lookups fell from 4,240,544 to 1,984,071 and text-width calls
 from 143,644 to 72,726 in that workload. The comparison uses a host font stub.
 Page-turn latency and panel refresh still need measurement on the X4 Pro.
 
+After test72, the renderer records the first and last clip for the current
+chapter during its existing scan. Each word checks only that interval.
+Records from other chapters can still occur inside it. The change keeps
+two indices and allocates no new buffer.
+
+Across three backed-up stores, all eight book/chapter groups (14 clips total)
+were contiguous. In 4,000 generated pages with clips grouped by chapter,
+record lookups fell from 3,093,425 to 280,812. Across three more sets of
+4,000 pages (mixed, scattered, and all in one chapter), every horizontal
+highlight position and width matched test72. With all clips in one chapter,
+both versions made the same number of lookups. Device timing is open.
+
 When starting a touch selection, the reader first looks for a saved clip in
 the current chapter. If all clips belong to other chapters, it skips the word
 measurements used to detect a tap on a saved highlight. Overlapping clips
