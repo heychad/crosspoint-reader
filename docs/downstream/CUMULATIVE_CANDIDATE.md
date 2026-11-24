@@ -515,3 +515,31 @@ menu of later checks, not one five-minute assignment.
 No device polling, flash, release publication, supported-branch merge, or PR is
 authorized by this review record. Standing authorization covers checked WIP
 checkpoints and pushes; device installation remains the reviewed human step.
+
+### Local test77 and test78 packages
+
+Test77 checks long filename lengths in the bookmark and clipping directories
+before opening each possible match. On a copy of the 1,935-book catalog with
+saved-item filenames for three books, the scan inspected seven books. Adding
+an unrelated accented or emoji filename gave the same result on FAT and exFAT.
+Direct filesystem lookups found every expected match. This measures work on
+the host. First-open time on the reader is still open.
+
+Test78 includes test77. When Move to Read moves a finished book, it copies
+`progress.bin.bak` to the corresponding new cache alongside the recorded
+primary and preserves the source. Of 110 backed-up EPUB caches, 39 had a
+backup position, and 32 differed from the primary. The new plan refuses a
+backup larger than 512 bytes before hashing it. Existing v2 and v3 plans
+finish with their original file lists. Finish or recover an active v4 move
+on test78 before rolling back. Preserving a backup file does not change
+which position the reader opens.
+
+| Mac build | Reviewed firmware source | Enabled host checks per configuration | Image SHA-256 |
+| --- | --- | ---: | --- |
+| Test77 | `9edc3101` | 2,595 | `847a75d588c13afe534a44a8768184edb6445e0e3ce0b47ea4b16537d59f6be6` |
+| Test78 | `089801b3` | 2,601 | `0a7698643f77a89d60f704f05e21661cb53e7b19c85defd40b21da97956a6cbd` |
+
+Both builds passed standard and personal X4 Pro compilation, regular and
+sanitizer host checks, and the compiled stable-update simulation. Each
+package includes the confirmed test70 rollback. Test71 is the image on the
+card for the [morning reading check](NEXT_DEVICE_QA.md).
