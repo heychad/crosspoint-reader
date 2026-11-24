@@ -49,6 +49,18 @@ version, slot size, checksum, and validation hash checks. Its SHA-256 is
 The earlier simulated stable upgrade is recorded separately with its
 [preview revision and image hash](PERSONAL_UPDATES.md#post-test70-integration-check).
 
+### Local test71 package
+
+The follow-up package `2026-11-23-test71-review-fixes` uses firmware source
+`f7257e093415139099acacda342a50c8463b0a4f`. The version-only personal build
+took 75.05 seconds and reports `2.0.0-chad.3-test71-review-fixes-x4pro`.
+The 5,860,848-byte `READER71.BIN` passed the board, version, slot size,
+checksum, and validation hash checks. Its SHA-256 is
+`487ab6b2fd68e1ade483f79e4fca76ebf0c8e1271b2d67399607d1909db49862`.
+The local manifest also verifies the test70 rollback and `Review71.epub`,
+which exercises divider layout and clipping. Stage the follow-up after the
+[test70 device check](NEXT_DEVICE_QA.md) and a fresh reading-state backup.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with
