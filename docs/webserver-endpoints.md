@@ -67,6 +67,12 @@ Response:
 | `deviceId` | string | With `?plugin=<name>`: 64 hex chars, stable per device and plugin (SHA-256 of an on-device NVS secret and the name); omitted if NVS is unavailable |
 | `device` | string | `"X3"` or `"X4"` hardware detection |
 
+### `GET /api/diagnostics/epub-timings` (X4 Pro)
+
+Returns the current Device Diagnostics EPUB timing summaries. Reading this
+endpoint leaves the on-device recorder and its samples unchanged.
+See [EPUB timing fields and recording controls](downstream/DEVICE_DIAGNOSTICS.md#reading-the-timings-over-wi-fi).
+
 ## File Management
 
 ### `GET /api/files`

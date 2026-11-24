@@ -224,6 +224,7 @@ add_test(NAME ReadingStatsOverlay COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_
 add_test(NAME ReaderEndShortcuts COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_end_shortcuts.py)
 
 add_subdirectory(reader_gestures)
+add_subdirectory(device_diagnostics)
 add_subdirectory(book_move)
 
 add_test(NAME ReaderLightGestures COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_reader_light_gestures.py)

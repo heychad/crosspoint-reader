@@ -1,0 +1,5 @@
+FetchContent_GetProperties(ArduinoJson)
+add_executable(EpubTimingWebTest EpubTimingWebTest.cpp)
+target_include_directories(EpubTimingWebTest PRIVATE stubs ../../src ${arduinojson_SOURCE_DIR}/src)
+target_link_libraries(EpubTimingWebTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(EpubTimingWebTest)

@@ -29,6 +29,7 @@
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 #include <esp_random.h>
 
+#include "EpubTimingWeb.h"
 #include "FileChecksum.h"
 #endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_INVENTORY) && \
@@ -1001,6 +1002,9 @@ void CrossPointWebServer::begin() {
   });
 
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
+#if FREEINK_DEVICE_X4PRO
+  server->on("/api/diagnostics/epub-timings", HTTP_GET, [this] { epubtiming::sendMeasurements(*server); });
+#endif
   server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO && defined(CROSSPOINT_EXPERIMENTAL_STAGE) && \
     CROSSPOINT_EXPERIMENTAL_STAGE

@@ -37,3 +37,16 @@ the [CrossInk RC3 diagnostic](https://github.com/uxjulia/CrossInk/commit/35da2c2
 
 For a device check, select a separate one-byte `.BIN` in `zDev`. The updater
 should show `TOO_SMALL` before confirmation. Back should leave the failure screen.
+
+## Reading the timings over Wi-Fi
+
+After a reading session, open Wi-Fi File Transfer and visit
+`/api/diagnostics/epub-timings` at the address on the X4 Pro. Anyone on the
+network who can reach File Transfer can read these totals. Recording starts
+and stops on the device.
+
+The reply includes the recording state and three groups named `text`,
+`illustrated`, and `indexing`. Each has a `count`. Groups with samples also
+report `medianMs` and `maxMs`. A group with zero samples has no timing values.
+The readings stay available until the next recording or reboot. If the reader
+returns HTTP 503 with `render_busy`, retry after one second.
