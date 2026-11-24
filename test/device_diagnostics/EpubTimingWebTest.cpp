@@ -105,6 +105,28 @@ TEST_F(EpubTimingWebTest, LatestSuccessfulClipSurvivesStopAndResetsOnStart) {
   EXPECT_FALSE(reply["lastClipSave"].is<JsonObject>());
 }
 
+TEST_F(EpubTimingWebTest, ReportsLastProgressSaveAttemptIncludingFailure) {
+  auto& recorder = epubtiming::recorder;
+  recorder.recordProgressSave({500, false});
+  request(200);
+  EXPECT_FALSE(reply["lastProgressSave"].is<JsonObject>());
+  recorder.toggleRecording();
+  recorder.recordProgressSave({5, true});
+  request(200);
+  EXPECT_EQ(reply["lastProgressSave"]["elapsedMs"].as<uint32_t>(), 5u);
+  EXPECT_TRUE(reply["lastProgressSave"]["saved"].as<bool>());
+  recorder.recordProgressSave({0, false});
+  recorder.toggleRecording();
+  recorder.recordProgressSave({2, true});
+  request(200);
+  EXPECT_EQ(reply["lastProgressSave"]["elapsedMs"].as<uint32_t>(), 0u);
+  EXPECT_TRUE(reply["lastProgressSave"]["saved"].is<bool>());
+  EXPECT_FALSE(reply["lastProgressSave"]["saved"].as<bool>());
+  recorder.toggleRecording();
+  request(200);
+  EXPECT_FALSE(reply["lastProgressSave"].is<JsonObject>());
+}
+
 TEST_F(EpubTimingWebTest, MaximumMeasurementsFitInOneResponse) {
   auto& recorder = epubtiming::recorder;
   recorder.toggleRecording();
@@ -112,9 +134,11 @@ TEST_F(EpubTimingWebTest, MaximumMeasurementsFitInOneResponse) {
     for (size_t i = 0; i < recorder.WINDOW_SIZE; ++i) recorder.record(kind, UINT32_MAX);
   }
   recorder.recordClipSave({UINT32_MAX, UINT32_MAX});
+  recorder.recordProgressSave({UINT32_MAX, false});
   recorder.toggleRecording();
   request(200);
-  EXPECT_EQ(reply.size(), 5u);
+  EXPECT_EQ(reply.size(), 6u);
+  EXPECT_EQ(reply["lastProgressSave"]["elapsedMs"].as<uint32_t>(), UINT32_MAX);
   EXPECT_EQ(reply["indexing"]["count"].as<unsigned>(), recorder.WINDOW_SIZE);
   EXPECT_EQ(reply["lastClipSave"]["exportMs"].as<uint32_t>(), UINT32_MAX);
 }

@@ -23,7 +23,7 @@ the same page. Compare the same book, display orientation, refresh setting,
 and pages before and after a change. Use the indexing row for a chapter that
 actually needed a build.
 
-Recording starts off after boot. The recorder uses at most 220 bytes of RAM
+Recording starts off after boot. The recorder uses at most 232 bytes of RAM
 and writes no SD files. Display fit and timing on the physical X4 Pro remain
 unverified.
 
@@ -58,3 +58,11 @@ It excludes selection, time waiting for a redraw to finish before the save,
 and panel refresh. Only successful saves produce a sample. If the renderer is
 busy when a save finishes, the previous sample stays in place. Starting a new
 recording clears it. The reply contains no book titles or passage text.
+
+The Wi-Fi response can also include `lastProgressSave`. Its `elapsedMs` covers
+the EPUB reader’s latest attempt to save a page position after rendering,
+including any text-offset lookup made during that call. `saved` reports the
+result returned by the firmware. A redraw that skips the save leaves the
+last sample in place. A retry at the same page updates it. These
+milliseconds are outside the page-render timings. The measurement excludes
+touch detection, panel settling, and position writes initiated by KOReader sync.

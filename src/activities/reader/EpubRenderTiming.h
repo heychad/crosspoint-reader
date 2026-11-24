@@ -20,6 +20,11 @@ struct ClipSave {
   uint32_t exportMs;
 };
 
+struct ProgressSave {
+  uint32_t elapsedMs;
+  bool saved;
+};
+
 // Accessed by the reader and diagnostics under the existing RenderLock.
 // The recorder never writes to the card or allocates heap memory.
 class Recorder {
@@ -33,6 +38,7 @@ class Recorder {
     if (recording) {
       windows = {};
       clipSave.reset();
+      progressSave.reset();
     }
   }
 
@@ -41,6 +47,12 @@ class Recorder {
   }
 
   std::optional<ClipSave> lastClipSave() const { return clipSave; }
+
+  void recordProgressSave(ProgressSave sample) {
+    if (recording) progressSave = sample;
+  }
+
+  std::optional<ProgressSave> lastProgressSave() const { return progressSave; }
 
   void record(PageKind kind, uint32_t elapsedMs) {
     if (!recording) return;
@@ -68,9 +80,10 @@ class Recorder {
   };
   std::array<Window, 3> windows{};
   std::optional<ClipSave> clipSave;
+  std::optional<ProgressSave> progressSave;
   bool recording = false;
 };
 
-static_assert(sizeof(Recorder) <= 220);
+static_assert(sizeof(Recorder) <= 232);
 inline Recorder recorder;
 }  // namespace epubtiming

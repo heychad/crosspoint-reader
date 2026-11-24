@@ -12,6 +12,7 @@ inline void sendMeasurements(WebServer& server) {
   bool recording;
   Summary text, illustrated, indexing;
   std::optional<ClipSave> clipSave;
+  std::optional<ProgressSave> progressSave;
   {
     RenderLock lock(RenderLock::Mode::Try);
     if (!lock.ownsLock()) {
@@ -24,6 +25,7 @@ inline void sendMeasurements(WebServer& server) {
     illustrated = recorder.summarize(PageKind::Illustrated);
     indexing = recorder.summarize(PageKind::Indexing);
     clipSave = recorder.lastClipSave();
+    progressSave = recorder.lastProgressSave();
   }
 
   JsonDocument response;
@@ -44,7 +46,12 @@ inline void sendMeasurements(WebServer& server) {
     group["storeMs"] = clipSave->storeMs;
     group["exportMs"] = clipSave->exportMs;
   }
-  char body[320];
+  if (progressSave) {
+    auto group = response["lastProgressSave"].to<JsonObject>();
+    group["elapsedMs"] = progressSave->elapsedMs;
+    group["saved"] = progressSave->saved;
+  }
+  char body[384];
   if (response.overflowed() || serializeJson(response, body, sizeof(body)) >= sizeof(body)) {
     server.send(503, "application/json", R"({"error":"measurements_unavailable"})");
     return;

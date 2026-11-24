@@ -2762,7 +2762,14 @@ void EpubReaderActivity::renderBook() {
   const int totalPages = section->estimatedTotalPages();
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
       totalPages != lastSavedPageCount || currentPageVisibleOffset != lastSavedVisibleOffset) {
-    if (saveProgress(currentSpineIndex, section->currentPage, totalPages)) {
+#if FREEINK_DEVICE_X4PRO
+    const uint32_t saveStart = timingEnabled ? millis() : 0;
+#endif
+    const bool saved = saveProgress(currentSpineIndex, section->currentPage, totalPages);
+#if FREEINK_DEVICE_X4PRO
+    if (timingEnabled) epubtiming::recorder.recordProgressSave({static_cast<uint32_t>(millis()) - saveStart, saved});
+#endif
+    if (saved) {
       lastSavedSpineIndex = currentSpineIndex;
       lastSavedPage = section->currentPage;
       lastSavedPageCount = totalPages;
