@@ -59,6 +59,12 @@ on the card after a fresh backup of 494 readable state files. The
 [next device check](NEXT_DEVICE_QA.md#test71-on-the-x4-pro) covers reading
 position, clip saving, and the first page turn after saving.
 
+The latest Mac package is [test75](CUMULATIVE_CANDIDATE.md#local-test75-package).
+It includes the clipping and position-write improvements, the card-space check,
+and support for long book names in deletion sync. A renamed book restored from
+the library can still return to a different path on the card. The original
+position survives under its earlier path.
+
 The test70 release check verified the pins against GitHub Releases and Git tags.
 See [CrossPoint 2.0.0](https://github.com/crosspoint-reader/crosspoint-reader/releases/tag/2.0.0)
 and [CrossInk RC3](https://github.com/uxjulia/CrossInk/releases/tag/v2.0.0-rc3).

@@ -146,6 +146,43 @@ Mac package verified, including the test70 rollback. The personal image is
 5,867,200 bytes with SHA-256
 `77317b17a7d88e5a1f6b2ed1f1fd9add9f3b093427b0efee0dec4f19a782209e`.
 
+### Local test75 package
+
+Test71 remains staged for the morning check. Test75 at `23aeeaaf` adds
+recoverable deletion for long UTF-8 EPUB names. The reader keeps files that
+exceed the receipt path or size limit. File Browser shows readable siblings
+beside unsupported names and asks for a retry after a directory read error.
+The Wi-Fi file list ends an incomplete response on a read or encoding error.
+The SdFat upgrade checker passed all 41 upstream and migration paths.
+
+Ten loopback cases covered FAT and exFAT using firmware storage, receipt,
+listing, and checksum code with the library's sync and recovery code. A
+local HTTP adapter and temporary library folders stood in for Wi-Fi and
+Drive. The 108,921-byte fixture covered archive and restore, a lost
+acknowledgement, a restored reader copy, a 745-byte Unicode book name, and a
+765-byte folder name. Two review rounds covered storage, resources,
+correctness, and documentation. After the second round, focused regressions
+verified the final omission of unsupported native names and rejection of
+unrepresentable Wi-Fi names.
+
+A separate restore-and-resync check found a library issue. All ten EPUBs
+came back byte for byte. In the four same-path cases, the restored file
+retained access to its saved position. In the six renamed or relocated
+cases, the library uploaded it under its Drive name. The ten-byte position
+file survived under the original reader path.
+
+Both X4 Pro builds passed, with 2,592 enabled checks in each regular and
+sanitizer run. The offline OTA check accepted the compiled stable preview
+and rejected the damaged copy. The pinned SDK's ZIP, license, protected-book,
+and X4 Pro manifest tests passed on synthetic inputs. The tagged upstreams
+still report CrossPoint 2.0.0 and CrossInk v2.0.0-rc3.
+
+The Mac package `2026-11-24-test75-library-paths` includes the known-running
+test70 rollback. All eight manifest entries verified. The new image is
+5,867,952 bytes. SHA-256:
+`f2b34f1d9438de1c9b0597847c02005b6f26b953fc78a7839995ab2d1a6f93b3`.
+Hardware acceptance and the disposable-book deletion check remain open.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with
