@@ -354,3 +354,14 @@ contents. Of 1,014,665 snapshots including partial writes, 648 on FAT could
 not reopen the store. Every readable snapshot returned the complete old or
 new contents. No exFAT snapshot in this fixture was unreadable. These tests
 used copies of the backup and simulated sector writes.
+
+
+### Interrupted SD writes while saving a position
+
+Both the EPUB and XTC writers check the staged record's byte count, sync,
+file error, and close before replacing the saved position. A regression
+injects each failure and retries with the same next page. In 144 FAT and
+exFAT fixtures, this caught 447 additional staging failures and retained the
+previous position in each. Across the separate remove and rename steps, 72
+injected failures still left the canonical position missing. Native progress
+bytes and the existing CrossInk backup are preserved by this change.

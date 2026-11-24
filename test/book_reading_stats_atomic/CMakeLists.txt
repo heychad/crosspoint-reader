@@ -110,3 +110,5 @@ target_include_directories(BookReadingStatsDailyTest PRIVATE
 target_compile_definitions(BookReadingStatsDailyTest PRIVATE CROSSPOINT_EXPERIMENTAL_DAILY_STATS=1)
 target_link_libraries(BookReadingStatsDailyTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(BookReadingStatsDailyTest TEST_PREFIX DailyEnabled.)
+
+target_sources(BookReadingStatsAtomicTest PRIVATE ProgressFileTest.cpp)

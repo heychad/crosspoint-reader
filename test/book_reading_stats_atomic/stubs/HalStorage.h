@@ -22,6 +22,7 @@ struct HostFileData {
   bool failClose = false;
   bool failRead = false;
   bool failSync = false;
+  bool writeError = false;
   size_t writeLimit = std::numeric_limits<size_t>::max();
   std::vector<std::shared_ptr<HostFileData>> entries;
 };
@@ -57,6 +58,7 @@ class HalFile : public Print {
 
   void flush() {}
   bool sync() const { return data_ && !data_->failSync; }
+  bool hasError() const { return !data_ || data_->writeError; }
   bool seekSet(size_t value) {
     cursor_ = value;
     return static_cast<bool>(data_);
@@ -109,6 +111,7 @@ class HalStorage {
     failWriteLimits_.clear();
     failNewClosePaths_.clear();
     failNewSyncPaths_.clear();
+    nextWriteError_.clear();
     failNextOpenReadPaths_.clear();
     failCheckedOpenAt_ = -1;
     failSettingsIdentity_ = false;
@@ -282,6 +285,8 @@ class HalStorage {
   bool openFileForWrite(const char*, const std::string& path, HalFile& file) {
     auto data = std::make_shared<HostFileData>();
     data->name = path.substr(path.find_last_of('/') + 1);
+    data->writeError = path == nextWriteError_;
+    if (data->writeError) nextWriteError_.clear();
     data->failClose = failNewClosePaths_.erase(path) > 0;
     data->failSync = failNewSyncPaths_.erase(path) > 0;
     const auto fail = failWriteLimits_.find(path);
@@ -302,6 +307,7 @@ class HalStorage {
     return true;
   }
 
+  void setNextWriteErrorFor(const std::string& path) { nextWriteError_ = path; }
   void failNextNewCloseFor(const std::string& path) { failNewClosePaths_.insert(path); }
   void failNextNewSyncFor(const std::string& path) { failNewSyncPaths_.insert(path); }
   void failNextWriteFor(const std::string& path, size_t limit) { failWriteLimits_[path] = limit; }
@@ -329,6 +335,7 @@ class HalStorage {
   std::unordered_set<std::string> failRenameFrom_;
   std::unordered_set<std::string> failAliasRenameFrom_;
   std::unordered_set<std::string> failReadPaths_;
+  std::string nextWriteError_;
   std::unordered_map<std::string, size_t> failWriteLimits_;
   std::unordered_set<std::string> failNewClosePaths_;
   std::unordered_set<std::string> failNewSyncPaths_;
