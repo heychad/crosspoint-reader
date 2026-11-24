@@ -429,6 +429,16 @@ across the 24 fixtures. With an independent leftover temp, verification
 increased reads from 1,413 to 7,184 across 24 fixtures. Each writer issued 269
 writes. Neither experiment measures physical page-turn latency.
 
+A separate read-only test replayed 110 backed-up positions with and without
+an abandoned temp file on FAT and exFAT. Across 187,062 simulated cuts,
+the primary could not supply a native record in 25,520 cases. A strict
+lookup reported the primary missing in 5,280 of those. Every one contained
+the intended next position in a single-cluster temp file. A torn FAT
+write also produced a decodable primary with different bytes from either
+expected position in 880 cases. The native format carries no checksum.
+The [backup inspector](BOOK_SETTINGS.md#inspecting-a-backed-up-reading-position)
+can show a staged position separately for manual comparison.
+
 ### Loading a cached EPUB page
 
 The reader gets the page-table and visible-text-table locations from one

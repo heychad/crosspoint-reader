@@ -1,5 +1,6 @@
 """Check native and RC3 positions against known records, including ambiguous pairs."""
 import importlib.util
+import json
 from pathlib import Path
 import struct
 import subprocess
@@ -76,6 +77,35 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(preview.choose(second, versioned)[0], 'primary')
         for status in ('missing', 'invalid'):
             self.assertEqual(preview.choose({'status': status}, second)[0], 'backup')
+
+    def test_optional_staged_record_never_decides_the_resume_position(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / 'epub_7'
+            cache.mkdir()
+            staged = cache / 'progress.bin.tmp'
+            self.assertEqual(preview.preview(cache, inspect_staged=True)['staged']['status'], 'missing')
+            for raw, status in [(native(37, 90, 1120), 'uncommitted'), (rc3(37, 4), 'invalid'),
+                                (b'abc', 'invalid')]:
+                staged.write_bytes(raw)
+                self.assertNotIn('staged', preview.preview(cache))
+                run = subprocess.run([sys.executable, SCRIPT, '--inspect-staged', cache], capture_output=True)
+                self.assertEqual(run.returncode, 2)
+                report = json.loads(run.stdout)
+                self.assertIsNone(report['selected'])
+                self.assertEqual(report['staged']['status'], status)
+                if status == 'uncommitted':
+                    self.assertEqual(report['staged']['native_hex'], raw.hex())
+                self.assertEqual(staged.read_bytes(), raw)
+            (cache / 'progress.bin').write_bytes(native(1, 90))
+            staged.write_bytes(native(40, 90))
+            report = preview.preview(cache, inspect_staged=True)
+            self.assertEqual((report['selected'], report['primary']['page'], report['staged']['page']),
+                             ('primary', 1, 40))
+            staged.unlink()
+            staged.mkdir()
+            run = subprocess.run([sys.executable, SCRIPT, '--inspect-staged', cache], capture_output=True)
+            self.assertEqual(run.returncode, 0)
+            self.assertEqual(json.loads(run.stdout)['staged']['status'], 'unreadable')
 
     def test_command_only_reads_the_cache(self):
         with tempfile.TemporaryDirectory() as tmp:

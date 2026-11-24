@@ -324,9 +324,14 @@ python3 scripts/preview_crossink_progress.py /path/to/backup/.crosspoint/epub_12
 The preview reads the primary and backup, checks RC3 records with their CRC,
 and prints the saved chapter, page, page count, and text offset when present.
 `native_hex` is the exact byte representation of that position for the
-CrossPoint reader. The command only reads the two files.
+CrossPoint reader. By default the command reads these two files.
 
 A native primary and a different RC3 backup can come from either an upgrade
 or a rollback. The preview shows both and leaves the choice open. Exit status
 2 means the choice is open or both records are unusable. Status 1 means
 the input could not be inspected.
+
+After an interrupted native save, add `--inspect-staged` to inspect
+`progress.bin.tmp`. The preview labels a decodable native record
+`uncommitted`. It can be left over from an earlier save. Only the primary
+and backup determine the selected position and exit status.

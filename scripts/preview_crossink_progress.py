@@ -61,7 +61,7 @@ def choose(primary, backup):
     return ("backup" if difference < 0x80000000 else "primary"), "newer RC3 sequence"
 
 
-def preview(directory):
+def preview(directory, *, inspect_staged=False):
     if directory.name.startswith("xtc_"):
         raise ValueError("XTC progress has a different format; select an EPUB cache")
     if not directory.is_dir():
@@ -69,15 +69,29 @@ def preview(directory):
     primary = read_slot(directory / "progress.bin")
     backup = read_slot(directory / "progress.bin.bak")
     selected, reason = choose(primary, backup)
-    return dict(primary=primary, backup=backup, selected=selected, reason=reason)
+    result = dict(primary=primary, backup=backup, selected=selected, reason=reason)
+    if inspect_staged:
+        try:
+            staged = read_slot(directory / "progress.bin.tmp")
+        except OSError as error:
+            staged = {"status": "unreadable", "reason": error.strerror}
+        if staged["status"] == "valid":
+            if staged["format"] == "native":
+                staged["status"] = "uncommitted"
+            else:
+                staged = {"status": "invalid", "reason": "the native writer stages only native records"}
+        result["staged"] = staged
+    return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("cache", type=Path, help="one extracted EPUB cache directory")
+    parser.add_argument("--inspect-staged", action="store_true",
+                        help="also show the uncommitted native progress.bin.tmp after an interrupted save")
     args = parser.parse_args()
     try:
-        result = preview(args.cache)
+        result = preview(args.cache, inspect_staged=args.inspect_staged)
     except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
