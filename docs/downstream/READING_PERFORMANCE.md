@@ -537,3 +537,24 @@ The ESP32-S3 compiler reported 32 more bytes of local stack for each
 batched operation. The serialization frame grew from 80 to 112 bytes, and
 the deserialization frame grew from 112 to 144 bytes. These figures cover
 each function's own frame. Peak stack use on the reader is unmeasured.
+
+### Images on test71 and test85
+
+The two versions drew identical screen buffers in 12,096 comparisons using
+21 distinct images from the EPUB fixtures. The test converted the images
+to the reader's packed grayscale format before passing them to the image
+cache renderer. Cases covered four orientations, full frames and strips,
+black-and-white and grayscale passes, and first and repeat draws with
+PSRAM, internal RAM, or streamed pixels. Image decoding and the physical
+panel refresh were outside this comparison.
+
+### Repeated page turns and text selection on test85
+
+One host process kept the same renderer open for 48 minutes and 40 seconds.
+It loaded and rendered 15,985 pages from the 691-page EPUB fixture set,
+including forward turns, back turns, and jumps. Every page matched test71
+for the recorded text positions, word source ranges, and assembled
+selection text. AddressSanitizer and UndefinedBehaviorSanitizer reported
+no errors. Sampled live allocations in the host process ranged from
+234,913 to 235,489 bytes and ended at 234,913 bytes. Saving a clip to the
+card and turning immediately afterward is part of the [device check](NEXT_DEVICE_QA.md).
