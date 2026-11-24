@@ -110,8 +110,11 @@ python3 scripts/upstream_snapshot.py --fetch --crossink refs/tags/v2.0.0-rc3 --c
 
 With `--fetch`, the report lists the latest stable and RC tags advertised by
 each remote and any newer tags to review. It checks the selected tag against
-the remote commit, including annotated tags. A local-only snapshot uses the
-pinned comparisons and skips discovery. Review a new tag before changing the
+the remote commit, including annotated tags. CrossPoint and CrossInk give
+`v1.5.0` to different commits. A refresh fetches each selected release tag
+and the CrossInk comparison base into separate audit refs. The fork's tags
+stay in place. Offline comparisons use the previous remote-specific refs,
+falling back to local tags only before the first refresh. Review a new tag before changing the
 comparison baseline.
 
 The default snapshot compares RC3 and checks 160 catalog/save keys. The

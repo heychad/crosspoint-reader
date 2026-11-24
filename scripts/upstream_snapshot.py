@@ -57,6 +57,39 @@ def revision(ref):
     return git('rev-parse', '--verify', ref + '^{commit}')
 
 
+def upstream_revisions(remote, refs, fetch, allow_development):
+    """Resolve selected tags in their owner's namespace, including the comparison base."""
+    selections = []
+    specs = []
+    for ref in refs:
+        name = ref[len('refs/tags/'):] if ref.startswith('refs/tags/') else ref
+        if release_order(name) is not None or (allow_development and ref.startswith('refs/tags/')):
+            source = 'refs/tags/' + name
+            scoped = 'refs/crosspoint-audit/' + remote + '/tags/' + name
+            if subprocess.run(['git', 'check-ref-format', source], cwd=ROOT).returncode:
+                raise ValueError('Invalid tag: ' + ref)
+            specs.append('+' + source + ':' + scoped)
+            selections.append((source, scoped))
+        elif allow_development:
+            selections.append((ref, None))
+        else:
+            raise ValueError('Stable or RC tag required: ' + ref + '; use --allow-development-ref for an explicit audit')
+    if fetch:
+        options = ['fetch', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head', remote]
+        if any(scoped is None for _, scoped in selections):
+            git(*options)
+        if specs:
+            git(*options, *dict.fromkeys(specs))
+    resolved = []
+    for ref, scoped in selections:
+        target = ref
+        if scoped and (fetch or subprocess.run(
+                ['git', 'show-ref', '--verify', '--quiet', scoped], cwd=ROOT).returncode == 0):
+            target = scoped
+        resolved.append((ref, revision(target)))
+    return resolved
+
+
 def paths(base, tip):
     # NUL records preserve whitespace and Unicode in repository filenames.
     raw = subprocess.check_output(
@@ -138,22 +171,11 @@ def main():
                         help='explicitly inspect a non-release ref; does not authorize integration')
     parser.add_argument('--json', action='store_true', help='emit machine-readable output')
     args = parser.parse_args()
-    if args.fetch:
-        for remote in ('upstream', 'crossink'):
-            subprocess.run(['git', 'fetch', '--no-recurse-submodules', remote],
-                           cwd=ROOT, check=True)
-    if not args.allow_development_ref:
-        for field in ('crosspoint', 'crossink', 'crossink_base'):
-            ref = getattr(args, field)
-            tag = ref if ref.startswith('refs/tags/') else 'refs/tags/' + ref
-            if (release_order(tag[len('refs/tags/'):]) is None or
-                    subprocess.run(['git', 'show-ref', '--verify', '--quiet', tag], cwd=ROOT).returncode != 0):
-                raise ValueError('Release-tag comparison required: ' + ref + '; use --allow-development-ref only for an explicit audit')
-            setattr(args, field, tag)
+    (args.crosspoint, cp), = upstream_revisions(
+        'upstream', [args.crosspoint], args.fetch, args.allow_development_ref)
+    (args.crossink, ci), (args.crossink_base, ci_base) = upstream_revisions(
+        'crossink', [args.crossink, args.crossink_base], args.fetch, args.allow_development_ref)
     head = revision('HEAD')
-    cp = revision(args.crosspoint)
-    ci = revision(args.crossink)
-    ci_base = revision(args.crossink_base)
     if subprocess.run(['git', 'merge-base', '--is-ancestor', ci_base, ci],
                       cwd=ROOT, capture_output=True).returncode != 0:
         raise ValueError('CrossInk baseline is not an ancestor of its tip; choose a valid --crossink-base')

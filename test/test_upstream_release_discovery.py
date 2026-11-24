@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 root = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('snapshot', root / 'scripts/upstream_snapshot.py')
@@ -31,6 +32,28 @@ class UpstreamReleaseDiscovery(unittest.TestCase):
         self.assertEqual(sorted(reversed(names), key=snapshot.release_order), names)
         for other in ('nightly', '2.0.0-dev8', 'v2.1.0-beta1', 'v2.1.0-rc1-extra'):
             self.assertIsNone(snapshot.release_order(other))
+
+    def test_comparisons_use_each_remotes_tag_without_overwriting_personal_tags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local = root / 'fork'
+            personal = repository(local, ['v1.5.0'])
+            upstream = repository(root / 'crosspoint', ['v1.5.0'])
+            crossink = repository(root / 'ink', ['v1.5.0', 'v2.0.0-rc3'])
+            with patch.object(snapshot, 'ROOT', local):
+                snapshot.git('remote', 'add', 'upstream', str(root / 'crosspoint'))
+                snapshot.git('remote', 'add', 'crossink', str(root / 'ink'))
+                ref = 'refs/tags/v1.5.0'
+                self.assertEqual(snapshot.upstream_revisions('upstream', [ref], False, False), [(ref, personal)])
+                for online in (True, False):
+                    self.assertEqual(snapshot.upstream_revisions('upstream', [ref], online, False), [(ref, upstream)])
+                    found = snapshot.upstream_revisions('crossink', ['v2.0.0-rc3', ref], online, False)
+                    self.assertEqual(found, [('refs/tags/v2.0.0-rc3', crossink), (ref, crossink)])
+                self.assertEqual(snapshot.revision(ref), personal)
+                self.assertEqual(snapshot.git('tag', '--list'), 'v1.5.0')
+                self.assertEqual(snapshot.git('status', '--porcelain'), '')
+                with self.assertRaises(ValueError):
+                    snapshot.upstream_revisions('crossink', ['nightly'], False, False)
 
     def test_remote_ownership_and_peeled_commits(self):
         with tempfile.TemporaryDirectory() as tmp:
