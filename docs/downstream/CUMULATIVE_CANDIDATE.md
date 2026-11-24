@@ -89,6 +89,35 @@ checksum, and validation hash passed. SHA-256:
 `fa00b61162619c88cb71b6d14e09b5f117a02f4d50e6b63fdcb0967c2af9116c`.
 On-device latency and release acceptance remain open.
 
+### Local test73 package
+
+Test73 includes test72. The card still has test71 for the first on-device check.
+Test73 fixes a race between clipping saves and queued reader redraws, skips
+duplicate progress writes, and reuses the path buffer while scanning Saved Items.
+The reviewed source is `4f2393a9`. Both X4 Pro profiles and 2,591 enabled
+checks passed in each of the regular and sanitizer host builds. The separate
+stable OTA simulation accepted the compiled preview and rejected its damaged copy.
+
+All 110 archived EPUB positions round-tripped with their original bytes. A host
+scan of 1,935 catalog paths produced the same paths and eliminated 5,549
+temporary allocations. The plugin host script, advertised API and capabilities,
+and all ten plugin HTTP paths and methods match CrossPoint 2.0.0.
+
+A full exFAT card can now report a failed allocation and mount again. All 94
+clipping edits refused for space in the 300-case FAT/exFAT test succeeded after
+space was freed. A separate deletion check exposed a remaining limitation. With
+0–3 free clusters in the test images, a deletion could leave an incomplete move
+journal. The original book stayed readable in the image and no committed
+deletion was recognized. The existing recovery gate can block reader entry in
+this condition. These tests used simulated cards.
+
+`READER73.BIN` is 5,865,632 bytes. Its ESP32-S3 board tag, personal version,
+OTA slot size, image checksum, and validation hash passed. The Mac package
+`2026-11-24-test73-reading` also contains the known-running test70 rollback,
+the SDK patch, source revision, test evidence, and checksums. Image SHA-256
+`ac3c817e63a5bcc513c9bf73e9718b3ab10517f135130b80d3a8b08dd510d1e0`.
+Physical clipping latency and display behavior remain open.
+
 ## Test59 configuration
 
 The intended device image is `2.0.0-chad.3-test59-x4pro`, built with
