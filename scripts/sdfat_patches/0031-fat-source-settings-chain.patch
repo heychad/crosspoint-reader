@@ -1,6 +1,17 @@
 --- a/src/FatLib/FatFile.cpp
 +++ b/src/FatLib/FatFile.cpp
-@@ -868,7 +868,7 @@
+@@ -672,8 +672,10 @@
+     } else if (isFatFileOrSubdir(dir)) {
+       if (lfnOrd && checksum != lfnChecksum(dir->name)) {
++        dirFile->m_error |= READ_ERROR;
+         DBG_FAIL_MACRO;
+         goto fail;
+       }
+       if (!openCachedEntry(dirFile, index, oflag, lfnOrd)) {
++        if (oflag == O_RDONLY) dirFile->m_error |= READ_ERROR;
+         DBG_FAIL_MACRO;
+         goto fail;
+@@ -868,7 +870,7 @@
          goto fail;
        }
      }
@@ -9,7 +20,7 @@
      m_curPosition += n;
      toRead -= n;
    }
-@@ -1520,3 +1520,32 @@
+@@ -1520,3 +1522,32 @@
    bool strictEoc = false;
    return m_vol->fatGet(m_firstCluster, &next, &strictEoc) == 0 && strictEoc;
  }

@@ -1,5 +1,6 @@
 #include "FileBrowserActivity.h"
 
+#include <CheckedStoragePath.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -30,7 +31,12 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
-constexpr size_t NAME_BUFFER_SIZE = 500;
+constexpr size_t NAME_BUFFER_SIZE = 255 * 3 + 1;
+
+bool readEntryName(HalFile& entry, char* name) {
+  const auto length = entry.getName(name, NAME_BUFFER_SIZE);
+  return length && length < NAME_BUFFER_SIZE && validCheckedStorageComponent(std::string_view(name, length));
+}
 
 #if defined(CROSSPOINT_EXPERIMENTAL_PAGE_OVERLAY)
 bool savePreferredSleepFolder(const std::string& folder, bool clear) {
@@ -95,7 +101,12 @@ void FileBrowserActivity::loadFiles() {
   files.reserve(entryCount);
 
   for (auto file = root.openNextFile(); file; file = root.openNextFile()) {
-    file.getName(fileNameBuffer.get(), NAME_BUFFER_SIZE);
+    if (!readEntryName(file, fileNameBuffer.get())) {
+      LOG_ERR("FileBrowser", "Could not read an entry in %s", basepath.c_str());
+      files.clear();
+      root.close();
+      return;
+    }
     const bool isDirectory = file.isDirectory();
     if ((!SETTINGS.showHiddenFiles && fileNameBuffer[0] == '.') ||
         strcmp(fileNameBuffer.get(), "System Volume Information") == 0) {
@@ -117,7 +128,11 @@ void FileBrowserActivity::loadFiles() {
       }
     }
   }
-  root.close();
+  const bool complete = !root.hasError();
+  if (!root.close() || !complete) {
+    files.clear();
+    return;
+  }
   FsHelpers::sortFileList(files);
 }
 
@@ -266,10 +281,7 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath, BookDeleteI
 
     dir.rewindDirectory();
     for (auto entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
-      entry.getName(fileNameBuffer.get(), NAME_BUFFER_SIZE);
-      if (strcmp(fileNameBuffer.get(), ".") == 0 || strcmp(fileNameBuffer.get(), "..") == 0) {
-        continue;
-      }
+      if (!readEntryName(entry, fileNameBuffer.get())) return false;
       std::string entryPath = currentPath;
       if (entryPath.back() != '/') {
         entryPath += "/";
@@ -277,7 +289,8 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath, BookDeleteI
       entryPath += fileNameBuffer.get();
 
       const bool isDir = entry.isDirectory();
-      entry.close();
+      const bool readable = !entry.hasError();
+      if (!entry.close() || !readable) return false;
 
       if (isDir) {
         stack.push_back({std::move(entryPath), false});
@@ -288,6 +301,8 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath, BookDeleteI
         }
       }
     }
+    const bool complete = !dir.hasError();
+    if (!dir.close() || !complete) return false;
   }
 
   return true;
@@ -446,6 +461,9 @@ void FileBrowserActivity::deleteSelected() {
   std::string cleanBasePath = basepath;
   if (cleanBasePath.back() != '/') cleanBasePath += "/";
   const std::string entry = files[nav.selected];
+  std::string_view component(entry);
+  if (component.ends_with('/')) component.remove_suffix(1);
+  if (!validCheckedStorageComponent(component)) return;
   const std::string fullPath = cleanBasePath + entry;
 
   auto handler = [this, fullPath](const ActivityResult& res) {

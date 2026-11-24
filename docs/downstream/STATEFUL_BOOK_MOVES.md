@@ -279,12 +279,19 @@ The fixtures cover both missing and existing destination folders.
 
 For individual EPUB deletions outside `/zDev/`, a long English or Unicode
 name can be staged if the complete holding path fits and the file is smaller
-than 4 GiB. If adding the `.held` suffix exceeds the FAT filename limit of
-255 UTF-16 code units, or the full path exceeds the journal limit, the reader
+than 4 GiB. Larger files, including exactly 4 GiB, stay on the card with
+a size message. The checksum path permits up to 32 components. Hidden
+components and short-name aliases cannot identify a synced book. If adding
+the `.held` suffix exceeds the FAT filename limit of 255 UTF-16 code units,
+or the full path exceeds the journal limit, the reader
 keeps the original and asks for a shorter name or path. Wi-Fi File Manager
 lists the affected files and returns HTTP 422. A mixed batch with a low-space
-failure returns 507. Zero-byte EPUBs and development files use local deletion.
+failure returns 507. A zero-byte EPUB at a valid source path uses local
+deletion, as do files under `/zDev/` outside the protected receipt queue.
 
 The Wi-Fi file list can return names up to 765 UTF-8 bytes, including the
 holding folders. An interrupted directory read ends the response before the
-closing bracket so a client can retry the incomplete listing.
+closing bracket so a client can retry the incomplete listing. A confirmed
+missing folder returns an empty list. An unreadable folder returns HTTP 503.
+The on-device File Browser checks each name before offering actions or
+constructing a child path during folder deletion.

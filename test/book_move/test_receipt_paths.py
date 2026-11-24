@@ -20,6 +20,7 @@ storage = r'''
 #include <HiddenItems.h>
 #include <cassert>
 #include <cstring>
+#include <memory>
 #include <strings.h>
 #include <string>
 #include <vector>
@@ -52,6 +53,7 @@ struct HalFile {
     memcpy(out, entry->name.c_str(), entry->name.size()+1);
     return entry->name.size();
   }
+  void rewindDirectory() { offset = 0; }
   bool isDirectory() const { return list || entry->directory; }
   uint64_t fileSize64() const { return entry->size; }
   bool hasError() const { return error; }
@@ -68,6 +70,9 @@ struct HalStorage {
     if (p == "/folder") return {nullptr,&directory,0,readError};
     return {&source};
   }
+  unsigned removedDirectories = 0;
+  bool rmdir(const char*) { ++removedDirectories; return true; }
+  HalFile open(const char* path) { return openChecked(path); }
   PathStatus lookupPath(const char* path) {
     return std::string_view(path) == "/unreadable" ? PathStatus::Failed : PathStatus::Missing;
   }
@@ -116,6 +121,11 @@ std::string repeat(const char* text, unsigned n) {
   while (n--) result += text;
   return result;
 }
+struct FileBrowserActivity {
+  std::unique_ptr<char[]> fileNameBuffer = std::make_unique<char[]>(NAME_BUFFER_SIZE);
+  bool removeDirFile(const std::string& fullPath, BookDeleteIssue& issue);
+};
+__REMOVE_DIR__
 int main() {
   const std::string folder = repeat("界",255);
   const std::string leaf = repeat("本",245)+".epub";
@@ -153,6 +163,17 @@ int main() {
   assert(result[2]["isEpub"]==true);
   directory.offset = 0; directory.error = true;
   assert(!web.streamDirectoryEntries(directory));
+  FileBrowserActivity browser;
+  for (const auto& invalid: {std::string{}, std::string("."), std::string(".."), std::string(766,'q')}) {
+    Storage.directory = {{invalid,0,true}};
+    const auto before = hardDeletes;
+    BookDeleteIssue issue{};
+    assert(!browser.removeDirFile("/folder",issue));
+    assert(hardDeletes == before && Storage.removedDirectories == 0);
+  }
+  HalFile longDirectory{&entries.front()};
+  assert(readEntryName(longDirectory,browser.fileNameBuffer.get()));
+  assert(folder==browser.fileNameBuffer.get());
   Storage.directory = entries;
   tx.path = "/folder";
   web.handleFileListData();
@@ -172,10 +193,13 @@ cache = 'src/util/BookCacheUtils.cpp'
 server = 'src/network/CrossPointWebServer.cpp'
 size_constant = '\n'.join(line for line in (ROOT / 'src/network/FileChecksum.h').read_text().splitlines()
                           if line.startswith(('constexpr size_t MAX_PATH_BYTES', 'constexpr uint64_t MAX_FILE_BYTES')))
+browser = 'src/activities/home/FileBrowserActivity.cpp'
+name_buffer = next(line for line in (ROOT / browser).read_text().splitlines() if line.startswith('constexpr size_t NAME_BUFFER_SIZE'))
+checks = checks.replace('__REMOVE_DIR__', method(browser, 'bool FileBrowserActivity::removeDirFile('))
 source = '\n'.join([storage, size_constant, method(checksum, 'bool validPath('), '}',
                     method(cache, 'bool removeBookFileWithReceipt('), wire,
                     method(server, 'bool CrossPointWebServer::streamDirectoryEntries('),
-                    method(server, 'void CrossPointWebServer::handleFileListData('), checks])
+                    method(server, 'void CrossPointWebServer::handleFileListData('), name_buffer, method(browser, 'bool readEntryName('), checks])
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     cpp = path / 'receipt_paths.cpp'

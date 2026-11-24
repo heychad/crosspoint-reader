@@ -241,6 +241,54 @@ void faults(bool exfat) {
 }
 
 #if defined(SDFAT_BOOK_DELETIONS)
+// A checksum error in the middle of a FAT listing must be distinguishable from EOF.
+void directoryEntryReadError() {
+  Disk disk;
+  std::array<uint8_t, 512> scratch{};
+  FatFormatter format;
+  assert(format.format(&disk, scratch.data()));
+  FsVolume volume;
+  assert(volume.begin(&disk));
+  for (const char* name : {"FIRST.BIN", "Middle x.bin", "LAST.BIN"}) {
+    auto file = volume.open(name, O_CREAT | O_EXCL | O_RDWR);
+    assert(file && file.close());
+  }
+  volume.end();
+  for (const bool damaged : {false, true}) {
+    if (damaged) {
+      unsigned matches = 0;
+      for (auto& sector : disk.sectors) {
+        auto& data = sector.second;
+        for (size_t i = 0; i < data.size(); i += 32) {
+          if (data[i] == 0x41 && data[i + 11] == 0x0f && data[i + 1] == 'M' && data[i + 3] == 'i' &&
+              data[i + 5] == 'd') {
+            data[i + 13] ^= 1;
+            ++matches;
+          }
+        }
+      }
+      assert(matches == 1);
+    }
+    assert(volume.begin(&disk));
+    const auto before = disk.writes;
+    auto directory = volume.open("/", O_RDONLY);
+    assert(directory);
+    std::vector<std::string> names;
+    FsFile child;
+    while (child.openNext(&directory, O_RDONLY)) {
+      char name[32]{};
+      assert(child.getName(name, sizeof(name)) && child.close());
+      names.emplace_back(name);
+    }
+    assert(static_cast<bool>(directory.getError()) == damaged);
+    const std::vector<std::string> expected = damaged
+                                                  ? std::vector<std::string>{"FIRST.BIN"}
+                                                  : std::vector<std::string>{"FIRST.BIN", "Middle x.bin", "LAST.BIN"};
+    assert(names == expected && directory.close() && disk.writes == before);
+    volume.end();
+  }
+}
+
 // Five isolated free clusters must count even when no contiguous run fits.
 void allocationMapThreshold(bool exfat) {
   Disk disk;
@@ -404,6 +452,7 @@ int bookMoveTests() {
 #endif
 #if defined(SDFAT_BOOK_DELETIONS)
   for (bool exfat : {false, true}) {
+    if (!exfat) bookmovetest::directoryEntryReadError();
     bookmovetest::allocationMapThreshold(exfat);
     bookmovetest::deletionCapacity(exfat);
     bookmovetest::deletionFaults(exfat);

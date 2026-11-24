@@ -1,6 +1,17 @@
 --- a/src/FatLib/FatFile.cpp
 +++ b/src/FatLib/FatFile.cpp
-@@ -1522,16 +1522,23 @@
+@@ -672,8 +672,10 @@
+     } else if (isFatFileOrSubdir(dir)) {
+       if (lfnOrd && checksum != lfnChecksum(dir->name)) {
++        dirFile->m_error |= READ_ERROR;
+         DBG_FAIL_MACRO;
+         goto fail;
+       }
+       if (!openCachedEntry(dirFile, index, oflag, lfnOrd)) {
++        if (oflag == O_RDONLY) dirFile->m_error |= READ_ERROR;
+         DBG_FAIL_MACRO;
+         goto fail;
+@@ -1522,16 +1524,23 @@
  }
 
  bool FatFile::settingsClusterList(Cluster_t* out, size_t capacity, size_t* count) {
