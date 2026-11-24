@@ -225,6 +225,11 @@ CROSSPOINT_STABLE_TEST_IMAGE=.pio/build/x4pro-gh_release/firmware.bin \
   --gtest_filter=OtaPipeline.DISABLED_CompiledStableImageUpgrade
 ```
 
+The candidate and stable packaging jobs use the same image checker. Before
+printing the asset digest, it checks the updater's size limits, chip and
+board identity, embedded version, segment lengths, checksum, and appended
+SHA-256 when present. This check is local and takes no reader connection.
+
 For a later starting version, configure a separate host build and pass the
 firmware's exact About version through `CROSSPOINT_OTA_HOST_START_VERSION`.
 Run the same compiled-image check with that build's executable.

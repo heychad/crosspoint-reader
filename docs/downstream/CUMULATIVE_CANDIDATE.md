@@ -637,3 +637,10 @@ host configuration, and the compiled stable-image update simulation. The
 5,871,312-byte Mac image has SHA-256
 `cbac677b638b8773044dcbd86c50eef81f6495c22147c0e7b8cee59c5f7f21f4`.
 The package includes the test70 rollback. Test71 remains staged on the reader.
+
+A clean source checkout also built the personal profile with the pinned SDK
+and installed dependencies. Its SDK patch matched the package. This image
+was 16 bytes smaller and passed its own ESP checksum and validation hash.
+The two builds contain different compile timestamps. Rebuilding with the
+original object cache reproduced the packaged SHA-256 exactly. Use the
+package manifest when checking a transfer.

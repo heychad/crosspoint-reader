@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import textwrap
@@ -23,6 +24,24 @@ def run_block(text, name):
             break
         block.append(line)
     return textwrap.dedent('\n'.join(block)) + '\n'
+
+
+def sample_image(version, board=b'CROSSPOINT-BOARD-V1:x4pro;', *, with_digest=True):
+    # Two data-only segments sized like a supported image. Padding is outside the XOR.
+    segments = (board + bytes(65536), version.encode('ascii') + bytes(1))
+    image = bytearray(24)
+    image[0], image[1], image[12], image[23] = 0xe9, len(segments), 9, int(with_digest)
+    checksum = 0xef
+    for segment in segments:
+        image.extend(struct.pack('<II', 0x3c300020, len(segment)))
+        image.extend(segment)
+        for value in segment:
+            checksum ^= value
+    image.extend(bytes(15 - len(image) % 16))
+    image.append(checksum)
+    if with_digest:
+        image.extend(hashlib.sha256(image).digest())
+    return image
 
 
 ci = (WORKFLOWS / 'ci.yml').read_text()
@@ -128,10 +147,7 @@ esac
                      'GITHUB_SHA': source, 'SOURCE_REVISION': source, 'SDK_PIN': sdk, 'SDK_CHECKOUT': sdk,
                      'CROSSPOINT_X4PRO_TEST_VERSION': version}
     board = b'CROSSPOINT-BOARD-V1:x4pro;'
-    image = bytearray(24)
-    image[0] = 0xe9
-    image[12] = 9
-    image += board + b'\x00' + (version + '-x4pro').encode() + b'\x00'
+    image = sample_image(version + '-x4pro')
     firmware.write_bytes(image)
     assert run(verify_candidate, **candidate_env).returncode == 0
     assert (build / asset_name).read_bytes() == image
@@ -144,11 +160,11 @@ esac
     stable_build.mkdir()
     stable_firmware = stable_build / 'firmware.bin'
     stable_asset = root / 'crosspoint-2.0.0-chad.4-x4pro.bin'
-    stable_image = image.replace((version + '-x4pro').encode(), b'2.0.0-chad.4')
+    stable_image = sample_image('2.0.0-chad.4')
     github_output = root / 'github-output'
     stable_env = candidate_env | {'PIO_ENV': stable_profile, 'GITHUB_OUTPUT': str(github_output)}
-    for invalid_stable in (image, stable_image.replace(b'2.0.0-chad.4', b'12.0.0-chad.4'),
-                           stable_image.replace(board, b'CROSSPOINT-BOARD-V1:x4;')):
+    for invalid_stable in (image, sample_image('12.0.0-chad.4'),
+                           sample_image('2.0.0-chad.4', b'CROSSPOINT-BOARD-V1:x4;')):
         stable_firmware.write_bytes(invalid_stable)
         assert run(prepare_release, **stable_env).returncode != 0
         assert not stable_asset.exists() and not github_output.exists()
@@ -162,9 +178,22 @@ esac
     (build / asset_name).unlink()
     assert run(verify_candidate, **(candidate_env | {'SDK_CHECKOUT': source})).returncode != 0
     assert run(verify_candidate, **(candidate_env | {'GITHUB_SHA': sdk})).returncode != 0
-    for invalid_image in (image[:13], image[:12] + b'\x05' + image[13:],
-                          image.replace(board, b'CROSSPOINT-BOARD-V1:x4;'),
-                          image + b'CROSSPOINT-BOARD-V1:x4;', image.replace(version.encode(), b'old')):
+    without_digest = sample_image(version + '-x4pro', with_digest=False)
+    firmware.write_bytes(without_digest)
+    assert run(verify_candidate, **candidate_env).returncode == 0
+    assert (build / asset_name).read_bytes() == without_digest
+    (build / asset_name).unlink()
+    damaged_data = without_digest.copy()
+    damaged_data[1024] ^= 1
+    corrupt_segment = image.copy()
+    struct.pack_into('<I', corrupt_segment, 28, len(image))
+    repeated_error = image.copy()
+    repeated_error[1024] ^= 1
+    repeated_error[1032] ^= 1  # The XOR is unchanged, but the validation hash differs.
+    for invalid_image in (corrupt_segment, repeated_error, image[:13], image[:12] + b'\x05' + image[13:],
+                          sample_image(version + '-x4pro', b'CROSSPOINT-BOARD-V1:x4;'),
+                          sample_image(version + '-x4pro', board + b'CROSSPOINT-BOARD-V1:x4;'),
+                          sample_image('old'), damaged_data, image[:-1], image + b'!', image[:-32] + bytes(32)):
         firmware.write_bytes(invalid_image)
         assert run(verify_candidate, **candidate_env).returncode != 0
         assert not (build / asset_name).exists()
