@@ -742,6 +742,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // The trailing value here is just the short extension: skip the balanced
   // 60%-band wrap cap and let both name lines run the full width before it.
   props.balanceWrappedLabelWithValue = false;
+  if (mode == Mode::Books) useTighterListRows(screen, props);
   syncListViewport(screen, props);
   // Prewarm the window at the final viewport (syncListViewport just applied
   // follow/clamping to nav.top) before the list resolves rows through the

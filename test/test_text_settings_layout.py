@@ -455,6 +455,72 @@ void checkReaderMenuPreview(){
 """
 harness = harness.replace("int main() {", menu_harness + "\nint main() {\n  checkReaderMenuPreview();")
 
+density = method(lists, "bool UiListActivity::useTighterListRows(").replace(
+    "UiListActivity::useTighterListRows(const UiScreen&", "useTighterListRows(const fui::Screen<24>&"
+)
+density += r"""
+enum class BrowseList { Files, Library, Settings, WrappedFile };
+int countBrowseRows(bool tighter, BrowseList kind, int16_t bodyFont, int16_t height) {
+  Target target;
+  auto theme = fui::themeTokensForLineHeight(target.lineHeight(bodyFont), 0, bodyFont, 1);
+  fui::DeviceContext device;
+  device.hasTouch = true;
+  device.width = height > 400 ? 464 : 780;
+  device.height = height;
+  fui::InputSnapshot input;
+  fui::InteractionBuffer<24> interactions;
+  fui::Frame<24> frame(target, device, input, interactions);
+  fui::Screen<24> screen(frame, theme);
+  std::array<fui::ListItem, 32> items{};
+  for (size_t i = 0; i < items.size(); ++i) {
+    items[i].label = kind == BrowseList::Settings ? "Text settings" : "Stories";
+    if (kind == BrowseList::WrappedFile)
+      items[i].label = "A long book title that wraps over two lines in a narrow folder listing";
+    static constexpr uint8_t icon[32 * 4] = {};
+    if (kind != BrowseList::Settings) items[i].icon = {icon, 32, 32};
+    items[i].actionValue = i;
+    if (kind == BrowseList::Library) items[i].subtitle = "Author";
+    if (kind == BrowseList::Settings) items[i].value = "Default";
+  }
+  fui::ListProps props;
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch | fui::InputLongPress;
+  props.items = items.data();
+  props.count = items.size();
+  props.labelText = (kind == BrowseList::Files || kind == BrowseList::WrappedFile) ? theme.smallText : theme.bodyText;
+  props.labelText.maxLines = kind == BrowseList::Library ? 1 : 2;
+  props.rowGap = kind == BrowseList::Library ? 6 : -1;
+  if (tighter) assert(useTighterListRows(screen, props));
+  fui::ListNav nav;
+  screen.syncListViewport(nav, props, props.count);
+  screen.list(props);
+  const int full = nav.drawnRows;
+  assert(full > 0 && !target.clippedText && !interactions.overflowed());
+  assert(static_cast<int>(interactions.count()) == full);
+  for (int i = 0; i < full; ++i) {
+    const auto& hit = interactions.data()[i];
+    assert(hit.value == i && hit.rect.height >= std::max(device.minTouchSize, theme.minTouchSize));
+    for (int y : {int(hit.rect.y), int(hit.rect.bottom() - 1)}) {
+      fui::Interaction selected;
+      assert(interactions.hitPublished(100, y, ACTION_ROW, selected) && selected.value == i);
+    }
+  }
+  return full;
+}
+void checkBrowseDensity() {
+  BoardConfig::ACTIVE = BoardConfig::XTEINK_X4_PRO;
+  for (int16_t font : {0, 1})
+    for (int16_t height : {620, 324})
+      for (BrowseList kind : {BrowseList::Files, BrowseList::Library, BrowseList::Settings, BrowseList::WrappedFile}) {
+        const int before = countBrowseRows(false, kind, font, height);
+        const int after = countBrowseRows(true, kind, font, height);
+        assert(after >= before + (height > 400 ? 1 : 0));
+        std::printf("Browse rows (font %d, band %d, list %d): %d -> %d\n", font, height, static_cast<int>(kind), before, after);
+      }
+}
+"""
+harness = harness.replace("int main() {", density + "\nint main() {\n  checkBrowseDensity();")
+
 with tempfile.TemporaryDirectory() as directory:
     cpp = Path(directory) / "layout.cpp"
     executable = Path(directory) / "layout"

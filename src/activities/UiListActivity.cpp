@@ -209,6 +209,15 @@ void UiListActivity::navigateButtons() {
   });
 }
 
+bool UiListActivity::useTighterListRows(const UiScreen& screen, fui::ListProps& props) {
+  if (!BoardConfig::isX4Pro() || !screen.device().hasTouch) return false;
+  // Explicit height is a floor. FreeInkUI grows rows for wrapped labels, subtitles, and icons.
+  props.rowHeight = std::max<int16_t>({48, screen.device().minTouchSize, screen.theme().minTouchSize});
+  props.rowPaddingY = 3;
+  props.rowGap = 2;
+  return true;
+}
+
 void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, const int selectionOffset) {
   props.toggleCheckbox = true;
   props.toggleWidth = 28;

@@ -77,6 +77,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual void drawFooter();
 
   // --- helpers ---------------------------------------------------------------
+  static bool useTighterListRows(const UiScreen& screen, freeink::ui::ListProps& props);
+
   // Measure visibleRows for the screen band, apply follow-on-build, clamp the
   // viewport, and write selection/viewport into props. Call from buildScreen
   // right before screen.list(props).

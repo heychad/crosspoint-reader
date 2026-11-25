@@ -1331,10 +1331,10 @@ void LibraryListActivity::buildRows(UiScreen& screen) {
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   props.labelText = screen.theme().bodyText;
   props.labelText.maxLines = 1;
-  // Breathing room between rows; the dense theme default packs the two-line
-  // rows edge-to-edge.
-  props.rowGap =
-      SETTINGS.libraryListExpanded ? std::max<int16_t>(screen.theme().listRowGap, 6) : screen.theme().listRowGap;
+  if (!useTighterListRows(screen, props)) {
+    props.rowGap =
+        SETTINGS.libraryListExpanded ? std::max<int16_t>(screen.theme().listRowGap, 6) : screen.theme().listRowGap;
+  }
   props.headerUnderline = false;
   syncTabListViewport(screen, props);
 

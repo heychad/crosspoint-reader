@@ -863,10 +863,10 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
-  // Touch uses the standard list sizing, as in Bluetooth; buttons keep compact labels.
   // maxLines also marks smallText as explicit so the list does not replace it with bodyText.
   props.labelText = mappedInput.hasTouch() ? screen.theme().bodyText : screen.theme().smallText;
   props.labelText.maxLines = 2;
+  useTighterListRows(screen, props);
   syncListViewport(screen, props);
   screen.list(props);
 }
