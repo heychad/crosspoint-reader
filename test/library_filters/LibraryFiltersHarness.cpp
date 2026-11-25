@@ -352,6 +352,8 @@ struct LibraryListActivity {
   std::string rowFileScratch, seriesScratch, genreScratch, metadataKeyScratch, previousGroupScratch;
   std::unique_ptr<uint16_t[]> groupStarts;
   int listCount() const { return groupsCollapsed ? groupCount : bookRowCount(); }
+  // Device-specific row sizing is exercised by test_text_settings_layout.py.
+  static bool useTighterListRows(const UiScreen&, fui::ListProps&) { return false; }
   void syncTabListViewport(UiScreen&, fui::ListProps&) {}
   void buildRows(UiScreen&);
   bool buildGrid(UiScreen&);
