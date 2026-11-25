@@ -8,8 +8,8 @@ Formatting follows the [wrapper rule](testing-debugging.md#code-quality).
 
 ### Build in an existing environment
 
-Use installed tools/packages and preserve local configuration/build caches.
-Run the selected build directly. Install, upgrade, re-pin, or re-download tools
+Use installed tools/packages and preserve local configuration. On Chad’s Mac,
+run the selected build inside the disposable volume described in AGENTS.md. Install, upgrade, re-pin, or re-download tools
 only for requested setup or a concrete missing/incompatible dependency.
 Diagnose that failure first and repair only the affected component.
 

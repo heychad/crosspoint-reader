@@ -8,6 +8,20 @@ use its results to guide the next change.
 Store firmware images and development artifacts on the reader's SD card under
 `/zDev/`. Keep firmware-managed reading state at its existing paths.
 
+## Local development storage
+
+Use one checkout on Chad’s Mac. Switch branches in place and use commits for
+checkpoints. Keep comparisons and disposable test data inside `build/`.
+Use `scripts/macos_build_workspace.py -- COMMAND` for builds and host tests.
+The command shares a 12 GiB temporary volume across `.pio/`, `.cache/`, and
+`build/`. It discards those files when it exits. Copy the reviewed firmware
+and required rollback to the handoff folder before the command exits.
+
+On a fresh Mac checkout run `scripts/macos_build_workspace.py --install` once.
+It also blocks additional Git worktrees for this checkout. After an interrupted
+session, use `--cleanup` to reclaim the volume. Split builds into stages if
+they reach the cap. Ask Chad before raising it or creating another checkout.
+
 ## FreeInk SDK
 
 The [FreeInk SDK](freeink-sdk/) supplies the board profiles, hardware drivers,
