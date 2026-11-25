@@ -661,3 +661,29 @@ The checksum-verified Mac package includes the test70 rollback. Its
 5,871,056-byte `READER85.BIN` has SHA-256
 `1336e259032491cd05c10b6f7c7180aae0a5a1d5f0f882cd160fb4179141803e`.
 Test71 remains the staged morning check.
+
+### Test86 list spacing
+
+Test86 includes test85 and changes the X4 Pro File Browser in Books mode,
+the Library list view, and the Settings home and section lists. These rows
+use 3 pixels of vertical padding per side and a 2-pixel gap. Each full row
+is at least 48 pixels tall and respects the device and theme touch minimums.
+FreeInkUI grows rows for subtitles, wrapped labels, and icons. The six
+categories on Settings home use less space.
+
+In a 620-pixel test viewport, plain folder and Settings rows went from
+10 to 12. Book rows with author subtitles went from 8 to 10 or 11,
+depending on UI scale. In a 324-pixel viewport all four test lists gained
+one full row. Touches at the first and last pixel of every full row
+selected its displayed item. How the spacing feels on the reader is the
+[device check](NEXT_DEVICE_QA.md).
+
+Firmware source `dac47a14` passed the combined layout, architecture,
+touch, and resource review against `58c3053f`. The library filtering
+fixture was updated separately at `524880d9`. Standard and personal X4 Pro
+builds passed. The regular and sanitizer suites each passed 2,611 enabled
+checks. The compiled stable-image update simulation also passed.
+The verified 5,871,232-byte personal image has SHA-256
+`151058232ec51b23eee9aa9c4cdc1e71c953947e090f90c9a6ad6621fb472f1c`.
+The packet includes the verified test71 rollback. The reader reported
+test71 when Chad confirmed that saving a clipping no longer caused an extra flash.

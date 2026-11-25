@@ -1,34 +1,25 @@
 # Next X4 Pro device test
 
-## Test71 on the X4 Pro
+## Test86 on the X4 Pro
 
-The reader reported test70 over Wi-Fi, and Chad reported a good reading
-experience. The library completed a reader check with zero deletion events.
-The end-to-end deletion and restore check remains open.
+The reader reported test71 on November 25. Chad confirmed that saving a clipping
+on this build no longer caused the extra flash. Test86 includes the cumulative
+test85 changes and tightens the spacing in folder, book, and Settings lists.
 
-1. Before updating, open your current book on test70 and note the passage.
-   For a clipping comparison, save a short clip and try to turn the page as
-   soon as the highlight appears.
-2. Install **Settings → System → SD Card Firmware Update → zDev → READER71.BIN**.
-   Keep the reader powered through restart. About should show
-   `2.0.0-chad.3-test71-review-fixes-x4pro`.
-3. Reopen the same book. Check the passage, save a short clip, then turn the
-   page immediately. Record any extra refresh or missed turn.
+1. On test71, note your current passage and count the **fully visible** rows in
+   a busy folder. Leave the theme, UI scale, and orientation as they are.
+2. Install **Settings → System → SD Card Firmware Update → zDev → READER86.BIN**
+   and keep the reader powered through restart. About should show
+   `2.0.0-chad.3-test86-list-density-x4pro`.
+3. Open that folder again. Count the full rows and tap the last one. Check that
+   its name is easy to read and the expected folder or book opens. For a book
+   list with author subtitles, use Library list view. The Settings home has six
+   categories, so a longer Settings section gives a better comparison.
+4. Reopen your in-progress book and confirm the passage.
 
-The staged fixture is **zDev → Review71.epub**. With Default rendering and
-publisher styles enabled, **Divider check** should show the gray and dark
-rules. The white rule should leave a gap. **Spacing and clipping** should
-open directly to text. Section caches rebuild on first open. After reflow,
-older page-only highlights may disappear while their saved text remains in
-Saved Items. The test71 rollback image is **zDev → READER70.BIN**. Resolve
-any pending Move to Read transaction before rollback.
-
-## Later comparison on test85
-
-Test85 is the cumulative Mac build. After the test71 check, repeat the same
-passage, clip, and immediate page turn on test85 when it is staged. Keep the
-orientation, text antialiasing, and refresh interval the same. One comparison
-covers test72 through test85.
+The rollback is **zDev → READER71.BIN**. Complete any pending Move to Read
+operation before rollback. The separate end-to-end deletion and restore check
+remains open.
 
 ## Previous update to test70
 
